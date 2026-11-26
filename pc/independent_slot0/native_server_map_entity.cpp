@@ -809,10 +809,11 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
 }
 using Collector=int (__cdecl *)(void*,void*,const char*,unsigned,const EntitySlice*) noexcept;
 int parse_impl(const char* s,unsigned n,const Bindings* b,Result* o,Collector collect,void* context,
-    const CampaignFilterFactoryBindings* filters=nullptr) noexcept {
+    const CampaignFilterFactoryBindings* filters=nullptr,const ScriptedSequenceMapBindings* sequences=nullptr) noexcept {
     if(!o)return 0;*o={};
     if(!s||!b||(!b->create&&!b->native_factory)||(!b->key_value&&!b->native_keys)||(!collect&&!b->accept_entity))return 0;
-    if(filters&&(b->create||b->key_value||!b->native_factory||!b->native_keys||!valid_dictionary(b->native_factory->dictionary)))return 0;
+    if((filters||sequences)&&(b->create||b->key_value||!b->native_factory||!b->native_keys||!valid_dictionary(b->native_factory->dictionary)))return 0;
+    if(sequences&&!sequences->factory)return 0;
     unsigned cursor=0;
     for(;;){
         Token top{};if(!token(s,n,cursor,&top))return 0;
@@ -830,7 +831,9 @@ int parse_impl(const char* s,unsigned n,const Bindings* b,Result* o,Collector co
         if(create){
             if(b->create){if(!b->create(b->context,classname,&actor))return 0;}
             else{
-                if(filters){
+                if(sequences&&equal_class(classname,scripted_sequence_spec.name)){
+                    if(!create_scripted_sequence(sequences->factory,&o->last_factory))return 0;
+                }else if(filters){
                     if(!create_filter_factory(classname,filters,&o->last_factory))return 0;
                     if(!o->last_factory.matched&&!create_factory(classname,b->native_factory,&o->last_factory))return 0;
                 }else if(!create_factory(classname,b->native_factory,&o->last_factory))return 0;
@@ -1065,9 +1068,11 @@ int __cdecl campaign_trigger_spawn(void* a,unsigned n,const CampaignTriggerBindi
 int __cdecl campaign_trigger_touch(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
     return campaign_trigger_touch_impl(a,n,other,b,o,nullptr,nullptr);
 }
-bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native,void* manager) noexcept {
+int scripted_sequence_spawn(void*,unsigned,const ScriptedSequenceSpawnBindings*,ScriptedSequenceSpawnResult*) noexcept;
+bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native,void* manager,const ScriptedSequenceSpawnBindings* sequence=nullptr) noexcept {
     const auto vt=read_field<unsigned>(a,0);
     if((vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)&&b.campaign_triggers){native=true;CampaignTriggerResult r{};int publication=engine_event_not_attempted;return campaign_trigger_spawn_impl(a,n,b.campaign_triggers,&r,manager,&publication)!=0;}
+    if(vt==scripted_sequence_vtable&&sequence){native=true;ScriptedSequenceSpawnResult r{};return scripted_sequence_spawn(a,n,sequence,&r)!=0;}
     if(vt==timer_vtable&&b.logic_timer){native=true;TimerResult r{};return timer_spawn(a,n,b.logic_timer,&r)!=0;}
     if(vt==counter_vtable&&b.native_math_counter){native=true;CounterResult r{};return counter_spawn(a,n,&r)!=0;}
     if(vt==remap_vtable&&b.native_math_remap){native=true;RemapResult r{};return remap_spawn(a,n,&r)!=0;}
@@ -1080,7 +1085,7 @@ bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native,vo
     if(vt==antigen_vtable){AntigenInteractionResult r{};return api->antigen_spawn(a,n,b.dispenser,&r)!=0;}
     CanisterResult r{};return api->canister_spawn(a,n,b.canister,&r)!=0;
 }
-int dispatch_spawn_impl(void* a,const SpawnBindings* b,DispatchResult* o,void* manager) noexcept {
+int dispatch_spawn_impl(void* a,const SpawnBindings* b,DispatchResult* o,void* manager,const ScriptedSequenceSpawnBindings* sequence=nullptr) noexcept {
     if(!o)return 0;*o={};o->global_index=-1;
     if(!a){o->completed=1;return 1;}
     if(!b||!b->native_dispatch)return 0;
@@ -1090,7 +1095,7 @@ int dispatch_spawn_impl(void* a,const SpawnBindings* b,DispatchResult* o,void* m
     if(!d.scope(d.context,true))return 0;o->entered=1;
     auto finish=[&](bool ok){const bool closed=d.scope(d.context,false)!=0;o->closed=closed;o->completed=ok&&closed;return int(o->completed);};
     o->captured_handle=read_field<unsigned>(a,0x378);
-    bool native=false;if(!native_spawn_leaf(*b,a,n,native,manager))return finish(false);
+    bool native=false;if(!native_spawn_leaf(*b,a,n,native,manager,sequence))return finish(false);
     o->spawn_called=1;o->native_spawn=native;
     // Original checks captured serial after Spawn. Independent storage
     // additionally requires the resolved pointer to remain the same.
@@ -1135,10 +1140,10 @@ int dispatch_spawn_impl(void* a,const SpawnBindings* b,DispatchResult* o,void* m
 int __cdecl dispatch_spawn(void* a,const SpawnBindings* b,DispatchResult* o) noexcept {
     return dispatch_spawn_impl(a,b,o,nullptr);
 }
-bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code,void* manager) noexcept {
+bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code,void* manager,const ScriptedSequenceSpawnBindings* sequence=nullptr) noexcept {
     if(b.native_dispatch){
         ++o.native_dispatches;
-        if(!dispatch_spawn_impl(a,&b,&o.dispatch,manager))return false;
+        if(!dispatch_spawn_impl(a,&b,&o.dispatch,manager,sequence))return false;
         code=o.dispatch.native_result;o.native_spawns+=o.dispatch.native_spawn;return true;
     }
     unsigned n=0;if(!extent_ok(b,a,4,n))return false;
@@ -1282,7 +1287,7 @@ int __cdecl auto_primary_run(void* a,unsigned n,int tick,float interval,const Au
     o->last_tick=static_cast<int>(last);write_field(a,0x34,o->last_tick);
     o->native_result=(read_field<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
 }
-int spawn_ordinary_impl(SpawnRow* rows,unsigned count,bool activate,const SpawnBindings* b,SpawnResult* o,void* manager) noexcept {
+int spawn_ordinary_impl(SpawnRow* rows,unsigned count,bool activate,const SpawnBindings* b,SpawnResult* o,void* manager,const ScriptedSequenceSpawnBindings* sequence=nullptr) noexcept {
     if(!o)return 0;*o={};
     if(!b||count>4096||(count&&!rows)||!b->extent||!b->classname||!b->scope||!b->debug_enabled)return 0;
     for(unsigned i=0;i<count;++i){
@@ -1328,7 +1333,7 @@ int spawn_ordinary_impl(SpawnRow* rows,unsigned count,bool activate,const SpawnB
         if(!scope(name,true))return 0;
         bool ok=true;
         if(rows[i].actor){
-            int result=0;ok=spawn_actor(*b,*o,rows[i].actor,result,manager);
+            int result=0;ok=spawn_actor(*b,*o,rows[i].actor,result,manager,sequence);
             if(ok&&result<0){
                 ++o->failed;
                 // Original dispatch marks dependent actors for deletion.
@@ -1369,7 +1374,7 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
     return spawn_ordinary_impl(rows,count,activate,b,o,nullptr);
 }
 struct Pipeline {
-    const PipelineBindings& b;PipelineResult& o;void* manager;
+    const PipelineBindings& b;PipelineResult& o;void* manager;const ScriptedSequenceSpawnBindings* sequence=nullptr;
     SpawnRow rows[4096]{};
     EntitySlice slices[4096]{};
     void* templates[4096]{};
@@ -1385,7 +1390,7 @@ bool pipeline_cleanup(Pipeline& p,void* a,bool remove) noexcept {
 }
 bool pipeline_spawn(Pipeline& p,void* a,int& code) noexcept {
     SpawnResult result{};
-    if(!spawn_actor(*p.b.spawn,result,a,code,p.manager))return false;
+    if(!spawn_actor(*p.b.spawn,result,a,code,p.manager,p.sequence))return false;
     ++p.o.immediate_spawns;if(code<0)++p.o.immediate_failures;return true;
 }
 int __cdecl collect_entity(void* q,void* actor,const char* s,unsigned n,const EntitySlice* e) noexcept {
@@ -1420,12 +1425,15 @@ int __cdecl collect_entity(void* q,void* actor,const char* s,unsigned n,const En
     const bool closed=pipeline_scope(p,scope,false);return ok&&closed;
 }
 int parse_all_impl(const char* s,unsigned n,bool activate,const PipelineBindings* b,PipelineResult* o,void* manager,
-    const CampaignFilterFactoryBindings* filters=nullptr) noexcept {
+    const CampaignFilterFactoryBindings* filters=nullptr,const ScriptedSequenceMapBindings* sequences=nullptr) noexcept {
     if(!o)return 0;*o={};
     if(!s||!b||!b->parse||!b->spawn||!b->classify||!b->scope)return 0;
-    Pipeline p{*b,*o,manager};constexpr char outer[]="MapEntity_ParseAllEntities",templates[]="MapEntity_ParseAllEntities_SpawnTemplates";
+    // LevelInit defers activation to ServerActivate. Require the complete
+    // native DispatchSpawn wrapper rather than a hosted virtual spawn.
+    if(sequences&&(activate||!sequences->spawn||!b->spawn->native_dispatch))return 0;
+    Pipeline p{*b,*o,manager,sequences?sequences->spawn:nullptr};constexpr char outer[]="MapEntity_ParseAllEntities",templates[]="MapEntity_ParseAllEntities_SpawnTemplates";
     if(!pipeline_scope(p,outer,true))return 0;
-    bool ok=parse_impl(s,n,b->parse,&o->parse,&collect_entity,&p,filters)!=0;
+    bool ok=parse_impl(s,n,b->parse,&o->parse,&collect_entity,&p,filters,sequences)!=0;
     for(unsigned i=0;i<p.template_count&&ok;++i){
         if(!pipeline_scope(p,templates,true)){ok=false;break;}
         void* a=p.templates[i];int code=0;
@@ -1448,7 +1456,7 @@ int parse_all_impl(const char* s,unsigned n,bool activate,const PipelineBindings
         }
         const bool closed=pipeline_scope(p,templates,false);ok=ok&&closed;
     }
-    if(ok)ok=spawn_ordinary_impl(p.rows,p.ordinary,activate,b->spawn,&o->spawn,manager)!=0;
+    if(ok)ok=spawn_ordinary_impl(p.rows,p.ordinary,activate,b->spawn,&o->spawn,manager,p.sequence)!=0;
     const bool closed=pipeline_scope(p,outer,false);o->completed=ok&&closed;return int(o->completed);
 }
 int __cdecl parse_all(const char* s,unsigned n,bool activate,const PipelineBindings* b,PipelineResult* o) noexcept {
@@ -4033,4 +4041,10 @@ extern "C" int __cdecl SiN_SpawnScriptedSequence(void* actor,unsigned bytes,cons
 extern "C" int __cdecl SiN_ActivateScriptedSequence(void* actor,unsigned bytes,const sin_port::native_map::ScriptedSequenceActivateBindings* b,
     sin_port::native_map::ScriptedSequenceActivateResult* o) noexcept {
     return sin_port::native_map::scripted_sequence_activate(actor,bytes,b,o);
+}
+
+int __cdecl SinParseMapWithSequencesInternal(const char* text,unsigned bytes,
+    const sin_port::native_map::PipelineBindings* b,sin_port::native_map::PipelineResult* o,void* manager,
+    const sin_port::native_map::ScriptedSequenceMapBindings* sequences) noexcept {
+    return sequences&&sin_port::native_map::parse_all_impl(text,bytes,false,b,o,manager,sequences->filters,sequences);
 }

@@ -56,6 +56,10 @@ int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State*,const 
     const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*) noexcept;
 int __cdecl SinLevelInitWithFiltersInternal(sin_port::native_level::State*,const sin_port::native_level::LevelArgs*,
     const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*,const sin_port::native_map::CampaignFilterFactoryBindings*) noexcept;
+int __cdecl SinLevelInitWithSequencesInternal(sin_port::native_level::State*,const sin_port::native_level::LevelArgs*,
+    const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*,const sin_port::native_map::ScriptedSequenceMapBindings*) noexcept;
+int __cdecl SinServerActivateWithSequencesInternal(sin_port::native_level::State*,const sin_port::native_level::Bindings*,
+    sin_port::native_level::Result*,void*,const sin_port::native_level::ScriptedSequenceActivationRoute*,sin_port::native_level::ScriptedSequenceActivationSummary*) noexcept;
 int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
 bool __cdecl SinReadCampaignContactFieldsInternal(const void*,unsigned,unsigned*,unsigned char*) noexcept;
 extern "C" int __cdecl SiN_StartCampaignTriggerOutput(void*,unsigned,void*,unsigned,const sin_port::native_map::CampaignStartTouchBindings*,
@@ -1250,6 +1254,9 @@ struct LevelInvocation {
     const sin_port::native_map::CampaignFilterActivationBindings* filters=nullptr;
     sin_port::native_level::CampaignFilterActivationSummary* filter_summary=nullptr;
     const sin_port::native_map::CampaignFilterFactoryBindings* filter_factories=nullptr;
+    const sin_port::native_map::ScriptedSequenceMapBindings* sequence_map=nullptr;
+    const sin_port::native_level::ScriptedSequenceActivationRoute* sequence_activation=nullptr;
+    sin_port::native_level::ScriptedSequenceActivationSummary* sequence_summary=nullptr;
 };
 static thread_local LevelInvocation* g_level_invocation=nullptr;
 #endif
@@ -1350,6 +1357,8 @@ public:
             if(invocation->entered||invocation->activating)return false;invocation->entered=true;
             const auto* api=SiN_GetServerLevelApi(1,sizeof(sin_port::native_level::Api));
             const sin_port::native_level::LevelArgs args{map,entities,old_level,landmark,load_game,background};
+            if(invocation->sequence_map)
+                return SinLevelInitWithSequencesInternal(invocation->state,&args,invocation->bindings,invocation->result,invocation->event_manager,invocation->sequence_map)!=0;
             if(invocation->event_manager&&invocation->filter_factories)
                 return SinLevelInitWithFiltersInternal(invocation->state,&args,invocation->bindings,invocation->result,invocation->event_manager,invocation->filter_factories)!=0;
             if(invocation->event_manager)
@@ -1365,7 +1374,9 @@ public:
             if(!invocation->entered&&invocation->activating){
                 invocation->entered=true;
                 const auto* api=SiN_GetServerLevelApi(1,sizeof(sin_port::native_level::Api));
-                if(invocation->event_manager&&invocation->filters)
+                if(invocation->sequence_activation)
+                    invocation->success=SinServerActivateWithSequencesInternal(invocation->state,invocation->bindings,invocation->result,invocation->event_manager,invocation->sequence_activation,invocation->sequence_summary);
+                else if(invocation->event_manager&&invocation->filters)
                     invocation->success=SinServerActivateWithCampaignFiltersInternal(invocation->state,invocation->bindings,invocation->result,invocation->event_manager,invocation->filters,invocation->filter_summary);
                 else if(invocation->event_manager)
                     invocation->success=SinServerActivateWithEventsInternal(invocation->state,invocation->bindings,invocation->result,invocation->event_manager);
@@ -1656,6 +1667,44 @@ extern "C" int __cdecl SiN_InvokeServerActivateWithCampaignFilters(
     if(!state||!bindings||!filters||!summary||!eventSessionReady(session)||state->startup!=session->startup)return 0;
     LevelInvocation invocation{state,bindings,out,true};invocation.event_manager=session->manager;
     invocation.filters=filters;invocation.filter_summary=summary;g_level_invocation=&invocation;
+    using Slot=void (__thiscall *)(void*,edict_t*,int,int) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    reinterpret_cast<Slot>(table[3])(&instance,static_cast<edict_t*>(edicts),count,clients);
+    g_level_invocation=nullptr;return invocation.entered&&invocation.success;
+}
+// Optional session retains the started-engine event path; null uses the
+// existing owner event callbacks, as in the original boundary adapter.
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerLevelInitWithScriptedSequences=_SiN_InvokeServerLevelInitWithScriptedSequences")
+extern "C" int __cdecl SiN_InvokeServerLevelInitWithScriptedSequences(
+    sin_port::native_level::State* state,const sin_port::native_level::LevelArgs* args,
+    const sin_port::native_level::Bindings* bindings,sin_port::native_level::Result* out,
+    const sin_port::native_server_startup::EngineEventSession* session,const sin_port::native_map::ScriptedSequenceMapBindings* sequences) noexcept {
+    if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!args||!bindings||!sequences||!sequences->factory||!sequences->spawn||
+       (session&&(!eventSessionReady(session)||state->startup!=session->startup))||
+       bindings->parse_entities||!bindings->native_map_pipeline)return 0;
+    const auto* pipeline=bindings->native_map_pipeline;
+    if(!pipeline->parse||!pipeline->spawn||!pipeline->spawn->native_dispatch||
+       pipeline->parse->create||pipeline->parse->key_value||!pipeline->parse->native_factory||!pipeline->parse->native_keys)return 0;
+    LevelInvocation invocation{state,bindings,out,false};invocation.event_manager=session?session->manager:nullptr;
+    invocation.sequence_map=sequences;g_level_invocation=&invocation;
+    using Slot=bool (__thiscall *)(void*,const char*,const char*,const char*,const char*,bool,bool) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    const bool success=reinterpret_cast<Slot>(table[2])(&instance,args->map,args->entities,args->old_level,args->landmark,args->load_game,args->background);
+    g_level_invocation=nullptr;return invocation.entered&&success;
+}
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerActivateWithScriptedSequences=_SiN_InvokeServerActivateWithScriptedSequences")
+extern "C" int __cdecl SiN_InvokeServerActivateWithScriptedSequences(
+    sin_port::native_level::State* state,void* edicts,int count,int clients,
+    const sin_port::native_level::Bindings* bindings,sin_port::native_level::Result* out,
+    const sin_port::native_server_startup::EngineEventSession* session,
+    const sin_port::native_level::ScriptedSequenceActivationRoute* route,sin_port::native_level::ScriptedSequenceActivationSummary* summary) noexcept {
+    if(summary)*summary={};
+    if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!bindings||!route||!route->sequence||!summary||(route->filters&&!route->filter_summary)||
+       (session&&(!eventSessionReady(session)||state->startup!=session->startup)))return 0;
+    LevelInvocation invocation{state,bindings,out,true};invocation.event_manager=session?session->manager:nullptr;
+    invocation.sequence_activation=route;invocation.sequence_summary=summary;g_level_invocation=&invocation;
     using Slot=void (__thiscall *)(void*,edict_t*,int,int) noexcept;
     auto** table=*reinterpret_cast<void***>(&instance);
     reinterpret_cast<Slot>(table[3])(&instance,static_cast<edict_t*>(edicts),count,clients);

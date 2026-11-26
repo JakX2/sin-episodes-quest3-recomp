@@ -118,6 +118,21 @@ struct CampaignFilterActivationSummary {
 inline constexpr char campaign_filters_activate_export[]="SiN_InvokeServerActivateWithCampaignFilters";
 using InvokeActivateWithCampaignFilters=int (__cdecl *)(State*,void*,int,int,const Bindings*,Result*,
     const native_server_startup::EngineEventSession*,const native_map::CampaignFilterActivationBindings*,CampaignFilterActivationSummary*) noexcept;
+struct ScriptedSequenceActivationSummary {
+    unsigned attempted,completed,npc_found,next_found,next_name_cleared;
+    native_map::ScriptedSequenceActivateResult last;
+};
+struct ScriptedSequenceActivationRoute {
+    const native_map::ScriptedSequenceActivateBindings* sequence;
+    const native_map::CampaignFilterActivationBindings* filters;
+    CampaignFilterActivationSummary* filter_summary;
+};
+inline constexpr char scripted_sequence_level_export[]="SiN_InvokeServerLevelInitWithScriptedSequences";
+inline constexpr char scripted_sequence_activate_export[]="SiN_InvokeServerActivateWithScriptedSequences";
+using InvokeLevelWithSequences=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*,
+    const native_server_startup::EngineEventSession*,const native_map::ScriptedSequenceMapBindings*) noexcept;
+using InvokeActivateWithSequences=int (__cdecl *)(State*,void*,int,int,const Bindings*,Result*,
+    const native_server_startup::EngineEventSession*,const ScriptedSequenceActivationRoute*,ScriptedSequenceActivationSummary*) noexcept;
 using InvokeLevelWithEvents=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*,const native_server_startup::EngineEventSession*) noexcept;
 inline constexpr char campaign_filters_level_export[]="SiN_InvokeServerLevelInitWithCampaignFilters";
 using InvokeLevelWithCampaignFilters=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*,
