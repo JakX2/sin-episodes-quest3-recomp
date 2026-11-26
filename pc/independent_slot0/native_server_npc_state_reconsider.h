@@ -1599,4 +1599,30 @@ struct ServerNpcGruntDamageEventApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageEventBindings*,ServerNpcGruntDamageEventResult*) noexcept;
 };
 using GetServerNpcGruntDamageEventApi=const ServerNpcGruntDamageEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_damage_override_export[]="SiN_GetServerNpcGruntDamageOverrideApi";
+struct ServerNpcGruntDamageOverrideBindings {
+    ServerNpcGruntDamageEventBindings base;
+    void* context;
+    int (__cdecl *cast_grunt)(void*,void*,void**,unsigned*) noexcept; // RTTI, target 2252d5b0
+    int (__cdecl *impact)(void*,void*,void*) noexcept; // 223594a0
+    int (__cdecl *bone_hit)(void*,void*,const char*,const float*,float,bool*) noexcept; // 22358490
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *component_damage)(void*,std::uint32_t,void*,int*) noexcept; // +b0
+};
+struct ServerNpcGruntDamageOverrideResult {
+    ServerNpcGruntDamageEventResult base;
+    ServerNpcGruntSentenceResult berserk,cough,knee;
+    ServerNpcGruntSentenceRequestResult berserk_request,cough_request,knee_request;
+    ServerNpcConditionResult bit11,bit47;
+    float knee_total,random_sample,copy_amount;
+    std::uint32_t component;
+    unsigned completed,cast_called,berserk_called,impact_called,rejected_flags,cough_blocked,cough_called,copy_used,knee_checked,knee_added,knee_reset,knee_called,random_called,component_called,base_called;
+    int native_result;
+};
+struct ServerNpcGruntDamageOverrideApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageOverrideBindings*,ServerNpcGruntDamageOverrideResult*) noexcept;
+};
+using GetServerNpcGruntDamageOverrideApi=const ServerNpcGruntDamageOverrideApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

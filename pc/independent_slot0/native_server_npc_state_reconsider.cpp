@@ -3723,8 +3723,7 @@ int __cdecl grunt_damage_tail(void* a,unsigned n,void* damage,unsigned dn,float 
         void* memory=nullptr;unsigned extent=0;std::uint32_t key=0;
         if(!memory_key(b->memory,attacker(),key)||!memory_storage(&b->memory.storage,read<unsigned>(a,0x984),0x1c,memory,extent))return false;
         if(touch){
-            const auto* api=SiN_GetServerNpcEnemyMemoryApi(1,sizeof(ServerNpcEnemyMemoryApi));
-            if(!api||!api->touch(memory,extent,key,now,&b->memory.storage,&out->touch))return false;
+            if(!memory_touch(memory,extent,key,now,&b->memory.storage,&out->touch))return false;
             out->memory_touched=out->touch.record!=0;return true;
         }
         return memory_lookup(memory,extent,key,false,&b->memory.storage,&out->lookup)!=0;
@@ -3815,6 +3814,104 @@ int __cdecl grunt_damage_event(void* a,unsigned n,void* damage,unsigned dn,float
     out->native_result=out->tail.native_result;out->completed=1;return 1;
 }
 const ServerNpcGruntDamageEventApi damage_event_api{1,sizeof(ServerNpcGruntDamageEventApi),&grunt_damage_tail,&grunt_damage_event};
+int __cdecl grunt_damage_override(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings* b,ServerNpcGruntDamageOverrideResult* out) noexcept{
+    if(!out)return 0;
+    // Large composed result: avoid deep aggregate initialization on MSVC x86.
+    out->base.completed=0;out->base.native_result=0;
+    out->berserk={};out->cough={};out->knee={};out->berserk_request={};out->cough_request={};out->knee_request={};
+    out->bit11={};out->bit47={};out->knee_total=out->random_sample=out->copy_amount=0;out->component=0;
+    out->completed=out->cast_called=out->berserk_called=out->impact_called=out->rejected_flags=out->cough_blocked=out->cough_called=0;
+    out->copy_used=out->knee_checked=out->knee_added=out->knee_reset=out->knee_called=out->random_called=out->component_called=out->base_called=0;
+    out->native_result=0;
+    if(!a||n<0xdb2||!damage||dn<0x48||!b||!std::isfinite(now))return 0;
+    const auto& reaction=b->base.chain.prefix.damage.reaction;
+    const auto& sb=reaction.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto speak=[&](const char* cue,ServerNpcGruntSentenceResult& sr,ServerNpcGruntSentenceRequestResult& rr,unsigned& called){
+        called=1;return sentence_dispatch_request(a,n,now,cue,2,0,&sb,&reaction.request,&sr,&rr)!=0;
+    };
+    auto done=[&](){out->completed=1;return 1;};
+    void* cast=nullptr;unsigned extent=0;
+    if(!b->cast_grunt||!b->cast_grunt(b->context,registry.Resolve(read<unsigned>(damage,0x28)),&cast,&extent))return 0;
+    out->cast_called=1;
+    if(cast){
+        if(extent<0xdb2)return 0;
+        if(read<std::uint8_t>(cast,0xdb1)&&!speak("GRUNT_BERSERK_SQUADMATE",out->berserk,out->berserk_request,out->berserk_called))return 0;
+    }
+    auto flags=read<unsigned>(damage,0x38);
+    if((flags&0x400000u)&&!(flags&2u)){out->rejected_flags=1;return done();}
+    if(read<int>(damage,0x44)==1){
+        if(!b->impact||!b->impact(b->context,a,damage))return 0;
+        out->impact_called=1;
+    }
+    flags=read<unsigned>(damage,0x38);
+    if((flags&0x3200008u)&&(read<std::uint8_t>(a,0xbf)&8u)){out->rejected_flags=1;return done();}
+    if(flags&0x10000u){
+        const float deadline=read<float>(a,0xc94);
+        if(!std::isfinite(deadline))return 0;
+        if(now<=deadline){out->cough_blocked=1;return done();}
+        const float next=static_cast<float>(static_cast<double>(now)+5.0);if(!std::isfinite(next))return 0;
+        write(a,0xc94,next);
+        if(!speak("GRUNT_COUGH",out->cough,out->cough_request,out->cough_called))return 0;
+        return done();
+    }
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    const auto& conditions=b->base.chain.outputs.conditions;
+    if(flags&0x80u){
+        if(!cond->store(a,n,0x11,NpcConditionCurrent,true,&conditions,&out->bit11))return 0;
+        write(a,0x988,read<unsigned>(a,0x988)&~0x40u);
+    }
+    alignas(4) unsigned char copied[0x48];
+    void* forwarded=damage;
+    if(read<std::uint8_t>(a,0xb6)&8u){
+        std::memcpy(copied,damage,sizeof(copied));
+        out->copy_amount=static_cast<float>(read<int>(a,0x9c));
+        write(copied,0x2c,out->copy_amount);forwarded=copied;out->copy_used=1;
+    }else{
+        float pos[3];for(unsigned i=0;i<3;++i){pos[i]=read<float>(damage,0xc+4*i);if(!std::isfinite(pos[i]))return 0;}
+        bool hit=false;
+        if(!b->bone_hit||!b->bone_hit(b->context,a,"ValveBiped.Bip01_R_Calf",pos,10.f,&hit))return 0;
+        ++out->knee_checked;
+        if(!hit){
+            // Original reloads damage position for the second call.
+            for(unsigned i=0;i<3;++i){pos[i]=read<float>(damage,0xc+4*i);if(!std::isfinite(pos[i]))return 0;}
+            if(!b->bone_hit(b->context,a,"ValveBiped.Bip01_L_Calf",pos,10.f,&hit))return 0;
+            ++out->knee_checked;
+        }
+        out->knee_total=read<float>(a,0xcac);if(!std::isfinite(out->knee_total))return 0;
+        if(hit){
+            const float amount=read<float>(damage,0x2c);if(!std::isfinite(amount))return 0;
+            out->knee_total=static_cast<float>(static_cast<double>(out->knee_total)+amount);
+            if(!std::isfinite(out->knee_total))return 0;
+            write(a,0xcac,out->knee_total);out->knee_added=1;
+        }
+        if(out->knee_total>12.f){
+            bool admit=false;
+            if(sb.speech.original_vtable!=0x2248df04){
+                if(!b->random_float||!b->random_float(b->context,0.f,1.f,&out->random_sample)||
+                    !std::isfinite(out->random_sample)||out->random_sample<0.f||out->random_sample>1.f)return 0;
+                out->random_called=1;admit=out->random_sample>0.5f;
+            }
+            if(admit){
+                if(!cond->store(a,n,0x47,NpcConditionCurrent,true,&conditions,&out->bit47))return 0;
+                const float next=static_cast<float>(static_cast<double>(now)+1.0);if(!std::isfinite(next))return 0;
+                write(a,0xc78,next);
+                if(!speak("GRUNT_KNEE",out->knee,out->knee_request,out->knee_called))return 0;
+            }
+            write(a,0xcac,0.f);out->knee_reset=1;
+        }
+    }
+    out->component=read<unsigned>(a,0xc18);
+    if(out->component){
+        if(!b->component_damage||!b->component_damage(b->context,out->component,forwarded,&out->native_result))return 0;
+        out->component_called=1;return done();
+    }
+    if(!grunt_damage_event(a,n,forwarded,0x48,now,&b->base,&out->base))return 0;
+    out->native_result=out->base.native_result;out->base_called=1;return done();
+}
+const ServerNpcGruntDamageOverrideApi damage_override_api{1,sizeof(ServerNpcGruntDamageOverrideApi),&grunt_damage_override};
+
 
 
 
@@ -4330,4 +4427,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageEventApi=_SiN_GetServerNpcGruntDamageEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageEventApi* __cdecl SiN_GetServerNpcGruntDamageEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageEventApi)?&damage_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageOverrideApi=_SiN_GetServerNpcGruntDamageOverrideApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageOverrideApi* __cdecl SiN_GetServerNpcGruntDamageOverrideApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageOverrideApi)?&damage_override_api:nullptr;
 }
