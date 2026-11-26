@@ -346,6 +346,36 @@ int main(int argc,char** argv){
     f.put(pf.path,8,0);f.put(pf.path,24,0);
     assert(cadence->set_default(f.actor,sizeof(f.actor),-1.f,.05f,vt,&cad,&co)&&co.flags_changed);
     f.put(f.actor,0x50,0);
+    // Actual composed outer call. Future AI deadline still dispatches reload
+    // and fire events, then post-animation and engine tick rescheduling.
+    auto go=reinterpret_cast<GetServerNpcOuterUpdateApi>(GetProcAddress(server,server_npc_outer_update_export));
+    assert(go&&!GetProcAddress(client,server_npc_outer_update_export)&&!go(0,sizeof(ServerNpcOuterUpdateApi)));
+    const auto* outer_api=go(1,sizeof(ServerNpcOuterUpdateApi));assert(outer_api);
+    ServerNpcOuterUpdateBindings outer{};outer.post=&pb;outer.admission=admission_b;outer.cadence=cad;outer.context=&f;outer.active_scene=true;
+    outer.admission.global_flags=0;outer.admission.enabled=true;outer.cadence.optimize_a=outer.cadence.optimize_b=false;
+    outer.pvs=[](void* p,std::uint32_t token,bool* visible) noexcept -> int{assert(token==0x3333u);F::self(p).trace.push_back(215);*visible=true;return 1;};
+    outer.wake=[](void* p,void*,bool visible) noexcept -> int{assert(visible);F::self(p).trace.push_back(216);return 1;};
+    outer.pending_impact=[](void* p,void* a) noexcept -> int{F::self(p).trace.push_back(217);static_cast<unsigned char*>(a)[0xbe1]=0;return 1;};
+    ServerNpcOuterUpdateResult oo{};
+    f.put(f.actor,0x74,123);f.put(f.actor,0xb8,0u);f.put(f.actor,0x85c,0);f.put(f.actor,0x860,0);
+    f.put(f.actor,0x850,3);f.put(f.actor,0x868,0);f.put(f.actor,0x8c,1);f.put(f.actor,0x864,20.f);
+    f.put(f.actor,0x8ec,0u);f.put(f.actor,0x78c,0x7001u);f.actor[0xc10]=0;f.actor[0xbe1]=1;
+    f.put(f.weapon,0x4ec,0);f.put(f.weapon,0x4f0,-1);f.put(f.weapon,0x580,0.f);
+    seed_frame();assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&oo.impact_called&&oo.active_called&&!oo.think_called&&po.completed&&jet_out.animation.fixed_resets==1);
+    assert(f.get<int>(f.weapon,0x4ec)==31&&oo.finish.next_time==static_cast<float>(double(in.now)+.1)&&oo.finish.deadline==20.f);
+    assert(f.trace.front()==217&&f.trace[1]==214&&f.trace[2]==215&&f.trace.back()==214);
+    // Disabled branch resets navigation timestamp; no animation or pose work.
+    f.trace.clear();outer.admission.global_flags=1;warning_deadline=100.f;
+    assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&!oo.active_called&&oo.nav_sentinel_written&&oo.admission.pause_called);
+    assert(f.get<unsigned>(f.actor,0x910)==0x7f7fffffu&&!jet_out.animation_called&&!po.completed);
+    assert((f.trace==std::vector<int>{214,215,211,214}));
+    // Sleeping actor performs wake service and skips active scene.
+    f.trace.clear();f.put(f.actor,0x868,2);
+    assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&oo.wake_called&&oo.sleep_bypassed&&!oo.active_called&&oo.finish.mode==4);
+    assert((f.trace==std::vector<int>{214,215,216,214}));
+    f.trace.clear();f.put(f.actor,0x868,0);f.put(f.actor,0x85c,0);outer.active_scene=false;
+    assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&oo.scene_bypassed&&!oo.active_called);
+    assert((f.trace==std::vector<int>{214,215,214}));
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

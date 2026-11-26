@@ -129,4 +129,30 @@ struct ServerNpcOuterCadenceApi {
 };
 using GetServerNpcOuterCadenceApi=const ServerNpcOuterCadenceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char server_npc_outer_update_export[]="SiN_GetServerNpcOuterUpdateApi";
+struct ServerNpcOuterUpdateBindings {
+    const ServerNpcActivePostAnimationBindings* post;
+    ServerNpcOuterAdmissionBindings admission;
+    ServerNpcOuterCadenceBindings cadence;
+    void* context;
+    bool active_scene; // 22549118 and +3a0; snapshot for this update
+    int (__cdecl *pending_impact)(void*,void*) noexcept; // 22035b80, only +be1
+    int (__cdecl *pvs)(void*,std::uint32_t,bool*) noexcept; // 222895a0
+    int (__cdecl *wake)(void*,void*,bool) noexcept; // 2203af10 when +868 > 0
+};
+struct ServerNpcOuterUpdateResult {
+    ServerNpcOuterCadenceResult clear,finish;
+    ServerNpcOuterScriptGateResult script;
+    ServerNpcOuterAdmissionResult admission;
+    unsigned impact_called,pvs_called,pvs,condition_mapped,wake_called,sleep_bypassed,scene_bypassed,
+        active_called,think_called,nav_sentinel_written,completed;
+};
+struct ServerNpcOuterUpdateApi {
+    std::uint32_t version,size;
+    // Fixed-time gameplay composition of 22043260. Profiling and diagnostic overlays excluded.
+    int (__cdecl *ground)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveWeaponStepBindings*,const ServerNpcOuterUpdateBindings*,ServerNpcActiveWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterUpdateResult*) noexcept;
+    int (__cdecl *jet)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveJetWeaponStepBindings*,const ServerNpcOuterUpdateBindings*,ServerNpcActiveJetWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterUpdateResult*) noexcept;
+};
+using GetServerNpcOuterUpdateApi=const ServerNpcOuterUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
