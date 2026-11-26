@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "server_entity_handle_core.h"
 namespace sin_port::native_resupply {
 inline constexpr char export_name[]="SiN_GetServerDynamicResupplyApi";
 inline constexpr unsigned count=6;
@@ -54,6 +55,46 @@ struct NearbyBindings {
     int (__cdecl *debug_count)(void*,const char*,int) noexcept;
 };
 struct NearbyResult {unsigned visited,within,matched,center_reads,class_reads,lines,reports,completed;};
+struct SpawnBindings {
+    void* context;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *refresh_motion)(void*,void*) noexcept;
+    int (__cdecl *create)(void*,const char*,int,void**) noexcept;
+    int (__cdecl *position)(void*,void*,const float*) noexcept;
+    int (__cdecl *orientation)(void*,void*,const float*) noexcept;
+    int (__cdecl *owner)(void*,void*,void*) noexcept;
+    int (__cdecl *finalize)(void*,void*) noexcept;
+    int (__cdecl *linear)(void*,void*,const float*) noexcept;
+    int (__cdecl *angular)(void*,void*,const float*) noexcept;
+    int (__cdecl *world_bounds)(void*,void*,float*,float*) noexcept;
+    int (__cdecl *move_origin)(void*,void*,const float*) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+};
+struct EvaluateBindings {
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned entry_count;
+    const std::uint32_t* master_handle;
+    void* extent_context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    NearbyBindings nearby;
+    HealthBindings health;
+    Bindings ammo;
+    FallbackBindings fallback;
+    SpawnBindings spawn;
+};
+struct EvaluateResult {
+    unsigned master_skipped,master_profile,origin_refreshes,motion_refreshes,
+        factories,finalizes,normal_spawns,fallback_spawns,null_factory,
+        corrections,randoms,think_cleared,removed,completed;
+    int selected_health,selected_ammo;
+    float next_position[3];
+    AmmoRow health_row,ammo_rows[count];
+    NearbyResult health_nearby,ammo_nearby;
+    HealthResult health;
+    Result ammo;
+    FallbackResult fallback;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -66,6 +107,9 @@ struct Api {
     int (__cdecl *fallback)(unsigned,const float*,unsigned,const FallbackBindings*,FallbackResult*) noexcept;
     // 222f8930: independent health or six-ammo pass; other fields untouched.
     int (__cdecl *nearby)(void*,bool,int,AmmoRow*,unsigned,const NearbyBindings*,NearbyResult*) noexcept;
+    // 222f8f40: evaluate health and ammo, spawn at most one of each,
+    // optionally fall back, then clear think and request removal.
+    int (__cdecl *evaluate)(void*,unsigned,const void*,unsigned,int,const EvaluateBindings*,EvaluateResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

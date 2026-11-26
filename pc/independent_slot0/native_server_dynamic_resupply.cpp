@@ -1,5 +1,6 @@
 #include "native_server_dynamic_resupply.h"
 #include "original_ammo_definitions.h"
+#include <cstring>
 extern "C" __declspec(dllexport) const sin_port::original_ammo::Api* __cdecl
 SiN_GetOriginalAmmoDefinitionApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_resupply {
@@ -142,7 +143,105 @@ int __cdecl nearby(void* actor,bool health_only,int debug,AmmoRow* rows,unsigned
     }
     out->completed=1;return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby};
+template<class T>T field(const void* p,unsigned off) noexcept {
+    T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;
+}
+void copy_vec(const void* p,unsigned off,float* out) noexcept {
+    std::memcpy(out,static_cast<const unsigned char*>(p)+off,12);
+}
+bool refresh_origin(void* actor,const SpawnBindings& b,EvaluateResult& o) noexcept {
+    if(!(field<unsigned>(actor,0xb8)&0x800u))return true;
+    if(!b.refresh_origin||!b.refresh_origin(b.context,actor))return false;
+    ++o.origin_refreshes;return true;
+}
+// 22146c40: factory, position, angles, owner and dispatch spawn, even
+// when the factory returns null. The caller decides whether null is fatal.
+bool create_pickup(void* actor,const char* name,const float* pos,const SpawnBindings& b,EvaluateResult& o,void*& item) noexcept {
+    item=nullptr;
+    if(!b.create||!b.create(b.context,name,-1,&item))return false;
+    ++o.factories;
+    if(item){
+        if(!b.position||!b.position(b.context,item,pos))return false;
+        float angles[3];copy_vec(actor,0x354,angles);
+        if(!b.orientation||!b.orientation(b.context,item,angles)||!b.owner||!b.owner(b.context,item,actor))return false;
+    }else ++o.null_factory;
+    if(!b.finalize||!b.finalize(b.context,item))return false;
+    ++o.finalizes;return true;
+}
+bool spawn_normal(void* actor,const char* name,float* pos,const SpawnBindings& b,EvaluateResult& o) noexcept {
+    if(!refresh_origin(actor,b,o))return false;
+    void* item=nullptr;
+    if(!create_pickup(actor,name,pos,b,o,item)||!item)return false;
+    if(field<unsigned>(actor,0xb8)&0x1000u){
+        if(!b.refresh_motion||!b.refresh_motion(b.context,actor))return false;
+        ++o.motion_refreshes;
+    }
+    float velocity[3];copy_vec(actor,0x250,velocity);
+    if(!b.linear||!b.linear(b.context,item,velocity))return false;
+    copy_vec(actor,0x25c,velocity);
+    if(!b.angular||!b.angular(b.context,item,velocity))return false;
+    float mins[3]{},maxs[3]{};
+    if(!b.world_bounds||!b.world_bounds(b.context,item,mins,maxs))return false;
+    if(mins[2]<pos[2]){
+        const double dz=double(pos[2])-double(mins[2]);
+        pos[2]=float(double(pos[2])+dz);
+        maxs[2]=float(double(maxs[2])+dz);
+        if(!b.move_origin||!b.move_origin(b.context,item,pos))return false;
+        ++o.corrections;
+    }
+    pos[2]=float(double(maxs[2])+6.);
+    for(unsigned i=0;i<2;++i){
+        float draw=0;
+        if(!b.random_float||!b.random_float(b.context,-6.f,6.f,&draw))return false;
+        pos[i]=float(double(pos[i])+double(draw));++o.randoms;
+    }
+    ++o.normal_spawns;return true;
+}
+int __cdecl evaluate(void* actor,unsigned bytes,const void* player,unsigned player_bytes,int debug,const EvaluateBindings* b,EvaluateResult* out) noexcept {
+    if(!out)return 0;*out={};out->selected_health=out->selected_ammo=-1;out->fallback.selected=-1;
+    if(!actor||bytes<0x3b0||!player||player_bytes<0xa0||!b||
+       b->entry_count>sin_independent::kEntityHandleCapacity||(b->entry_count&&!b->entries))return 0;
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    auto master=[&]()->void*{return b->master_handle?registry.Resolve(*b->master_handle):nullptr;};
+    if(master()==actor){out->master_skipped=out->completed=1;return 1;}
+    if(!nearby(actor,true,debug,&out->health_row,1,&b->nearby,&out->health_nearby)||
+       !nearby(actor,false,debug,out->ammo_rows,count,&b->nearby,&out->ammo_nearby))return 0;
+    void* profile=actor;
+    if(field<unsigned>(actor,0xb4)&1u){
+        if(void* m=master()){
+            unsigned extent=0;
+            if(!b->extent||!b->extent(b->extent_context,m,&extent)||extent<0x3b0)return 0;
+            profile=m;out->master_profile=1;
+        }
+    }
+    if(!health(field<int>(player,0x9c),field<int>(player,0x98),field<float>(profile,0x394),
+               &out->health_row,&b->health,&out->health))return 0;
+    float desired[count];
+    for(unsigned i=0;i<count;++i)desired[i]=field<float>(profile,0x398+4*i);
+    if(!ratios(desired,count,out->ammo_rows,count,&b->ammo,&out->ammo))return 0;
+    const auto& s=b->spawn;
+    if(!refresh_origin(actor,s,*out))return 0;
+    copy_vec(actor,0x2bc,out->next_position);
+    if(!greatest(&out->health_row,1,&out->selected_health)||!greatest(out->ammo_rows,count,&out->selected_ammo))return 0;
+    if(out->selected_health>=0&&!spawn_normal(actor,health_classname,out->next_position,s,*out))return 0;
+    if(out->selected_ammo>=0&&!spawn_normal(actor,ammo_types[out->selected_ammo].classname,out->next_position,s,*out))return 0;
+    if(out->selected_health<0&&out->selected_ammo<0){
+        for(unsigned i=0;i<count;++i)desired[i]=field<float>(profile,0x398+4*i);
+        if(!fallback(field<unsigned>(actor,0xb4),desired,count,&b->fallback,&out->fallback))return 0;
+        if(out->fallback.selected>=0){
+            if(!refresh_origin(actor,s,*out)||!refresh_origin(actor,s,*out))return 0;
+            float pos[3];copy_vec(actor,0x2bc,pos);void* item=nullptr;
+            if(!create_pickup(actor,out->fallback.classname,pos,s,*out,item))return 0;
+            // Retail fallback does not dereference the factory result.
+            if(item)++out->fallback_spawns;
+        }
+    }
+    // 2214d6f0(0,0,0) writes the raw think pointer +8 to zero.
+    const unsigned zero=0;std::memcpy(static_cast<unsigned char*>(actor)+8,&zero,4);out->think_cleared=1;
+    if(!s.remove||!s.remove(s.context,actor))return 0;
+    out->removed=out->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

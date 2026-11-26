@@ -130,5 +130,78 @@ int main(int argc,char** argv){
     assert(api->nearby(&nf.actor,false,0,rows,count,&nb,&nr)&&nr.within==7&&nr.matched==4&&rows[1].nearby==2&&!nr.lines&&!nr.reports);
     assert(!api->nearby(&nf.actor,false,0,rows,count-1,&nb,&nr)&&!nr.visited);
     nf.stuck=true;assert(!api->nearby(&nf.actor,false,0,rows,count,&nb,&nr)&&nr.visited==1&&!nr.completed);
+    // Complete evaluation through the independently loaded server DLL.
+    struct EvalFixture{
+        alignas(4) unsigned char actor[0x3b0]{},master[0x3b0]{},player[0xa0]{};
+        int items[2]{};
+        unsigned creations=0,finalizes=0,positions=0,angles=0,owners=0,
+            linear=0,angular=0,bounds=0,moves=0,draws=0,removes=0,origin=0,motion=0;
+        bool fallback_only=false,null_factory=false;
+        static void put(void* p,unsigned off,const void* v,unsigned n){std::memcpy(static_cast<unsigned char*>(p)+off,v,n);}
+        static void u(void* p,unsigned off,unsigned v){put(p,off,&v,4);}
+        static void f(void* p,unsigned off,float v){put(p,off,&v,4);}
+        static unsigned rd(void* p,unsigned off){unsigned v;std::memcpy(&v,static_cast<unsigned char*>(p)+off,4);return v;}
+    } ef;
+    EvaluateBindings eb{};eb.nearby.context=&ef;
+    eb.nearby.next_visible=[](void* p,void* a,void* prev,void** e) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(a==q.actor&&!prev);*e=nullptr;return 1;};
+    eb.nearby.center=[](void*,void*,float*) noexcept ->int{assert(false);return 0;};
+    eb.nearby.classname=[](void*,void*,const char**) noexcept ->int{assert(false);return 0;};
+    eb.health=hb;hf.scale=1.f;
+    f.fail_scale=false;f.scale=1.f;for(auto& v:f.owned)v=false;
+    f.owned[1]=true;f.ammo[1]=1;f.maxima[1]=80;eb.ammo=b;
+    ff.owned[1]=true;ff.draw=.5f;eb.fallback=fb;
+    auto& sp=eb.spawn;sp.context=&ef;
+    sp.refresh_origin=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(a==q.actor);++q.origin;EvalFixture::u(a,0xb8,EvalFixture::rd(a,0xb8)&~0x800u);return 1;};
+    sp.refresh_motion=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(a==q.actor);++q.motion;EvalFixture::u(a,0xb8,EvalFixture::rd(a,0xb8)&~0x1000u);return 1;};
+    sp.create=[](void* p,const char* name,int index,void** item) noexcept ->int{
+        auto& q=*static_cast<EvalFixture*>(p);assert(index==-1&&q.creations<2);
+        assert(!std::strcmp(name,q.fallback_only||q.creations?"item_ammo_magnum":"item_healthvial"));
+        *item=q.null_factory?nullptr:&q.items[q.creations];++q.creations;return 1;
+    };
+    sp.position=[](void* p,void* e,const float* v) noexcept ->int{
+        auto& q=*static_cast<EvalFixture*>(p);assert(e==&q.items[q.positions]);
+        if(q.positions==0)assert(v[0]==10&&v[1]==20&&v[2]==30);
+        else assert(v[0]==11&&v[1]==18&&v[2]==46);
+        ++q.positions;return 1;
+    };
+    sp.orientation=[](void* p,void*,const float* v) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(v[0]==1&&v[1]==2&&v[2]==3);++q.angles;return 1;};
+    sp.owner=[](void* p,void*,void* a) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(a==q.actor);++q.owners;return 1;};
+    sp.finalize=[](void* p,void* e) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert((e==nullptr)==q.null_factory);++q.finalizes;return 1;};
+    sp.linear=[](void* p,void*,const float* v) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(v[0]==5&&v[1]==6&&v[2]==7);++q.linear;return 1;};
+    sp.angular=[](void* p,void*,const float* v) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(v[0]==8&&v[1]==9&&v[2]==10);++q.angular;return 1;};
+    sp.world_bounds=[](void* p,void*,float* mins,float* maxs) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);mins[2]=q.bounds?46.f:28.f;maxs[2]=q.bounds?50.f:38.f;++q.bounds;return 1;};
+    sp.move_origin=[](void* p,void*,const float* v) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(v[0]==10&&v[1]==20&&v[2]==32);++q.moves;return 1;};
+    sp.random_float=[](void* p,float lo,float hi,float* v) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(lo==-6&&hi==6);*v=(q.draws++%2)?-2.f:1.f;return 1;};
+    sp.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(a==q.actor&&!EvalFixture::rd(a,8));++q.removes;return 1;};
+    auto seed=[&](){
+        ef=EvalFixture{};EvalFixture::u(ef.actor,8,123);EvalFixture::u(ef.actor,0xb8,0x1800);
+        for(unsigned i=0;i<3;++i){
+            EvalFixture::f(ef.actor,0x2bc+i*4,float(10+10*i));
+            EvalFixture::f(ef.actor,0x354+i*4,float(1+i));
+            EvalFixture::f(ef.actor,0x250+i*4,float(5+i));EvalFixture::f(ef.actor,0x25c+i*4,float(8+i));
+        }
+        EvalFixture::f(ef.actor,0x394,.75f);EvalFixture::f(ef.actor,0x398,.5f);
+        EvalFixture::u(ef.player,0x98,100);EvalFixture::u(ef.player,0x9c,25);f.ammo[1]=1;
+    };
+    EvaluateResult er{};seed();
+    assert(api->evaluate(ef.actor,sizeof(ef.actor),ef.player,sizeof(ef.player),0,&eb,&er)&&er.completed&&er.selected_health==0&&er.selected_ammo==0&&er.normal_spawns==2&&er.factories==2&&er.finalizes==2&&er.corrections==1&&er.randoms==4&&er.origin_refreshes==1&&er.motion_refreshes==1&&er.think_cleared&&er.removed);
+    assert(ef.creations==2&&ef.positions==2&&ef.angles==2&&ef.owners==2&&ef.linear==2&&ef.angular==2&&ef.bounds==2&&ef.moves==1&&ef.removes==1);
+    assert(er.next_position[0]==12&&er.next_position[1]==16&&er.next_position[2]==56);
+    // Full player fallback has no velocity, bounds, correction or jitter.
+    seed();ef.fallback_only=true;EvalFixture::u(ef.actor,0xb4,4);EvalFixture::u(ef.player,0x9c,100);f.ammo[1]=80;
+    assert(api->evaluate(ef.actor,sizeof(ef.actor),ef.player,sizeof(ef.player),0,&eb,&er)&&er.completed&&er.selected_health==-1&&er.selected_ammo==-1&&er.fallback_spawns==1&&er.fallback.selected==0&&!er.normal_spawns&&!er.randoms&&!ef.linear&&!ef.bounds&&ef.removes==1);
+    // Self master is an early return, without clearing think or enumerating.
+    sin_independent::EntityHandleEntry entry{};entry.serial=3;entry.entity=reinterpret_cast<CBaseEntity*>(ef.actor);std::uint32_t handle=0x3000;
+    eb.entries=&entry;eb.entry_count=1;eb.master_handle=&handle;
+    seed();assert(api->evaluate(ef.actor,sizeof(ef.actor),ef.player,sizeof(ef.player),0,&eb,&er)&&er.master_skipped&&er.completed&&!er.think_cleared&&!ef.creations&&EvalFixture::rd(ef.actor,8)==123);
+    // Master profile selected only when flag 1 and live serial resolves.
+    entry.entity=reinterpret_cast<CBaseEntity*>(ef.master);eb.extent_context=&ef;
+    eb.extent=[](void* p,void* a,unsigned* n) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(a==q.master);*n=sizeof(q.master);return 1;};
+    seed();EvalFixture::u(ef.actor,0xb4,1);
+    assert(api->evaluate(ef.actor,sizeof(ef.actor),ef.player,sizeof(ef.player),0,&eb,&er)&&er.master_profile&&er.completed&&!er.factories&&er.removed);
+    // Stale master returns to local profile; null normal factory finalizes
+    // but fails closed before original's unsafe item dereference.
+    seed();EvalFixture::u(ef.actor,0xb4,1);handle=0x4000;ef.null_factory=true;
+    assert(!api->evaluate(ef.actor,sizeof(ef.actor),ef.player,sizeof(ef.player),0,&eb,&er)&&!er.master_profile&&er.null_factory==1&&er.factories==1&&er.finalizes==1&&!er.removed&&!er.think_cleared);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
