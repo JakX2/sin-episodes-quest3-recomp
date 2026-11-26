@@ -1,6 +1,7 @@
 #include "native_server_dynamic_resupply.h"
 #include "original_ammo_definitions.h"
 #include <cstring>
+extern "C" int __cdecl SiN_ReadResupplyEngineConvar(void*,sin_port::native_resupply::Convar,void*) noexcept;
 extern "C" __declspec(dllexport) const sin_port::original_ammo::Api* __cdecl
 SiN_GetOriginalAmmoDefinitionApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_resupply {
@@ -49,7 +50,7 @@ bool raw_reserve(const InventoryView* v,int index,int& reserve) noexcept {
 }
 int __cdecl ratios(const float* desired,unsigned desired_count,AmmoRow* rows,unsigned row_count,const Bindings* b,Result* out) noexcept {
     if(!out)return 0;*out={};
-    if(!desired||desired_count<count||!rows||row_count<count||!b||(!b->has_weapon&&!b->native_inventory)||!b->scale)return 0;
+    if(!desired||desired_count<count||!rows||row_count<count||!b||(!b->has_weapon&&!b->native_inventory)||(!b->scale&&!b->engine_cvar))return 0;
     const auto* ammo=SiN_GetOriginalAmmoDefinitionApi(original_ammo::version,sizeof(original_ammo::Api));
     if((!b->index||!b->max_carry)&&!ammo)return 0;
     auto max_for=[&](int index,int& maximum){
@@ -84,7 +85,9 @@ int __cdecl ratios(const float* desired,unsigned desired_count,AmmoRow* rows,uns
             const double numerator=double(reserve)+double(nearby);
             row.current=static_cast<float>(numerator/double(denominator));
         }
-        float scale=0;if(!b->scale(b->context,&scale))return 0;++out->scale_reads;
+        float scale=0;
+        if(!(b->scale?b->scale(b->context,&scale):SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::Modifier,&scale)))return 0;
+        ++out->scale_reads;
         // FST stores desired but retains its unrounded value for delta.
         const double product=double(desired[i])*double(scale);
         row.desired=static_cast<float>(product);
@@ -97,11 +100,13 @@ int __cdecl ratios(const float* desired,unsigned desired_count,AmmoRow* rows,uns
 }
 int __cdecl health(int hp,int max_hp,float desired,AmmoRow* row,const HealthBindings* b,HealthResult* out) noexcept {
     if(!out)return 0;*out={};
-    if(!row||!b||!b->vial_value||!b->scale)return 0;
-    float vial=0;if(!b->vial_value(b->context,&vial))return 0;++out->vial_reads;
+    if(!row||!b||((!b->vial_value||!b->scale)&&!b->engine_cvar))return 0;
+    float vial=0;
+    if(!(b->vial_value?b->vial_value(b->context,&vial):SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::HealthKit,&vial)))return 0;
+    ++out->vial_reads;
     // FILD/FMul/FIAdd/FILD/Fdivp; max health is not pre-rounded to float.
     row->current=float((double(row->nearby)*double(vial)+double(hp))/double(max_hp));
-    float scale=0;if(!b->scale(b->context,&scale))return 0;++out->scale_reads;
+    float scale=0;if(!(b->scale?b->scale(b->context,&scale):SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::Modifier,&scale)))return 0;++out->scale_reads;
     const double product=double(desired)*double(scale);
     row->desired=float(product);
     const double delta=product-double(row->current);
@@ -253,6 +258,11 @@ int __cdecl evaluate(void* actor,unsigned bytes,const void* player,unsigned play
     auto master=[&]()->void*{return b->master_handle?registry.Resolve(*b->master_handle):nullptr;};
     if(master()==actor){out->master_skipped=out->completed=1;return 1;}
     if(!player||player_bytes<0xa0)return 0;
+    if(b->engine_cvar){
+        if(!SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::Debug,&debug))return 0;
+        out->debug_native=1;
+    }
+    out->debug_value=debug;
     if(!nearby(actor,true,debug,&out->health_row,1,&b->nearby,&out->health_nearby)||
        !nearby(actor,false,debug,out->ammo_rows,count,&b->nearby,&out->ammo_nearby))return 0;
     void* profile=actor;
@@ -263,11 +273,14 @@ int __cdecl evaluate(void* actor,unsigned bytes,const void* player,unsigned play
             profile=m;out->master_profile=1;
         }
     }
+    auto health_bindings=b->health;
+    if(b->engine_cvar)health_bindings.engine_cvar=b->engine_cvar;
     if(!health(field<int>(player,0x9c),field<int>(player,0x98),field<float>(profile,0x394),
-               &out->health_row,&b->health,&out->health))return 0;
+               &out->health_row,&health_bindings,&out->health))return 0;
     float desired[count];
     for(unsigned i=0;i<count;++i)desired[i]=field<float>(profile,0x398+4*i);
     auto ammo_bindings=b->ammo;auto fallback_bindings=b->fallback;
+    if(b->engine_cvar)ammo_bindings.engine_cvar=b->engine_cvar;
     const InventoryView inventory{player,player_bytes,b->entries,b->entry_count,b->extent_context,b->extent};
     if(b->native_player_inventory){
         if(!valid_player(inventory))return 0;

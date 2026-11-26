@@ -1,4 +1,5 @@
 #include "server_fixed_difficulty_service.h"
+#include "native_server_dynamic_resupply.h"
 #include "original_ammo_definitions.h"
 #include "phase45_zoom_transition.hpp"
 #include "phase47_ads_activity.hpp"
@@ -2161,6 +2162,21 @@ struct EngineReadScope {
     EngineReadScope() noexcept {reading_engine_skill=true;}
     ~EngineReadScope(){reading_engine_skill=false;}
 };
+}
+// Internal read-only adapter shared by dynamic-resupply arithmetic. The
+// verified VEngineCvar002 slot and parent/name checks are the existing
+// engine-skill path; never substitute defaults for a missing live object.
+extern "C" int __cdecl SiN_ReadResupplyEngineConvar(void* cvar,sin_port::native_resupply::Convar id,void* out) noexcept {
+    using namespace sin_port::native_resupply;
+    const auto index=static_cast<unsigned>(id);
+    if(!out||index>=3||reading_engine_skill)return 0;
+    EngineReadScope scope;
+    if(id==Convar::Debug){
+        int value=0;if(!read_engine_cvar(cvar,convars[index].name,int_offset,value))return 0;
+        std::memcpy(out,&value,sizeof(value));return 1;
+    }
+    float value=0;if(!read_engine_cvar(cvar,convars[index].name,real_offset,value))return 0;
+    std::memcpy(out,&value,sizeof(value));return 1;
 }
 // The original CAI_BaseNPC override queries enemy memory before reading
 // either ConVar. Mirror that branch order with host-resolved memory.

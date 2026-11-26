@@ -1,5 +1,6 @@
 #include "native_server_dynamic_resupply.h"
 #include "native_server_npc_active_weapon_step.h"
+#include "server_native_cvar_registration.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -460,5 +461,56 @@ int main(int argc,char** argv){
     // Reload identity after engine scope entry, never execute unknown PE VA.
     frame_seed();EvalFixture::u(ef.actor,0xb8,0);EvalFixture::u(ef.actor,0x74,90);EvalFixture::u(ef.actor,8,check_pvs_think);frf.unknown_on_enter=true;
     assert(!frame->run(ef.actor,sizeof(ef.actor),0x3000,90,.125f,&pb,&pr)&&pr.entered&&pr.closed&&!pr.invoked&&pr.token==0xdeadbeefu);
+    // VEngineCvar002 const lookup (slot 3), root values rather than aliases.
+    struct ResupplyCvars final:sin_independent::console_abi::EngineCvar {
+        using Variable=sin_independent::console_abi::Variable;
+        using CommandBase=sin_independent::console_abi::CommandBase;
+        mutable Variable roots[3],aliases[3];
+        mutable unsigned lookups[16]{},calls=0,modifier_reads=0;
+        bool missing=false,change_each=false,wrong_root=false;
+        ResupplyCvars(){
+            for(unsigned i=0;i<3;++i){
+                roots[i].CreateVariable(convars[i].name,convars[i].initial,int(convars[i].flags),"",false,0,false,0,nullptr);
+                aliases[i].CreateVariable(convars[i].name,"0",int(convars[i].flags),"",false,0,false,0,nullptr);
+                aliases[i].parent=&roots[i];
+            }
+        }
+        void __thiscall RegisterConCommandBase(CommandBase*) noexcept override{assert(false);}
+        const char* __thiscall GetCommandLineValue(const char*) noexcept override{assert(false);return nullptr;}
+        Variable* __thiscall FindMutableVar(const char*) noexcept override{assert(false);return nullptr;}
+        const Variable* __thiscall FindConstVar(const char* name) const noexcept override{
+            unsigned i=0;while(i<3&&std::strcmp(name,convars[i].name))++i;
+            assert(i<3&&calls<16);lookups[calls++]=i;
+            if(missing&&i==0)return nullptr;
+            if(wrong_root&&i==1)return &aliases[0];
+            if(change_each&&i==0)roots[0].SetFloat(.125f*float(++modifier_reads));
+            return &aliases[i];
+        }
+        CommandBase* __thiscall GetCommands() noexcept override{assert(false);return nullptr;}
+    } cv;
+    HealthBindings live_health{};live_health.engine_cvar=&cv;AmmoRow live_row{};live_row.nearby=2;
+    assert(api->health_ratio(20,100,1.f,&live_row,&live_health,&hr)&&live_row.current==.7f&&live_row.desired==1.f&&hr.vial_reads==1&&hr.scale_reads==1);
+    assert(cv.calls==2&&cv.lookups[0]==1&&cv.lookups[1]==0);
+    cv.roots[1].SetFloat(10.f);cv.roots[0].SetFloat(.5f);cv.calls=0;
+    assert(api->health_ratio(20,100,1.f,&live_row,&live_health,&hr)&&live_row.current==.4f&&live_row.desired==.5f);
+    cv.wrong_root=true;cv.calls=0;assert(!api->health_ratio(20,100,1.f,&live_row,&live_health,&hr)&&!hr.vial_reads);
+    cv.wrong_root=false;cv.calls=0;cv.missing=true;
+    assert(!api->health_ratio(20,100,1.f,&live_row,&live_health,&hr)&&hr.vial_reads==1&&!hr.scale_reads);
+    cv.missing=false;cv.calls=0;cv.change_each=true;
+    auto live_ammo=b;live_ammo.scale=nullptr;live_ammo.engine_cvar=&cv;
+    for(auto& row:rows)row={};
+    float wants_live[count]{1,1,1,1,1,1};
+    assert(api->ammo_ratios(wants_live,count,rows,count,&live_ammo,&o)&&o.rows==6&&o.scale_reads==6&&cv.calls==6);
+    for(unsigned i=0;i<count;++i)assert(cv.lookups[i]==0&&rows[i].desired==.125f*float(i+1));
+    // Complete evaluation reads debug once, healthkit once and modifier
+    // seven times in original order. No hosted high-level scale/vial callbacks.
+    cv.change_each=false;cv.calls=0;cv.roots[0].SetFloat(1.f);cv.roots[1].SetFloat(25.f);
+    dispatch_seed();eb.master_handle=nullptr;eb.entries=nullptr;eb.entry_count=0;
+    eb.engine_cvar=&cv;eb.health=live_health;eb.ammo=live_ammo;
+    assert(api->evaluate(ef.actor,sizeof(ef.actor),ef.player,sizeof(ef.player),2,&eb,&er)&&er.completed&&er.normal_spawns==2&&er.debug_native&&er.debug_value==0);
+    assert(cv.calls==9&&cv.lookups[0]==2&&cv.lookups[1]==1);for(unsigned i=2;i<9;++i)assert(cv.lookups[i]==0);
+    // No cvar lookup or player access if the actor is the current master.
+    cv.calls=0;handle=0x3000;eb.master_handle=&handle;eb.entries=&entry;eb.entry_count=1;
+    assert(api->evaluate(ef.actor,sizeof(ef.actor),nullptr,0,0,&eb,&er)&&er.master_skipped&&!cv.calls);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
