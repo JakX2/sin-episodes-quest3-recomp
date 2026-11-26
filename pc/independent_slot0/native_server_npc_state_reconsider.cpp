@@ -75,7 +75,18 @@ int __cdecl apply(void* a,unsigned bytes,int desired,float now,const ServerNpcSt
     return 1;
 }
 int __cdecl clear_combat_conditions(void*,unsigned,const ServerNpcConditionMapBindings*,ServerNpcEnemyConditionResult*) noexcept;
-int set_enemy_impl(void* a,unsigned bytes,void* target,bool notify,float now,const ServerNpcEnemyStateBindings* b,ServerNpcEnemyStateResult* out,bool native_notify) noexcept {
+int __cdecl slots_release(std::uint32_t,void*,int,float,const ServerNpcGruntSquadSlotsBindings*,ServerNpcGruntSquadSlotsResult*) noexcept;
+struct SquadReleaseRoute {
+    const ServerNpcGruntSquadSlotsBindings& bindings;
+    ServerNpcGruntPerceptionSlotsResult& out;
+};
+bool release_slot(std::uint32_t token,void* target,int slot,float now,const ServerNpcEnemyStateBindings& b,const SquadReleaseRoute* route) noexcept{
+    if(!route)return b.release_squad_slot&&b.release_squad_slot(b.context,token,target,slot);
+    auto bound=route->bindings;bound.entries=b.entries;bound.count=b.count;
+    ++route->out.release_calls;
+    return slots_release(token,target,slot,now,&bound,&route->out.last_release)!=0;
+}
+int set_enemy_impl(void* a,unsigned bytes,void* target,bool notify,float now,const ServerNpcEnemyStateBindings* b,ServerNpcEnemyStateResult* out,bool native_notify,const SquadReleaseRoute* slots=nullptr) noexcept {
     if(!out)return 0;*out={};out->old_handle=out->new_handle=0xffffffffu;
     if(!a||bytes<0xc04||!b||!std::isfinite(now)||b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
     const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
@@ -90,7 +101,7 @@ int set_enemy_impl(void* a,unsigned bytes,void* target,bool notify,float now,con
         out->notified=1;
         const auto squad=read<std::uint32_t>(a,0x9c4);
         if(squad){
-            if(!b->release_squad_slot||!b->release_squad_slot(b->context,squad,resolve(),read<int>(a,0x9cc)))return 0;
+            if(!release_slot(squad,resolve(),read<int>(a,0x9cc),now,*b,slots))return 0;
             write(a,0x9cc,-1);out->squad_released=1;
         }
         write<std::uint8_t>(a,0x8b0,0);
@@ -825,6 +836,7 @@ const ServerNpcRelationMatrixApi matrix_api{1,sizeof(ServerNpcRelationMatrixApi)
 struct PerceptionSpeechRoute {
     const ServerNpcGruntPerceptionSpeechBindings& bindings;
     ServerNpcGruntPerceptionSpeechResult& out;
+    const SquadReleaseRoute* slots=nullptr;
 };
 int __cdecl sentence_dispatch_request(void*,unsigned,float,const char*,int,unsigned,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntSentenceResult*,ServerNpcGruntSentenceRequestResult*) noexcept;
 int __cdecl grunt_speak_request(void*,unsigned,unsigned,float,const ServerNpcGruntSpeechBindings*,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntRequestSpeechResult*) noexcept;
@@ -1012,12 +1024,12 @@ int grunt_enemy_switch_impl(void* actor,unsigned bytes,float now,const ServerNpc
         if(read<int>(current,0x8c)!=0&&!set_condition(0x1d,out->dead_condition))return 0;
     }
     auto enemy=b->enemy;enemy.entries=b->best.memory.entries;enemy.count=b->best.memory.count;enemy.conditions=b->schedule.conditions;
-    if(!set_enemy_impl(actor,bytes,candidate,true,now,&enemy,&out->assignment,true))return 0;
+    if(!set_enemy_impl(actor,bytes,candidate,true,now,&enemy,&out->assignment,true,speech?speech->slots:nullptr))return 0;
     out->assigned=1;out->has_enemy=candidate!=nullptr;
     if(had_flags){
         const unsigned squad=read<unsigned>(actor,0x9c4);
         if(squad){
-            if(!enemy.release_squad_slot||!enemy.release_squad_slot(enemy.context,squad,registry.Resolve(read<unsigned>(actor,0x8a0)),read<int>(actor,0x9cc)))return 0;
+            if(!release_slot(squad,registry.Resolve(read<unsigned>(actor,0x8a0)),read<int>(actor,0x9cc),now,enemy,speech?speech->slots:nullptr))return 0;
             write(actor,0x9cc,-1);out->extra_squad_release=1;
         }
         write(actor,0x988,read<unsigned>(actor,0x988)&~0x20000u);
@@ -1948,7 +1960,7 @@ int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,c
                 write(actor,0x9a0,now);out->combat_called=1;
             }else{
                 auto eb=b->enemy;eb.entries=mb.entries;eb.count=mb.count;eb.conditions=b->schedule.conditions;
-                if(!set_enemy_impl(actor,bytes,nullptr,true,now,&eb,&out->cleared_enemy,true))return 0;out->enemy_cleared=1;
+                if(!set_enemy_impl(actor,bytes,nullptr,true,now,&eb,&out->cleared_enemy,true,speech?speech->slots:nullptr))return 0;out->enemy_cleared=1;
             }
         }
         if(!grunt_target_conditions(actor,bytes,now,&aux,&out->target)||!grunt_ammo_conditions(actor,bytes,&aux,&out->ammo))return 0;
@@ -2914,6 +2926,29 @@ int __cdecl slots_release(std::uint32_t token,void* target,int bit,float now,con
     }
     out->completed=1;return 1;
 }
+void reset_perception_slots(ServerNpcGruntPerceptionSlotsResult& out) noexcept{
+    reset_perception_speech(out.dialogue);out.last_release={};out.last_release.index=out.last_release.selected=-1;out.release_calls=0;
+}
+int __cdecl slots_set_enemy(void* a,unsigned n,void* target,bool notify,float now,const ServerNpcEnemyStateBindings* b,const ServerNpcGruntSquadSlotsBindings* slots,ServerNpcEnemyStateResult* out,ServerNpcGruntPerceptionSlotsResult* result) noexcept{
+    if(!slots||!result)return 0;reset_perception_slots(*result);const SquadReleaseRoute route{*slots,*result};
+    return set_enemy_impl(a,n,target,notify,now,b,out,true,&route);
+}
+int __cdecl slots_enemy_switch(void* a,unsigned n,float now,const ServerNpcGruntEnemySwitchBindings* b,const ServerNpcGruntPerceptionSlotsBindings* slots,ServerNpcGruntEnemySwitchResult* out,ServerNpcGruntPerceptionSlotsResult* result) noexcept{
+    if(!slots||!result)return 0;reset_perception_slots(*result);const SquadReleaseRoute release{slots->slots,*result};
+    const PerceptionSpeechRoute route{slots->dialogue,result->dialogue,&release};
+    return grunt_enemy_switch_impl(a,n,now,b,out,nullptr,&route);
+}
+int __cdecl slots_perception_update(void* a,unsigned n,float now,const ServerNpcGruntConditionUpdateBindings* b,const ServerNpcGruntPerceptionSlotsBindings* slots,ServerNpcGruntConditionUpdateResult* out,ServerNpcGruntPerceptionSlotsResult* result) noexcept{
+    if(!slots||!result)return 0;reset_perception_slots(*result);const SquadReleaseRoute release{slots->slots,*result};
+    const PerceptionSpeechRoute route{slots->dialogue,result->dialogue,&release};
+    return grunt_condition_update_impl(a,n,now,b,out,&route);
+}
+int __cdecl slots_perception_gather(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntPerceptionSlotsBindings* slots,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntPerceptionSlotsResult* result) noexcept{
+    if(!slots||!result||!out||!b)return 0;reset_perception_slots(*result);out->gather={};out->point={};out->object={};out->object.selected_handle=0xffffffffu;
+    const SquadReleaseRoute release{slots->slots,*result};const PerceptionSpeechRoute route{slots->dialogue,result->dialogue,&release};
+    return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route);
+}
+const ServerNpcGruntPerceptionSlotsApi perception_slots_api{1,sizeof(ServerNpcGruntPerceptionSlotsApi),&slots_set_enemy,&slots_enemy_switch,&slots_perception_update,&slots_perception_gather};
 const ServerNpcGruntSquadSlotsApi squad_slots_api{1,sizeof(ServerNpcGruntSquadSlotsApi),&slots_read,&slots_bit,&slots_reserve,&slots_occupied,&slots_release};
 const ServerNpcGruntSquadDestroyApi squad_destroy_api{1,sizeof(ServerNpcGruntSquadDestroyApi),&squad_destroy};
 const ServerNpcGruntSquadRegistryApi squad_registry_api{1,sizeof(ServerNpcGruntSquadRegistryApi),&squad_lookup,&squad_create,&squad_attach};
@@ -3323,4 +3358,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadSlotsApi=_SiN_GetServerNpcGruntSquadSlotsApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadSlotsApi* __cdecl SiN_GetServerNpcGruntSquadSlotsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadSlotsApi)?&squad_slots_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPerceptionSlotsApi=_SiN_GetServerNpcGruntPerceptionSlotsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSlotsApi* __cdecl SiN_GetServerNpcGruntPerceptionSlotsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPerceptionSlotsApi)?&perception_slots_api:nullptr;
 }

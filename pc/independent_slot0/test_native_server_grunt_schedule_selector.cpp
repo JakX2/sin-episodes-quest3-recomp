@@ -12,6 +12,7 @@ using namespace sin_port::native_weapon_tables;
 struct F {
     alignas(4) unsigned char actor[0xdd8]{},helper[0xca8]{},desc[0x48]{},schedule[4]{},grenade[4]{};
     sin_independent::EntityHandleEntry slots[2]{};
+    unsigned char squad_group[0x78]{},squad_rows[32]{};
     ServerGruntScheduleSound sound{};
     unsigned cues=0;int cue=-1,relation=3;bool kick=false,investigate=false,squad=false;
     template<class T>void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
@@ -57,6 +58,18 @@ int main(int argc,char** argv){
     f.actor[0xc65]=0;f.set(0x44);choose(0x64);f.put(f.actor,0xdd4,1u);choose(99);
     f.clear();f.put(f.actor,0x850,3);choose(0x55);
     f.put(f.actor,0x850,2);f.set(0x33);f.put(f.actor,0x9c4,1u);f.squad=true;choose(0xa);
+    auto ng=reinterpret_cast<GetServerGruntNativeSlotSelectorApi>(GetProcAddress(s,server_grunt_native_slot_selector_export));
+    assert(ng&&!GetProcAddress(c,server_grunt_native_slot_selector_export)&&!ng(0,sizeof(ServerGruntNativeSlotSelectorApi))&&!ng(1,0));
+    const auto* native=ng(1,sizeof(ServerGruntNativeSlotSelectorApi));assert(native);
+    ServerNpcGruntSquadSlotsBindings sb{};sb.context=sb.storage.context=&f;
+    sb.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);if(token==1){*out=f.squad_group;*n=sizeof(f.squad_group);return 1;}if(token==100){*out=f.squad_rows;*n=sizeof(f.squad_rows);return 1;}return 0;};
+    sb.resize=[](void* p,std::uint32_t old,unsigned cap,std::uint32_t* token,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);assert(!old&&cap==4);*token=100;*out=f.squad_rows;*n=sizeof(f.squad_rows);return 1;};
+    auto legacy=b.squad_gate;b.squad_gate=nullptr;f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x9cc,-1);
+    ServerGruntNativeSlotSelectorResult ns{};
+    assert(native->select(f.actor,sizeof(f.actor),10,&b,&sb,&ns)&&ns.selection.schedule==0xa&&ns.slot_calls==1&&ns.slots.new_set&&ns.slots.bitmap==(1u<<4));
+    f.put(f.actor,0x9cc,-1);
+    assert(native->select(f.actor,sizeof(f.actor),10,&b,&sb,&ns)&&ns.selection.schedule==99&&ns.selection.parent_called&&ns.slot_calls==1&&!ns.slots.allowed);
+    b.squad_gate=legacy;
     f.clear();f.set(0x30);f.sound={1,8,0x7001};f.kick=true;choose(0x73);
     assert(out.kick_transferred&&f.get<unsigned>(f.actor,0xcb4)==0x7001&&f.get<unsigned>(f.actor,0xcb8)==0xffffffffu&&f.get<unsigned>(f.actor,0x8a8)==0x7001);
     f.kick=false;f.relation=2;choose(0x5e);assert(f.cues==1&&f.cue==1);

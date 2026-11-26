@@ -1146,4 +1146,22 @@ struct ServerNpcGruntSquadSlotsApi {
     int (__cdecl *release)(std::uint32_t,void*,int,float,const ServerNpcGruntSquadSlotsBindings*,ServerNpcGruntSquadSlotsResult*) noexcept;
 };
 using GetServerNpcGruntSquadSlotsApi=const ServerNpcGruntSquadSlotsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_perception_slots_export[]="SiN_GetServerNpcGruntPerceptionSlotsApi";
+struct ServerNpcGruntPerceptionSlotsBindings {
+    ServerNpcGruntPerceptionSpeechBindings dialogue;
+    ServerNpcGruntSquadSlotsBindings slots;
+};
+struct ServerNpcGruntPerceptionSlotsResult {
+    ServerNpcGruntPerceptionSpeechResult dialogue;
+    ServerNpcGruntSquadSlotsResult last_release;
+    unsigned release_calls;
+};
+struct ServerNpcGruntPerceptionSlotsApi {
+    std::uint32_t version,size;
+    int (__cdecl *set_enemy)(void*,unsigned,void*,bool,float,const ServerNpcEnemyStateBindings*,const ServerNpcGruntSquadSlotsBindings*,ServerNpcEnemyStateResult*,ServerNpcGruntPerceptionSlotsResult*) noexcept;
+    int (__cdecl *enemy_switch)(void*,unsigned,float,const ServerNpcGruntEnemySwitchBindings*,const ServerNpcGruntPerceptionSlotsBindings*,ServerNpcGruntEnemySwitchResult*,ServerNpcGruntPerceptionSlotsResult*) noexcept;
+    int (__cdecl *update)(void*,unsigned,float,const ServerNpcGruntConditionUpdateBindings*,const ServerNpcGruntPerceptionSlotsBindings*,ServerNpcGruntConditionUpdateResult*,ServerNpcGruntPerceptionSlotsResult*) noexcept;
+    int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntPerceptionSlotsBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntPerceptionSlotsResult*) noexcept;
+};
+using GetServerNpcGruntPerceptionSlotsApi=const ServerNpcGruntPerceptionSlotsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -1556,6 +1556,14 @@ int main(int argc,char** argv){
         assert(api->get(91,q.enemies[0],40.25f,&sb,&sr)&&sr.refreshed==1&&sr.refresh_members==2&&sr.pruned==2&&sr.index==0&&sr.bitmap==(1u<<14)&&sr.deadline==70.25f&&SlotFixture::rd(q.group,0x6c)==1);
         assert(api->get(91,q.enemies[1],40.25f,&sb,&sr)&&sr.appended&&sr.index==1&&!sr.bitmap&&SlotFixture::rd(q.rows,8)==0x5004u);
         assert(!api->bit(91,q.enemies[0],32,NpcSquadBitSet,40.25f,&sb,&sr));
+        auto gn=reinterpret_cast<GetServerNpcGruntPerceptionSlotsApi>(GetProcAddress(s,server_npc_grunt_perception_slots_export));
+        assert(gn&&!GetProcAddress(c,server_npc_grunt_perception_slots_export)&&!gn(0,sizeof(ServerNpcGruntPerceptionSlotsApi))&&!gn(1,0));
+        const auto* native=gn(1,sizeof(ServerNpcGruntPerceptionSlotsApi));assert(native);
+        ServerNpcEnemyStateBindings esb{};esb.context=&q;esb.entries=q.slots;esb.count=5;esb.conditions=eb.conditions;esb.entity_handle=sb.entity_handle;
+        ServerNpcGruntPerceptionSlotsResult nsr{};ServerNpcEnemyStateResult er{};
+        assert(native->set_enemy(q.actors[0],sizeof(q.actors[0]),q.enemies[1],true,40.5f,&esb,&sb,&er,&nsr)&&er.changed&&er.notified&&er.squad_released&&nsr.release_calls==1&&nsr.last_release.old_cleared&&!nsr.last_release.old_unmarked&&!nsr.last_release.bitmap&&er.new_handle==0x5004u&&SlotFixture::rd(q.actors[0],0x9cc)==0xffffffffu);
+        assert(native->set_enemy(q.actors[0],sizeof(q.actors[0]),q.enemies[1],true,40.6f,&esb,&sb,&er,&nsr)&&!er.changed&&!nsr.release_calls);
+        assert(native->set_enemy(q.actors[0],sizeof(q.actors[0]),nullptr,true,40.7f,&esb,&sb,&er,&nsr)&&er.changed&&nsr.release_calls==1&&!nsr.last_release.accesses);
         f.put(q.actors[0],0x9c4,0u);
         assert(api->reserve(q.actors[0],sizeof(q.actors[0]),12,12,41,&sb,&sr)&&sr.allowed&&sr.ungrouped&&!sr.accesses);
     }
