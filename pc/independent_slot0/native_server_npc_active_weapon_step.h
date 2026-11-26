@@ -385,6 +385,9 @@ struct ServerNpcInputHealthDispatchBindings {
     const ServerNpcGruntLifeDispatchBindings* life;
     ServerNpcGruntLifeDispatchResult* life_result;
     const ServerNpcHealthOutputQueueBindings* outputs;
+    // Optional regular ground-Grunt death composition, not Elite/Jetpack.
+    const ServerNpcGruntGroundDeathBindings* ground_death;
+    ServerNpcGruntGroundLifeResult* ground_result;
 };
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
@@ -433,6 +436,7 @@ struct ServerEntityAcceptInputResult {
     unsigned health_admission_blocked,health_deferred,health_multiplier_rows,health_life_called;
     float health_outgoing_scale,health_incoming_scale,health_scaled_amount;
     unsigned health_outputs,health_output_actions,health_output_removed,health_output_enqueued;
+    unsigned health_ground_route,health_ground_death;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
