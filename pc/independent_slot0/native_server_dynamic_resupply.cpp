@@ -5,9 +5,51 @@ extern "C" __declspec(dllexport) const sin_port::original_ammo::Api* __cdecl
 SiN_GetOriginalAmmoDefinitionApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_resupply {
 namespace {
+template<class T>T field(const void* p,unsigned off) noexcept {
+    T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;
+}
+bool valid_player(const InventoryView& v) noexcept {
+    return v.player&&v.player_bytes>=0x78cu&&
+        (field<unsigned>(v.player,0)==0x2245222cu||field<unsigned>(v.player,0)==0x224aec3cu);
+}
+bool direct_ammo_getters(unsigned table) noexcept {
+    switch(table){
+    case 0x2245a554u:case 0x2241b3a4u:case 0x22459194u:case 0x2245968cu:
+    case 0x2247445cu:case 0x22474974u:case 0x224776acu:case 0x22477c8cu:
+    case 0x22478214u:case 0x2247875cu:case 0x22478d0cu:case 0x2247924cu:
+    case 0x2247a1e4u:case 0x2247ab9cu:return true;
+    default:return false;
+    }
+}
+int __cdecl owns(const InventoryView* v,int index,OwnershipResult* out) noexcept {
+    if(!out)return 0;*out={};out->slot=-1;
+    if(!v||!valid_player(*v)||v->entry_count>sin_independent::kEntityHandleCapacity||
+       (v->entry_count&&!v->entries))return 0;
+    const sin_independent::EntityHandleView registry(v->entries,v->entry_count);
+    for(unsigned i=0;i<48;++i){
+        ++out->slots;void* weapon=registry.Resolve(field<unsigned>(v->player,0x6cc+4*i));
+        if(!weapon)continue;
+        ++out->weapons;unsigned bytes=0;
+        if(!v->extent||!v->extent(v->context,weapon,&bytes)||bytes<0x4ec||
+           !direct_ammo_getters(field<unsigned>(weapon,0)))return 0;
+        ++out->primary_reads;
+        bool match=field<int>(weapon,0x4e4)==index;
+        if(!match){++out->secondary_reads;match=field<int>(weapon,0x4e8)==index;}
+        if(match){out->slot=int(i);out->weapon=weapon;out->found=1;return 1;}
+    }
+    return 1;
+}
+bool owned_by(const InventoryView* v,int index,bool& owned) noexcept {
+    OwnershipResult result{};if(!owns(v,index,&result))return false;
+    owned=result.found!=0;return true;
+}
+bool raw_reserve(const InventoryView* v,int index,int& reserve) noexcept {
+    if(!v||!valid_player(*v)||index<0||index>=32)return false;
+    reserve=field<int>(v->player,0x64c+4*unsigned(index));return true;
+}
 int __cdecl ratios(const float* desired,unsigned desired_count,AmmoRow* rows,unsigned row_count,const Bindings* b,Result* out) noexcept {
     if(!out)return 0;*out={};
-    if(!desired||desired_count<count||!rows||row_count<count||!b||!b->has_weapon||!b->scale)return 0;
+    if(!desired||desired_count<count||!rows||row_count<count||!b||(!b->has_weapon&&!b->native_inventory)||!b->scale)return 0;
     const auto* ammo=SiN_GetOriginalAmmoDefinitionApi(original_ammo::version,sizeof(original_ammo::Api));
     if((!b->index||!b->max_carry)&&!ammo)return 0;
     auto max_for=[&](int index,int& maximum){
@@ -19,7 +61,9 @@ int __cdecl ratios(const float* desired,unsigned desired_count,AmmoRow* rows,uns
         int index=-1;
         if(b->index){if(!b->index(b->context,type.name,&index))return 0;}
         else {index=ammo->index(type.name);++out->index_native;}
-        bool owned=false;if(!b->has_weapon(b->context,index,&owned))return 0;
+        bool owned=false;
+        if(b->has_weapon){if(!b->has_weapon(b->context,index,&owned))return 0;}
+        else {if(!owned_by(b->native_inventory,index,owned))return 0;++out->ownership_native;}
         if(!owned)row.current=1.f;
         else {
             ++out->owned;
@@ -27,7 +71,11 @@ int __cdecl ratios(const float* desired,unsigned desired_count,AmmoRow* rows,uns
             if(index!=-1){
                 int live=0;if(!max_for(index,live))return 0;
                 if(live==-2)reserve=999;
-                else {if(!b->reserve||!b->reserve(b->context,index,&reserve))return 0;++out->reserve_reads;}
+                else {
+                    if(b->reserve){if(!b->reserve(b->context,index,&reserve))return 0;}
+                    else {if(!raw_reserve(b->native_inventory,index,reserve))return 0;++out->reserve_native;}
+                    ++out->reserve_reads;
+                }
             }
             // IMUL low 32 bits, interpreted signed by FILD.
             const auto bits=std::uint32_t(row.nearby)*std::uint32_t(type.units);
@@ -72,7 +120,7 @@ int __cdecl fallback(unsigned flags,const float* desired,unsigned n,const Fallba
     if(!out)return 0;*out={};out->selected=-1;
     if(!(flags&4u))return 1;
     out->enabled=1;
-    if(!desired||n<count||!b||!b->has_weapon||!b->random_float)return 0;
+    if(!desired||n<count||!b||(!b->has_weapon&&!b->native_inventory)||!b->random_float)return 0;
     const auto* ammo=SiN_GetOriginalAmmoDefinitionApi(original_ammo::version,sizeof(original_ammo::Api));
     if(!b->index&&!ammo)return 0;
     for(unsigned i=0;i<count;++i){
@@ -80,7 +128,10 @@ int __cdecl fallback(unsigned flags,const float* desired,unsigned n,const Fallba
         if(b->index){if(!b->index(b->context,ammo_types[i].name,&index))return 0;}
         else index=ammo->index(ammo_types[i].name);
         ++out->index_reads;
-        bool owned=false;if(!b->has_weapon(b->context,index,&owned))return 0;++out->ownership_reads;
+        bool owned=false;
+        if(b->has_weapon){if(!b->has_weapon(b->context,index,&owned))return 0;}
+        else {if(!owned_by(b->native_inventory,index,owned))return 0;++out->ownership_native;}
+        ++out->ownership_reads;
         // FUCOMPP equality excludes exactly zero; NaN remains eligible.
         if(!owned||ammo_types[i].full_weight==0.f||desired[i]==0.f){out->cumulative[i]=-1.f;continue;}
         out->total=float(double(out->total)+double(ammo_types[i].full_weight));
@@ -142,9 +193,6 @@ int __cdecl nearby(void* actor,bool health_only,int debug,AmmoRow* rows,unsigned
         }
     }
     out->completed=1;return 1;
-}
-template<class T>T field(const void* p,unsigned off) noexcept {
-    T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;
 }
 void copy_vec(const void* p,unsigned off,float* out) noexcept {
     std::memcpy(out,static_cast<const unsigned char*>(p)+off,12);
@@ -218,7 +266,13 @@ int __cdecl evaluate(void* actor,unsigned bytes,const void* player,unsigned play
                &out->health_row,&b->health,&out->health))return 0;
     float desired[count];
     for(unsigned i=0;i<count;++i)desired[i]=field<float>(profile,0x398+4*i);
-    if(!ratios(desired,count,out->ammo_rows,count,&b->ammo,&out->ammo))return 0;
+    auto ammo_bindings=b->ammo;auto fallback_bindings=b->fallback;
+    const InventoryView inventory{player,player_bytes,b->entries,b->entry_count,b->extent_context,b->extent};
+    if(b->native_player_inventory){
+        if(!valid_player(inventory))return 0;
+        ammo_bindings.native_inventory=&inventory;fallback_bindings.native_inventory=&inventory;
+    }
+    if(!ratios(desired,count,out->ammo_rows,count,&ammo_bindings,&out->ammo))return 0;
     const auto& s=b->spawn;
     if(!refresh_origin(actor,s,*out))return 0;
     copy_vec(actor,0x2bc,out->next_position);
@@ -227,7 +281,7 @@ int __cdecl evaluate(void* actor,unsigned bytes,const void* player,unsigned play
     if(out->selected_ammo>=0&&!spawn_normal(actor,ammo_types[out->selected_ammo].classname,out->next_position,s,*out))return 0;
     if(out->selected_health<0&&out->selected_ammo<0){
         for(unsigned i=0;i<count;++i)desired[i]=field<float>(profile,0x398+4*i);
-        if(!fallback(field<unsigned>(actor,0xb4),desired,count,&b->fallback,&out->fallback))return 0;
+        if(!fallback(field<unsigned>(actor,0xb4),desired,count,&fallback_bindings,&out->fallback))return 0;
         if(out->fallback.selected>=0){
             if(!refresh_origin(actor,s,*out)||!refresh_origin(actor,s,*out))return 0;
             float pos[3];copy_vec(actor,0x2bc,pos);void* item=nullptr;
@@ -241,7 +295,7 @@ int __cdecl evaluate(void* actor,unsigned bytes,const void* player,unsigned play
     if(!s.remove||!s.remove(s.context,actor))return 0;
     out->removed=out->completed=1;return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate};
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

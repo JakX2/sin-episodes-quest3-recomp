@@ -132,7 +132,7 @@ int main(int argc,char** argv){
     nf.stuck=true;assert(!api->nearby(&nf.actor,false,0,rows,count,&nb,&nr)&&nr.visited==1&&!nr.completed);
     // Complete evaluation through the independently loaded server DLL.
     struct EvalFixture{
-        alignas(4) unsigned char actor[0x3b0]{},master[0x3b0]{},player[0xa0]{};
+        alignas(4) unsigned char actor[0x3b0]{},master[0x3b0]{},player[0x78c]{},weapons[2][0x4ec]{};
         int items[2]{};
         unsigned creations=0,finalizes=0,positions=0,angles=0,owners=0,
             linear=0,angular=0,bounds=0,moves=0,draws=0,removes=0,origin=0,motion=0;
@@ -203,5 +203,42 @@ int main(int argc,char** argv){
     // but fails closed before original's unsafe item dereference.
     seed();EvalFixture::u(ef.actor,0xb4,1);handle=0x4000;ef.null_factory=true;
     assert(!api->evaluate(ef.actor,sizeof(ef.actor),ef.player,sizeof(ef.player),0,&eb,&er)&&!er.master_profile&&er.null_factory==1&&er.factories==1&&er.finalizes==1&&!er.removed&&!er.think_cleared);
+    // Original 222a44d0 walks 48 serial-validated handles and compares
+    // +44c then +450, both direct getters for authenticated weapon classes.
+    seed();EvalFixture::u(ef.player,0,0x224aec3cu);
+    for(unsigned i=0;i<48;++i)EvalFixture::u(ef.player,0x6cc+4*i,0xffffffffu);
+    sin_independent::EntityHandleEntry inv_entries[2]{};
+    for(unsigned i=0;i<2;++i){
+        inv_entries[i].serial=7;inv_entries[i].entity=reinterpret_cast<CBaseEntity*>(ef.weapons[i]);
+        EvalFixture::u(ef.weapons[i],0,i?0x2247a1e4u:0x2247875cu);
+    }
+    EvalFixture::u(ef.player,0x6cc,0x8001u); // stale
+    EvalFixture::u(ef.player,0x6cc+4*4,0x7000u);
+    EvalFixture::u(ef.player,0x6cc+4*47,0x7001u);
+    EvalFixture::u(ef.weapons[0],0x4e4,1);EvalFixture::u(ef.weapons[0],0x4e8,6);
+    EvalFixture::u(ef.weapons[1],0x4e4,3);EvalFixture::u(ef.weapons[1],0x4e8,9);
+    InventoryView iv{ef.player,sizeof(ef.player),inv_entries,2,&ef,
+        [](void* p,void* w,unsigned* n) noexcept ->int{
+            auto& q=*static_cast<EvalFixture*>(p);assert(w==q.weapons[0]||w==q.weapons[1]);*n=sizeof(q.weapons[0]);return 1;
+        }};
+    OwnershipResult own{};
+    assert(api->owns(&iv,1,&own)&&own.found&&own.slot==4&&own.slots==5&&own.weapons==1&&own.primary_reads==1&&!own.secondary_reads);
+    assert(api->owns(&iv,6,&own)&&own.found&&own.slot==4&&own.secondary_reads==1);
+    assert(api->owns(&iv,9,&own)&&own.found&&own.slot==47&&own.slots==48&&own.weapons==2&&own.primary_reads==2&&own.secondary_reads==2);
+    assert(api->owns(&iv,10,&own)&&!own.found&&own.slot==-1&&own.slots==48&&own.weapons==2);
+    EvalFixture::u(ef.weapons[0],0,0xdeadbeefu);
+    assert(!api->owns(&iv,1,&own)&&own.weapons==1&&!own.primary_reads);
+    EvalFixture::u(ef.weapons[0],0,0x2247875cu);
+    // All-in-native player reads within full evaluation, with shared
+    // serial registry and original metadata. No ownership/reserve services.
+    eb.entries=inv_entries;eb.entry_count=2;eb.master_handle=nullptr;eb.extent_context=&ef;eb.extent=iv.extent;
+    eb.native_player_inventory=true;eb.ammo.has_weapon=nullptr;eb.ammo.reserve=nullptr;eb.ammo.max_carry=nullptr;
+    eb.fallback.has_weapon=nullptr;
+    EvalFixture::u(ef.player,0x650,1);
+    assert(api->evaluate(ef.actor,sizeof(ef.actor),ef.player,sizeof(ef.player),0,&eb,&er)&&er.completed&&er.normal_spawns==2&&er.ammo.ownership_native==6&&er.ammo.reserve_native==4&&er.ammo.owned==4&&er.ammo.max_native==8&&er.ammo_rows[0].current==1.f/80.f);
+    // Directly exercise native fallback ownership using the same inventory.
+    FallbackBindings native_fb=fb;native_fb.has_weapon=nullptr;native_fb.native_inventory=&iv;
+    float native_wants[count]{0,0,0,.5f,0,0};ff.draw=.5f;
+    assert(api->fallback(4,native_wants,count,&native_fb,&fr)&&fr.ownership_native==6&&fr.eligible==1&&fr.selected==3);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
