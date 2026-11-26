@@ -839,6 +839,81 @@ int main(int argc,char** argv){
     assert((outf.order==std::vector<unsigned>{900,999,2004,901}));check_queue({});
     assert(!outf.service_locked);
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
+    // Datamap lookup, variant conversion and native field/handler dispatch.
+    auto get_accept=reinterpret_cast<GetServerEntityAcceptInputApi>(GetProcAddress(server,server_entity_accept_input_export));
+    assert(get_accept&&!GetProcAddress(client,server_entity_accept_input_export)&&!get_accept(0,sizeof(ServerEntityAcceptInputApi))&&!get_accept(1,0));
+    const auto* accept=get_accept(1,sizeof(ServerEntityAcceptInputApi));assert(accept);
+    struct InputFixture {
+        F* f;
+        alignas(4) unsigned char map[2][0x10]{},rows[2][8*0x34]{},variant[0x14]{};
+        unsigned handlers{},diagnostics{},last_reason{},last_type{},last_value{},last_id{};
+        ServerNpcActivePostAnimationBindings storage{};
+        ServerEntityAcceptInputBindings bindings{};
+        ServerEntityAcceptInputResult result{};
+    } inp{&f};
+    inp.storage.context=&inp;
+    inp.storage.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<InputFixture*>(p);
+        switch(token){
+        case 0x22534674u:case 0x22534da4u:case 0x22535b28u:*out=q.map[0];*n=0x10;return 1;
+        case 0x224dbd9cu:*out=q.map[1];*n=0x10;return 1;
+        case 100u:case 101u:*out=q.rows[token-100];*n=sizeof(q.rows[0]);return 1;
+        default:return 0;
+        }
+    };
+    inp.bindings.storage=&inp.storage;inp.bindings.context=&inp;
+    inp.bindings.entities.entries=f.slots;inp.bindings.entities.count=3;
+    inp.bindings.name_equal=[](void*,unsigned a,unsigned b,bool* same) noexcept -> int{*same=a==b;return 1;};
+    inp.bindings.handler=[](void* p,void* actor,unsigned token,const ServerEntityInputData* d) noexcept -> int{
+        auto& q=*static_cast<InputFixture*>(p);assert(actor==q.f->actor&&token==0x220320b0u&&d->activator==q.f->weapon&&d->caller==q.f->actor);
+        ++q.handlers;q.last_type=q.f->get<unsigned>(const_cast<unsigned char*>(d->variant),0x10);
+        q.last_value=q.f->get<unsigned>(const_cast<unsigned char*>(d->variant),0);q.last_id=d->output_id;return 1;
+    };
+    inp.bindings.diagnostic=[](void* p,void*,void*,unsigned,unsigned reason,const void*) noexcept -> int{
+        auto& q=*static_cast<InputFixture*>(p);++q.diagnostics;q.last_reason=reason;return 1;
+    };
+    inp.bindings.convert=[](void* p,void* v,unsigned type,bool* ok) noexcept -> int{
+        auto& q=*static_cast<InputFixture*>(p);assert(type==5u&&q.f->get<unsigned>(v,0)==777u);
+        q.f->put(v,0,-42);q.f->put(v,0x10,type);*ok=true;return 1;
+    };
+    f.put(inp.map[0],0,100u);f.put(inp.map[0],4,2);f.put(inp.map[0],0xc,0x224dbd9cu);
+    f.put(inp.map[1],0,101u);f.put(inp.map[1],4,6);
+    auto input_row=[&](unsigned m,unsigned i,unsigned name,unsigned type,unsigned flags,unsigned offset,unsigned handler){
+        auto* row=inp.rows[m]+0x34*i;
+        f.put(row,0,type);f.put(row,8,offset);f.put(row,0x12,static_cast<std::uint16_t>(flags));f.put(row,0x14,name);f.put(row,0x1c,handler);
+    };
+    // Non-input row with same external name must be skipped. Derived input
+    // wins over inherited duplicate; inherited real Wake handler token.
+    input_row(0,0,600u,5u,4u,0x9c,0u);
+    input_row(0,1,601u,1u,12u,0x86c,0u);
+    input_row(1,0,600u,5u,12u,0x9c,0u);
+    input_row(1,1,601u,5u,12u,0x9c,0u);
+    input_row(1,2,0x223db3c4u,0u,8u,0u,0x220320b0u);
+    input_row(1,3,602u,6u,12u,0x870,0u);
+    input_row(1,4,603u,2u,8u,0u,0x220320b0u);
+    input_row(1,5,604u,13u,12u,0x1024,0u);
+    auto run_input=[&](unsigned input,unsigned type,unsigned value){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,value);f.put(inp.variant,0xc,0x7001u);f.put(inp.variant,0x10,type);
+        f.actor[0x1f0]=1;f.actor[0x200]=0;
+        return accept->run(f.actor,sizeof(f.actor),ground_vt,input,f.weapon,f.actor,inp.variant,sizeof(inp.variant),77u,&inp.bindings,&inp.result);
+    };
+    assert(run_input(600u,2u,777u)&&inp.result.accepted&&inp.result.maps==2&&inp.result.row==0&&inp.result.converted&&inp.result.written==4&&f.get<int>(f.actor,0x9c)==-42&&f.actor[0x200]);
+    assert(run_input(601u,5u,17u)&&inp.result.accepted&&inp.result.maps==1&&inp.result.row==1&&inp.result.actual_type==1&&f.get<float>(f.actor,0x86c)==17.f&&f.get<int>(f.actor,0x9c)==-42);
+    const float minus=-3.75f;unsigned minus_word=0;std::memcpy(&minus_word,&minus,4);
+    assert(run_input(600u,1u,minus_word)&&inp.result.accepted&&f.get<int>(f.actor,0x9c)==-3);
+    assert(run_input(602u,5u,256u)&&inp.result.accepted&&inp.result.written==1&&f.actor[0x870]==1);
+    assert(run_input(602u,1u,0u)&&inp.result.accepted&&!f.actor[0x870]);
+    assert(run_input(604u,13u,0u)&&inp.result.accepted&&f.get<unsigned>(f.actor,0x1024)==0x7001u);
+    assert(run_input(0x223db3c4u,2u,777u)&&inp.result.accepted&&inp.result.converted&&inp.handlers==1&&inp.last_type==0&&inp.last_value==0&&inp.last_id==77);
+    assert(run_input(603u,0u,0u)&&inp.result.accepted&&!inp.result.converted&&inp.handlers==2&&inp.last_type==0);
+    assert(run_input(600u,13u,0u)&&inp.result.completed&&!inp.result.accepted&&inp.result.reason==EntityInputBadConversion&&!f.actor[0x200]);
+    assert(run_input(999u,0u,0u)&&inp.result.completed&&!inp.result.accepted&&inp.result.reason==EntityInputUnknown&&inp.diagnostics==2&&!f.actor[0x200]);
+    f.put(inp.map[1],0xc,0x22534da4u);assert(!run_input(999u,0u,0u)&&!inp.result.completed&&!f.actor[0x200]);f.put(inp.map[1],0xc,0u);
+    // Verify the three root getters for all eight known primary tables.
+    for(unsigned vt:{0x2248df04u,0x224954a4u,0x2249aaa4u,0x224a416cu,0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+        assert(accept->run(f.actor,sizeof(f.actor),vt,601u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),77u,&inp.bindings,&inp.result)&&inp.result.completed);
+    }
+    f.actor[0x870]=0;
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
