@@ -10,6 +10,7 @@ extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalS
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerNpcOuterCadenceApi* __cdecl SiN_GetServerNpcOuterCadenceApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_map {
 namespace {
 bool delim(char c) noexcept {return c=='{'||c=='}'||c=='('||c==')'||c=='\'';}
@@ -484,7 +485,7 @@ int __cdecl auto_activate(void* actor,unsigned bytes,const AutoBindings* b,AutoR
     const float now=*b->now;
     if(!std::isfinite(now))return 0;
     o->next_think=static_cast<float>(double(now)+0.2);
-    if(!std::isfinite(o->next_think)||!b->schedule(b->context,actor,o->next_think))return 0;
+    if(!std::isfinite(o->next_think)||!b->schedule(b->schedule_context?b->schedule_context:b->context,actor,o->next_think))return 0;
     o->scheduled=o->completed=1;return 1;
 }
 // CLogicAuto Think original 22178460, virtual +bc.
@@ -529,6 +530,58 @@ int __cdecl auto_think(void* actor,unsigned bytes,const AutoBindings* b,AutoResu
         if(!b->remove||!b->remove(b->context,actor))return 0;o->removed=1;
     }
     o->completed=1;return 1;
+}
+bool auto_primary_valid(void* a,unsigned n,float interval,const AutoPrimaryBindings* b,AutoPrimaryResult* o) noexcept {
+    if(!o)return false;*o={};o->due_tick=o->last_tick=-1;
+    return a&&n>=auto_extent&&entity_vtable(a)==auto_vtable&&b&&b->behavior&&b->behavior->now&&b->cadence&&
+        std::isfinite(interval)&&interval>0&&b->entry_count<=sin_independent::kEntityHandleCapacity&&
+        (!b->entry_count||b->entries)&&sin_independent::EntityHandleView(b->entries,b->entry_count).Resolve(read_field<unsigned>(a,0x378))==a;
+}
+bool auto_tick(void* a,unsigned n,float time,float interval,const AutoPrimaryBindings& b,int* tick=nullptr) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerNpcOuterCadenceApi(1,sizeof(ServerNpcOuterCadenceApi));ServerNpcOuterCadenceResult result{};
+    if(!api||!api->set_default(a,n,time,interval,auto_vtable,b.cadence,&result))return false;
+    if(tick)*tick=result.tick;return true;
+}
+int __cdecl auto_primary_activate(void* a,unsigned n,float interval,const AutoPrimaryBindings* b,AutoPrimaryResult* o) noexcept {
+    if(!auto_primary_valid(a,n,interval,b,o))return 0;
+    struct Route {void* actor;unsigned bytes;float interval;const AutoPrimaryBindings* b;AutoPrimaryResult* o;};
+    Route route{a,n,interval,b,o};
+    auto behavior=*b->behavior;behavior.schedule_context=&route;
+    behavior.schedule=[](void* p,void* actor,float time) noexcept ->int{
+        auto& r=*static_cast<Route*>(p);
+        if(actor!=r.actor||!auto_tick(actor,r.bytes,time,r.interval,*r.b,&r.o->due_tick))return 0;
+        r.o->scheduled=1;return 1;
+    };
+    if(!auto_activate(a,n,&behavior,&o->behavior))return 0;
+    o->native_result=o->completed=1;return 1;
+}
+// Original 22222c30 -> 22222b90 -> 221658e0 -> virtual +bc.
+// CLogicAuto overrides +bc directly; its +8 member is NOT consulted.
+int __cdecl auto_primary_run(void* a,unsigned n,int tick,float interval,const AutoPrimaryBindings* b,AutoPrimaryResult* o) noexcept {
+    if(!auto_primary_valid(a,n,interval,b,o)||read_field<int>(a,0x50)>0)return 0;
+    auto idle=[&](){o->native_result=o->completed=1;return 1;};
+    if(read_field<unsigned>(a,0xb8)&0x400000u){o->no_think=1;return idle();}
+    o->due_tick=read_field<int>(a,0x74);
+    if(o->due_tick<=0||o->due_tick>tick){o->not_due=1;return idle();}
+    const float now=*b->behavior->now;
+    if(!std::isfinite(now)||!b->record||!b->scope)return 0;
+    const double scheduled=double(o->due_tick)*double(interval);
+    o->recorded_time=scheduled>double(now)?now:static_cast<float>(scheduled);
+    if(!std::isfinite(o->recorded_time)||!b->record(b->context,a,tick,o->recorded_time,read_field<int>(a,0x74)))return 0;
+    o->recorded=1;
+    // 2214d870 default clear invokes 2214bf30 twice; reuse same native
+    // setter so the second call sees owner notification changes.
+    if(!auto_tick(a,n,-1.f,interval,*b)||!auto_tick(a,n,-1.f,interval,*b))return 0;
+    if(!b->scope(b->context,a,true))return 0;o->entered=1;
+    o->invoked=1;const bool ok=auto_think(a,n,b->behavior,&o->behavior)!=0;
+    const bool closed=b->scope(b->context,a,false)!=0;o->closed=closed;
+    if(!ok||!closed)return 0;
+    o->last_time=*b->behavior->now;
+    const double last=std::trunc(double(o->last_time)/double(interval)+0.5);
+    if(!std::isfinite(last)||last<INT_MIN||last>INT_MAX)return 0;
+    o->last_tick=static_cast<int>(last);write_field(a,0x34,o->last_tick);
+    o->native_result=(read_field<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
 }
 int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const SpawnBindings* b,SpawnResult* o) noexcept {
     if(!o)return 0;*o={};
@@ -599,6 +652,8 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
             if(ok&&read_field<unsigned>(a,0)==resupply_vtable&&b->resupply){
                 const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));LifecycleResult r{};
                 ok=api&&api->activate(a,n,b->resupply,&r);if(ok)++o->native_activations;
+            }else if(ok&&read_field<unsigned>(a,0)==auto_vtable&&b->logic_auto_primary){
+                AutoPrimaryResult r{};ok=b->logic_auto_interval&&auto_primary_activate(a,n,*b->logic_auto_interval,b->logic_auto_primary,&r);if(ok)++o->native_activations;
             }else if(ok&&read_field<unsigned>(a,0)==auto_vtable&&b->logic_auto){
                 AutoResult r{};ok=auto_activate(a,n,b->logic_auto,&r)!=0;if(ok)++o->native_activations;
             }else if(ok)ok=b->activate&&b->activate(b->context,a);
@@ -789,7 +844,7 @@ int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activa
     else if(!b->refire||!b->refire(b->context,actor,o->refire_delay))return 0;
     o->refire=1;return done();
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

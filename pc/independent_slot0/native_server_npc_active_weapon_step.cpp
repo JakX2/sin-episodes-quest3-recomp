@@ -238,7 +238,7 @@ bool set_tick(void* a,float time,float interval,const ServerNpcOuterCadenceBindi
 }
 int __cdecl cadence_set(void* a,unsigned n,float time,float interval,std::uint32_t vt,const ServerNpcOuterCadenceBindings* b,ServerNpcOuterCadenceResult* out) noexcept {
     if(!out)return 0;*out={};
-    if(!a||!b||!outer_class(vt,n)||!std::isfinite(time)||!std::isfinite(interval)||interval<=0)return 0;
+    if(!a||!b||(!outer_class(vt,n)&&!(vt==sin_port::native_map::auto_vtable&&n>=sin_port::native_map::auto_extent&&rd<unsigned>(a,0)==vt))||!std::isfinite(time)||!std::isfinite(interval)||interval<=0)return 0;
     if(!set_tick(a,time,interval,*b,*out))return 0;out->completed=1;return 1;
 }
 int __cdecl cadence_finish(void* a,unsigned n,float now,float interval,std::uint32_t vt,bool pvs,bool think_called,const ServerNpcOuterCadenceBindings* b,ServerNpcOuterCadenceResult* out) noexcept {

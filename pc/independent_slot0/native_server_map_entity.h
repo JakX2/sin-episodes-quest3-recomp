@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; }
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; }
 namespace sin_port::native_map {
 inline constexpr char export_name[]="SiN_GetServerMapEntityApi";
 inline constexpr unsigned token_capacity=2048;
@@ -99,12 +99,27 @@ struct AutoBindings {
     int (__cdecl *low_violence)(void*,bool*) noexcept;
     int (__cdecl *schedule)(void*,void*,float) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
+    void* schedule_context; // optional native tick scheduler
 };
 struct AutoResult {
     unsigned completed,base_called,scheduled,global_checked,blocked,outputs,queued,removed;
     unsigned load_output,violence_output;
     int global_state,load_type;
     float next_think;
+};
+struct AutoPrimaryBindings {
+    const AutoBindings* behavior;
+    const native_weapon_tables::ServerNpcOuterCadenceBindings* cadence;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    void* context;
+    int (__cdecl *record)(void*,void*,int,float,int) noexcept;
+    int (__cdecl *scope)(void*,void*,bool) noexcept;
+};
+struct AutoPrimaryResult {
+    AutoResult behavior;
+    unsigned completed,native_result,no_think,not_due,recorded,entered,closed,invoked,scheduled;
+    int due_tick,last_tick;
+    float recorded_time,last_time;
 };
 struct SpawnBindings {
     void* context;
@@ -129,6 +144,8 @@ struct SpawnBindings {
     const DispatchBindings* native_dispatch;
     int (__cdecl *virtual_spawn)(void*,void*) noexcept; // original +64, no wrapper
     const AutoBindings* logic_auto;
+    const AutoPrimaryBindings* logic_auto_primary;
+    const float* logic_auto_interval;
 };
 struct SpawnResult {
     unsigned completed,ranked,parent_reads,parents,debugged,spawned,failed,pruned,cleanups,activated,
@@ -209,6 +226,8 @@ struct Api {
     int (__cdecl *auto_think)(void*,unsigned,const AutoBindings*,AutoResult*) noexcept;
     int (__cdecl *register_auto)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_auto)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *auto_primary_activate)(void*,unsigned,float,const AutoPrimaryBindings*,AutoPrimaryResult*) noexcept;
+    int (__cdecl *auto_primary_run)(void*,unsigned,int,float,const AutoPrimaryBindings*,AutoPrimaryResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
