@@ -1251,6 +1251,33 @@ int __cdecl antigen_gas_stop(void* a,unsigned n,const AntigenGasBindings* b,Anti
     if(!o)return 0;*o={};if(!gas_ready(a,n,b)||!gas_stop_impl(a,*b,*o))return 0;
     gas_snapshot(a,*o);o->completed=1;return 1;
 }
+int __cdecl antigen_player_admission(void* player,unsigned bytes,const void* info,unsigned info_bytes,const AntigenRadiusBindings* b,AntigenPlayerAdmissionResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!player||bytes<0x12a2||!info||info_bytes<0x48||!b||!b->native_player_health||
+       b->native_player_health->player!=player||b->native_player_health->bytes>bytes||
+       b->native_player_health->bytes<0x12a2||b->entry_count>sin_independent::kEntityHandleCapacity||
+       (!b->entries&&b->entry_count)||field<unsigned>(info,0x38)!=0x400000u)return 0;
+    const unsigned vt=field<unsigned>(player,0);
+    if(vt!=0x2245222cu&&vt!=0x224aec3cu)return 0;
+    // This adapter is deliberately restricted to the actual antigen gas
+    // caller; the derived player's NPC-specific damage gate is separate.
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    void* gas=registry.Resolve(field<unsigned>(info,0x28));unsigned gas_bytes=0;
+    if(!gas||registry.Resolve(field<unsigned>(info,0x24))!=gas||!b->extent||
+       !b->extent(b->context,gas,&gas_bytes)||gas_bytes<antigen_gas_extent||
+       field<unsigned>(gas,0)!=antigen_gas_vtable||field<int>(gas,0x398)!=1)return 0;
+    o->authenticated=1;
+    // CBasePlayer +d8 = 2213c880 rejects exact antigen flag.
+    // CSE1Player +d8 = 2239e430 calls TakeHealth only if +8c == 0.
+    o->base_player=vt==0x2245222cu;o->dead=field<int>(player,0x8c)!=0;
+    if(!o->base_player&&!o->dead){
+        if(!player_take_health(player,field<float>(info,0x2c),0x400000u,b->native_player_health,&o->healing))return 0;
+        o->heal_called=1;
+    }
+    // Returning false from the virtual admission prevents OnTakeDamage
+    // and TraceAttack from applying normal damage, even on heal refusal.
+    o->damage_rejected=o->completed=1;return 1;
+}
 int __cdecl antigen_radius(void* gas,unsigned bytes,const float* pos,float amount,float radius,const AntigenRadiusBindings* b,AntigenRadiusResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!gas||bytes<antigen_gas_extent||field<unsigned>(gas,0)!=antigen_gas_vtable||
@@ -1334,15 +1361,31 @@ int __cdecl antigen_radius(void* gas,unsigned bytes,const float* pos,float amoun
         // Source is gas (not a player), so the attacker-player/NPC skill
         // scaling branch at 221f3623 does not apply.
         float direction[3];for(unsigned j=0;j<3;++j)direction[j]=float(double(body[j])-o->source[j]);
-        const float length=std::sqrt(float((double(direction[2])*direction[2]+double(direction[1])*direction[1])+double(direction[0])*direction[0]));
-        // VectorNormalizeFast leaf stays in engine force preparation.
-        if(!std::isfinite(length))return 0;
+        // 221f3692 invokes the original vector-normalize import; every
+        // subsequent force, TraceAttack and after-effect sees this vector.
+        if(b->normalize){if(!b->normalize(b->context,direction))return 0;}
+        else{
+            const float length=std::sqrt(float((double(direction[2])*direction[2]+double(direction[1])*direction[1])+double(direction[0])*direction[0]));
+            if(!std::isfinite(length))return 0;
+            if(length>0.f)for(float& v:direction)v=float(double(v)/length);
+        }
+        for(float v:direction)if(!std::isfinite(v))return 0;
         if(!b->prepare_force||!b->prepare_force(b->context,gas,info,o->source,direction,1.f))return 0;++o->force_calls;
+        const bool native=b->native_player_health&&b->native_player_health->player==target;
+        auto admit=[&](){
+            if(!antigen_player_admission(target,n,info,sizeof(info),b,&o->player))return false;
+            ++o->native_admissions;o->native_heals+=o->player.heal_called;o->native_rejected+=o->player.damage_rejected;return true;
+        };
         if(tr.fraction!=1.f&&tr.hit==target){
-            if(!b->clear_multi||!b->clear_multi(b->context)||!b->trace_attack||
-               !b->trace_attack(b->context,target,info,direction,&tr)||!b->apply_multi||!b->apply_multi(b->context))return 0;
-            ++o->trace_attacks;
-        }else{
+            if(!b->clear_multi||!b->clear_multi(b->context))return 0;
+            if(native){if(!admit())return 0;}
+            else{
+                if(!b->trace_attack||!b->trace_attack(b->context,target,info,direction,&tr))return 0;
+                ++o->trace_attacks;
+            }
+            if(!b->apply_multi||!b->apply_multi(b->context))return 0;
+        }else if(native){if(!admit())return 0;}
+        else{
             if(!b->take_damage||!b->take_damage(b->context,target,info))return 0;++o->direct_attacks;
         }
         if(!b->after_effect||!b->after_effect(b->context,target,info,o->source,&tr,direction))return 0;++o->after_effects;
@@ -1503,7 +1546,7 @@ int __cdecl antigen_canister_damage(void* c,unsigned n,const void* info,unsigned
     }
     return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak,&antigen_gas_create,&antigen_gas_think,&antigen_gas_stop,&mega_construct,&mega_touch,&antigen_radius};
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak,&antigen_gas_create,&antigen_gas_think,&antigen_gas_stop,&mega_construct,&mega_touch,&antigen_radius,&antigen_player_admission};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

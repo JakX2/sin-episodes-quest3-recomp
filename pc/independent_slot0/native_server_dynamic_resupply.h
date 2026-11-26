@@ -483,13 +483,18 @@ struct AntigenRadiusBindings {
     // Original 221f3354..221f3441 geometric retry, using existing trace service.
     int (__cdecl *corner_trace)(void*,void*,void*,const float*,const float*,AntigenRadiusTrace*) noexcept;
     int (__cdecl *mass)(void*,void*,float*) noexcept;
-    int (__cdecl *damage_scale)(void*,void*,void*,float*) noexcept;
+    int (__cdecl *normalize)(void*,float*) noexcept; // original VectorNormalize import
     int (__cdecl *prepare_force)(void*,void*,void*,const float*,const float*,float) noexcept;
     int (__cdecl *clear_multi)(void*) noexcept;
     int (__cdecl *trace_attack)(void*,void*,const void*,const float*,const AntigenRadiusTrace*) noexcept;
     int (__cdecl *apply_multi)(void*) noexcept;
     int (__cdecl *take_damage)(void*,void*,const void*) noexcept;
     int (__cdecl *after_effect)(void*,void*,const void*,const float*,const AntigenRadiusTrace*,const float*) noexcept;
+    const PlayerHealthBindings* native_player_health;
+};
+struct AntigenPlayerAdmissionResult {
+    unsigned completed,authenticated,base_player,dead,heal_called,damage_rejected;
+    PlayerHealthResult healing;
 };
 struct AntigenRadiusResult {
     unsigned completed,contents_reads,enumerated,visited,ignored,water_rejected,body_targets,traces,
@@ -497,6 +502,8 @@ struct AntigenRadiusResult {
         mass_reads,amount_rejected,force_calls,trace_attacks,direct_attacks,after_effects;
     bool wet;
     float source[3],last_amount,last_block,half_radius_squared;
+    unsigned native_admissions,native_heals,native_rejected;
+    AntigenPlayerAdmissionResult player;
 };
 struct AntigenGasBindings {
     void* context;
@@ -619,6 +626,7 @@ struct Api {
     int (__cdecl *mega_construct)(void*,unsigned,const VialPickupBindings*,VialPickupResult*) noexcept;
     int (__cdecl *mega_touch)(void*,unsigned,void*,const VialPickupBindings*,VialPickupResult*) noexcept;
     int (__cdecl *antigen_radius)(void*,unsigned,const float*,float,float,const AntigenRadiusBindings*,AntigenRadiusResult*) noexcept;
+    int (__cdecl *antigen_player_admission)(void*,unsigned,const void*,unsigned,const AntigenRadiusBindings*,AntigenPlayerAdmissionResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
