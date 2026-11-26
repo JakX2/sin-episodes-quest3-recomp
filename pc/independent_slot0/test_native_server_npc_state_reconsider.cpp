@@ -4347,7 +4347,8 @@ int main(int argc,char** argv){
         const auto* api=g(1,sizeof(ServerNpcGruntScheduleAcquireApi));assert(api);
         struct AcquireFixture {
             alignas(4) unsigned char a[0x1085]{},owner[0x48]{},behavior[0x18]{},records[3][0x34]{};
-            unsigned warnings=0,last_format=0,special=0,resets=0;int last_id=-1;
+            unsigned warnings=0,last_format=0,special=0,resets=0,changes=0,shared=0,tails=0;
+            int last_id=-1;std::uint8_t guard=0;
             static AcquireFixture& self(void* p){return *static_cast<AcquireFixture*>(p);}
             static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
         } q;
@@ -4393,6 +4394,35 @@ int main(int argc,char** argv){
         ab.actor_vtable=0x2248c514;q.a[0x1084]=1;assert(acquire(23)&&o.translated==118);
         assert(acquire(41)&&o.translated==122);assert(acquire(88)&&o.translated==2);assert(acquire(112)&&o.translated==123);
         assert(!api->acquire(q.a,0x1084,23,10,&b,&o,&route));
+
+        auto rg=reinterpret_cast<GetServerNpcGruntScheduleRequestApi>(GetProcAddress(s,server_npc_grunt_schedule_request_export));
+        assert(rg&&!GetProcAddress(c,server_npc_grunt_schedule_request_export)&&!rg(0,sizeof(ServerNpcGruntScheduleRequestApi))&&!rg(1,0));
+        const auto* request=rg(1,sizeof(ServerNpcGruntScheduleRequestApi));assert(request);
+        ab.actor_vtable=0x2249aaa4;ab.context=&q;ab.conditions=b.schedule.conditions;act.activation_guard=&q.guard;
+        arb.context=&q;arb.shared_select=[](void* x,void*,int* id) noexcept -> int{++AcquireFixture::self(x).shared;*id=16;return 1;};
+        ServerNpcGruntScheduleRequestBindings rb{};rb.acquisition=&b;rb.context=&q;
+        rb.state_changed=[](void* x,void* a,int old,int next) noexcept -> int{auto& q=AcquireFixture::self(x);assert(a==q.a&&old==3&&next==2&&AcquireFixture::rd(a,0x850)==2);++q.changes;return 1;};
+        rb.normal_tail=[](void* x,void*,int* v) noexcept -> int{++AcquireFixture::self(x).tails;*v=0;return 1;};
+        rb.animation_schedule=[](void*,void*,int* v) noexcept -> int{*v=22;return 1;};
+        rb.condition48_schedule=[](void*,void*,int* v) noexcept -> int{*v=0;return 1;};
+        static ServerNpcGruntScheduleRequestResult z;
+        auto choose=[&](){return request->choose(q.a,sizeof(q.a),10,&rb,&z);};
+        auto fail=[&](){return request->failure(q.a,sizeof(q.a),10,&rb,&z);};
+        f.put(q.a,0xc18,0x10db8u);f.put(q.a,0x850,4);f.put(q.a,0x7d0,1u<<31);f.put(q.a,0x79c,123u);
+        assert(choose()&&z.forced_schedule&&z.requested==71&&!z.owner_global_written&&z.deactivated&&!z.marker_used&&AcquireFixture::rd(q.a,0x79c)==123u);
+        f.put(q.a,0x7d0,0u);f.put(q.a,0xc18,0x10db8u);
+        assert(choose()&&z.shared_selected&&z.requested==16&&z.owner_global_written&&z.deactivated&&z.acquisition.schedule_token==10);
+        f.put(q.a,0x850,3);f.put(q.a,0x8a0,0xffffffffu);f.put(q.a,0x7cc,0u);
+        assert(choose()&&z.target_checked&&z.state_changed&&z.highlevel_selected&&z.arbitrated&&z.marker_used&&q.changes==1&&z.acquisition.schedule_token==11&&AcquireFixture::rd(q.a,0x858)==2);
+        q.a[0xb6]=2;assert(choose()&&z.one_shot&&z.requested==111&&!z.arbitrated&&q.a[0xcb0]);
+        q.a[0xb6]=0;f.put(q.a,0x7d4,1u<<6);assert(choose()&&z.requested==104&&!z.arbitrated);f.put(q.a,0x7d4,0u);
+        f.put(q.a,0x7cc,1u<<17);q.a[0x988]=0x40;assert(choose()&&z.animation_called&&z.requested==22);f.put(q.a,0x7cc,0u);q.a[0x988]=0;
+        f.put(q.a,0x7d0,1u<<24);assert(choose()&&z.requested==66);f.put(q.a,0x7d0,0u);
+        f.put(q.a,0x7d4,1u<<10);assert(choose()&&z.requested==108&&z.arbitrated&&!z.tail_called);f.put(q.a,0x7d4,0u);
+        f.put(q.a,0xc18,0x10db8u);f.put(q.a,0x798,11u);f.put(q.a,0x7a0,0);f.put(q.a,0x7b0,9);f.put(q.a,0x7bc,16);
+        assert(fail()&&z.current_schedule==16&&z.current_task==0&&z.failure_reason==9&&z.failure_marker_set&&z.failure_marker_cleared&&z.failure_shared&&z.requested==16&&z.marker_used&&!z.deactivated&&z.acquisition.schedule_token==10);
+        f.put(q.a,0x7bc,0);assert(fail()&&z.failure_shared&&z.requested==79&&z.acquisition.fallback&&!z.deactivated);
+
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

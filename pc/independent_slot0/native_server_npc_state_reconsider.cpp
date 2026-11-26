@@ -6415,6 +6415,164 @@ int __cdecl schedule_acquire_install(void* a,unsigned n,int id,float now,const S
 }
 const ServerNpcGruntScheduleAcquireApi schedule_acquire_api{1,sizeof(ServerNpcGruntScheduleAcquireApi),&schedule_acquire_get,&schedule_acquire,&schedule_acquire_install};
 
+bool schedule_request_init(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
+    if(!o)return false;*o={};o->requested=o->owner_global=o->current_schedule=o->current_task=o->failure_reason=-1;
+    if(!b||!schedule_acquire_init(a,n,now,b->acquisition,&o->acquisition))return false;
+    o->prior_active=read<unsigned>(a,0xc18);o->current_state=read<int>(a,0x850);
+    write<std::uint8_t>(a,0xc30,0);o->marker_cleared=1;return true;
+}
+bool schedule_request_finish(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings& b,ServerNpcGruntScheduleRequestResult& o) noexcept{
+    o.marker_used=read<std::uint8_t>(a,0xc30)!=0;
+    if(!o.marker_used&&read<unsigned>(a,0xc18)){
+        if(!assault_change_active(a,n,0,now,b.acquisition->arbitration->activation,&o.departure))return false;
+        o.deactivated=1;
+    }
+    o.final_active=read<unsigned>(a,0xc18);o.completed=1;return true;
+}
+bool schedule_request_condition(void* a,unsigned n,int id,const ServerNpcGruntScheduleRequestBindings& b,ServerNpcGruntScheduleRequestResult& o,bool& yes) noexcept{
+    ++o.condition_tests;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    if(!api||!api->test(a,n,id,NpcConditionCurrent,&b.acquisition->schedule.conditions,&o.condition))return false;
+    yes=o.condition.value!=0;return true;
+}
+bool schedule_request_highlevel(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings& b,ServerNpcGruntScheduleRequestResult& o) noexcept{
+    if(n<0xde8)return false;
+    const auto& arb=*b.acquisition->arbitration;
+    const auto vt=arb.activation->schedule->admission.actor_vtable;
+    auto selected=[&](int id){o.requested=id;return true;};
+    auto cond=[&](int id,bool& yes){return schedule_request_condition(a,n,id,b,o,yes);};
+    auto arbitrate=[&](bool& won){
+        if(!assault_arbitrate(a,n,now,&arb,&o.selection))return false;
+        o.arbitrated=1;won=o.selection.selected!=0;return true;
+    };
+    auto dispatch=[&](){
+        if(!assault_owner_select(a,n,now,false,&arb,&o.selection))return false;
+        return selected(o.selection.schedule);
+    };
+    bool yes=false;
+    const bool jet=vt==0x2248c514||vt==0x2248e83c||vt==0x2249964c||vt==0x224a4a4c;
+    if(jet){
+        if(!cond(70,yes))return false;if(yes)return selected(105);
+        if(!arbitrate(yes))return false;if(yes)return dispatch();
+        if(read<int>(a,0x850)!=4){
+            int id=0;if(!b.jet_tail||!b.jet_tail(b.context,a,&id)||!id)return false;
+            o.tail_called=1;return selected(id);
+        }
+        // Jet state4 tailcalls the normal selector.
+    }
+    if((read<std::uint8_t>(a,0xb6)&2)&&!read<std::uint8_t>(a,0xcb0)){
+        write<std::uint8_t>(a,0xcb0,1);o.one_shot=1;return selected(111);
+    }
+    for(const int id:{70,76,72}){
+        if(!cond(id,yes))return false;if(yes)return selected(id==70?104:id==76?115:117);
+    }
+    if(!cond(17,yes))return false;
+    if(yes&&(read<std::uint8_t>(a,0x988)&0x40)){
+        int id=0;if(!b.animation_schedule||!b.animation_schedule(b.context,a,&id)||(id!=0&&id!=22))return false;
+        o.animation_called=1;if(id)return selected(id);
+    }
+    if(read<int>(a,0x850)!=4){
+        if(!cond(56,yes))return false;if(yes)return selected(66);
+        const int state=read<int>(a,0x850);
+        if(state!=6&&state!=7){
+            if(!cond(55,yes))return false;if(yes)return selected(109);
+            if(!cond(48,yes))return false;
+            if(yes){
+                int id=0;if(!b.condition48_schedule||!b.condition48_schedule(b.context,a,&id))return false;
+                o.condition48_called=1;if(id)return selected(id);
+            }
+        }
+        if(!arbitrate(yes))return false;if(yes)return dispatch();
+    }
+    // First two native tail gates, then explicit continuation of the unresolved tail.
+    if(!cond(74,yes))return false;if(yes||read<unsigned>(a,0xca4))return selected(108);
+    int id=0;if(!b.normal_tail||!b.normal_tail(b.context,a,&id))return false;o.tail_called=1;
+    return id?selected(id):dispatch();
+}
+int __cdecl schedule_request_choose(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
+    if(!schedule_request_init(a,n,now,b,o))return 0;
+    const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
+    bool yes=false;if(!schedule_request_condition(a,n,63,*b,*o,yes))return 0;
+    if(yes){o->requested=71;o->forced_schedule=1;}
+    else{
+        if(read<int>(a,0x850)==3){
+            o->target_checked=1;
+            if(!assault_owner_target(a,sin_independent::EntityHandleView(ab.entries,ab.count))){
+                if(!schedule_diagnostic(a,ac,o->acquisition,0x223ddeccu,0))return 0;
+                write(a,0x854,now);write(a,0x850,2);write(a,0x858,2);o->state_changed=1;
+                if(!b->state_changed||!b->state_changed(b->context,a,3,2))return 0;
+            }
+        }
+        o->current_state=read<int>(a,0x850);
+        if(o->current_state==4||o->current_state==7){
+            if(!ac.arbitration->shared_select||!ac.arbitration->shared_select(ac.arbitration->context,a,&o->requested))return 0;
+            o->shared_selected=1;
+        }else{
+            if(!schedule_request_highlevel(a,n,now,*b,*o))return 0;o->highlevel_selected=1;
+        }
+        o->owner_global=o->requested;
+        if(o->requested<npc_global_condition_base&&o->requested!=-1&&!schedule_local_id(a,o->requested,ac.owner_schedules,o->owner_global))return 0;
+        write(a,0x79c,o->owner_global);o->owner_global_written=1;
+    }
+    if(!schedule_acquire_impl(a,n,o->requested,now,ac,o->acquisition,o->translation))return 0;o->acquisition.completed=1;
+    return schedule_request_finish(a,n,now,*b,*o)?1:0;
+}
+int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
+    if(!schedule_request_init(a,n,now,b,o))return 0;
+    const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
+    o->current_schedule=o->current_task=0;
+    auto storage=[&](std::uint32_t token,unsigned min,const void*& data){
+        unsigned bytes=0;return token&&ac.schedule.storage&&ac.schedule.storage(ac.schedule.context,token,&data,&bytes)&&data&&bytes>=min;
+    };
+    if(const auto token=read<unsigned>(a,0x798)){
+        const void* record=nullptr;if(!storage(token,12,record))return 0;
+        o->current_schedule=read<int>(record,0);
+        if(o->current_schedule>=npc_global_condition_base){
+            int local=-1;if(!assault_reverse_schedule(a,o->current_schedule,ac.owner_schedules,local))return 0;
+            o->current_schedule=local;
+        }
+    }
+    // Retail reloads current schedule after the reverse-map call.
+    if(const auto token=read<unsigned>(a,0x798)){
+        const void* record=nullptr;if(!storage(token,12,record))return 0;
+        const int index=read<int>(a,0x7a0),count=read<int>(record,8);
+        if(index>=0&&index<count){
+            if(count>65535)return 0;const void* tasks=nullptr;
+            const auto task_array=read<unsigned>(record,4);
+            if(task_array){if(!storage(task_array,8u*static_cast<unsigned>(count),tasks))return 0;o->current_task=read<int>(tasks,8u*index);}
+        }
+    }
+    o->failure_reason=read<int>(a,0x7b0);write<std::uint8_t>(a,0xc30,1);
+    int id=0;bool consumed=false;
+    if(const auto active=read<unsigned>(a,0xc18)){
+        EmbeddedBehaviorIdentity identity{};
+        if(!embedded_behavior_identity(a,n,ab.actor_vtable,ab.actor_token,active,false,identity))return 0;
+        auto* p=static_cast<unsigned char*>(a)+identity.embedded_offset;
+        write<std::uint8_t>(p,8,1);o->failure_marker_set=1;
+        if(identity.behavior_vtable==0x223f6b7c){
+            if(!b->follow_failure||!b->follow_failure(b->context,a,p,o->current_schedule,o->current_task,o->failure_reason,&id))return 0;
+            o->follow_called=1;
+        }else write<std::uint8_t>(p,8,0); // seven verified +5c targets 220cd2e0
+        o->failure_marker_cleared=read<std::uint8_t>(p,8)==0;
+        if(!o->failure_marker_cleared){
+            if(!id){if(!schedule_diagnostic(a,ac,o->acquisition,0x224167a0u,0,active))return 0;}
+            else{
+                if(id>=100000&&id<110000){
+                    if(!ac.arbitration->policy)return 0;int mapped=-1;
+                    if(!schedule_local_id(p,id,ac.arbitration->policy->behavior_schedules,mapped))return 0;id=mapped;o->failure_mapped=1;
+                }
+                consumed=true;
+            }
+        }
+    }
+    if(!consumed){id=read<int>(a,0x7bc);if(!id)id=79;o->failure_shared=1;}
+    o->requested=id;
+    if(!schedule_acquire_impl(a,n,id,now,ac,o->acquisition,o->translation))return 0;o->acquisition.completed=1;
+    return schedule_request_finish(a,n,now,*b,*o)?1:0;
+}
+const ServerNpcGruntScheduleRequestApi schedule_request_api{1,sizeof(ServerNpcGruntScheduleRequestApi),&schedule_request_choose,&schedule_request_failure};
+
+
 
 
 
@@ -8334,4 +8492,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntScheduleAcquireApi=_SiN_GetServerNpcGruntScheduleAcquireApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleAcquireApi* __cdecl SiN_GetServerNpcGruntScheduleAcquireApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntScheduleAcquireApi)?&schedule_acquire_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntScheduleRequestApi=_SiN_GetServerNpcGruntScheduleRequestApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleRequestApi* __cdecl SiN_GetServerNpcGruntScheduleRequestApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntScheduleRequestApi)?&schedule_request_api:nullptr;
 }
