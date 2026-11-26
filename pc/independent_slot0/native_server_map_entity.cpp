@@ -649,6 +649,10 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     constexpr Spec multicompare_keys[]{{"OnEqual",0x394,11},{"OnNotEqual",0x3ac,11},{"IntegerValue",0x3c4,5},{"ShouldComparetoValue",0x3c8,5}};
     constexpr Spec autosave_keys[]{{"NewLevelUnit",0x394,6}};
     constexpr Spec dynamic_keys[]{{"EstimatedTime",0x470,1},{"EstimatedDifficulty",0x474,5},{"EndOfGame",0x478,5}};
+    // CBaseTrigger map 2250b17c, rows 0,2,6..8; derived fields
+    // take priority. Remaining brush/base keys stay owner supplied.
+    constexpr Spec trigger_keys[]{{"filtername",0x40c,2},{"StartDisabled",0x408,6},
+        {"OnStartTouch",0x414,11},{"OnEndTouch",0x42c,11},{"OnEndTouchAll",0x444,11}};
     constexpr Spec navigation_keys[]{{"target",0x90,2}};
     constexpr Spec menu_keys[]{
         {"resumeGamePressed",0x398,11},{"newGamePressed",0x3b0,11},{"optionsPressed",0x3c8,11},
@@ -671,6 +675,9 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
             if(equal_class(name,key)){numbered={nullptr,0x394+4*(i-1),2};spec=&numbered;break;}
             if(equal_class(name,out)){numbered={nullptr,0x3d4+0x18*(i-1),11};spec=&numbered;break;}
         }
+    }
+    if(!spec&&(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)){
+        match(trigger_keys);if(spec)o->base_field=1;
     }
     if(!spec){match(common);if(spec)o->base_field=1;}
     if(!spec)return foreign(name);
