@@ -2007,7 +2007,7 @@ int main(int argc,char** argv){
         struct PrepFixture {
             alignas(4) unsigned char actor[0xdb2]{},damage[0x48]{},desc[0x48]{};
             sin_independent::EntityHandleEntry entries[2]{};
-            unsigned dirty=0x20,calls=0;bool model=true;int selected=7;
+            unsigned dirty=0x20,calls=0,components=0,removed=0;std::uint32_t tokens[2]{71,72};bool model=true;int selected=7;
             static PrepFixture& self(void* p){return *static_cast<PrepFixture*>(p);}
             static unsigned rd(void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+off,4);return v;}
         } q;
@@ -2077,6 +2077,38 @@ int main(int argc,char** argv){
         f.put(q.actor,0x630,7u);f.put(q.actor,0x268,1.f);f.put(q.actor,0x27c,1.f);f.put(q.damage,4,-1.f);
         static ServerNpcGruntDeathSelectedResult sr;
         assert(selected->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),32,&sc,&sr)&&sr.combat.death.event.completed&&sr.combat.signal.state_cleared&&sr.selector.completed&&sr.selector.right_dominant&&sr.selector.selection==0x1a7&&sr.selector.auxiliary==6&&sr.combat.death.prepare.activity==42&&sr.combat.death.prepare.auxiliary==6&&PrepFixture::rd(q.actor,0x894)==6&&q.calls==4);
+        auto gl=reinterpret_cast<GetServerNpcGruntGroundLifeApi>(GetProcAddress(s,server_npc_grunt_ground_life_export));
+        assert(gl&&!GetProcAddress(c,server_npc_grunt_ground_life_export)&&!gl(0,sizeof(ServerNpcGruntGroundLifeApi))&&!gl(1,0));
+        const auto* life=gl(1,sizeof(ServerNpcGruntGroundLifeApi));assert(life);
+        static ServerNpcGruntGroundLifeBindings lc;lc.ground.base=sc;lc.ground.context=&q;
+        lc.ground.loot_enabled=[](void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        auto& rem=lc.ground.base.combat.death.event.prefix.removal;
+        rem.component_storage.context=&q;
+        rem.component_storage.storage=[](void* p,std::uint32_t token,void** data,unsigned* size) noexcept -> int{
+            assert(token==77);*data=PrepFixture::self(p).tokens;*size=8;return 1;};
+        rem.context=&q;
+        rem.component_removed=[](void* p,std::uint32_t token,void*,bool flag) noexcept -> int{
+            auto& q=PrepFixture::self(p);assert(flag&&q.components==2&&token==q.tokens[q.removed]&&PrepFixture::rd(q.actor,0x8c)==1);++q.removed;return 1;};
+        lc.ground.component_death=[](void* p,std::uint32_t token,void* damage) noexcept -> int{
+            auto& q=PrepFixture::self(p);assert(token==q.tokens[q.components]&&damage!=q.damage&&PrepFixture::rd(damage,0x2c)==0x40000000u&&!PrepFixture::rd(q.actor,0x8c));++q.components;
+            if(q.components==1)q.tokens[1]=73;return 1;};
+        auto& dmg=lc.life.combat.alive.chain.detail;
+        auto& pr=dmg.damage.base.chain.prefix;
+        pr.damage.reaction.sentence=sb;
+        dmg.damage.cast_grunt=[](void*,void*,void** v,unsigned* n) noexcept -> int{*v=nullptr;*n=0;return 1;};
+        dmg.bone.index=[](void*,void*,const char*,int* v) noexcept -> int{*v=-1;return 1;};
+        dmg.damage.base.chain.outputs.output=[](void*,void*,unsigned offset) noexcept -> int{assert(offset==0xa78);return 1;};
+        float direction[3]{};lc.life.combat.alive.life.shared_direction=direction;
+        q.actor[0xa44]=0;f.put(q.actor,0x8c,0);f.put(q.actor,0x868,0);f.put(q.actor,0x78,0u);
+        f.put(q.actor,0x890,-1);f.put(q.actor,0x894,0u);q.dirty=0x20;q.calls=0;
+        f.put(q.actor,0x94,2);f.put(q.actor,0x9c,1);f.put(q.actor,0x98,100);f.put(q.actor,0x634,0.f);
+        f.put(q.actor,0xbc,0x10000000u);f.put(q.actor,0x994,33.f);f.put(q.actor,0xe8,0xffffffffu);
+        f.put(q.actor,0xc1c,77u);f.put(q.actor,0xc28,2);f.put(q.actor,0xc18,0u);
+        f.put(q.damage,0x24,0xffffffffu);f.put(q.damage,0x28,0xffffffffu);f.put(q.damage,0x2c,2.f);
+        static ServerNpcGruntGroundLifeResult lr;
+        assert(!life->run(q.actor,sizeof(q.actor),0x9001u,q.damage,sizeof(q.damage),33,&lc,&lr)&&PrepFixture::rd(q.actor,0x9c)==1);
+        assert(life->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),33,&lc,&lr)&&lr.life.completed&&lr.life.native_result==1&&lr.life.death_called&&lr.ground_called&&lr.ground.completed&&lr.ground.base_called&&lr.ground.components==2&&q.components==2&&q.removed==2&&lr.ground.base.selector.selection==0x1a7&&lr.ground.base.combat.death.event.completed&&q.calls==4&&lr.life.alive.alive.life.health_after==-1);
+
 
 
     }

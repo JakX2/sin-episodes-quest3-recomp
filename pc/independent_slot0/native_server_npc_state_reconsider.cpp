@@ -4356,8 +4356,18 @@ int __cdecl jetpack_death_mode(void* a,unsigned n,void* damage,unsigned dn,const
     out->completed=1;return 1;
 }
 struct JetpackDeathRoute {const ServerNpcJetpackDeathModeBindings* bindings;ServerNpcJetpackDeathModeResult* result;};
+int __cdecl grunt_ground_death(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntGroundDeathBindings*,ServerNpcGruntGroundDeathResult*) noexcept;
+struct GroundDeathRoute {
+    const ServerNpcGruntGroundDeathBindings* bindings;
+    ServerNpcGruntGroundDeathResult* result;
+    std::uint32_t handle;
+    unsigned* called;
+};
+bool ground_death_class(std::uint32_t vt) noexcept{
+    return vt==0x224954a4||vt==0x2249aaa4||vt==0x224a416c;
+}
 
-int grunt_life_dispatch_impl(void* a,unsigned n,const void* damage,unsigned dn,float now,const ServerNpcGruntLifeDispatchBindings* b,ServerNpcGruntLifeDispatchResult* out,const JetpackDeathRoute* jet) noexcept{
+int grunt_life_dispatch_impl(void* a,unsigned n,const void* damage,unsigned dn,float now,const ServerNpcGruntLifeDispatchBindings* b,ServerNpcGruntLifeDispatchResult* out,const JetpackDeathRoute* jet,const GroundDeathRoute* ground=nullptr) noexcept{
     if(!out)return 0;
     out->alive.alive.chain.detail.damage.completed=0;out->alive.alive.life={};out->alive.ignition={};out->other={};
     out->scaled_amount=0;out->scale=1;out->initial_state=-1;out->native_result=0;
@@ -4406,6 +4416,14 @@ int grunt_life_dispatch_impl(void* a,unsigned n,const void* damage,unsigned dn,f
                     if(!bound.tail||!bound.tail(bound.context,a,copy,static_cast<unsigned>(jet->result->final_mode),jet->result->branch))return 0;
                     jet->result->tail_called=1;
                 }
+            }else if(ground&&ground_death_class(sb.speech.original_vtable)){
+                // Bind the same class/registry as the accepted damage entry, preserving
+                // the death-specific engine service contexts.
+                auto bound=*ground->bindings;
+                auto& identity=bound.base.combat.death.event.prefix.removal.removal.leave.sentence;
+                identity.entries=sb.entries;identity.count=sb.count;identity.speech.original_vtable=sb.speech.original_vtable;
+                if(!grunt_ground_death(a,n,ground->handle,copy,sizeof(copy),now,&bound,ground->result))return 0;
+                *ground->called=1;
             }else if(!b->death||!b->death(b->context,a,copy,sb.speech.original_vtable))return 0;
             out->death_called=1;
             // All eight +398=22044730 false, +3a8=222a4490 ret.
@@ -4510,6 +4528,19 @@ int __cdecl grunt_ground_death(void* a,unsigned n,std::uint32_t handle,void* dam
     out->base_called=out->completed=1;return 1;
 }
 const ServerNpcGruntGroundDeathApi ground_death_api{1,sizeof(ServerNpcGruntGroundDeathApi),&grunt_ground_death_prepare,&grunt_ground_death};
+int __cdecl grunt_ground_life(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntGroundLifeBindings* b,ServerNpcGruntGroundLifeResult* out) noexcept{
+    if(!out)return 0;out->ground.completed=out->ground.base_called=0;out->ground_called=0;
+    out->jet={};out->jet.sample=out->jet.initial_mode=out->jet.final_mode=-1;
+    if(!b||!a)return 0;
+    const auto& sb=b->life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
+    if(sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries)||
+        sin_independent::EntityHandleView(sb.entries,sb.count).Resolve(handle)!=a)return 0;
+    const JetpackDeathRoute jet{&b->jet,&out->jet};
+    const GroundDeathRoute ground{&b->ground,&out->ground,handle,&out->ground_called};
+    return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->life,&out->life,&jet,&ground);
+}
+const ServerNpcGruntGroundLifeApi ground_life_api{1,sizeof(ServerNpcGruntGroundLifeApi),&grunt_ground_life};
+
 
 
 
@@ -5089,4 +5120,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntGroundDeathApi=_SiN_GetServerNpcGruntGroundDeathApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGroundDeathApi* __cdecl SiN_GetServerNpcGruntGroundDeathApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGroundDeathApi)?&ground_death_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntGroundLifeApi=_SiN_GetServerNpcGruntGroundLifeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGroundLifeApi* __cdecl SiN_GetServerNpcGruntGroundLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGroundLifeApi)?&ground_life_api:nullptr;
 }
