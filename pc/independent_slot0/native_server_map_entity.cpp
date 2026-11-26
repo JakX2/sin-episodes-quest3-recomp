@@ -2,6 +2,8 @@
 #include "native_server_npc_active_weapon_step.h"
 #include <cmath>
 #include "server_fixed_difficulty_service.h"
+int __cdecl SinPublishCampaignEventInternal(void*,const sin_port::fixed_service::NativeTriggerEvent*,
+    int (__cdecl *)(void*,int*) noexcept,void*,const unsigned char*) noexcept;
 extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::fixed_service::Api* __cdecl SiN_GetFixedDifficultyApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
@@ -845,7 +847,21 @@ bool campaign_name(void* a,const CampaignTriggerBindings& b,const char*& name) n
 }
 // 222b63b0 / 222b64d0. Owner event operations are explicit; original
 // CreateEvent null skips every setter and still permits removal.
-bool campaign_event(void* a,const char* name,int descriptor,float value,int decision,const CampaignTriggerBindings& b,CampaignTriggerResult& o) noexcept {
+bool campaign_event(void* a,const char* name,int descriptor,float value,int decision,const CampaignTriggerBindings& b,CampaignTriggerResult& o,
+    void* manager,int* publication) noexcept {
+    if(manager){
+        namespace fs=sin_port::fixed_service;
+        const fs::NativeTriggerEvent event{o.dynamic?fs::TriggerDynamicEvent:fs::TriggerGameEvent,
+            descriptor,-1,-1,decision,value,0,0,0,name};
+        o.event_attempted=1;o.descriptor=descriptor;
+        *publication=SinPublishCampaignEventInternal(manager,&event,b.owner_word,b.context,
+            o.dynamic?static_cast<const unsigned char*>(a)+0x2bc:nullptr);
+        if(*publication==fs::EventUnavailable){o.event_unavailable=1;return true;}
+        if(*publication==fs::EventFired){o.event_fired=1;return true;}
+        // Ordinary FireEvent false consumes the event. The original trigger
+        // does not retry publication; continue its post-event lifecycle.
+        return *publication==fs::EventFireReturnedFalse;
+    }
     if(!b.create_event)return false;
     void* event=nullptr;o.event_attempted=1;o.descriptor=descriptor;
     if(!b.create_event(b.context,o.dynamic?"dynamic_difficulty":"game",false,&event))return false;
@@ -875,7 +891,7 @@ bool campaign_remove(void* a,const CampaignTriggerBindings& b,CampaignTriggerRes
     }else if(!b.remove||!b.remove(b.context,a))return false;
     o.removed=1;return true;
 }
-int __cdecl campaign_trigger_spawn(void* a,unsigned n,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
+int campaign_trigger_spawn_impl(void* a,unsigned n,const CampaignTriggerBindings* b,CampaignTriggerResult* o,void* manager,int* publication) noexcept {
     if(!campaign_valid(a,n,b,o)||!b->spawn_gate)return 0;
     bool suppress=false;if(!b->spawn_gate(b->context,&suppress))return 0;
     if(suppress){o->spawn_suppressed=1;if(!campaign_remove(a,*b,*o))return 0;}
@@ -890,12 +906,12 @@ int __cdecl campaign_trigger_spawn(void* a,unsigned n,const CampaignTriggerBindi
                 o->warned=1;
             }
         }else if(read_field<unsigned char>(a,0x120)&8u){
-            if(!campaign_event(a,name,11,0,0,*b,*o))return 0;
+            if(!campaign_event(a,name,11,0,0,*b,*o,manager,publication))return 0;
         }
     }
     o->completed=1;return 1;
 }
-int __cdecl campaign_trigger_touch(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
+int campaign_trigger_touch_impl(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o,void* manager,int* publication) noexcept {
     if(!campaign_valid(a,n,b,o)||!other||!b->is_player)return 0;
     bool player=false;if(!b->is_player(b->context,other,&player))return 0;
     if(!player){o->nonplayer=o->completed=1;return 1;}
@@ -923,7 +939,7 @@ int __cdecl campaign_trigger_touch(void* a,unsigned n,void* other,const Campaign
         value=read_field<float>(a,0x470);decision=read_field<int>(a,0x474);
     }
     if(fixed&&!std::isfinite(value))return 0;
-    if(!campaign_event(a,name,o->dynamic?0:12,value,decision,*b,*o))return 0;
+    if(!campaign_event(a,name,o->dynamic?0:12,value,decision,*b,*o,manager,publication))return 0;
     // EndOfGame is read after the event helper, and only its LOW BYTE.
     if(o->dynamic){
         const unsigned end=read_field<unsigned char>(a,0x478);
@@ -944,6 +960,12 @@ int __cdecl campaign_trigger_touch(void* a,unsigned n,void* other,const Campaign
     }
     if(!campaign_remove(a,*b,*o))return 0;
     o->completed=1;return 1;
+}
+int __cdecl campaign_trigger_spawn(void* a,unsigned n,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
+    return campaign_trigger_spawn_impl(a,n,b,o,nullptr,nullptr);
+}
+int __cdecl campaign_trigger_touch(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
+    return campaign_trigger_touch_impl(a,n,other,b,o,nullptr,nullptr);
 }
 bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) noexcept {
     const auto vt=read_field<unsigned>(a,0);
@@ -2751,4 +2773,23 @@ const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
 extern "C" __declspec(dllexport) const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t v,std::uint32_t n) noexcept {
     using namespace sin_port::native_map;return v==1&&n==sizeof(sin_port::native_map::Api)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_SpawnCampaignTriggerWithEngineEvents=_SiN_SpawnCampaignTriggerWithEngineEvents")
+extern "C" int __cdecl SiN_SpawnCampaignTriggerWithEngineEvents(void* a,unsigned n,
+    const sin_port::native_map::CampaignTriggerBindings* b,void* manager,
+    sin_port::native_map::CampaignTriggerResult* o,int* publication) noexcept {
+    if(publication)*publication=sin_port::native_map::engine_event_not_attempted;
+    if(o)*o={};
+    if(!manager||!publication)return 0;
+    return sin_port::native_map::campaign_trigger_spawn_impl(a,n,b,o,manager,publication);
+}
+#pragma comment(linker,"/EXPORT:SiN_TouchCampaignTriggerWithEngineEvents=_SiN_TouchCampaignTriggerWithEngineEvents")
+extern "C" int __cdecl SiN_TouchCampaignTriggerWithEngineEvents(void* a,unsigned n,void* other,
+    const sin_port::native_map::CampaignTriggerBindings* b,void* manager,
+    sin_port::native_map::CampaignTriggerResult* o,int* publication) noexcept {
+    if(publication)*publication=sin_port::native_map::engine_event_not_attempted;
+    if(o)*o={};
+    if(!manager||!publication)return 0;
+    return sin_port::native_map::campaign_trigger_touch_impl(a,n,other,b,o,manager,publication);
 }

@@ -137,3 +137,86 @@
         reset(257);
         assert(!api->campaign_trigger_touch(a,dynamic_trigger_extent,&f.other,&b,&r)&&f.order=="P"&&!queue.count);
     }
+
+// Direct real-slot route from original-layout trigger storage, with no
+// hosted Create/Set/Fire callbacks. Synthetic manager owns its event.
+    {
+        namespace fs=sin_port::fixed_service;
+        struct Event {
+            virtual ~Event()=default;
+            virtual void s1(){} virtual void s2(){} virtual void s3(){} virtual void s4(){}
+            virtual void s5(){} virtual void s6(){} virtual void s7(){} virtual void s8(){} virtual void s9(){}
+            virtual void integer(const char* key,int value){
+                order+=key;order+=';';if(!std::strcmp(key,"owner"))owner=value;
+                if(!std::strcmp(key,"descriptor"))descriptor=value;
+                if(!std::strcmp(key,"subject"))assert(value==-1);
+                if(fail)throw 1;
+            }
+            virtual void real(const char* key,float value){
+                order+=key;order+=';';if(!std::strcmp(key,"x"))x=value;
+            }
+            virtual void string(const char* key,const char* value){order+=key;order+=';';name=value;}
+            std::string order,name;int owner=0,descriptor=0;float x=0;bool fail=false;
+        };
+        struct Manager {
+            virtual ~Manager()=default;
+            virtual void s1(){} virtual void s2(){} virtual void s3(){} virtual void s4(){} virtual void s5(){}
+            virtual void* create(const char* name,bool force){
+                assert(!force&&!live);++creates;kind=name;
+                if(unavailable)return nullptr;
+                live=true;event.order.clear();return &event;
+            }
+            virtual bool fire(void* object,bool no_broadcast){
+                assert(live&&object==&event&&!no_broadcast);live=false;++fires;
+                if(uncertain)throw 2;return fire_ok;
+            }
+            virtual void s8(){} virtual void s9(){}
+            virtual void release(void* object){assert(live&&object==&event);live=false;++frees;}
+            Event event;std::string kind;unsigned creates=0,fires=0,frees=0;
+            bool live=false,unavailable=false,fire_ok=true,uncertain=false;
+        };
+        struct Fixture {
+            alignas(4) unsigned char storage[dynamic_trigger_extent]{};
+            Manager manager;unsigned player=0,owners=0,removes=0,ends=0;bool owner_ok=true;
+        } f;
+        const auto spawn=reinterpret_cast<EngineTriggerSpawn>(GetProcAddress(server,engine_trigger_spawn_export));
+        const auto touch=reinterpret_cast<EngineTriggerTouch>(GetProcAddress(server,engine_trigger_touch_export));
+        assert(spawn&&touch&&!GetProcAddress(client,engine_trigger_spawn_export)&&!GetProcAddress(client,engine_trigger_touch_export));
+        CampaignTriggerBindings b{};b.context=&f;
+        b.spawn_gate=[](void*,bool* gate) noexcept ->int{*gate=false;return 1;};
+        b.base_spawn=[](void*,void* a) noexcept ->int{static_cast<unsigned char*>(a)[0x120]=8;return 1;};
+        b.string_text=[](void*,unsigned,const char** name,unsigned* bytes) noexcept ->int{*name="checkpoint";*bytes=11;return 1;};
+        b.is_player=[](void* p,void* other,bool* yes) noexcept ->int{*yes=other==&static_cast<Fixture*>(p)->player;return 1;};
+        b.owner_word=[](void* p,int* owner) noexcept ->int{
+            auto& f=*static_cast<Fixture*>(p);assert(f.manager.live&&f.manager.event.order.empty());++f.owners;
+            *owner=0x5002;float x=7.f;std::memcpy(f.storage+0x2bc,&x,4);return f.owner_ok;
+        };
+        b.end_game=[](void* p) noexcept ->int{++static_cast<Fixture*>(p)->ends;return 1;};
+        b.remove=[](void* p,void*) noexcept ->int{++static_cast<Fixture*>(p)->removes;return 1;};
+        CampaignTriggerResult result{};int publication=99;auto* a=f.storage;
+        put(a,0,dynamic_trigger_vtable);put(a,0xc0,1u);put(a,0x478,1u);
+        assert(!touch(a,dynamic_trigger_extent,&f.player,&b,nullptr,&result,&publication)&&publication==engine_event_not_attempted);
+        assert(touch(a,dynamic_trigger_extent,&f.player,&b,&f.manager,&result,&publication)&&publication==fs::EventFired);
+        assert(result.event_fired&&result.manager_signaled&&result.removed&&f.owners==1&&f.removes==1&&f.ends==1);
+        assert(f.manager.kind=="dynamic_difficulty"&&f.manager.event.owner==0x5002&&f.manager.event.x==7.f);
+        assert(f.manager.event.order=="descriptor;owner;subject;name;decision;value;x;y;z;"&&f.manager.event.name=="checkpoint");
+        f.manager.unavailable=true;
+        assert(touch(a,dynamic_trigger_extent,&f.player,&b,&f.manager,&result,&publication)&&publication==fs::EventUnavailable&&result.event_unavailable&&result.removed);
+        assert(f.owners==1&&f.removes==2&&f.ends==2&&!f.manager.frees);
+        f.manager.unavailable=false;f.owner_ok=false;
+        assert(!touch(a,dynamic_trigger_extent,&f.player,&b,&f.manager,&result,&publication)&&publication==fs::EventDiscarded);
+        assert(f.owners==2&&f.manager.frees==1&&f.removes==2&&!f.manager.live);
+        f.owner_ok=true;f.manager.event.fail=true;
+        assert(!touch(a,dynamic_trigger_extent,&f.player,&b,&f.manager,&result,&publication)&&publication==fs::EventDiscarded&&f.manager.frees==2);
+        f.manager.event.fail=false;f.manager.fire_ok=false;
+        assert(touch(a,dynamic_trigger_extent,&f.player,&b,&f.manager,&result,&publication)&&publication==fs::EventFireReturnedFalse);
+        assert(!result.event_fired&&result.removed&&f.removes==3&&f.ends==3&&f.manager.frees==2);
+        f.manager.uncertain=true;
+        assert(!touch(a,dynamic_trigger_extent,&f.player,&b,&f.manager,&result,&publication)&&publication==fs::EventFireUncertain&&f.removes==3&&f.manager.frees==2);
+        f.manager.uncertain=false;f.manager.fire_ok=true;put(a,0,secret_trigger_vtable);
+        assert(spawn(a,secret_trigger_extent,&b,&f.manager,&result,&publication)&&publication==fs::EventFired&&f.manager.event.descriptor==11);
+        assert(f.manager.kind=="game"&&f.manager.event.owner==-1&&f.manager.event.order=="descriptor;owner;subject;name;");
+        assert(touch(a,secret_trigger_extent,&f.player,&b,&f.manager,&result,&publication)&&publication==fs::EventFired&&f.manager.event.descriptor==12&&f.removes==4);
+        const unsigned creates=f.manager.creates;
+        assert(touch(a,secret_trigger_extent,a,&b,&f.manager,&result,&publication)&&result.nonplayer&&publication==engine_event_not_attempted&&f.manager.creates==creates);
+    }
