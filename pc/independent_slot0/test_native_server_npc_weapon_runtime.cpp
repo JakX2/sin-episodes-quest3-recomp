@@ -2024,6 +2024,8 @@ int main(int argc,char** argv){
         unsigned effect_centers{};int effect_kind{};
         int alternate_sample{},alternate_mode{};
         bool pickup_null{},pickup_rule{};
+        unsigned elite_randoms{},elite_traces{},elite_refreshes{};
+        bool elite_trace_fail{};
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -2858,6 +2860,81 @@ int main(int argc,char** argv){
         assert(hd.death_order==expected_effect);
     }
     hd_services.jet_think=nullptr;
+    // Elite's original effect block no longer needs a single hosted
+    // "effects" callback. Both saved origins, six ordered random draws
+    // per iteration, trace gating and scope closure are native.
+    ServerNpcGruntEliteEffectBindings elite_native{};elite_native.context=&hd;
+    elite_native.refresh_origin=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);
+        ++q.elite_refreshes;q.death_order.push_back(72);
+        if(q.elite_refreshes==1){q.f->put(a,0x2bc,10.f);q.f->put(a,0x2c0,20.f);q.f->put(a,0x2c4,30.f);}
+        else {q.f->put(a,0x2bc,999.f);q.f->put(a,0x354,5.f);q.f->put(a,0x358,90.f);q.f->put(a,0x35c,0.f);q.f->put(a,0xb8,q.f->get<unsigned>(a,0xb8)&~0x800u);}
+        return 1;
+    };
+    elite_native.burst=[](void* p,const float* pos,const float* ang,void* owner,void* inflictor,int mag,int rad,unsigned flags,float extra) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        assert(pos[0]==10.f&&pos[1]==20.f&&pos[2]==80.f&&ang[0]==5.f&&ang[1]==90.f&&ang[2]==0.f);
+        assert(owner==q.f->actor&&inflictor==owner&&mag==128&&rad==128&&flags==0x501u&&extra==0.f);
+        q.death_order.push_back(73);return 1;
+    };
+    elite_native.light=[](void* p,const float* pos,int r,int g,int b,int exp,float radius,float time,float decay) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(pos[0]==10.f&&pos[1]==20.f&&pos[2]==30.f&&r==255&&g==180&&b==100&&!exp&&radius==100.f&&time==.1f&&!decay);
+        q.death_order.push_back(74);return 1;
+    };
+    elite_native.random_float=[](void* p,float lo,float hi,float* sample) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);const unsigned j=q.elite_randoms++%6;
+        const float values[]{.25f,-.5f,-.75f,.5f,10.f,-20.f};
+        assert(lo==(j<4?-1.f:-50.f)&&hi==(j<4?1.f:50.f));
+        *sample=values[j];q.death_order.push_back(75);return 1;
+    };
+    elite_native.upward=[](void* p,const float* pos,const float* dir,int kind,int count,int scale) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(pos[0]==10.f&&pos[2]==80.f&&dir[0]==-.5f&&dir[1]==.25f&&dir[2]==10.f&&kind==247&&count==6&&scale==255);
+        q.death_order.push_back(76);return 1;
+    };
+    elite_native.downward=[](void* p,const float* pos,const float* dir,int kind,int flag) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(pos[0]==10.f&&pos[2]==30.f&&dir[0]==.5f&&dir[1]==-.75f&&dir[2]==-10.f&&kind==247&&flag==1);
+        q.death_order.push_back(77);return 1;
+    };
+    elite_native.trace=[](void* p,void* a,const float* start,const float* end,unsigned mask,int group,ServerNpcGruntEliteEffectTrace* tr) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&start[0]==10.f&&start[1]==20.f&&start[2]==80.f&&end[0]==-10.f&&end[1]==30.f&&end[2]==-20.f&&mask==0x4003u&&!group);
+        q.death_order.push_back(78);++q.elite_traces;if(q.elite_trace_fail)return 0;
+        std::memcpy(tr->start,start,12);std::memcpy(tr->end,end,12);tr->fraction=q.elite_traces%2?.5f:1.f;return 1;
+    };
+    elite_native.debug_enabled=[](void* p,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);*yes=q.elite_traces%2!=0;q.death_order.push_back(79);return 1;
+    };
+    elite_native.debug_trace=[](void* p,const float* start,const float* end,int r,int g,int b,int no_depth,float duration) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(start[2]==80.f&&end[2]==-20.f&&r==255&&!g&&!b&&no_depth==1&&duration==-1.f);q.death_order.push_back(80);return 1;
+    };
+    elite_native.impact=[](void* p,const ServerNpcGruntEliteEffectTrace* tr,int kind) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(tr->fraction==.5f&&kind==247);q.death_order.push_back(81);return 1;
+    };
+    elite.native_effects=&elite_native;elite.effects=nullptr;
+    for(bool fail:{false,true}){
+        reset_subclass(0x2248df04u);f.put(f.actor,0xc38,4);f.actor[0xbf]&=static_cast<unsigned char>(~8u);
+        // The damage route may refresh origin before Event_Killed; open
+        // the original temporary scope first, then mark the effect origin stale.
+        const auto begin_elite=elite.effect_begin;
+        elite.effect_begin=[](void* p,void* a) noexcept -> int{
+            auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&!q.f->get<int>(a,0xc38)&&!q.f->get<int>(a,0x8c));
+            q.f->put(a,0xb8,q.f->get<unsigned>(a,0xb8)|0x800u);q.death_order.push_back(10);return 1;
+        };
+        hd.elite_refreshes=hd.elite_randoms=hd.elite_traces=0;hd.elite_trace_fail=fail;
+        const bool ok=hd_run(0,0x2248df04u)!=0;assert(ok!=fail);elite.effect_begin=begin_elite;
+        const auto& eo=hd_subclass_result.elite;
+        assert(eo.effect_opened&&eo.effect_closed&&eo.effect_refreshes==2&&eo.effect_burst&&eo.effect_light);
+        std::vector<unsigned> expected_elite{10,72,72,73,74};
+        if(fail){
+            expected_elite.insert(expected_elite.end(),{75,75,76,75,75,77,75,75,78,13});
+            assert(!eo.native_effects_completed&&!eo.base_called&&!eo.effect_iterations&&eo.effect_randoms==6&&!eo.effect_traces);
+        }else{
+            for(unsigned i=0;i<6;++i){expected_elite.insert(expected_elite.end(),{75,75,76,75,75,77,75,75,78,79});if(!(i%2))expected_elite.insert(expected_elite.end(),{80,81});}
+            expected_elite.insert(expected_elite.end(),{1,2,3,4,5,6,12,13});
+            assert(eo.native_effects_completed&&eo.completed&&eo.base_called&&eo.effect_iterations==6&&eo.effect_randoms==36&&eo.effect_upward==6&&eo.effect_downward==6&&eo.effect_traces==6&&eo.effect_debug==3&&eo.effect_impacts==3);
+        }
+        assert(hd.death_order==expected_elite);
+    }
+    elite.native_effects=nullptr;
     script_slots[0].serial=0;script_slots[0].entity=nullptr;
     std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
     assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);

@@ -8585,6 +8585,60 @@ int __cdecl elite_post(void* a,unsigned n,const ServerNpcGruntEliteDeathBindings
     if(!b||!elite_post_impl(a,n,*b,*out))return 0;
     out->completed=1;return 1;
 }
+bool elite_native_effects(void* a,unsigned n,const ServerNpcGruntEliteEffectBindings& b,ServerNpcGruntEliteDeathResult& o) noexcept{
+    if(!a||n<0x360||!b.burst||!b.light||!b.random_float||!b.upward||!b.downward||!b.trace||!b.debug_enabled)return false;
+    auto refresh=[&](){
+        if(!(read<unsigned>(a,0xb8)&0x800u))return true;
+        if(!b.refresh_origin||!b.refresh_origin(b.context,a))return false;
+        ++o.effect_refreshes;return true;
+    };
+    if(!refresh())return false;
+    for(unsigned i=0;i<3;++i)o.effect_origin[i]=o.effect_upper[i]=read<float>(a,0x2bc+4*i);
+    o.effect_upper[2]=static_cast<float>(double(o.effect_upper[2])+50.f);
+    // The two origins are snapshots taken before the second refresh.
+    // Angles are read live after it, as in 22355044.
+    if(!refresh())return false;
+    for(unsigned i=0;i<3;++i)o.effect_angles[i]=read<float>(a,0x354+4*i);
+    if(!finite_vec(o.effect_origin)||!finite_vec(o.effect_upper)||!finite_vec(o.effect_angles))return false;
+    if(!b.burst(b.context,o.effect_upper,o.effect_angles,a,a,128,128,0x501u,0.f))return false;
+    o.effect_burst=1;
+    if(!b.light(b.context,o.effect_origin,255,180,100,0,100.f,.1f,0.f))return false;
+    o.effect_light=1;
+    auto sample=[&](float lo,float hi,float& v){
+        if(!b.random_float(b.context,lo,hi,&v)||!std::isfinite(v)||v<lo||v>hi)return false;
+        ++o.effect_randoms;return true;
+    };
+    for(unsigned i=0;i<6;++i){
+        float up[3]{0.f,0.f,10.f},down[3]{0.f,0.f,-10.f},dx=0,dy=0;
+        // Original first draw is Y and second is X, in both vectors.
+        if(!sample(-1.f,1.f,up[1])||!sample(-1.f,1.f,up[0])||
+           !b.upward(b.context,o.effect_upper,up,247,6,255))return false;
+        ++o.effect_upward;
+        if(!sample(-1.f,1.f,down[1])||!sample(-1.f,1.f,down[0])||
+           !b.downward(b.context,o.effect_origin,down,247,1))return false;
+        ++o.effect_downward;
+        if(!sample(-50.f,50.f,dy)||!sample(-50.f,50.f,dx))return false;
+        float end[3]{static_cast<float>(double(o.effect_upper[0])+dx),
+            static_cast<float>(double(o.effect_upper[1])+dy),
+            static_cast<float>(double(o.effect_upper[2])-100.f)};
+        ServerNpcGruntEliteEffectTrace tr{};
+        if(!finite_vec(end)||!b.trace(b.context,a,o.effect_upper,end,0x4003u,0,&tr))return false;
+        ++o.effect_traces;
+        bool debug=false;if(!b.debug_enabled(b.context,&debug))return false;
+        if(debug){
+            if(!finite_vec(tr.start)||!finite_vec(tr.end)||!b.debug_trace||
+               !b.debug_trace(b.context,tr.start,tr.end,255,0,0,1,-1.f))return false;
+            ++o.effect_debug;
+        }
+        // x87 comparison is inequality OR unordered; only exact 1 skips.
+        if(tr.fraction!=1.f){
+            if(!b.impact||!b.impact(b.context,&tr,247))return false;
+            ++o.effect_impacts;
+        }
+        ++o.effect_iterations;
+    }
+    o.native_effects_completed=1;return true;
+}
 int elite_death(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntSentenceBindings& sb,const GroundDeathRoute& ground) noexcept{
     if(!ground.elite||!a||n<0xfe0||sb.speech.original_vtable!=0x2248df04)return 0;
     auto& out=*ground.elite->result;out={};
@@ -8592,7 +8646,7 @@ int elite_death(void* a,unsigned n,void* damage,unsigned dn,float now,const Serv
     out.prior_grenades=read<int>(a,0xc38);write(a,0xc38,0);out.grenades_cleared=1;
     if(!b.effect_begin||!b.effect_begin(b.context,a))return 0;
     out.effect_opened=1;
-    bool ok=b.effects&&b.effects(b.context,a);out.effects_called=ok;
+    bool ok=b.native_effects?elite_native_effects(a,n,*b.native_effects,out):(b.effects&&b.effects(b.context,a));out.effects_called=ok;
     if(ok){
         auto bound=*ground.bindings;
         auto& identity=bound.base.combat.death.event.prefix.removal.removal.leave.sentence;
