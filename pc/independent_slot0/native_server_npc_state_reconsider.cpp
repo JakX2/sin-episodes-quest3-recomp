@@ -8852,6 +8852,13 @@ const ServerNpcEnemyStateApi enemy_state_api{1,sizeof(ServerNpcEnemyStateApi),&s
 const ServerNpcStateApi api{1,sizeof(ServerNpcStateApi),&should_reconsider,&choose_ideal,&apply};
 }
 // Synchronous internal entry, not a new retail engine virtual or ABI.
+int grunt_schedule_line_jet_internal(void* a,unsigned n,float now,const ServerNpcGruntJetSelectorBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntJetSelectorResult* jt,ServerNpcGruntJetSelectorResult* js) noexcept{
+    if(!tail||!combat||!jt||!js)return 0;*tail={};*combat={};*jt={};*js={};
+    if(!b||!b->combat||!b->combat->tail)return 0;
+    const auto* scene=line?line->scene:nullptr;const auto* p=scene?scene->policy:nullptr;
+    const JetSelectorRoute jet{b,jt,js};const CombatSelectorRoute route{b->combat,combat,&jet};
+    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route,p?p->memory:nullptr,p,scene,line);
+}
 int grunt_schedule_line_failure_internal(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o) noexcept{
     return schedule_request_failure_impl(a,n,now,b,o,line);
 }

@@ -40,6 +40,8 @@ struct NativeRequestRoute {
     const ServerNpcGruntSpecialCombatBindings* selector;
     const ServerNpcGruntScheduleLineServices* line;
     ServerNpcNativeRequestSchedulerResult* result;
+    const ServerNpcGruntJetSelectorBindings* jet=nullptr;
+    ServerNpcNativeJetRequestSchedulerResult* jet_result=nullptr;
 };
 struct GatherRoute {
     const ServerNpcGruntGatherConditionsBindings* bindings;
@@ -185,9 +187,12 @@ struct Call {
     bool pick(bool failed) noexcept {
         if(request){
             auto& r=*request->result;const auto* api=SiN_GetServerNpcGruntScheduleLineApi(1,sizeof(ServerNpcGruntScheduleLineApi));
-            if(!api||!request->selector||!request->selector->combat||!request->selector->combat->tail)return false;
+            const auto* cb=request->jet?request->jet->combat:request->selector?request->selector->combat:nullptr;
+            if(!api||!cb||!cb->tail)return false;
             ++r.requests;if(failed)++r.failure_requests;
-            const int ok=failed?grunt_schedule_line_failure_internal(a,bytes,now,request->selector->combat->tail->request,request->line,&r.request):
+            if(request->jet_result){request->jet_result->tail={};request->jet_result->special={};}
+            const int ok=failed?grunt_schedule_line_failure_internal(a,bytes,now,cb->tail->request,request->line,&r.request):
+                request->jet?grunt_schedule_line_jet_internal(a,bytes,now,request->jet,request->line,&r.request,&r.tail,&r.combat,&request->jet_result->tail,&request->jet_result->special):
                 api->choose_normal(a,bytes,now,request->selector,request->line,&r.request,&r.tail,&r.combat,&r.special);
             if(!ok)return false;
             // Report the same installed descriptor in the legacy maintenance result; do not retranslate.
@@ -368,10 +373,14 @@ struct NativeRequestSession {
     ServerNpcGruntSelectorTailBindings tail{};
     ServerNpcGruntCombatSelectorBindings combat{};
     ServerNpcGruntSpecialCombatBindings selector{};
+    ServerNpcGruntJetSelectorBindings jet{};
     NativeRequestRoute route{};
     bool prepare(const NativeRequestRoute& input,const ServerNpcSubclassSchedulerBindings& b) noexcept {
-        if(!input.result||!input.line||!input.selector||!input.selector->combat||!input.selector->combat->tail)return false;
-        const auto* req=input.selector->combat->tail->request;
+        if(!input.result||!input.line||bool(input.selector)==bool(input.jet)||bool(input.jet)!=bool(input.jet_result))return false;
+        if(input.jet_result&&input.result!=&input.jet_result->base)return false;
+        const auto* cb=input.jet?input.jet->combat:input.selector->combat;
+        if(!cb||!cb->tail)return false;
+        const auto* req=cb->tail->request;
         if(!req||!req->acquisition||!req->acquisition->arbitration)return false;
         const auto& ac=*req->acquisition;const auto& arb=*ac.arbitration;
         if(!arb.activation||!arb.activation->schedule||ac.special_translate)return false;
@@ -385,10 +394,16 @@ struct NativeRequestSession {
         acquire=ac;acquire.arbitration=&arbitration;acquire.schedule=sel.grunt.schedule;
         acquire.owner_schedules=sel.grunt.schedule.conditions;acquire.registry_head=sel.head;
         request=*req;request.acquisition=&acquire;
-        tail=*input.selector->combat->tail;tail.request=&request;
-        combat=*input.selector->combat;combat.tail=&tail;
-        selector=*input.selector;selector.combat=&combat;
-        route={&selector,input.line,input.result};return true;
+        tail=*cb->tail;tail.request=&request;
+        combat=*cb;combat.tail=&tail;
+        if(input.jet){
+            jet=*input.jet;jet.combat=&combat;
+            route={nullptr,input.line,input.result,&jet,input.jet_result};
+        }else{
+            selector=*input.selector;selector.combat=&combat;
+            route={&selector,input.line,input.result};
+        }
+        return true;
     }
 };
 int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr,const ServerNpcSharedTargetAnimationBindings* target_animation=nullptr,ServerNpcSharedTargetAnimationStats* target_animation_stats=nullptr,const ServerNpcSharedMovementBindings* movement=nullptr,ServerNpcSharedMovementStats* movement_stats=nullptr,const ServerNpcSharedCueBindings* cue=nullptr,ServerNpcSharedCueStats* cue_stats=nullptr,const ServerNpcSharedObservationBindings* observe=nullptr,ServerNpcSharedObservationStats* observe_stats=nullptr,const ServerNpcSharedSoundCoverBindings* sound_cover=nullptr,ServerNpcSharedSoundCoverStats* sound_cover_stats=nullptr,const ServerNpcSharedTacticalCoverBindings* tactical=nullptr,ServerNpcSharedTacticalCoverStats* tactical_stats=nullptr,const GatherRoute* gather=nullptr,const ServerNpcNativeGatherRoute* native_gather=nullptr,const NativeRequestRoute* request=nullptr) noexcept {
@@ -407,11 +422,11 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
     NativeRequestRoute from_gather{};
     if(native_gather&&native_gather->request_result){
         if(request)return 0;
-        from_gather={native_gather->request_selector,native_gather->request_line,native_gather->request_result};
+        from_gather={native_gather->request_selector,native_gather->request_line,native_gather->request_result,native_gather->jet_request_selector,native_gather->jet_request_result};
         request=&from_gather;
     }
     if(request){
-        if(out->subclass!=NpcSubclassGround||bytes<0xfd8||!request_session.prepare(*request,binding))return 0;
+        if(jet!=bool(request->jet)||bytes<(jet?0x1085u:out->subclass==NpcSubclassElite?0xfe0u:0xfd8u)||!request_session.prepare(*request,binding))return 0;
         request=&request_session.route;
     }
     binding.elite.grunt=binding.grunt;binding.jetpack.grunt=binding.grunt;
@@ -470,12 +485,21 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
 int __cdecl run_native_request(void* a,unsigned bytes,float now,const ServerNpcNativeRequestSchedulerBindings* b,ServerNpcNativeRequestSchedulerResult* out,ServerGruntCombatSchedulerStats* combat_stats,ServerGruntFullTaskStats* full_stats) noexcept{
     if(!out)return 0;*out={};
     if(!a||!b||!b->selector||!b->selector->combat||!b->selector->combat->tail||!b->line)return 0;
-    unsigned kind=0;if(!classify(b->scheduler.original_vtable,&kind)||kind!=NpcSubclassGround||bytes<0xfd8)return 0;
+    unsigned kind=0;if(!classify(b->scheduler.original_vtable,&kind)||kind==NpcSubclassJetpack||bytes<(kind==NpcSubclassElite?0xfe0u:0xfd8u))return 0;
     if(b->full_tasks&&(!combat_stats||!full_stats))return 0;
     const NativeRequestRoute route{b->selector,b->line,out};
     return run_subclass_impl(a,bytes,now,&b->scheduler,&out->scheduler,b->full_tasks?&b->full_tasks->injury.combat:nullptr,combat_stats,b->full_tasks,full_stats,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&route);
 }
 const ServerNpcNativeRequestSchedulerApi native_request_api{1,sizeof(ServerNpcNativeRequestSchedulerApi),&run_native_request};
+int __cdecl run_native_jet_request(void* a,unsigned bytes,float now,const ServerNpcNativeJetRequestSchedulerBindings* b,ServerNpcNativeJetRequestSchedulerResult* out,ServerGruntCombatSchedulerStats* combat_stats,ServerGruntFullTaskStats* full_stats) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||!b||!b->selector||!b->selector->combat||!b->selector->combat->tail||!b->line)return 0;
+    unsigned kind=0;if(!classify(b->scheduler.original_vtable,&kind)||kind!=NpcSubclassJetpack||bytes<0x1085)return 0;
+    if(b->full_tasks&&(!combat_stats||!full_stats))return 0;
+    const NativeRequestRoute route{nullptr,b->line,&out->base,b->selector,out};
+    return run_subclass_impl(a,bytes,now,&b->scheduler,&out->base.scheduler,b->full_tasks?&b->full_tasks->injury.combat:nullptr,combat_stats,b->full_tasks,full_stats,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&route);
+}
+const ServerNpcNativeJetRequestSchedulerApi native_jet_request_api{1,sizeof(ServerNpcNativeJetRequestSchedulerApi),&run_native_jet_request};
 int __cdecl run_subclass(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out) noexcept{
     return run_subclass_impl(a,bytes,now,b,out);
 }
@@ -531,4 +555,9 @@ SiN_GetServerNpcGatherSchedulerApi(std::uint32_t version,std::uint32_t size) noe
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativeRequestSchedulerApi=_SiN_GetServerNpcNativeRequestSchedulerApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeRequestSchedulerApi* __cdecl SiN_GetServerNpcNativeRequestSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcNativeRequestSchedulerApi)?&native_request_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativeJetRequestSchedulerApi=_SiN_GetServerNpcNativeJetRequestSchedulerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeJetRequestSchedulerApi* __cdecl SiN_GetServerNpcNativeJetRequestSchedulerApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcNativeJetRequestSchedulerApi)?&native_jet_request_api:nullptr;
 }
