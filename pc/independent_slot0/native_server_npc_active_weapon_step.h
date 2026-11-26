@@ -318,9 +318,12 @@ struct ServerEntityAcceptInputBindings {
     const ServerNpcInputSquadBindings* squad;
     const ServerNpcInputJetBindings* jet;
     const ServerNpcInputRappelBindings* rappel;
+    // Lowering health constructs an original 0x48 damage record; actual
+    // damage application is delegated to the damage owner, never faked.
+    int (__cdecl *health_damage)(void*,void*,const void*,unsigned) noexcept;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed,rappel_mapped,rappel_condition,rappel_detached,rappel_snapshot;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed,rappel_mapped,rappel_condition,rappel_detached,rappel_snapshot,health_healed,health_damage,health_blocked;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
