@@ -7,6 +7,7 @@
 #endif
 #include <cassert>
 #include <cstring>
+#include <cmath>
 #include <cstdio>
 #include <initializer_list>
 #include <limits>
@@ -2390,6 +2391,39 @@ int main(int argc,char** argv){
         f.put(q.damage,0xc,1.f);f.put(q.damage,0x10,2.f);f.put(q.damage,0x14,3.f);
         static ServerNpcGruntDamageDetailResult cr;
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),20,&cb,&cr)&&cr.damage.completed&&cr.impact.speech_called&&cr.right.hit&&!cr.left.completed&&cr.damage.knee_added&&cr.damage.knee_total==4&&cr.damage.component_called&&cr.damage.native_result==9&&q.components==1);
+    }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntDeathSelectorApi>(GetProcAddress(s,server_npc_grunt_death_selector_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_death_selector_export)&&!g(0,sizeof(ServerNpcGruntDeathSelectorApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntDeathSelectorApi));assert(api);
+        struct SelectorFixture{
+            alignas(4) unsigned char actor[0xdb2]{},damage[0x48]{};
+            unsigned models=0,refresh=0,normalized=0;bool available=true;
+            static SelectorFixture& self(void* p){return *static_cast<SelectorFixture*>(p);}
+        } q;
+        ServerNpcGruntDeathSelectorBindings b{};b.context=&q;
+        b.model_available=[](void* p,void* a,bool* v) noexcept -> int{auto& q=SelectorFixture::self(p);assert(a==q.actor);++q.models;*v=q.available;return 1;};
+        b.refresh_origin=[](void* p,void* a) noexcept -> int{
+            auto& q=SelectorFixture::self(p);assert(a==q.actor);++q.refresh;
+            const float one=1;std::memcpy(q.actor+0x268,&one,4);std::memcpy(q.actor+0x27c,&one,4);return 1;};
+        b.normalize=[](void* p,float* v) noexcept -> int{
+            auto& q=SelectorFixture::self(p);++q.normalized;
+            const float len=std::sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);if(len)for(unsigned i=0;i<3;++i)v[i]/=len;return 1;};
+        ServerNpcGruntDeathSelectorResult o{};
+        q.available=false;
+        assert(api->select(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),7,&b,&o)&&o.completed&&o.selection==-1&&!o.auxiliary&&!q.normalized);
+        q.available=true;f.put(q.actor,0xb8,0x800u);f.put(q.damage,0,-1.f);
+        assert(api->select(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),1,&b,&o)&&o.completed&&o.refreshed&&o.selection==0x1a4&&o.auxiliary==1&&q.refresh==1);
+        f.put(q.actor,0xb8,0u);
+        struct Case{float x,y;int expected;};
+        const Case cases[]={{1,0,0x1a6},{0,1,0x1a5},{0,-1,0x1a7},{1,1,0x1a6},{0,0,0x1a4}};
+        const unsigned groups[]={1,1,2,2,3,4,5,6,1};
+        for(const auto& c:cases){
+            f.put(q.damage,0,c.x);f.put(q.damage,4,c.y);
+            for(unsigned i=0;i<9;++i)assert(api->select(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),i,&b,&o)&&o.selection==c.expected&&o.auxiliary==groups[i]);
+        }
+        assert(!api->select(q.actor,0x297,q.damage,sizeof(q.damage),0,&b,&o));
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
