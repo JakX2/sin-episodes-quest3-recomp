@@ -1340,6 +1340,76 @@ int main(int argc,char** argv){
     f.put(f.actor,0x8c,1);
     assert(set_squad(701u)&&!catalog_o.squad_added&&!catalog_o.squad_removed&&f.get<unsigned>(f.actor,0x9c4)==group_a&&f.get<int>(sq.groups[0],0x48)==1);
     f.put(f.actor,0x8c,0);f.put(f.actor,0x9c4,0u);f.put(f.actor,0x9c8,0u);f.put(f.actor,0x378,saved_handle);
+    // ChangePathTrack shares native target search and generation validation;
+    // the real path helper clears the cached progress and refreshes nav.
+    struct JetLifecycleFixture {
+        F* f;void* actor;void* left;void* right;
+        unsigned resets{},prepared{},warnings{},last_warning{};
+        std::vector<void*> removed;
+    } jl{&f,path_actor,f.actor,wt.member};
+    ServerNpcInputJetBindings jet_inputs_b{};jet_inputs_b.context=&jl;
+    jet_inputs_b.reset_navigation=[](void* p,void* a,unsigned nav) noexcept -> int{
+        auto& q=*static_cast<JetLifecycleFixture*>(p);assert(a==q.actor&&nav==1234u);
+        assert(q.f->get<unsigned>(a,0xff4)==0x7001u&&q.f->get<unsigned>(a,0x1088)==0x7001u&&q.f->get<unsigned>(a,0x108c)==0x7001u);
+        assert(q.f->get<unsigned>(a,0x1090)==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(q.right))&&!q.f->get<std::uint8_t>(a,0xff8));
+        ++q.resets;return 1;
+    };
+    jet_inputs_b.prepare_thrust=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<JetLifecycleFixture*>(p);assert(a==q.actor);
+        ++q.prepared;q.f->put(a,0xfe4,0x8002u);q.f->put(a,0xfe8,0x7001u);return 1;
+    };
+    jet_inputs_b.remove_thrust=[](void* p,void* entity) noexcept -> int{
+        auto& q=*static_cast<JetLifecycleFixture*>(p);assert(entity==q.left||entity==q.right);
+        assert(q.f->get<unsigned>(q.actor,entity==q.right?0xfe8:0xfe4)==(entity==q.right?0x7001u:0x8002u));
+        q.removed.push_back(entity);return 1;
+    };
+    auto jl_b=path_b;jl_b.context=&jl;jl_b.jet=&jet_inputs_b;jl_b.search=&search_bind;
+    jl_b.entities=scripted.input.entities;
+    jl_b.path_warning=[](void* p,void* a,unsigned token) noexcept -> int{
+        auto& q=*static_cast<JetLifecycleFixture*>(p);assert(a==q.actor&&token==0x224984f8u);
+        ++q.warnings;q.last_warning=token;return 1;
+    };
+    f.put(f.actor,0x378,0x8002u);f.put(wt.member,0x378,0x7001u);
+    f.put(f.actor,0xc0,501u);f.put(wt.member,0xc0,500u);
+    f.put(path_actor,0x8f8,1234u);
+    auto jet_input=[&](unsigned name,unsigned type=0,unsigned token=0){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,token);f.put(inp.variant,0x10,type);
+        return accept->run(path_actor,sizeof(path_actor),vt,name,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&jl_b,&catalog_o);
+    };
+    for(unsigned name:{500u,502u}){
+        path_actor[0xff8]=1;
+        assert(jet_input(0x22498948u,2u,name)&&catalog_o.native_handler&&catalog_o.path_changed==1&&catalog_o.path_reset==1&&!catalog_o.path_missing);
+        assert(f.get<unsigned>(path_actor,0xff4)==0x7001u);
+    }
+    for(unsigned name:{506u,0u}){
+        path_actor[0xff8]=1;
+        assert(jet_input(0x22498948u,2u,name)&&catalog_o.native_handler&&catalog_o.path_changed==1&&catalog_o.path_missing==1&&!catalog_o.path_reset);
+        assert(f.get<unsigned>(path_actor,0xff4)==0xffffffffu&&f.get<unsigned>(path_actor,0x1088)==0xffffffffu&&f.get<unsigned>(path_actor,0x108c)==0xffffffffu&&!f.get<unsigned>(path_actor,0x1090)&&!path_actor[0xff8]);
+    }
+    assert(jet_input(0x22498948u)&&catalog_o.path_missing&&jl.warnings==3&&jl.resets==2);
+    // ActivateJets returns if either existing thrust handle is live.
+    // DeactivateJets ignores stale rows and removes right then left.
+    for(unsigned left:{0xffffffffu,0x9002u,0x8002u})for(unsigned right:{0xffffffffu,0x9001u,0x7001u}){
+        f.put(path_actor,0xfe4,left);f.put(path_actor,0xfe8,right);
+        const bool reused=left==0x8002u||right==0x7001u;
+        const unsigned before=jl.prepared;
+        assert(jet_input(0x224988b8u)&&catalog_o.native_handler&&catalog_o.thrust_reused==reused&&catalog_o.thrust_prepared==!reused);
+        assert(jl.prepared==before+(!reused));
+        if(reused)assert(f.get<unsigned>(path_actor,0xfe4)==left&&f.get<unsigned>(path_actor,0xfe8)==right);
+        // Restore original pair for independent deactivation test.
+        f.put(path_actor,0xfe4,left);f.put(path_actor,0xfe8,right);jl.removed.clear();
+        assert(jet_input(0x22498894u)&&catalog_o.native_handler&&catalog_o.thrust_removed==(left==0x8002u)+(right==0x7001u));
+        std::vector<void*> expected;
+        if(right==0x7001u)expected.push_back(jl.right);
+        if(left==0x8002u)expected.push_back(jl.left);
+        assert(jl.removed==expected);
+        assert(f.get<unsigned>(path_actor,0xfe4)==(left==0x8002u?0xffffffffu:left)&&f.get<unsigned>(path_actor,0xfe8)==(right==0x7001u?0xffffffffu:right));
+    }
+    assert(jl.prepared==4);
+    jl_b.jet=nullptr;f.put(path_actor,0xfe4,0x8002u);f.put(path_actor,0xfe8,0xffffffffu);
+    assert(jet_input(0x224988b8u)&&catalog_o.thrust_reused);
+    assert(!jet_input(0x22498894u)&&!catalog_o.completed&&f.get<unsigned>(path_actor,0xfe4)==0x8002u);
+    f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
