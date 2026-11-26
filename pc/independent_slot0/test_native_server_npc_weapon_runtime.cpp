@@ -914,6 +914,77 @@ int main(int argc,char** argv){
         assert(accept->run(f.actor,sizeof(f.actor),vt,601u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),77u,&inp.bindings,&inp.result)&&inp.result.completed);
     }
     f.actor[0x870]=0;
+    // Scripted source OnWake -> named event -> real inherited Wake input.
+    // The CAI_BaseNPC row count/index and tokens are original; other entries
+    // are zeroed in this deliberately sparse single-input fixture.
+    struct ScriptWakeFixture {
+        F* f;OutputFixture* output;void* target;
+        const ServerEntityAcceptInputApi* accept;
+        const ServerEntityEventServiceBindings* previous_service;
+        alignas(4) unsigned char grunt_map[0x10]{},base_map[0x10]{},grunt_rows[39*0x34]{},base_rows[139*0x34]{};
+        ServerNpcActivePostAnimationBindings storage{};
+        ServerEntityAcceptInputBindings input{};
+        ServerEntityAcceptInputResult input_result{};
+        ServerNpcWakeTransitionBindings wake{};
+        ServerNpcWakeTransitionResult wake_result{};
+    };
+    static ScriptWakeFixture scripted{};scripted.f=&f;scripted.output=&outf;scripted.target=wt.member;scripted.accept=accept;scripted.previous_service=&service_bind;
+    f.put(scripted.grunt_map,0,0x22534e8cu);f.put(scripted.grunt_map,4,39);f.put(scripted.grunt_map,0xc,0x224dbd9cu);
+    f.put(scripted.base_map,0,0x224dc27cu);f.put(scripted.base_map,4,139);
+    auto* wake_row=scripted.base_rows+126*0x34;
+    f.put(wake_row,0,0u);f.put(wake_row,4,0x223db3ccu);f.put(wake_row,0x12,std::uint16_t{8});f.put(wake_row,0x14,0x223db3c4u);f.put(wake_row,0x1c,0x220320b0u);
+    scripted.storage.context=&scripted;
+    scripted.storage.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);
+        switch(token){
+        case 0x22534da4u:*out=q.grunt_map;*n=sizeof(q.grunt_map);return 1;
+        case 0x224dbd9cu:*out=q.base_map;*n=sizeof(q.base_map);return 1;
+        case 0x22534e8cu:*out=q.grunt_rows;*n=sizeof(q.grunt_rows);return 1;
+        case 0x224dc27cu:*out=q.base_rows;*n=sizeof(q.base_rows);return 1;
+        default:return 0;
+        }
+    };
+    sin_independent::EntityHandleEntry script_slots[3]{};
+    script_slots[1].serial=7;script_slots[1].entity=reinterpret_cast<CBaseEntity*>(wt.member);
+    script_slots[2].serial=8;script_slots[2].entity=reinterpret_cast<CBaseEntity*>(f.actor);
+    scripted.input.storage=&scripted.storage;scripted.input.context=&scripted;
+    scripted.input.entities.entries=script_slots;scripted.input.entities.count=3;
+    scripted.input.name_equal=inp.bindings.name_equal;
+    scripted.input.wake=&scripted.wake;scripted.input.wake_result=&scripted.wake_result;
+    // Neither a general input handler nor a hosted wake transition/output
+    // is required for this unconnected recipient.
+    assert(!scripted.input.handler&&!scripted.wake.output&&!scripted.wake.refresh_entity);
+    auto script_service=service_bind;script_service.context=&scripted;script_service.entities=scripted.input.entities;
+    script_service.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);return q.previous_service->resolve(q.output,token,out,n);
+    };
+    script_service.lock=[](void* p,bool enter) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);return q.previous_service->lock(q.output,enter);
+    };
+    script_service.release=[](void* p,unsigned token,void* row) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);return q.previous_service->release(q.output,token,row);
+    };
+    script_service.find_named=[](void* p,void* previous,unsigned name,void* activator,void* caller,void** entity) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);assert(name==500u&&activator==q.f->actor&&caller==q.f->actor);
+        *entity=previous?nullptr:q.target;return 1;
+    };
+    script_service.find_class=nullptr;script_service.missing=nullptr;
+    script_service.accept=[](void* p,void* target,unsigned input,void* activator,void* caller,const void* variant,unsigned id) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);assert(target==q.target&&input==0x223db3c4u&&id==10u);
+        return q.accept->run(target,0xfd8u,q.f->get<unsigned>(target,0),input,activator,caller,variant,0x14,id,&q.input,&q.input_result);
+    };
+    reset_queue();seed_outputs();f.put(outf.rows[0],4,0x223db3c4u);f.put(outf.rows[0],0x18,0u);
+    f.put(f.actor,0x378,0x8002u);f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);
+    f.put(wt.member,0,ground_vt);f.put(wt.member,0x868,2);f.put(wt.member,0x78,0x20u);
+    f.put(wt.member,0xbdc,0u);f.put(wt.member,0x16c,0u);wt.member[0x870]=0;wt.member[0x1f0]=1;wt.member[0x200]=0;
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&connected,&wto)&&wto.completed&&outf.result.queued==1&&outf.queue_allocated==1);
+    assert(f.get<int>(f.actor,0x868)==0&&f.get<int>(wt.member,0x868)==2);
+    assert(service->service(outf.queue_root,sizeof(outf.queue_root),root_token,20.f,false,&steps,&script_service,&sr)&&sr.future_stopped&&!sr.events);
+    assert(service->service(outf.queue_root,sizeof(outf.queue_root),root_token,20.25f,false,&steps,&script_service,&sr)&&sr.completed&&sr.events==1&&sr.deliveries==1&&sr.removed==1);
+    assert(scripted.input_result.accepted&&scripted.input_result.native_wake&&scripted.input_result.map==0x224dbd9cu&&scripted.input_result.row==126&&scripted.input_result.handler==0x220320b0u);
+    assert(scripted.wake_result.completed&&scripted.wake_result.transitions==1&&scripted.wake_result.outputs==1&&scripted.wake_result.flags_changed==1);
+    assert(f.get<int>(wt.member,0x868)==0&&f.get<unsigned>(wt.member,0x78)==0&&wt.member[0x200]&&!outf.service_locked);check_queue({});
+    f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
