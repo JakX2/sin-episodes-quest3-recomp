@@ -2062,6 +2062,18 @@ struct ServerNpcEliteLocalPlayerBindings {
     int (__cdecl *edict)(void*,int,const void**,unsigned*) noexcept;
     int (__cdecl *base_entity)(void*,std::uint32_t,void**) noexcept;
 };
+// Player +45c (222457d0): authenticated weapon inventory and ammo
+// reward selection. Live ammo definitions and factory remain services.
+struct ServerNpcEliteAmmoRewardBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    const ServerWeaponScriptView* scripts;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *ammo_index)(void*,const char*,int*) noexcept;
+    int (__cdecl *max_carry)(void*,int,int*) noexcept;
+    int (__cdecl *create)(void*,const char*,int,void**) noexcept;
+};
 struct ServerNpcGruntEliteDeathBindings {
     void* context;
     int (__cdecl *effect_begin)(void*,void*) noexcept;
@@ -2081,6 +2093,7 @@ struct ServerNpcGruntEliteDeathBindings {
     // Optional native 2202e350 vector generation; raw 2226ffa0 stream.
     int (__cdecl *velocity_random_int)(void*,int,int,int*) noexcept;
     const ServerNpcEliteLocalPlayerBindings* native_player;
+    const ServerNpcEliteAmmoRewardBindings* native_reward;
 };
 struct ServerNpcGruntEliteDeathResult {
     float origin[3],angles[3],velocity[3];
@@ -2091,6 +2104,10 @@ struct ServerNpcGruntEliteDeathResult {
     unsigned velocity_native,velocity_randoms;
     unsigned player_lookup_native,player_slot_checked,player_edict_found,player_edict_free,player_unknown_called;
     int player_max_clients;
+    unsigned reward_native,reward_slots,reward_weapons,reward_candidates,reward_equal_minimum,reward_factory;
+    int reward_ammo_index;
+    float reward_minimum;
+    const char* reward_classname;
 };
 struct ServerNpcGruntEliteLifeBindings {
     ServerNpcJetpackDeathBranchesBindings combat;
