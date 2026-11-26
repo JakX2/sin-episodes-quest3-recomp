@@ -332,7 +332,8 @@ int __cdecl wake_policy(void* a,unsigned n,std::uint32_t vt,bool pvs,const Serve
     if(mode==2)return !pvs||wake(NpcWakePvs)?done():0;
     if(mode!=1)return done();
     const auto* condition=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
-    for(int id:{16,17}){
+    constexpr int damage_conditions[]{16,17};
+    for(int id:damage_conditions){
         ServerNpcConditionResult cr{};++out->damage_checked;
         if(!condition||!condition->test(a,n,id,NpcConditionCurrent,&b->conditions,&cr))return 0;
         if(cr.value)return wake(NpcWakeDamage)?done():0;
