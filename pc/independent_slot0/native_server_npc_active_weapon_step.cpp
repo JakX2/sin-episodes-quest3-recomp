@@ -635,6 +635,30 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                     }
                     bound.logic_case=&cases;
                 }
+                sin_port::native_map::CounterBindings counter{};
+                sin_port::native_map::CompareBindings compare{};
+                sin_port::native_map::RelayQueueBindings numeric_queue{};
+                if(vt==sin_port::native_map::counter_vtable&&bound.math_counter){
+                    counter=*bound.math_counter;
+                    if(counter.native_queue){
+                        numeric_queue=*counter.native_queue;
+                        if(numeric_queue.root!=sentinel||numeric_queue.root_token!=root)return false;
+                        numeric_queue.root_bytes=n;numeric_queue.entries=b->entities.entries;numeric_queue.entry_count=b->entities.count;
+                        numeric_queue.now=b->live_now?b->live_now:&bound.now;
+                        numeric_queue.protected_node=&dispatch_token;counter.native_queue=&numeric_queue;
+                    }
+                    bound.math_counter=&counter;
+                }else if(vt==sin_port::native_map::compare_vtable&&bound.logic_compare){
+                    compare=*bound.logic_compare;
+                    if(compare.native_queue){
+                        numeric_queue=*compare.native_queue;
+                        if(numeric_queue.root!=sentinel||numeric_queue.root_token!=root)return false;
+                        numeric_queue.root_bytes=n;numeric_queue.entries=b->entities.entries;numeric_queue.entry_count=b->entities.count;
+                        numeric_queue.now=b->live_now?b->live_now:&bound.now;
+                        numeric_queue.protected_node=&dispatch_token;compare.native_queue=&numeric_queue;
+                    }
+                    bound.logic_compare=&compare;
+                }
                 sin_port::native_map::TimerBindings timer{};
                 if(vt==sin_port::native_map::timer_vtable&&bound.timer){
                     timer=*bound.timer;timer.now=b->live_now?b->live_now:&bound.now;

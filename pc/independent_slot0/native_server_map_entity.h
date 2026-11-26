@@ -218,10 +218,12 @@ struct CounterBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     int (__cdecl *divide_warning)(void*,void*) noexcept;
+    const RelayQueueBindings* native_queue;
 };
 struct CounterResult {
     unsigned completed,handled,stored,swapped,clamped,hit_max,hit_min,outputs,queued,warned;
     float value,minimum,maximum;
+    unsigned native_output_queued;
 };
 inline constexpr unsigned remap_vtable=0x22421334,remap_extent=0x3bc;
 inline constexpr unsigned colorblend_vtable=0x224215c4,colorblend_extent=0x3bc;
@@ -244,10 +246,12 @@ struct RemapResult {
 };
 struct CompareBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const RelayQueueBindings* native_queue;
 };
 struct CompareResult {
     unsigned completed,handled,stored,compared,outputs,queued,first_offset,last_offset;
     float value,threshold;
+    unsigned native_output_queued;
 };
 struct CaseBindings {
     void* context;

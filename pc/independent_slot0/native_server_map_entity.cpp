@@ -1474,13 +1474,20 @@ int __cdecl case_input(void* a,unsigned n,const char* name,void* activator,const
 bool compare_fire(void* a,unsigned n,unsigned offset,void* activator,float value,const CompareBindings& b,CompareResult& o) noexcept {
     using namespace sin_port::native_weapon_tables;
     const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
-    if(!fire||!b.output||!b.output->enqueue_variant)return false;
+    if(!fire||!b.output||(!b.native_queue&&!b.output->enqueue_variant))return false;
     auto* out=static_cast<unsigned char*>(a)+offset;
     write_field(out,0,value);write_field(out,0x10,1u);
-    ServerEntityVoidOutputResult r{};
-    if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b.output,&r))return false;
+    unsigned queued=0;
+    if(b.native_queue){
+        if(!native_named_output(a,n,activator,offset,true,b.output,b.native_queue,queued))return false;
+        o.native_output_queued+=queued;
+    }else{
+        ServerEntityVoidOutputResult r{};
+        if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b.output,&r))return false;
+        queued=r.queued;
+    }
     if(!o.outputs)o.first_offset=offset;
-    ++o.outputs;o.last_offset=offset;o.queued+=r.queued;return true;
+    ++o.outputs;o.last_offset=offset;o.queued+=queued;return true;
 }
 int __cdecl compare_input(void* a,unsigned n,const char* name,void* activator,unsigned type,float value,const CompareBindings* b,CompareResult* o) noexcept {
     if(!o)return 0;*o={};
@@ -1638,11 +1645,18 @@ bool counter_emit(void* a,unsigned n,unsigned offset,void* activator,const Count
     using namespace sin_port::native_weapon_tables;
     const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
     if(!fire||!b.output)return false;
-    auto* out=static_cast<unsigned char*>(a)+offset;ServerEntityVoidOutputResult r{};
-    if(typed){
-        if(!b.output->enqueue_variant||!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b.output,&r))return false;
-    }else if(!fire->fire(out,0x18,activator,a,n,0.f,b.output,&r))return false;
-    ++o.outputs;o.queued+=r.queued;return true;
+    unsigned queued=0;
+    if(b.native_queue){
+        if(!native_named_output(a,n,activator,offset,typed,b.output,b.native_queue,queued))return false;
+        o.native_output_queued+=queued;
+    }else{
+        auto* out=static_cast<unsigned char*>(a)+offset;ServerEntityVoidOutputResult r{};
+        if(typed){
+            if(!b.output->enqueue_variant||!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b.output,&r))return false;
+        }else if(!fire->fire(out,0x18,activator,a,n,0.f,b.output,&r))return false;
+        queued=r.queued;
+    }
+    ++o.outputs;o.queued+=queued;return true;
 }
 bool counter_update(void* a,unsigned n,float candidate,void* activator,const CounterBindings& b,CounterResult& o) noexcept {
     // Original 2217aa00: boundary events before clamp and typed OutValue.
