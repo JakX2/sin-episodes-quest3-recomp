@@ -2319,17 +2319,20 @@ extern "C" int SIN_FIXED_CALL SiN_DecideNpcWithEngineRandom(void* engine,
 // the owner engine.dll RTTI-backed CGameEventManager/CGameEvent vtables.
 // All pointers are borrowed on the game thread. No addresses from the
 // original executable are called by absolute VA.
-#pragma comment(linker,"/EXPORT:SiN_PublishCampaignTriggerEvent=_SiN_PublishCampaignTriggerEvent")
-extern "C" int SIN_FIXED_CALL SiN_PublishCampaignTriggerEvent(void* manager,
-    const abi::NativeTriggerEvent* input) noexcept {
+// Optional raw-layout source: owner lookup must follow successful CreateEvent.
+// Position words are read immediately before their corresponding setter.
+int SIN_FIXED_CALL SinPublishCampaignEventInternal(void* manager,
+    const abi::NativeTriggerEvent* input,
+    int (SIN_FIXED_CALL *owner_reader)(void*,int*) noexcept,void* context,
+    const unsigned char* position) noexcept {
     if(native_event_active||(reading_engine_skill&&!trigger_publish_active)||
        !manager||!input||!bounded_string(input->name))return abi::EventRejected;
-    const auto event=*input;
+    auto event=*input;
     const bool dynamic=event.kind==abi::TriggerDynamicEvent;
     if(!dynamic&&event.kind!=abi::TriggerGameEvent)return abi::EventRejected;
     if(event.advisor!=-1||
-       (dynamic&&(event.descriptor!=0||!std::isfinite(event.value)||!std::isfinite(event.x)||
-                  !std::isfinite(event.y)||!std::isfinite(event.z)))||
+       (dynamic&&(event.descriptor!=0||(!position&&(!std::isfinite(event.value)||!std::isfinite(event.x)||
+                  !std::isfinite(event.y)||!std::isfinite(event.z)))))||
        (!dynamic&&(event.owner!=-1||(event.descriptor!=11&&event.descriptor!=12))))
         return abi::EventRejected;
     std::string name;
@@ -2361,6 +2364,7 @@ extern "C" int SIN_FIXED_CALL SiN_PublishCampaignTriggerEvent(void* manager,
         catch(...){return abi::EventCleanupUncertain;}
     };
     if(!integer||!string||(dynamic&&!real))return discard();
+    if(dynamic&&position&&(!owner_reader||!owner_reader(context,&event.owner)))return discard();
     const auto set_int=reinterpret_cast<SetInt>(integer);
     const auto set_string=reinterpret_cast<SetString>(string);
     const auto set_float=reinterpret_cast<SetFloat>(real);
@@ -2372,8 +2376,11 @@ extern "C" int SIN_FIXED_CALL SiN_PublishCampaignTriggerEvent(void* manager,
         if(dynamic){
             set_int(object,"decision",event.decision);
             set_float(object,"value",event.value);
+            if(position)std::memcpy(&event.x,position,4);
             set_float(object,"x",event.x);
+            if(position)std::memcpy(&event.y,position+4,4);
             set_float(object,"y",event.y);
+            if(position)std::memcpy(&event.z,position+8,4);
             set_float(object,"z",event.z);
         }
     }catch(...){return discard();}
@@ -2382,6 +2389,12 @@ extern "C" int SIN_FIXED_CALL SiN_PublishCampaignTriggerEvent(void* manager,
     try {return reinterpret_cast<Fire>(fire)(manager,object,false)?
         abi::EventFired:abi::EventFireReturnedFalse;}
     catch(...){return abi::EventFireUncertain;}
+}
+
+#pragma comment(linker,"/EXPORT:SiN_PublishCampaignTriggerEvent=_SiN_PublishCampaignTriggerEvent")
+extern "C" int SIN_FIXED_CALL SiN_PublishCampaignTriggerEvent(void* manager,
+    const abi::NativeTriggerEvent* input) noexcept {
+    return SinPublishCampaignEventInternal(manager,input,nullptr,nullptr,nullptr);
 }
 
 #pragma comment(linker,"/EXPORT:SiN_ApplyEngineSkill=_SiN_ApplyEngineSkill")

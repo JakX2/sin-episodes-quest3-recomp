@@ -400,6 +400,15 @@ struct CampaignTriggerResult {
     int descriptor;
     unsigned native_removed,native_manager,fixed_observed,already_removed;
 };
+// Opt-in direct engine publication without changing the existing map API
+// or binding/result record sizes. The caller borrows a live manager on
+// the game thread. publication receives fixed_service::NativeEventResult
+// or -1 when no event was attempted. Legacy event callbacks are bypassed.
+inline constexpr char engine_trigger_spawn_export[]="SiN_SpawnCampaignTriggerWithEngineEvents";
+inline constexpr char engine_trigger_touch_export[]="SiN_TouchCampaignTriggerWithEngineEvents";
+inline constexpr int engine_event_not_attempted=-1;
+using EngineTriggerSpawn=int (__cdecl *)(void*,unsigned,const CampaignTriggerBindings*,void*,CampaignTriggerResult*,int*) noexcept;
+using EngineTriggerTouch=int (__cdecl *)(void*,unsigned,void*,const CampaignTriggerBindings*,void*,CampaignTriggerResult*,int*) noexcept;
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
