@@ -1381,6 +1381,33 @@ int __cdecl jet_primary_install(void* a,unsigned n,unsigned vt,unsigned token) n
     // 2214d6f0 null-context branch writes only +8.
     wr<unsigned>(a,8,token);return 1;
 }
+bool native_jet_death_effect(void* actor,unsigned n,void* subject,bool terminal,bool mode4,const ServerNpcJetDeathEffectBindings& b,ServerNpcJetDeathEffectResult& o) noexcept {
+    o={};
+    if(!actor||!subject||n<0x360u||!b.center||!b.burst||!b.light)return false;
+    unsigned extent=n;
+    if(subject!=actor&&(!b.extent||!b.extent(b.context,subject,&extent)||extent<0x360u))return false;
+    // Immediate branch already refreshed its actor before invoking this
+    // adapter. Terminal branch refreshes the independently resolved subject.
+    if(terminal&&(rd<unsigned>(subject,0xb8)&0x800u)){
+        if(!b.refresh_origin||!b.refresh_origin(b.context,subject))return false;
+        o.refreshed=1;
+    }
+    if(!b.center(b.context,subject,o.burst_center))return false;++o.centers;
+    for(unsigned i=0;i<3;++i){
+        o.angles[i]=rd<float>(subject,0x354+4*i);
+        if(!std::isfinite(o.burst_center[i])||!std::isfinite(o.angles[i]))return false;
+    }
+    // 22130fd0 translates its boolean inputs to the 22130df0 flag word.
+    o.magnitude=terminal?30:256;o.radius=256;
+    o.flags=terminal&&mode4?0x428u:0x429u;o.extra=terminal&&mode4?1000.f:0.f;
+    if(!b.burst(b.context,o.burst_center,o.angles,actor,actor,o.magnitude,o.radius,o.flags,o.extra,0))return false;
+    o.burst=1;
+    // The second +214 call always uses the NPC, not the ragdoll/attachment.
+    if(!b.center(b.context,actor,o.light_center))return false;++o.centers;
+    for(float v:o.light_center)if(!std::isfinite(v))return false;
+    if(!b.light(b.context,o.light_center,255,180,100,0,100.f,.1f,0.f))return false;
+    o.light=o.completed=1;return true;
+}
 struct JetPrimaryRoute {
     const ServerNpcJetpackPrimaryThinkBindings& b;
     ServerNpcJetpackPrimaryThinkResult& out;
@@ -1407,7 +1434,10 @@ bool jet_primary_death(JetPrimaryRoute& route,unsigned handle) noexcept {
         const auto& s=*static_cast<JetPrimaryRoute*>(p)->b.death;return s.effect_begin&&s.effect_begin(s.context,a);
     };
     bound.terminal_effect=[](void* p,void* a,void* e,bool mode4) noexcept -> int{
-        const auto& s=*static_cast<JetPrimaryRoute*>(p)->b.death;return s.terminal_effect&&s.terminal_effect(s.context,a,e,mode4);
+        auto& q=*static_cast<JetPrimaryRoute*>(p);
+        if(a!=q.actor)return 0;
+        if(q.b.effects)return native_jet_death_effect(a,q.extent,e,true,mode4,*q.b.effects,q.out.effects);
+        const auto& s=*q.b.death;return s.terminal_effect&&s.terminal_effect(s.context,a,e,mode4);
     };
     bound.effect_end=[](void* p,void* a) noexcept -> int{
         const auto& s=*static_cast<JetPrimaryRoute*>(p)->b.death;return s.effect_end&&s.effect_end(s.context,a);
@@ -1595,7 +1625,10 @@ void bind_jet_initial_think(ServerNpcJetpackDeathBranchBindings& bound,JetInitia
         const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.refresh_origin&&s.refresh_origin(s.context,a);
     };
     bound.immediate_effect=[](void* p,void* a) noexcept -> int{
-        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.immediate_effect&&s.immediate_effect(s.context,a);
+        auto& q=*static_cast<JetInitialThinkRoute*>(p);
+        if(a!=q.actor)return 0;
+        if(q.initial->effects)return native_jet_death_effect(a,q.extent,a,false,false,*q.initial->effects,q.out->health_jet_effects);
+        const auto& s=*q.source;return s.immediate_effect&&s.immediate_effect(s.context,a);
     };
     bound.effect_end=[](void* p,void* a) noexcept -> int{
         const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.effect_end&&s.effect_end(s.context,a);

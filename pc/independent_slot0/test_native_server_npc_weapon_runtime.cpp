@@ -2020,7 +2020,8 @@ int main(int argc,char** argv){
         unsigned jet_ticks{};
         int expected_class=11;
         float think_clock{},think_scheduled{};
-        alignas(4) unsigned char native_rag[4]{},native_aux[2][4]{};
+        alignas(4) unsigned char native_rag[0x360]{},native_aux[2][4]{};
+        unsigned effect_centers{};int effect_kind{};
         int alternate_sample{},alternate_mode{};
         bool pickup_null{},pickup_rule{};
     } hd{&f,wt.member};
@@ -2780,7 +2781,7 @@ int main(int argc,char** argv){
     };
     initial_think.pickup=&pickup_b;jet_mode.effect=nullptr;
     jet_mode.effect_rule=[](void* p,void* a,bool* yes) noexcept -> int{
-        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x1004)==1);
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x1004)==q.alternate_mode);
         *yes=q.pickup_rule;
         if(*yes)q.f->put(a,0xb8,q.f->get<unsigned>(a,0xb8)|0x800u);
         q.death_order.push_back(21);return 1;
@@ -2800,6 +2801,61 @@ int main(int argc,char** argv){
         if(scenario!=0){expected_pickup.insert(expected_pickup.end(),{61,62,63});if(scenario==1)expected_pickup.insert(expected_pickup.end(),{64,65,66});expected_pickup.push_back(67);}
         expected_pickup.insert(expected_pickup.end(),{22,23,24,25,48,49,50,26,26,42});
         assert(hd.death_order==expected_pickup&&f.get<int>(f.actor,0x74)==721);
+    }
+    // Both original effect scopes now submit native request parameters;
+    // the engine only executes the burst and light operations.
+    ServerNpcJetDeathEffectBindings effects_b{};effects_b.context=&hd;
+    effects_b.extent=[](void* p,void* subject,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        if(subject==q.native_rag)*bytes=sizeof(q.native_rag);else if(subject==q.parent)*bytes=0xfd8u;else return 0;
+        return 1;
+    };
+    effects_b.refresh_origin=[](void* p,void* subject) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(subject==q.native_rag||subject==q.parent);
+        q.f->put(subject,0xb8,q.f->get<unsigned>(subject,0xb8)&~0x800u);q.death_order.push_back(68);return 1;
+    };
+    effects_b.center=[](void* p,void* subject,float* v) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        void* first=q.effect_kind==4?q.parent:q.effect_kind==1?static_cast<void*>(q.native_rag):q.f->actor;
+        assert(subject==(q.effect_centers==0?first:q.f->actor));
+        v[0]=float(++q.effect_centers);v[1]=2.f;v[2]=3.f;q.death_order.push_back(69);return 1;
+    };
+    effects_b.burst=[](void* p,const float* pos,const float* angles,void* owner,void* inflictor,int mag,int radius,unsigned flags,float extra,int tail) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        assert(owner==q.f->actor&&inflictor==owner&&pos[0]==1.f&&angles[0]==5.f&&angles[1]==90.f&&angles[2]==0.f);
+        assert(mag==(q.effect_kind?30:256)&&radius==256&&flags==(q.effect_kind==4?0x428u:0x429u)&&extra==(q.effect_kind==4?1000.f:0.f)&&!tail);
+        q.death_order.push_back(70);return 1;
+    };
+    effects_b.light=[](void* p,const float* pos,int r,int g,int b,int exponent,float radius,float time,float decay) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(pos[0]==2.f&&r==255&&g==180&&b==100&&!exponent&&radius==100.f&&time==.1f&&!decay);
+        q.death_order.push_back(71);return 1;
+    };
+    primary_b.effects=&effects_b;think.terminal_effect=nullptr;
+    initial_think.effects=&effects_b;jet_branch.immediate_effect=nullptr;
+    // Finish the last mode1 pickup case, with a distinct ragdoll center.
+    f.put(hd.native_rag,0xb8,0x800u);f.put(hd.native_rag,0x354,5.f);f.put(hd.native_rag,0x358,90.f);f.put(hd.native_rag,0x35c,0.f);
+    hd.effect_kind=1;hd.effect_centers=0;hd.death_order.clear();hd.think_clock=92.125f;
+    assert(primary_run(737)&&primary_o.installed&&primary_o.effects.completed&&primary_o.effects.refreshed&&primary_o.effects.centers==2);
+    assert((hd.death_order==std::vector<unsigned>{43,41,44,58,30,68,69,70,69,71,32,33,1,2,3,4,34,5,6,42,45}));
+    // Mode4 selects the attachment instead of the ragdoll, with 0x428
+    // and the nonzero 1000.f argument; light still uses actor center.
+    reset_subclass(primary_vt);hd.alternate_sample=30;hd.alternate_mode=4;hd.pickup_rule=false;
+    f.actor[0xbf]&=static_cast<unsigned char>(~8u);f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x1028,0x7001u);
+    f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0x400000u);f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);
+    assert(hd_run(0,primary_vt)&&catalog_o.health_jet_think_scheduled);
+    f.put(wt.member,0xb8,f.get<unsigned>(wt.member,0xb8)|0x800u);f.put(wt.member,0x354,5.f);f.put(wt.member,0x358,90.f);f.put(wt.member,0x35c,0.f);
+    hd.effect_kind=4;hd.effect_centers=0;hd.death_order.clear();hd.think_clock=92.125f;
+    assert(primary_run(737)&&primary_o.installed&&primary_o.effects.completed&&primary_o.effects.flags==0x428u&&primary_o.effects.extra==1000.f);
+    assert((hd.death_order==std::vector<unsigned>{43,41,44,30,68,69,70,69,71,32,33,1,2,3,4,34,5,6,42,45}));
+    for(int immediate_mode:{3,5}){
+        reset_subclass(primary_vt);hd.alternate_sample=81;hd.alternate_mode=immediate_mode;hd.pickup_rule=false;hd.effect_kind=0;hd.effect_centers=0;
+        if(immediate_mode==5)f.actor[0xbf]|=8u;else f.actor[0xbf]&=static_cast<unsigned char>(~8u);
+        f.put(f.actor,0x354,5.f);f.put(f.actor,0x358,90.f);f.put(f.actor,0x35c,0.f);
+        assert(hd_run(0,primary_vt)&&catalog_o.health_jet_effects.completed&&catalog_o.health_jet_effects.centers==2&&!catalog_o.health_jet_think_scheduled);
+        assert(hd_subclass_result.combat.combat.jet.final_mode==immediate_mode&&hd_subclass_result.combat.combat.jet.random_called==unsigned(immediate_mode==3));
+        std::vector<unsigned> expected_effect;if(immediate_mode==3)expected_effect.push_back(20);
+        expected_effect.insert(expected_effect.end(),{21,22,37,38,69,70,69,71,1,2,3,4,34,5,6,40});
+        assert(hd.death_order==expected_effect);
     }
     hd_services.jet_think=nullptr;
     script_slots[0].serial=0;script_slots[0].entity=nullptr;
