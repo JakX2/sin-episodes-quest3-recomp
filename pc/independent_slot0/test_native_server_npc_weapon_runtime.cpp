@@ -979,16 +979,8 @@ int main(int argc,char** argv){
     script_service.release=[](void* p,unsigned token,void* row) noexcept -> int{
         auto& q=*static_cast<ScriptWakeFixture*>(p);return q.previous_service->release(q.output,token,row);
     };
-    script_service.find_named=[](void* p,void* previous,unsigned name,void* activator,void* caller,void** entity) noexcept -> int{
-        auto& q=*static_cast<ScriptWakeFixture*>(p);assert(name==500u&&activator==q.f->actor&&caller==q.f->actor);
-        if(!q.search_api->named(previous,name,activator,caller,&q.search,&q.search_result))return 0;
-        *entity=q.search_result.entity;return 1;
-    };
-    script_service.find_class=nullptr;script_service.missing=nullptr;
-    script_service.accept=[](void* p,void* target,unsigned input,void* activator,void* caller,const void* variant,unsigned id) noexcept -> int{
-        auto& q=*static_cast<ScriptWakeFixture*>(p);assert(target==q.target&&input==0x223db3c4u&&id==10u);
-        return q.accept->run(target,0xfd8u,q.f->get<unsigned>(target,0),input,activator,caller,variant,0x14,id,&q.input,&q.input_result);
-    };
+    script_service.find_named=nullptr;script_service.find_class=nullptr;script_service.accept=nullptr;script_service.missing=nullptr;
+    script_service.native_search=&scripted.search;script_service.native_input=&scripted.input;
     reset_queue();seed_outputs();f.put(outf.rows[0],4,0x223db3c4u);f.put(outf.rows[0],0x18,0u);
     f.put(f.actor,0x378,0x8002u);f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);
     f.put(wt.member,0,ground_vt);f.put(wt.member,0x868,2);f.put(wt.member,0x78,0x20u);
@@ -1002,7 +994,7 @@ int main(int argc,char** argv){
     assert(f.get<int>(f.actor,0x868)==0&&f.get<int>(wt.member,0x868)==2);
     assert(service->service(outf.queue_root,sizeof(outf.queue_root),root_token,20.f,false,&steps,&script_service,&sr)&&sr.future_stopped&&!sr.events);
     assert(service->service(outf.queue_root,sizeof(outf.queue_root),root_token,20.25f,false,&steps,&script_service,&sr)&&sr.completed&&sr.events==1&&sr.deliveries==1&&sr.removed==1);
-    assert(scripted.input_result.accepted&&scripted.input_result.native_wake&&scripted.input_result.native_maps==2&&scripted.input_result.map==0x224dbd9cu&&scripted.input_result.row==126&&scripted.input_result.handler==0x220320b0u);
+    assert(sr.native_inputs==1&&!sr.rejected_inputs&&sr.native_named_searches==2&&!sr.native_class_searches&&!sr.foreign_inputs);
     assert(scripted.wake_result.completed&&scripted.wake_result.transitions==1&&scripted.wake_result.outputs==1&&scripted.wake_result.flags_changed==1);
     assert(f.get<int>(wt.member,0x868)==0&&f.get<unsigned>(wt.member,0x78)==0&&wt.member[0x200]&&!outf.service_locked);check_queue({});
     // A scripted Wake input uses AcceptInput time, not a stale binding clock.
@@ -2143,22 +2135,29 @@ int main(int argc,char** argv){
     hq_service.release=[](void* p,unsigned token,void* row) noexcept -> int{
         auto& q=*static_cast<HealthQueueFixture*>(p);assert(token>=0x7200u&&token<0x7202u&&row==q.events[token-0x7200u]);++q.released_events;return 1;
     };
-    hq_service.find_named=[](void* p,void* previous,unsigned name,void* activator,void* caller,void** entity) noexcept -> int{
-        auto& q=*static_cast<HealthQueueFixture*>(p);assert(name==500u&&activator==q.f->actor&&caller==q.f->actor);
-        ServerEntitySearchResult result{};if(!q.search->named(previous,name,activator,caller,q.lookup,&result))return 0;*entity=result.entity;return 1;
-    };
-    hq_service.accept=[](void* p,void* target,unsigned name,void* activator,void* caller,const void* variant,unsigned id) noexcept -> int{
-        auto& q=*static_cast<HealthQueueFixture*>(p);assert(target==q.recipient&&activator==q.f->actor&&caller==q.f->actor&&q.locks==1);
-        ServerEntityAcceptInputResult result{};
-        if(!q.accept->run(target,0xfd8u,0x2249aaa4u,name,activator,caller,variant,0x14,id,&q.input,&result)||!result.native_handler||!result.accepted)return 0;
-        ++q.delivered;q.ids.push_back(id);return 1;
-    };
-    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.f,false,&steps,&hq_service,&sr)&&sr.future_stopped&&!hq.delivered);
-    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.125f,false,&steps,&hq_service,&sr)&&sr.events==1&&sr.deliveries==1&&hq.delivered==1);
+    hq_service.native_search=hq.lookup;hq_service.native_input=&hq.input;
+    f.put(wt.member,0,ground_vt);
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.f,false,&steps,&hq_service,&sr)&&sr.future_stopped&&!sr.native_inputs);
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.125f,false,&steps,&hq_service,&sr)&&sr.events==1&&sr.deliveries==1&&sr.native_inputs==1&&!sr.rejected_inputs&&sr.native_named_searches==2);
     assert(wt.member[0xc65]==1&&!wt.member[0x968]&&wt.member[0x200]);
-    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.25f,false,&steps,&hq_service,&sr)&&sr.events==1&&sr.deliveries==1&&hq.delivered==2);
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.25f,false,&steps,&hq_service,&sr)&&sr.events==1&&sr.deliveries==1&&sr.native_inputs==1&&!sr.rejected_inputs&&sr.native_named_searches==2);
     assert(wt.member[0xc65]&&wt.member[0x968]&&hq.released_events==2&&!hq.locks&&!f.get<unsigned>(hq.root,0x30));
-    assert((hq.ids==std::vector<unsigned>{11u,10u}));
+    // Native name misses fall back to classname, and rejected input
+    // return values still consume the event (retail ignores the virtual result).
+    std::memset(hq.root,0,sizeof(hq.root));hq.allocated=0;hq.released_events=0;
+    f.put(f.actor,0xc,503u);f.put(wt.member,0xc,503u);
+    f.put(f.actor,0,ground_vt);f.put(wt.member,0,ground_vt);
+    hq_queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept -> int{*yes=true;return 1;};
+    hq.input.diagnostic=nullptr;
+    ServerEntityVoidOutputAction rejected_action{503u,0xfeedu,0u,0u,66u,0.f};
+    ServerEntityNamedEventQueueResult rejected_queue{};
+    assert(outf.queue_api->enqueue(hq.root,sizeof(hq.root),0x7000u,93.f,0x8002u,0x8002u,&rejected_action,&hq_queue,&rejected_queue));
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,93.f,false,&steps,&hq_service,&sr)&&sr.events==1&&sr.classname==2&&sr.native_inputs==2&&sr.rejected_inputs==2&&sr.native_named_searches==1&&sr.native_class_searches==3&&!sr.missing&&hq.released_events==1);
+    // Direct target uses the same native route without any name lookup.
+    ServerEntityVoidOutputAction direct_action{0u,0x223db318u,0u,0u,67u,0.f};
+    assert(outf.queue_api->enqueue(hq.root,sizeof(hq.root),0x7000u,94.f,0x8002u,0x8002u,&direct_action,&hq_queue,&rejected_queue));
+    f.put(hq.events[1],0x18,0x7001u);
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,94.f,false,&steps,&hq_service,&sr)&&sr.direct==1&&sr.native_inputs==1&&!sr.rejected_inputs&&!sr.native_named_searches&&!sr.native_class_searches&&!wt.member[0x968]);
     f.put(f.actor,0xa8c,0u);
     assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xd0,0xffffffffu);
