@@ -3173,6 +3173,35 @@ int main(int argc,char** argv){
         f.put(q.player,0x6d0,0x7001u);std::memcpy(q.script_records[1]+0x17c,"AR",3);f.put(q.player,0x654,10);
         reset_reward();q.expected_pickup="item_ammo_ar";
         assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_weapons==2&&o.reward_candidates==1&&!o.reward_equal_minimum&&o.reward_factory&&o.finished&&q.step==6);
+        // Native defaults use the original registered SiN ammo capacities
+        // (MAG 80, AR 330), not the previous fixture's live overrides.
+        f.put(q.player,0x6d0,0xffffffffu);std::memcpy(q.script_records[0]+0x17c,"mag",4);
+        f.put(q.player,0x650,20);f.put(q.player,0x654,110);
+        const auto live_index=reward.ammo_index;const auto live_max=reward.max_carry;
+        reward.ammo_index=nullptr;reward.max_carry=nullptr;
+        reset_reward();q.expected_pickup="item_ammo_magnum";
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_native_indices==2&&o.reward_native_maxima==4&&o.reward_ammo_index==1&&o.reward_minimum==.25f&&o.reward_equal_minimum==1&&o.reward_factory&&o.finished&&!q.index_reads&&!q.max_reads);
+        // Live maximum callback takes precedence independently of index.
+        reward.max_carry=live_max;f.put(q.player,0x650,4);f.put(q.player,0x654,30);
+        reset_reward();q.expected_pickup="item_ammo_magnum";
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_native_indices==2&&!o.reward_native_maxima&&q.max_reads==4&&o.reward_minimum==1.f/3.f&&o.finished);
+        // -2 is the original unlimited-ammo sentinel: reserve helper
+        // returns 999, while the selection denominator remains -2.
+        reward.ammo_index=live_index;q.max_ammo[0]=-2;
+        reset_reward();q.expected_pickup="item_ammo_magnum";
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_minimum==-499.5f&&o.reward_equal_minimum==1&&o.reward_factory&&o.finished);
+        // With zero max carry, 0/0 is unordered and positive/0 is +inf.
+        // Neither selects a classname; report the intentional safety gate.
+        q.max_ammo[0]=0;q.script_records[0][0x19c]=0;
+        for(int reserve:{0,4}){
+            f.put(q.player,0x650,reserve);reset_reward();
+            assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_candidates==1&&!o.reward_equal_minimum&&o.reward_missing_class&&!o.reward_factory&&!q.step);
+        }
+        q.max_ammo[0]=12;std::memcpy(q.script_records[0]+0x19c,"AR",3);
+        // Validate the alternate base-player primary vtable too.
+        f.put(q.player,0,0x2245222cu);f.put(q.player,0x650,4);
+        reset_reward();q.expected_pickup="item_ammo_magnum";
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_native&&o.reward_factory&&o.finished);
         // Bad player vtable is rejected before inventory and factory access.
         f.put(q.player,0,0xdeadbeefu);reset_reward();assert(!api->post(q.a,sizeof(q.a),&b,&o)&&!o.reward_native&&!q.factories);
 
