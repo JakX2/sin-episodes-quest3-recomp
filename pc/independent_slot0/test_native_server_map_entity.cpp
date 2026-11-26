@@ -1741,5 +1741,63 @@ int main(int argc,char** argv){
         f.cycle=true;assert(!api->navigation_input(actor,sizeof(actor),"TurnOn",&b,&result)&&result.visited==1&&!result.completed);
         assert(!api->navigation_activate(actor,navigation_extent-1,&b,&result));
     }
+    {
+        FactoryDictionary dict{};
+        assert(api->register_factories(&dict)&&api->register_navigation(&dict)&&api->register_menu(&dict)&&api->register_counter(&dict)&&api->register_compare(&dict)&&api->register_case(&dict)&&api->register_branch(&dict)&&api->register_auto(&dict)&&api->register_timer(&dict)&&api->register_relay(&dict)&&dict.count==21);
+        assert(!api->register_navigation(&dict));
+        const auto* spec=api->find_factory(&dict,"LOGIC_NAVIGATION");
+        assert(spec&&spec->family==Family::LogicNavigation&&spec->original_object==0x224fb0e0&&spec->original_vtable==0x2241ece4&&spec->extent==navigation_extent);
+        struct NavigationOwner {
+            alignas(4) unsigned char storage[navigation_extent]{},target[0x238]{};
+            const sin_port::native_map::Api* api=nullptr;
+            LogicDestroyBindings teardown{};LogicDestroyResult destroyed{};
+            unsigned alloc=0,base=0,init=0,cleared=0,spawned=0,activated=0,registered=0,unregistered=0,removed=0,base_dead=0,freed=0;
+        } f;f.api=api;
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(n==navigation_extent);++f.alloc;*a=f.storage;*bytes=n;return 1;};
+        owner.base_construct=[](void* p,void* a,int arg) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(a==f.storage&&arg==1);++f.base;return 1;};
+        owner.initialize=[](void* p,void* a,const char* cls) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"logic_navigation"));++f.init;return 1;};
+        owner.release_networkable=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<NavigationOwner*>(p);assert(a==f.storage+0x160&&f.removed==1);
+            return f.api->destroy_logic(f.storage,sizeof(f.storage),1,&f.teardown,&f.destroyed);
+        };
+        FactoryBindings factories{};factories.dictionary=&dict;factories.logic_navigation=&owner;
+        auto keys=kb;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=navigation_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            if(!std::strcmp(text,"logic_navigation"))*token=201;
+            else if(!std::strcmp(text,"victim"))*token=202;
+            else return 0;return 1;
+        };
+        Bindings parse{};parse.context=&f;parse.native_factory=&factories;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<NavigationOwner*>(p)->cleared;return 1;};
+        NavigationBindings behavior{};behavior.context=&f;
+        behavior.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);*bytes=a==f.target?0x238:0;return *bytes!=0;};
+        behavior.find=[](void* p,void* prev,unsigned name,void** found) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(name==202&&(!prev||prev==f.target));*found=prev?nullptr:f.target;return 1;};
+        behavior.listen=[](void* p,void* listener,bool on) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(listener==f.storage+0x394);if(on)++f.registered;else ++f.unregistered;return 1;};
+        behavior.base_activate=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(a==f.storage&&f.spawned==1);++f.activated;return 1;};
+        behavior.base_remove=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(a==f.storage&&f.unregistered==1);++f.removed;return 1;};
+        SpawnBindings spawn{};spawn.context=&f;spawn.logic_navigation=&behavior;
+        spawn.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=navigation_extent;return 1;};
+        spawn.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="logic_navigation";return 1;};
+        spawn.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        spawn.engine_scope=[](void*,bool) noexcept ->int{return 1;};
+        spawn.debug_enabled=[](void*,bool* enabled) noexcept ->int{*enabled=false;return 1;};
+        spawn.spawn=[](void* p,void* a,int* code) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(a==f.storage);++f.spawned;*code=0;return 1;};
+        PipelineBindings pipe{};pipe.context=&f;pipe.parse=&parse;pipe.spawn=&spawn;
+        pipe.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        pipe.classify=[](void*,void*,Category* cat) noexcept ->int{*cat=Category::Ordinary;return 1;};
+        const char map[]="{ classname logic_navigation target victim navprop Ignore spawnflags 1 }";
+        PipelineResult parsed{};
+        assert(api->parse_all(map,sizeof(map),true,&pipe,&parsed)&&parsed.parse.native_creates==1&&parsed.spawn.native_activations==1&&parsed.spawn.spawned==1&&parsed.spawn.activated==1);
+        assert(f.alloc==1&&f.base==1&&f.init==1&&f.cleared==1&&f.activated==1&&f.registered==1);
+        assert(word(f.storage,0)==navigation_vtable&&word(f.storage,0x394)==navigation_listener_vtable&&word(f.storage,0x39c)==1&&word(f.storage,0x90)==202&&!word(f.storage,0xb4)&&f.storage[0x398]&&word(f.target,0x234)==0x7f7fffffu);
+        NavigationResult removed{};
+        assert(api->navigation_remove(f.storage,sizeof(f.storage),&behavior,&removed)&&removed.unregistered==1&&removed.base_called&&word(f.target,0x234)==0x7f7fffffu);
+        auto& d=f.teardown;d.context=&f;
+        d.base_destroy=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(a==f.storage&&f.removed==1);++f.base_dead;return 1;};
+        d.free_actor=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<NavigationOwner*>(p);assert(a==f.storage&&f.base_dead==1);++f.freed;return 1;};
+        assert(!api->destroy_navigation(f.storage,navigation_extent,f.storage+0x164,&owner));
+        assert(api->destroy_navigation(f.storage,navigation_extent,f.storage+0x160,&owner)&&f.destroyed.completed&&!f.destroyed.outputs&&f.destroyed.base_called&&f.destroyed.freed&&f.freed==1);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
