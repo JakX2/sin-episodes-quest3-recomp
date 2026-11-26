@@ -170,5 +170,7 @@ struct ServerNpcNativeGatherRoute {
     const ServerNpcGruntJetSelectorBindings* jet_request_selector=nullptr;
     ServerNpcNativeJetRequestSchedulerResult* jet_request_result=nullptr;
     const ServerNpcGruntScheduleConeServices* request_cone=nullptr;
+    const ServerNpcGruntCombatLineBindings* combat_line=nullptr;
+    ServerNpcGruntNativeLineAttackResult* combat_line_result=nullptr;
 };
 }
