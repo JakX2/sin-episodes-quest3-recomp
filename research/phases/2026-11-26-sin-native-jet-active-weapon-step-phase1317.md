@@ -1,0 +1,3 @@
+# Phase 1317: Jetpack active-update weapon step
+
+Original eight Grunt vtables use the same active-update segment 220433d7..2204342a and animation 22030040. Add separate versioned Jetpack export, sharing common deadline/validation/registry/script/condition binding code without changing ground ABI. Due path invokes original Jetpack policy think, including attachment tick, class-specific schedule translation and native task. Future deadline path runs actual weapon/NPC animation event processing. Test future reload/fire with Jetpack activity class; test due acquisition41->122 and explicit absent studio model, reject short extent/wrong family. No real Jetpack flight or full outer update claim. CI pending.
