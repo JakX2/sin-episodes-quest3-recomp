@@ -3138,6 +3138,12 @@ int __cdecl squad_report_gather(void* a,unsigned n,float now,const ServerNpcGrun
     const PerceptionSpeechRoute route{reports->perception.dialogue,result->perception.dialogue,&release,&forward};
     return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route);
 }
+int native_line_squad_report_gather_impl(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntSquadReportResult* result,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* line_result) noexcept{
+    if(!native_line_cycle_init(line,line_result)||!reports||!result||!out||!b)return 0;reset_squad_report(*result);out->gather={};out->point={};out->object={};out->object.selected_handle=0xffffffffu;
+    const SquadReleaseRoute release{reports->perception.slots,result->perception};const SquadReportRoute forward{*reports,*result};
+    const PerceptionSpeechRoute route{reports->perception.dialogue,result->perception.dialogue,&release,&forward};
+    return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route,line,line_result);
+}
 int __cdecl squad_enemy_broadcast(std::uint32_t token,void* target,float now,const ServerNpcGruntSquadEnemyBindings* b,ServerNpcGruntSquadEnemyResult* out) noexcept{
     if(!out)return 0;*out={};out->last_seen=-std::numeric_limits<float>::max();
     if(!b||!std::isfinite(now)||b->slots.count>sin_independent::kEntityHandleCapacity||(b->slots.count&&!b->slots.entries))return 0;
@@ -9881,4 +9887,10 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntNativeLineCycleApi=_SiN_GetServerNpcGruntNativeLineCycleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntNativeLineCycleApi* __cdecl SiN_GetServerNpcGruntNativeLineCycleApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntNativeLineCycleApi)?&native_line_cycle_api:nullptr;
+}
+
+namespace sin_port::native_weapon_tables {
+int native_line_squad_report_gather(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntSquadReportResult* result,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* line_result) noexcept{
+    return native_line_squad_report_gather_impl(a,n,now,b,reports,out,result,line,line_result);
+}
 }

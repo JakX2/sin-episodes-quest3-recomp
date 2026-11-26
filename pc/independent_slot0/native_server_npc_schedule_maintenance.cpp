@@ -255,7 +255,9 @@ int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMainten
                     bound.gather.base.perception.enemy_switch.best.memory.entries=selection.state.entities.entries;
                     bound.gather.base.perception.enemy_switch.best.memory.count=selection.state.entities.count;
                     ++*native_gather->calls;
-                    if(native_gather->reports){
+                    if(native_gather->combat_line){
+                        if(!native_gather->reports||!native_line_squad_report_gather(actor,bytes,now,&bound,native_gather->reports,native_gather->result,native_gather->report_result,native_gather->combat_line,native_gather->combat_line_result))return 0;
+                    }else if(native_gather->reports){
                         const auto* reports=SiN_GetServerNpcGruntSquadReportApi(1,sizeof(ServerNpcGruntSquadReportApi));
                         if(!reports||!reports->gather(actor,bytes,now,&bound,native_gather->reports,native_gather->result,native_gather->report_result))return 0;
                     }else if(native_gather->slots){

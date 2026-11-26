@@ -539,6 +539,12 @@ int main(int argc,char** argv){
     const auto* cone_think=cone_think_getter(1,sizeof(ServerNpcNativeConeRequestThinkApi));assert(cone_think);
     ServerNpcGruntScheduleConeServices req_cone{};req_cone.line=&req_line;
     ServerNpcNativeConeRequestThinkBindings cone_bind{};cone_bind.think=taskbind;cone_bind.selector=&req_selector;cone_bind.cone=&req_cone;
+    const auto combat_think_getter=reinterpret_cast<GetServerNpcNativeCombatLineThinkApi>(GetProcAddress(s,server_npc_native_combat_line_think_export));
+    assert(combat_think_getter&&!GetProcAddress(c,server_npc_native_combat_line_think_export)&&!combat_think_getter(0,sizeof(ServerNpcNativeCombatLineThinkApi))&&!combat_think_getter(1,0));
+    const auto* combat_think=combat_think_getter(1,sizeof(ServerNpcNativeCombatLineThinkApi));assert(combat_think);
+    ServerNpcGruntCombatLineBindings think_line{};think_line.admission=&req_schedule.admission;think_line.line=&req_line;think_line.cone=&req_cone;
+    ServerNpcNativeCombatLineThinkBindings combat_bind{};combat_bind.think=taskbind;combat_bind.selector=&req_selector;combat_bind.cone=&req_cone;combat_bind.combat_line=&think_line;
+    ServerNpcGruntNativeLineAttackResult outer_line{},inner_line{};
     install_at(88,3);bind_nav();f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);component_calls=0;
     assert(request_think->run(f.actor,sizeof(f.actor),69.495f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
     assert(!req_run.requests.requests&&req_run.think.think.think.squad.cycle.preschedule.think.completed&&req_run.think.speech_tasks.calls==1&&component_calls==1);
@@ -547,7 +553,7 @@ int main(int argc,char** argv){
     auto old_trans=selection.translate;auto old_fail=selection.fail_select;auto old_special=selection.special_select;
     selection.translate=nullptr;selection.fail_select=nullptr;selection.special_select=nullptr;
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
-    assert(cone_think->run(f.actor,sizeof(f.actor),69.496f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&cone_bind,&req_run));
+    assert(combat_think->run(f.actor,sizeof(f.actor),69.496f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&combat_bind,&req_run,&outer_line,&inner_line)&&!outer_line.attack.line_calls&&!inner_line.attack.line_calls);
     assert(req_run.requests.requests==1&&!req_run.requests.failure_requests&&req_run.requests.request.requested==26&&req_run.requests.request.acquisition.translated==94&&req_run.requests.request.acquisition.schedule_token==find(94));
     assert(req_run.requests.scheduler.maintenance.state.schedule==find(94)&&req_run.requests.scheduler.maintenance.started==1&&req_run.think.think.think.squad.cycle.preschedule.think.completed);
     int fail_id=0;std::memcpy(&fail_id,f.actor+0x7bc,4);assert(fail_id==95);
@@ -727,10 +733,14 @@ int main(int argc,char** argv){
     assert(gjc&&!GetProcAddress(c,server_npc_native_jet_cone_request_think_export)&&!gjc(0,sizeof(ServerNpcNativeJetConeRequestThinkApi))&&!gjc(1,0));
     const auto* jet_cone_think=gjc(1,sizeof(ServerNpcNativeJetConeRequestThinkApi));assert(jet_cone_think);
     ServerNpcNativeJetConeRequestThinkBindings jet_cone_bind{};jet_cone_bind.think=jet_bind.think;jet_cone_bind.selector=&jet_request;jet_cone_bind.cone=&req_cone;
+    const auto jet_combat_getter=reinterpret_cast<GetServerNpcNativeJetCombatLineThinkApi>(GetProcAddress(s,server_npc_native_jet_combat_line_think_export));
+    assert(jet_combat_getter&&!GetProcAddress(c,server_npc_native_jet_combat_line_think_export)&&!jet_combat_getter(0,sizeof(ServerNpcNativeJetCombatLineThinkApi))&&!jet_combat_getter(1,0));
+    const auto* jet_combat_think=jet_combat_getter(1,sizeof(ServerNpcNativeJetCombatLineThinkApi));assert(jet_combat_think);
+    ServerNpcNativeJetCombatLineThinkBindings jet_combat_bind{};jet_combat_bind.think=jet_bind.think;jet_combat_bind.selector=&jet_request;jet_combat_bind.cone=&req_cone;jet_combat_bind.combat_line=&think_line;
     req_arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=41;return 1;};
     selection.translate=nullptr;selection.fail_select=nullptr;selection.special_select=nullptr;
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);f.put(f.actor,0x218,321u);ready=true;
-    assert(jet_cone_think->run(f.actor,sizeof(f.actor),83,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_cone_bind,&jet_run));
+    assert(jet_combat_think->run(f.actor,sizeof(f.actor),83,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_combat_bind,&jet_run,&outer_line,&inner_line)&&!outer_line.attack.line_calls&&!inner_line.attack.line_calls);
     const auto& jet_cycle=jet_run.think.think.think.squad.cycle.preschedule;
     assert(jet_cycle.jet_queried&&jet_cycle.jet_called&&jet_cycle.think.completed);
     assert(jet_run.requests.base.requests==1&&jet_run.requests.base.request.requested==41&&jet_run.requests.base.request.acquisition.translated==122&&jet_run.requests.base.scheduler.maintenance.state.schedule==find(122));
