@@ -794,6 +794,7 @@ int __cdecl remap_spawn(void*,unsigned,RemapResult*) noexcept;
 int __cdecl colorblend_spawn(void*,unsigned,ColorBlendResult*) noexcept;
 int __cdecl menu_listen(void*,unsigned,bool,const MenuBindings*,MenuResult*) noexcept;
 int __cdecl navigation_activate(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
+int __cdecl defer_logic_remove(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
 bool campaign_valid(void* a,unsigned n,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
     if(!o)return false;*o={};
     if(!a||n<4||!b)return false;
@@ -834,7 +835,11 @@ bool campaign_event(void* a,const char* name,int descriptor,float value,int deci
     o.event_fired=1;return true;
 }
 bool campaign_remove(void* a,const CampaignTriggerBindings& b,CampaignTriggerResult& o) noexcept {
-    if(!b.remove||!b.remove(b.context,a))return false;
+    if(b.deferred){
+        DeferredRemovalResult r{};
+        if(!defer_logic_remove(a,removal_entity_extent(entity_vtable(a)),b.deferred,&r))return false;
+        o.native_removed=1;
+    }else if(!b.remove||!b.remove(b.context,a))return false;
     o.removed=1;return true;
 }
 int __cdecl campaign_trigger_spawn(void* a,unsigned n,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
@@ -984,7 +989,6 @@ int __cdecl auto_activate(void* actor,unsigned bytes,const AutoBindings* b,AutoR
 }
 // CLogicAuto Think original 22178460, virtual +bc.
 bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
-int __cdecl defer_logic_remove(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
 int __cdecl auto_think(void* actor,unsigned bytes,const AutoBindings* b,AutoResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!actor||bytes<auto_extent||entity_vtable(actor)!=auto_vtable||!b)return 0;
@@ -2284,13 +2288,13 @@ bool removal_hierarchy(void* a,const RemovalHierarchyBindings& b,const DeletionL
     if(!collect(collect,read_field<unsigned>(a,0xf4)))return false;
     // Preflight owner dispatch availability for the snapshot.
     for(unsigned i=0;i<o.children_collected;++i){
-        const auto extent=logic_kill_extent(entity_vtable(children[i].actor));
+        const auto extent=removal_entity_extent(entity_vtable(children[i].actor));
         if(extent?children[i].bytes<extent:!b.foreign_remove)return false;
     }
     if(o.children_collected&&(!b.warning||!b.warning(b.context,a,o.children_collected)))return false;
     for(unsigned i=o.children_collected;i>0;--i){
         const auto& child=children[i-1];
-        if(logic_kill_extent(entity_vtable(child.actor))){
+        if(removal_entity_extent(entity_vtable(child.actor))){
             DeferredRemovalResult r{};
             if(!defer_logic_remove(child.actor,child.bytes,&deferred,&r))return false;
             ++o.children_native;
@@ -2339,7 +2343,7 @@ int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings*
     if(!o)return 0;*o={};
     if(!a){o->completed=1;return 1;}
     if(n<4)return 0;
-    const auto vt=entity_vtable(a),extent=logic_kill_extent(vt);
+    const auto vt=entity_vtable(a),extent=removal_entity_extent(vt);
     if(!extent||n<extent||read_field<unsigned>(a,0x160)!=0x22454f00u||
        read_field<unsigned>(a,0x168)!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(a)))return 0;
     const auto flags=read_field<unsigned>(a,0xb8);
@@ -2437,7 +2441,7 @@ void registry_append(sin_independent::EntityHandleEntry& e,RegistryChain& chain)
 int __cdecl registry_unlink_logic(void* a,unsigned n,unsigned handle,const RegistryRemovalBindings* b,RegistryRemovalResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!a||n<0x37c||!b||!b->registry||handle==0xffffffffu)return 0;
-    auto& r=*b->registry;const unsigned vt=entity_vtable(a),extent=logic_kill_extent(vt);
+    auto& r=*b->registry;const unsigned vt=entity_vtable(a),extent=removal_entity_extent(vt);
     // Base destructor installs its own table before calling 22164520.
     if((!extent&&vt!=0x2240ac2cu)||(extent&&n<extent)||!r.entries||r.count>sin_independent::kEntityHandleCapacity||r.unlink_active)return 0;
     const unsigned i=handle&0xfffu;o->index=i;

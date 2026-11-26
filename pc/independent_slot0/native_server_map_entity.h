@@ -365,11 +365,13 @@ struct CampaignTriggerBindings {
     int (__cdecl *owner_word)(void*,int*) noexcept;
     int (__cdecl *end_game)(void*) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
+    const DeferredRemovalBindings* deferred;
 };
 struct CampaignTriggerResult {
     unsigned completed,dynamic,spawn_suppressed,base_spawned,warned,nonplayer,
         special_called,event_attempted,event_unavailable,event_fired,manager_signaled,removed;
     int descriptor;
+    unsigned native_removed;
 };
 struct SpawnBindings {
     void* context;
@@ -454,6 +456,12 @@ inline constexpr unsigned logic_kill_extent(unsigned vt) noexcept {
     case colorblend_vtable:return colorblend_extent;
     default:return 0;
     }
+}
+// The two SiN trigger primary tables share the base removal/update
+// virtuals but have different input maps and derived destructors.
+inline constexpr unsigned removal_entity_extent(unsigned vt) noexcept {
+    return vt==dynamic_trigger_vtable?dynamic_trigger_extent:
+           vt==secret_trigger_vtable?secret_trigger_extent:logic_kill_extent(vt);
 }
 // Owner supplies the existing live queue, stable registry and pool storage.
 // A nonzero protected node is currently being dispatched and cannot be freed.

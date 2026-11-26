@@ -68,4 +68,29 @@
         assert(api->campaign_trigger_spawn(a,secret_trigger_extent,&b,&r)&&r.event_fired&&f.order=="GnnBCdosNF"&&f.descriptor==11&&f.name=="classname"&&f.owner==-1&&f.subject==-1);
         f.order.clear();
         assert(api->campaign_trigger_touch(a,secret_trigger_extent,&f.other,&b,&r)&&r.event_fired&&r.removed&&f.order=="PnCdosNFR"&&f.descriptor==12&&f.name=="renamed"&&!r.special_called&&!r.manager_signaled);
+        // Same original base update and networkable layout as logic
+        // entities, but no claim of shared derived input/destructor maps.
+        void* slots[1]{};DeferredRemovalQueue queue{slots,1};
+        DeferredRemovalBindings deferred{};deferred.context=&f;deferred.queue=&queue;
+        deferred.update=[](void* p,void* a,unsigned handler) noexcept ->int{
+            auto& f=*static_cast<Trigger*>(p);assert(a==f.storage&&handler==0x221446f0u);
+            f.order+='U';return 1;
+        };
+        deferred.release=[](void* p,void* net) noexcept ->int{
+            auto& f=*static_cast<Trigger*>(p);assert(net==f.storage+0x160);f.order+='D';return 1;
+        };
+        b.remove=nullptr;b.deferred=&deferred;
+        for(unsigned vt:{dynamic_trigger_vtable,secret_trigger_vtable}){
+            const unsigned extent=removal_entity_extent(vt);
+            assert(extent&&!logic_kill_extent(vt));
+            std::memset(a,0,dynamic_trigger_extent);put(a,0,vt);put(a,0x378,0x3000u);put(a,0x160,0x22454f00u);put(a,0x168,ptrword(a));
+            put(a,0xc0,3u);f.order.clear();f.gate=true;
+            assert(api->campaign_trigger_spawn(a,extent,&b,&r)&&r.spawn_suppressed&&r.native_removed&&r.removed&&f.order=="GU"&&queue.count==1&&!word(a,0xc0));
+            DeferredRemovalResult dr{};
+            assert(api->cleanup_deferred(&deferred,&dr)&&dr.released==1&&f.order=="GUD"&&!queue.count);
+            put(a,0xb8,0u);put(a,0xc0,3u);put(a,0x478,257u);f.order.clear();f.gate=false;f.available=false;
+            assert(api->campaign_trigger_touch(a,extent,&f.other,&b,&r)&&r.event_unavailable&&r.native_removed&&r.removed&&queue.count==1);
+            assert(f.order==(vt==dynamic_trigger_vtable?"PnCEU":"PnCU")&&!word(a,0xc0));
+            assert(api->cleanup_deferred(&deferred,&dr)&&dr.released==1&&!queue.count);
+        }
     }
