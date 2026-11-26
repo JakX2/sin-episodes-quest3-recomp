@@ -28,6 +28,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGru
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEliteNativeTaskApi* __cdecl SiN_GetServerEliteNativeTaskApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherPointApi* __cdecl SiN_GetServerNpcGruntGatherPointApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherNativeApi* __cdecl SiN_GetServerNpcGruntGatherNativeApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSpeechApi* __cdecl SiN_GetServerNpcGruntPerceptionSpeechApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 struct GatherRoute {
@@ -194,7 +195,10 @@ int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMainten
                     bound.gather.base.perception.enemy_switch.best.memory.entries=selection.state.entities.entries;
                     bound.gather.base.perception.enemy_switch.best.memory.count=selection.state.entities.count;
                     ++*native_gather->calls;
-                    if(!api||!api->gather(actor,bytes,now,&bound,native_gather->result))return 0;
+                    if(native_gather->dialogue){
+                        const auto* dialogue=SiN_GetServerNpcGruntPerceptionSpeechApi(1,sizeof(ServerNpcGruntPerceptionSpeechApi));
+                        if(!dialogue||!dialogue->gather(actor,bytes,now,&bound,native_gather->dialogue,native_gather->result,native_gather->dialogue_result))return 0;
+                    }else if(!api||!api->gather(actor,bytes,now,&bound,native_gather->result))return 0;
                 }else if(gather){
                     const auto* api=SiN_GetServerNpcGruntGatherPointApi(1,sizeof(ServerNpcGruntGatherPointApi));
                     ++gather->result->gather_calls;

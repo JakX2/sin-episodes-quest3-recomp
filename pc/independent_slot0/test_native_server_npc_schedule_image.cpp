@@ -440,6 +440,20 @@ int main(int argc,char** argv){
     f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,69.47f);f.put(f.actor,0xcd4,2);
     assert(stapi->run(f.actor,sizeof(f.actor),69.47f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&stbind,&strun));
     assert(strun.preschedule.think.completed&&strun.preschedule.preschedule.completed&&strun.speech.delivered&&strun.speech.owner_written&&strun.speech.cleared&&strun.preschedule.think.scheduler.scheduler.tactical.last.accepted&&component_calls==1&&f.think_component_tasks==3);
+    // Unified immediate and pending dialogue bindings across both +420 call sites.
+    auto gdt=reinterpret_cast<GetServerNpcNativeDialogueThinkApi>(GetProcAddress(s,server_npc_native_dialogue_think_export));
+    assert(gdt&&!GetProcAddress(c,server_npc_native_dialogue_think_export)&&!gdt(0,sizeof(ServerNpcNativeDialogueThinkApi))&&!gdt(1,0));
+    const auto* dt=gdt(1,sizeof(ServerNpcNativeDialogueThinkApi));assert(dt);
+    ServerNpcNativeDialogueThinkBindings dbind{};dbind.preschedule=stbind.preschedule;dbind.dialogue.sentence.speech=stbind.speech;
+    ServerNpcNativeDialogueThinkResult dtr;
+    install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
+    f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,69.48f);f.put(f.actor,0xcd4,2);
+    assert(dt->run(f.actor,sizeof(f.actor),69.48f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&dbind,&dtr));
+    assert(dtr.cycle.preschedule.think.completed&&dtr.cycle.speech.delivered&&dtr.cycle.speech.cleared&&component_calls==1&&f.think_component_tasks==4&&!dtr.outer_dialogue.idle_calls&&!dtr.maintenance_dialogue.idle_calls);
+    // Invalidated schedule: both gathers must use the new route, preserving the component failure.
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);component_calls=0;
+    dbind.preschedule.think.gather.gather.component_update=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);return ++*static_cast<unsigned*>(p)==1;};
+    assert(!dt->run(f.actor,sizeof(f.actor),69.49f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&dbind,&dtr)&&dtr.cycle.preschedule.think.outer_gather.gather.completed&&dtr.cycle.speech.empty&&dtr.cycle.preschedule.think.maintenance_called&&dtr.cycle.preschedule.think.scheduler.gather_calls==1&&component_calls==2);
     tcb.submit_goal=cover_submit;
     ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;
     m.before_selection=old_before;

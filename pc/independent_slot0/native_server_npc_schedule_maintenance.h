@@ -106,5 +106,7 @@ struct ServerNpcNativeGatherRoute {
     const ServerNpcGruntGatherNativeBindings* bindings;
     ServerNpcGruntGatherNativeResult* result;
     unsigned* calls;
+    const ServerNpcGruntPerceptionSpeechBindings* dialogue=nullptr;
+    ServerNpcGruntPerceptionSpeechResult* dialogue_result=nullptr;
 };
 }
