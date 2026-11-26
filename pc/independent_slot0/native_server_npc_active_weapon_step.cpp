@@ -381,6 +381,44 @@ int wake_policy_impl(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNp
     }
     return done();
 }
+// Original 22156900 passes a void variant into 22156680. Do not
+// synthesize a target entity or invoke its input synchronously.
+int __cdecl fire_void_output(void* output,unsigned n,void* activator,void* caller,unsigned caller_bytes,float extra,const ServerEntityVoidOutputBindings* b,ServerEntityVoidOutputResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!output||n<0x18||!b||(caller&&caller_bytes<0xa9)||!std::isfinite(extra))return 0;
+    void* previous=output;unsigned link_off=0x14;
+    unsigned token=rd<unsigned>(output,link_off),seen[256]{};
+    while(token){
+        if(o->visited>=256)return 0;
+        for(unsigned i=0;i<o->visited;++i)if(seen[i]==token)return 0;
+        seen[o->visited++]=token;
+        void* row=nullptr;unsigned bytes=0;
+        if(!b->resolve||!b->resolve(b->context,token,&row,&bytes)||!row||bytes<0x1c)return 0;
+        ServerEntityVoidOutputAction action{};
+        action.target=rd<unsigned>(row,0);action.input=rd<unsigned>(row,4);action.parameter=rd<unsigned>(row,8);
+        action.action_id=rd<unsigned>(row,0x14);
+        const float delay=rd<float>(row,0xc);
+        action.variant_type=action.parameter?2u:0u;
+        // Parameter override branch uses only the action delay.
+        action.delay=action.parameter?delay:static_cast<float>(double(delay)+extra);
+        if(!std::isfinite(action.delay)||!b->enqueue||!b->enqueue(b->context,activator,caller,&action))return 0;
+        ++o->queued;if(action.parameter)++o->parameter_overrides;
+        if(caller&&(rd<std::uint8_t>(caller,0xa8)&0x10u)){
+            if(!b->debug_action||!b->debug_action(b->context,caller,&action))return 0;++o->debugged;
+        }
+        unsigned count=rd<unsigned>(row,0x10);
+        if(count!=0xffffffffu){--count;wr<unsigned>(row,0x10,count);++o->countdowns;}
+        const unsigned next=rd<unsigned>(row,0x18);
+        if(!count){
+            if(!b->release)return 0;
+            wr<unsigned>(previous,link_off,next);
+            if(!b->release(b->context,token,row))return 0;++o->removed;
+        }else{previous=row;link_off=0x18;}
+        token=next;
+    }
+    o->completed=1;return 1;
+}
+const ServerEntityVoidOutputApi void_output_api{1,sizeof(ServerEntityVoidOutputApi),&fire_void_output};
 bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept;
 // 2213c980. All authenticated Grunt primary +18/+1c virtuals
 // are 22001bc0 (read +38) and 22001af0 (copy +240).
@@ -567,4 +605,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterWakeUpdateApi=_SiN_GetServerNpcOuterWakeUpdateApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcOuterWakeUpdateApi* __cdecl SiN_GetServerNpcOuterWakeUpdateApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcOuterWakeUpdateApi)?&outer_wake_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerEntityVoidOutputApi=_SiN_GetServerEntityVoidOutputApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntityVoidOutputApi)?&void_output_api:nullptr;
 }
