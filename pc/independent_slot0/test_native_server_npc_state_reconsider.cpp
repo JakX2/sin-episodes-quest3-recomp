@@ -3317,6 +3317,28 @@ int main(int argc,char** argv){
         assert(run(100000)&&o.rope_valid&&!o.rope_created&&o.velocity[2]==-600.f&&q.step==2&&!std::strcmp(o.sound,"NPC_grunt.RappelTwoStory"));
         q.height[1]=120;assert(run(100000)&&o.velocity[2]==-300.000030517578125f);
         f.put(q.a,0xc18,0u);assert(run(100000)&&!o.entered&&o.events.gate.parent_called);
+
+        auto gs=reinterpret_cast<GetServerNpcGruntRappelScheduleApi>(GetProcAddress(s,server_npc_grunt_rappel_schedule_export));
+        assert(gs&&!GetProcAddress(c,server_npc_grunt_rappel_schedule_export)&&!gs(0,sizeof(ServerNpcGruntRappelScheduleApi))&&!gs(1,0));
+        const auto* sched=gs(1,sizeof(ServerNpcGruntRappelScheduleApi));assert(sched);
+        ServerNpcGruntRappelScheduleBindings full{};full.events=b;full.events.schedule_reset=nullptr;full.context=&q;
+        static unsigned char descriptor[0x48]{};
+        f.put(descriptor,0x34,1000000000);f.put(descriptor,0x38,0);f.put(descriptor,0x3c,100);
+        full.conditions.descriptor=[](void*,void*,const void** p,unsigned* n) noexcept -> int{*p=descriptor;*n=sizeof(descriptor);return 1;};
+        full.random_int=[](void* p,int lo,int hi,int* value) noexcept -> int{auto& q=RappelFixture::self(p);assert(lo==2&&hi==5&&q.step==0);++q.step;*value=3;return 1;};
+        full.random_float=[](void* p,float lo,float hi,double* value) noexcept -> int{auto& q=RappelFixture::self(p);assert(lo==1&&hi==2&&q.step==1);++q.step;*value=1.5;return 1;};
+        f.put(q.a,0xc18,0x10cfcu);f.put(q.a,0x9e8,0x10000u);q.a[0x9ec]=1;
+        f.put(q.a,0x9a8,10.f);q.a[0x9ac]=1;f.put(q.a,0x9b0,static_cast<std::uint16_t>(2));f.put(q.a,0x9b2,static_cast<std::uint16_t>(5));
+        f.put(q.a,0x9b4,1.f);f.put(q.a,0x9b8,2.f);f.put(q.a,0x9c4,77u);f.put(q.a,0x9cc,-1);
+        f.put(q.a,0x7d0,0u);f.put(q.a,0x7a4,0);
+        ServerNpcGruntRappelScheduleResult sr{};
+        auto schedule_run=[&](){q.step=0;f.put(q.raw,0,100001);return sched->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&full,&sr);};
+        assert(schedule_run()&&sr.entered&&sr.guard_active&&!sr.timer_active&&sr.rearmed&&sr.deadline==11.5f&&sr.count==3&&sr.guard_cleared&&sr.slot_released&&sr.slot.completed&&sr.state_written&&sr.condition.bit==33&&q.step==2);
+        q.a[0x9ec]=1;f.put(q.a,0x7d0,2u);f.put(q.a,0x7a4,7);
+        assert(schedule_run()&&sr.timer_active&&!sr.rearmed&&sr.guard_cleared&&sr.condition.value&&!sr.state_written&&q.step==0);
+        assert(schedule_run()&&!sr.guard_active&&!sr.slot_released&&!sr.state_written);
+        q.a[0x9ec]=1;f.put(q.a,0x9e8,0x10001u);assert(!schedule_run()&&sr.entered&&!sr.guard_cleared);
+
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
