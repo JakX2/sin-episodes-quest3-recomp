@@ -1734,9 +1734,11 @@ int __cdecl counter_input(void* a,unsigned n,const char* name,void* activator,un
 // Derived destructors call this in reverse member order, then base.
 // Independent owner data is preflighted before any destructive callback;
 // a failed callback after release begins is terminal for that storage.
+int __cdecl registry_unlink_logic(void*,unsigned,unsigned,const RegistryRemovalBindings*,RegistryRemovalResult*) noexcept;
 int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBindings* b,LogicDestroyResult* o) noexcept {
     if(!o)return 0;*o={};
-    if(!a||n<4||!b||!b->base_destroy||((flags&1u)&&!b->free_actor))return 0;
+    if(!a||n<4||!b||(!b->base_destroy&&!b->native_base)||((flags&1u)&&!b->free_actor))return 0;
+    if(b->native_base&&(!b->native_base->registry||!b->native_base->registry->registry||!b->native_base->prefix||!b->native_base->suffix))return 0;
     unsigned first=0,count=0,extent=0;
     const auto vt=entity_vtable(a);const bool menu=vt==menu_vtable;
     switch(vt){
@@ -1824,7 +1826,20 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
         ++o->released;
     }
     if(menu)write_field(a,0x394,0x224227c4u);
-    if(!b->base_destroy(b->context,a))return 0;o->base_called=1;
+    if(b->native_base){
+        const auto& base=*b->native_base;
+        // Base destructor installs its primary table before any prefix
+        // calls. Owner prefix retains the original guard transitions.
+        write_field(a,0,0x2240ac2cu);
+        if(!base.prefix(base.context,a))return 0;o->base_prefix=1;
+        RegistryRemovalResult removal{};
+        if(!registry_unlink_logic(a,n,read_field<unsigned>(a,0x378),base.registry,&removal))return 0;
+        o->registry_unlinked=removal.unlinked;
+        if(!base.suffix(base.context,a))return 0;o->base_suffix=1;
+        // Final retail CBaseEntity base table at 22144350.
+        write_field(a,0,0x2240a088u);
+    }else if(!b->base_destroy(b->context,a))return 0;
+    o->base_called=1;
     if(flags&1u){if(!b->free_actor(b->context,a))return 0;o->freed=1;}
     o->completed=1;return 1;
 }
