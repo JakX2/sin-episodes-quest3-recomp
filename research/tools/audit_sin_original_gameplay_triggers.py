@@ -323,7 +323,8 @@ SEQUENCE_KEYS=(
     (5,0x3ac,0x2242fc2c,"m_fMoveTo"),(1,0x3b0,0x223ec258,"m_flRadius"),
     (1,0x3b4,0x2242f5d0,"m_flRepeat"),
 )
-SEQUENCE_TEXT={0x2242ee1c:"scripted_sequence",0x2250501c:".?AVCAI_ScriptedSequence@@",
+SEQUENCE_TEXT={0x2242ee1c:"scripted_sequence",
+    0x2242fe3c:"MoveToPosition",0x2242fe18:"BeginSequence",0x2242fdf4:"CancelSequence",0x2250501c:".?AVCAI_ScriptedSequence@@",
     0x2242fdd0:"OnBeginSequence",0x2242fdb0:"OnEndSequence",
     **{0x2242fd8c-(i-1)*0x24:f"OnScriptEvent{i:02d}" for i in range(1,9)}}
 def verify_sequence_words():

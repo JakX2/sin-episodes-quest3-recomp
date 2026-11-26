@@ -575,6 +575,13 @@ struct ScriptedSequenceCancelResult {
 };
 inline constexpr char scripted_sequence_cancel_export[]="SiN_CancelScriptedSequenceNpc";
 using CancelScriptedSequenceNpc=int (__cdecl *)(void*,unsigned,const ScriptedSequenceCancelBindings*,ScriptedSequenceCancelResult*) noexcept;
+struct ScriptedSequenceNativeControlBindings {
+    const ScriptedSequenceControlBindings* control;
+    const ScriptedSequencePossessionBindings* possession;
+    const ScriptedSequenceCancelBindings* cancel;
+};
+inline constexpr char scripted_sequence_native_control_export[]="SiN_ControlScriptedSequenceNative";
+using ControlScriptedSequenceNative=int (__cdecl *)(void*,unsigned,ScriptedSequenceInput,const ScriptedSequenceNativeControlBindings*,ScriptedSequenceControlResult*) noexcept;
 struct ScriptedSequenceThinkBindings {
     const ScriptedSequenceAcquireBindings* acquire;
     const ScriptedSequencePossessionBindings* possession;

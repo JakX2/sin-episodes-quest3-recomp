@@ -3388,8 +3388,12 @@ int scripted_sequence_think(void* a,unsigned n,const ScriptedSequenceThinkBindin
 // Original 221b0430/221b0500/221af970 input wrappers. Native
 // handle/state/permission leaves; possession/cancel group remain owners.
 int scripted_sequence_control(void* a,unsigned n,ScriptedSequenceInput input,
-    const ScriptedSequenceControlBindings* b,ScriptedSequenceControlResult* o) noexcept {
+    const ScriptedSequenceControlBindings* b,ScriptedSequenceControlResult* o,
+    const ScriptedSequenceNativeControlBindings* native=nullptr) noexcept {
     if(!o)return 0;*o={};
+    if(native&&(!b||native->control!=b||!native->possession||!native->cancel||native->cancel->control!=b||
+        native->possession->entries!=b->entries||native->possession->entry_count!=b->entry_count||
+        native->possession->now!=b->now))return 0;
     unsigned marker=0;
     if(!b||n<scripted_sequence_extent||!SinReadCampaignTouchMarkerInternal(a,&marker)||marker!=scripted_sequence_vtable||
        !SinCampaignStorageReadableInternal(a,scripted_sequence_extent))return 0;
@@ -3399,12 +3403,16 @@ int scripted_sequence_control(void* a,unsigned n,ScriptedSequenceInput input,
     struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
     auto done=[&](){o->completed=1;return 1;};
     if(input==ScriptedSequenceInput::CancelSequence){
-        if(!b->cancel_warning||!b->cancel_group||!b->cancel_warning(b->context,read_field<unsigned>(a,0x398)))return 0;
+        if(!b->cancel_warning||(!native&&!b->cancel_group)||!b->cancel_warning(b->context,read_field<unsigned>(a,0x398)))return 0;
         if(read_field<unsigned char>(a,0x3d8)){
             // 2214d6f0 with null context writes only default think pointer.
             write_field(a,8,0u);write_field(a,0x3d8,static_cast<unsigned char>(0));o->think_cleared=1;
         }
-        if(!b->cancel_group(b->context,a))return 0;o->cancelled=1;return done();
+        if(native){
+            ScriptedSequenceCancelResult result{};
+            if(!scripted_sequence_cancel(a,n,native->cancel,&result)||!result.matched)return 0;
+        }else if(!b->cancel_group(b->context,a))return 0;
+        o->cancelled=1;return done();
     }
     const bool move=input==ScriptedSequenceInput::MoveToPosition;
     // BeginSequence clears waiting before lookup, even on denial.
@@ -3435,7 +3443,11 @@ int scripted_sequence_control(void* a,unsigned n,ScriptedSequenceInput input,
             if(blocked){o->linked_blocked=o->permission_blocked=1;return done();}
         }else if(!b->foreign_permission||!b->foreign_permission(b->context,target,force,1,&o->permission))return 0;
         if(!o->permission){o->permission_blocked=1;return done();}
-        if(!b->possess||!b->possess(b->context,a))return 0;o->possessed=1;
+        if(native){
+            ScriptedSequencePossessionResult result{};
+            if(!scripted_sequence_possession(a,n,native->possession,&result)||(!result.claimed&&!result.queued))return 0;
+        }else if(!b->possess||!b->possess(b->context,a))return 0;
+        o->possessed=1;
     }else{
         // Missing/stale/non-NPC -> install acquisition think then
         // schedule at live curtime, not an arbitrary frame delay.
@@ -3880,4 +3892,11 @@ extern "C" int __cdecl SiN_CancelScriptedSequenceNpc(void* actor,unsigned bytes,
 extern "C" int __cdecl SiN_RunScriptedSequenceAcquisitionThink(void* actor,unsigned bytes,const sin_port::native_map::ScriptedSequenceThinkBindings* b,
     sin_port::native_map::ScriptedSequenceThinkResult* o) noexcept {
     return sin_port::native_map::scripted_sequence_think(actor,bytes,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_ControlScriptedSequenceNative=_SiN_ControlScriptedSequenceNative")
+extern "C" int __cdecl SiN_ControlScriptedSequenceNative(void* actor,unsigned bytes,sin_port::native_map::ScriptedSequenceInput input,
+    const sin_port::native_map::ScriptedSequenceNativeControlBindings* b,sin_port::native_map::ScriptedSequenceControlResult* o) noexcept {
+    if(o)*o={};
+    return b&&sin_port::native_map::scripted_sequence_control(actor,bytes,input,b->control,o,b);
 }

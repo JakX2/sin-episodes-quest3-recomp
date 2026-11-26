@@ -25,6 +25,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRagdollRouteApi* __cdecl SiN_GetServerNpcGruntRagdollRouteApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSentenceRequestApi* __cdecl SiN_GetServerNpcGruntSentenceRequestApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" int __cdecl SiN_CampaignFilterTestActivator(void*,unsigned,void*,const sin_port::native_map::CampaignFilterInputBindings*,sin_port::native_map::CampaignFilterInputResult*) noexcept;
+extern "C" int __cdecl SiN_ControlScriptedSequenceNative(void*,unsigned,sin_port::native_map::ScriptedSequenceInput,
+    const sin_port::native_map::ScriptedSequenceNativeControlBindings*,sin_port::native_map::ScriptedSequenceControlResult*) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -2463,6 +2465,18 @@ constexpr NativeInputRow trigger_control_inputs[]{
     {4,0,0x223edce8u,0x22060820u,"Disable"},
     {5,0,0x223d4914u,0x22060830u,"Toggle"}
 };
+// Runtime rows 22..24 from 221b05d0, all FIELD_VOID and FTYPEDESC_INPUT.
+constexpr NativeInputRow sequence_inputs[]{{22,0,0x2242fe3cu,0x221b0430u,"MoveToPosition"},
+    {23,0,0x2242fe18u,0x221b0500u,"BeginSequence"},{24,0,0x2242fdf4u,0x221af970u,"CancelSequence"}};
+constexpr NativeInputMap sequence_map{0x22504fc0u,0x224f0350u,35,sequence_inputs,3};
+int native_sequence_input(void* a,unsigned n,unsigned handler,const native_map::ScriptedSequenceNativeControlBindings* b,
+                          native_map::ScriptedSequenceControlResult* o) noexcept {
+    using I=native_map::ScriptedSequenceInput;
+    if(handler==0x221b0430u)return SiN_ControlScriptedSequenceNative(a,n,I::MoveToPosition,b,o);
+    if(handler==0x221b0500u)return SiN_ControlScriptedSequenceNative(a,n,I::BeginSequence,b,o);
+    if(handler==0x221af970u)return SiN_ControlScriptedSequenceNative(a,n,I::CancelSequence,b,o);
+    return -1;
+}
 constexpr NativeInputRow filter_inputs[]{{1,20,0x22414844u,0x2216b300u,"TestActivator"}};
 constexpr NativeInputMap filter_base_map{0x224f8a44u,0x224f0350u,4,filter_inputs,1};
 constexpr NativeInputMap filter_multi_map{0x224f8a5cu,0x224f8a44u,7,nullptr,0};
@@ -2634,8 +2648,13 @@ const NativeInputMap* shared_kill_map(unsigned vt) noexcept {
     default:return filter_input_map(filter_input_token(vt));
     }
 }
-int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o,
-    const native_map::CampaignFilterInputBindings* filters=nullptr,native_map::CampaignFilterInputResult* filter_result=nullptr) noexcept {
+int accept_input_core(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o,
+    const native_map::CampaignFilterInputBindings* filters,native_map::CampaignFilterInputResult* filter_result,
+    const native_map::ScriptedSequenceNativeControlBindings* sequence,native_map::ScriptedSequenceControlResult* sequence_result) noexcept {
+    if(sequence_result)*sequence_result={};
+    if(sequence&&(!sequence_result||!sequence->control||!b||sequence->control->entries!=b->entities.entries||
+        sequence->control->entry_count!=b->entities.count||!a||n<native_map::scripted_sequence_extent||
+        vt!=native_map::scripted_sequence_vtable||rd<unsigned>(a,0)!=vt))return 0;
     if(filter_result)*filter_result={};
     if(filters&&(!filter_result||!native_map::campaign_filter_class(vt)||!a||n<(vt==native_map::base_filter_vtable?0x3c8u:vt==native_map::multi_filter_vtable?0x3f4u:0x3ccu)||rd<unsigned>(a,0)!=vt))return 0;
     if(!o)return 0;*o={};
@@ -2644,6 +2663,7 @@ int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,vo
     const auto* kill_map=shared_kill?shared_kill_map(vt):nullptr;
     if(shared_kill&&(!kill_map||!a||n<sin_port::native_map::removal_entity_extent(vt)||rd<unsigned>(a,0)!=vt))return 0;
     unsigned token=kill_map?kill_map->token:
+        sequence?sequence_map.token:
         filters?filter_input_token(vt):
         vt==sin_port::native_map::dynamic_trigger_vtable&&b&&b->campaign_trigger_control?dynamic_trigger_map.token:
         vt==sin_port::native_map::secret_trigger_vtable&&b&&b->campaign_trigger_control?secret_trigger_map.token:
@@ -2700,6 +2720,7 @@ int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,vo
             else{const char* actual=nullptr;if(!input_text(*b,input,&actual))return 0;base_kill=search_equal("Kill",actual);}
         }
         const auto* native=base_kill?&logic_base_kill_map:
+            sequence&&token==sequence_map.token?&sequence_map:
             (filters||(shared_kill&&native_map::campaign_filter_class(vt)))&&filter_input_map(token)?filter_input_map(token):
             kill_map&&token==kill_map->token?kill_map:
             token==dynamic_trigger_map.token&&b->campaign_trigger_control?&dynamic_trigger_map:
@@ -2787,6 +2808,7 @@ int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,vo
                     shared_status=api&&(campaign_trigger_class(vt)?api->trigger_kill(a,n,vt,b->entities.entries,b->entities.count,b->campaign_trigger_kill,&result):api->logic_kill(a,n,vt,b->entities.entries,b->entities.count,b->logic_kill,&result))&&result.completed&&result.handled?1:0;
                 }
                 const int status=shared_status>=0?shared_status:
+                    sequence?native_sequence_input(a,n,o->handler,sequence,sequence_result):
                     filters&&o->handler==0x2216b300u?SiN_CampaignFilterTestActivator(a,n,data.activator,filters,filter_result):
                     (vt==sin_port::native_map::dynamic_trigger_vtable||vt==sin_port::native_map::secret_trigger_vtable)?native_trigger_control_input(a,n,o->handler,*b):
                     vt==sin_port::native_map::colorblend_vtable?native_colorblend_input(a,n,o->handler,data,*b):
@@ -2812,6 +2834,10 @@ int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,vo
         token=parent;
     }
     return rejected(EntityInputUnknown);
+}
+int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o,
+    const native_map::CampaignFilterInputBindings* filters=nullptr,native_map::CampaignFilterInputResult* filter_result=nullptr) noexcept {
+    return accept_input_core(a,n,vt,input,activator,caller,variant,vn,id,b,o,filters,filter_result,nullptr,nullptr);
 }
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     return accept_input_impl(a,n,vt,input,activator,caller,variant,vn,id,b,o);
@@ -3067,4 +3093,12 @@ extern "C" int __cdecl SiN_ServiceCampaignFilterEvents(void* root,unsigned bytes
     const sin_port::native_map::CampaignFilterInputBindings* filters,sin_port::native_weapon_tables::CampaignFilterServiceSummary* summary) noexcept {
     if(o)*o={};if(summary)*summary={};
     return filters&&summary&&sin_port::native_weapon_tables::service_events_impl(root,bytes,token,now,stepping,steps,b,o,filters,summary);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_AcceptScriptedSequenceInput=_SiN_AcceptScriptedSequenceInput")
+extern "C" int __cdecl SiN_AcceptScriptedSequenceInput(void* actor,unsigned bytes,unsigned vt,unsigned input,void* activator,void* caller,const void* variant,unsigned variant_bytes,unsigned id,
+    const sin_port::native_weapon_tables::ServerEntityAcceptInputBindings* b,sin_port::native_weapon_tables::ServerEntityAcceptInputResult* o,
+    const sin_port::native_map::ScriptedSequenceNativeControlBindings* sequence,sin_port::native_map::ScriptedSequenceControlResult* result) noexcept {
+    if(o)*o={};if(result)*result={};
+    return sequence&&result&&sin_port::native_weapon_tables::accept_input_core(actor,bytes,vt,input,activator,caller,variant,variant_bytes,id,b,o,nullptr,nullptr,sequence,result);
 }
