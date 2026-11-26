@@ -838,5 +838,58 @@ int main(int argc,char** argv){
     // Re-evaluate same player after collection with demand below new stock.
     EvalFixture::u(ef.actor,8,123);EvalFixture::f(ef.actor,0x394,.3f);EvalFixture::f(ef.actor,0x398,.05f);cv.calls=0;
     assert(api->evaluate(ef.actor,sizeof(ef.actor),hf2.player,sizeof(hf2.player),0,&continuous,&er)&&er.completed&&!er.factories&&er.selected_health==-1&&er.selected_ammo==-1&&er.health_row.current==.35f&&er.ammo_rows[0].current==6.f/80.f&&loop.allocated==2);
+    // Original dispenser, live health mutation, actual fractional dose.
+    struct AntigenFixture {
+        alignas(4) unsigned char actor[antigen_extent]{},steam[4]{};
+        void* player=nullptr;
+        float now=1.f,last_schedule=0,pose=0;
+        unsigned start=0,stop=0,empty=0,stop_sound=0,creates=0,configs=0,removes=0,schedules=0,advances=0;
+    } af;
+    af.player=hf2.player;
+    sin_independent::EntityHandleEntry ae[2]{};
+    ae[0].serial=10;ae[0].entity=reinterpret_cast<CBaseEntity*>(hf2.player);
+    ae[1].serial=11;ae[1].entity=reinterpret_cast<CBaseEntity*>(af.steam);
+    AntigenBindings ab{};ab.context=&af;ab.entries=ae;ab.entry_count=2;ab.health=&ph;
+    ab.base_construct=[](void*,void*) noexcept ->int{return 1;};
+    ab.extent=[](void* p,void* a,unsigned* n) noexcept ->int{assert(a==static_cast<AntigenFixture*>(p)->player);*n=0x12a4;return 1;};
+    ab.clock=[](void* p,float* v) noexcept ->int{*v=static_cast<AntigenFixture*>(p)->now;return 1;};
+    ab.use_distance=[](void* p,void* a,void* pl,float distance,bool* yes) noexcept ->int{auto& q=*static_cast<AntigenFixture*>(p);assert(a==q.actor&&pl==q.player&&distance==80);*yes=true;return 1;};
+    ab.sound=[](void* p,void* a,const char* name,bool play) noexcept ->int{auto& q=*static_cast<AntigenFixture*>(p);assert(a==q.actor);
+        if(!std::strcmp(name,"dispenser.use_loop")){if(play)++q.start;else ++q.stop;}
+        else if(!std::strcmp(name,"dispenser.stop")){assert(play);++q.stop_sound;}
+        else {assert(play&&!std::strcmp(name,"dispenser.empty"));++q.empty;}return 1;};
+    ab.create_steam=[](void* p,void*,unsigned* token) noexcept ->int{++static_cast<AntigenFixture*>(p)->creates;*token=0xb001;return 1;};
+    ab.configure_steam=[](void* p,void* a,void* e) noexcept ->int{auto& q=*static_cast<AntigenFixture*>(p);assert(a==q.actor&&e==q.steam);++q.configs;return 1;};
+    ab.remove=[](void* p,void* e) noexcept ->int{auto& q=*static_cast<AntigenFixture*>(p);assert(e==q.steam);++q.removes;return 1;};
+    ab.schedule=[](void* p,void* a,float time) noexcept ->int{auto& q=*static_cast<AntigenFixture*>(p);assert(a==q.actor);q.last_schedule=time;++q.schedules;return 1;};
+    ab.pose=[](void* p,void* a,const char* name,float v) noexcept ->int{auto& q=*static_cast<AntigenFixture*>(p);assert(a==q.actor&&!std::strcmp(name,"percentFull"));q.pose=v;return 1;};
+    ab.advance=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AntigenFixture*>(p);assert(a==q.actor);++q.advances;return 1;};
+    AntigenResult agr{};
+    assert(api->antigen_construct(af.actor,sizeof(af.actor),&ab,&agr)&&agr.constructed&&agr.remaining==100&&EvalFixture::rd(af.actor,0x4ac)==0xffffffffu);
+    assert(EvalFixture::rd(af.actor,0x4c4)==0xffffffffu&&EvalFixture::rd(af.actor,0x4dc)==0xffffffffu);
+    EvalFixture::u(hf2.player,0x378,0xa000);EvalFixture::u(hf2.player,0x98,100);EvalFixture::u(hf2.player,0x9c,35);
+    EvalFixture::u(hf2.player,0xb8,0);EvalFixture::u(hf2.player,0x94,2);
+    for(unsigned i=0;i<3;++i)EvalFixture::f(hf2.player,0x2bc+i*4,0);
+    assert(api->antigen_use(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),&ab,&agr)&&agr.started&&agr.steam_created&&agr.steam_configured&&agr.clock_reads==2&&agr.next_time==1.f);
+    assert(EvalFixture::rd(af.actor,8)==antigen_think_token&&EvalFixture::rd(af.actor,0x4ac)==0xa000);
+    af.now=1.125f;
+    assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.completed&&agr.scheduled&&!agr.healed&&std::abs(agr.accumulator-.7f)<.00001f);
+    af.now=1.25f;
+    assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.completed&&agr.healed&&agr.integer_dose==1&&agr.health.after==36&&agr.health.event_type==4&&hf2.flags==0x400000u&&std::abs(agr.remaining-98.6f)<.0001f);
+    assert(af.creates==1&&af.configs==1&&af.schedules==3&&af.advances==2);
+    EvalFixture::f(hf2.player,0x2bc,80.f);
+    assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.stopped&&agr.distance_squared==6400&&agr.steam_removed&&agr.loop_stopped&&agr.stop_sound&&!agr.scheduled);
+    assert(EvalFixture::rd(af.actor,0x4ac)==0xffffffffu&&EvalFixture::rd(af.actor,0x4b0)==0xffffffffu&&EvalFixture::rd(af.actor,8)==antigen_think_token);
+    // Depletion before a whole dose still schedules one more think.
+    EvalFixture::f(hf2.player,0x2bc,0.f);EvalFixture::f(af.actor,0x49c,.1f);EvalFixture::f(af.actor,0x4a4,0.f);
+    assert(api->antigen_use(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),&ab,&agr)&&agr.started);
+    af.now=1.375f;
+    assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.scheduled&&agr.remaining==0&&!agr.healed);
+    af.now=1.5f;
+    assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.stopped&&agr.integer_dose==1&&!agr.healed);
+    assert(api->antigen_use(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),&ab,&agr)&&agr.empty&&!agr.started&&af.empty==1);
+    // Invalid serial stops without accessing stale user/steam objects.
+    EvalFixture::u(af.actor,0x4ac,0xc000);EvalFixture::u(af.actor,0x4b0,0xc001);
+    assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.stopped&&!agr.steam_removed&&!agr.loop_stopped&&EvalFixture::rd(af.actor,0x4b0)==0xc001);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }

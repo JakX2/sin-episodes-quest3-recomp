@@ -326,6 +326,37 @@ struct PickupFactoryResult {
     AmmoPickupResult ammo;
     VialPickupResult vial;
 };
+// CAntigenDispenser: original PE identity tokens, never callable vtables.
+inline constexpr unsigned antigen_vtable=0x2246aa6cu,antigen_extent=0x4e8u,
+    antigen_think_token=0x222f7100u,antigen_touch_token=0x222f6660u;
+struct AntigenBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned entry_count;
+    int (__cdecl *base_construct)(void*,void*) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *use_distance)(void*,void*,void*,float,bool*) noexcept;
+    int (__cdecl *sound)(void*,void*,const char*,bool) noexcept;
+    // Factory/attachment configuration of env_steam remains an engine leaf.
+    // On successful creation return its live packed handle, or invalid on null.
+    int (__cdecl *create_steam)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *configure_steam)(void*,void*,void*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+    int (__cdecl *pose)(void*,void*,const char*,float) noexcept;
+    int (__cdecl *advance)(void*,void*) noexcept;
+    const PlayerHealthBindings* health;
+};
+struct AntigenResult {
+    unsigned constructed,loaded,player_checked,spatial_checked,empty,started,steam_created,
+        steam_configured,steam_removed,loop_started,loop_stopped,stop_sound,
+        origin_refreshes,clock_reads,scheduled,stopped,pose_called,advanced,healed,completed;
+    float elapsed,dose,remaining,accumulator,integer_dose,next_time,pose;
+    double distance_squared;
+    PlayerHealthResult health;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -364,6 +395,9 @@ struct Api {
     int (__cdecl *player_take_health)(void*,float,unsigned,const PlayerHealthBindings*,PlayerHealthResult*) noexcept;
     int (__cdecl *pickup_factory_create)(const char*,const PickupFactoryBindings*,PickupFactoryResult*) noexcept;
     int (__cdecl *pickup_factory_destroy)(void*,unsigned,void*,const PickupFactoryBindings*,PickupFactoryResult*) noexcept;
+    int (__cdecl *antigen_construct)(void*,unsigned,const AntigenBindings*,AntigenResult*) noexcept;
+    int (__cdecl *antigen_use)(void*,unsigned,void*,unsigned,const AntigenBindings*,AntigenResult*) noexcept;
+    int (__cdecl *antigen_think)(void*,unsigned,const AntigenBindings*,AntigenResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
