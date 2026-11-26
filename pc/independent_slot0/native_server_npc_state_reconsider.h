@@ -1013,4 +1013,26 @@ struct ServerNpcGruntRequestSpeechApi {
     int (__cdecl *survivor)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntRequestSurvivorResult*) noexcept;
 };
 using GetServerNpcGruntRequestSpeechApi=const ServerNpcGruntRequestSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_perception_speech_export[]="SiN_GetServerNpcGruntPerceptionSpeechApi";
+struct ServerNpcGruntPerceptionSpeechBindings {
+    ServerNpcGruntSentenceBindings sentence;
+    ServerNpcGruntSentenceRequestBindings request;
+    void* context;
+    int (__cdecl *lost_random)(void*,float,float,float*) noexcept;
+};
+struct ServerNpcGruntPerceptionSpeechResult {
+    ServerNpcGruntRequestSpeechResult lost;
+    ServerNpcGruntSentenceResult idle,refind;
+    ServerNpcGruntSentenceRequestResult idle_request,refind_request;
+    unsigned lost_calls,idle_calls,refind_calls;
+};
+struct ServerNpcGruntPerceptionSpeechApi {
+    std::uint32_t version,size;
+    int (__cdecl *report)(void*,unsigned,void*,const float*,void*,float,const ServerNpcGruntMemoryReportBindings*,const ServerNpcGruntPerceptionSpeechBindings*,ServerNpcGruntMemoryReportResult*,ServerNpcGruntPerceptionSpeechResult*) noexcept;
+    int (__cdecl *enemy_switch)(void*,unsigned,float,const ServerNpcGruntEnemySwitchBindings*,const ServerNpcGruntPerceptionSpeechBindings*,ServerNpcGruntEnemySwitchResult*,ServerNpcGruntPerceptionSpeechResult*) noexcept;
+    int (__cdecl *prepare)(void*,unsigned,float,const ServerNpcGruntUpdateGateBindings*,const ServerNpcGruntPerceptionSpeechBindings*,ServerNpcGruntUpdateGateResult*,ServerNpcGruntPerceptionSpeechResult*) noexcept;
+    int (__cdecl *update)(void*,unsigned,float,const ServerNpcGruntConditionUpdateBindings*,const ServerNpcGruntPerceptionSpeechBindings*,ServerNpcGruntConditionUpdateResult*,ServerNpcGruntPerceptionSpeechResult*) noexcept;
+    int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntPerceptionSpeechBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntPerceptionSpeechResult*) noexcept;
+};
+using GetServerNpcGruntPerceptionSpeechApi=const ServerNpcGruntPerceptionSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -822,7 +822,20 @@ int __cdecl relation_matrix_row(void* context,int source,const void** row,unsign
     *row=static_cast<ServerNpcRelationCell*>(context)+15*source;*bytes=240;return 1;
 }
 const ServerNpcRelationMatrixApi matrix_api{1,sizeof(ServerNpcRelationMatrixApi),&initialize_relation_matrix,&set_relation_matrix,&relation_matrix_row};
-int __cdecl grunt_memory_report(void* actor,unsigned bytes,void* target,const float position[3],void* informer,float now,const ServerNpcGruntMemoryReportBindings* b,ServerNpcGruntMemoryReportResult* out) noexcept{
+struct PerceptionSpeechRoute {
+    const ServerNpcGruntPerceptionSpeechBindings& bindings;
+    ServerNpcGruntPerceptionSpeechResult& out;
+};
+int __cdecl sentence_dispatch_request(void*,unsigned,float,const char*,int,unsigned,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntSentenceResult*,ServerNpcGruntSentenceRequestResult*) noexcept;
+int __cdecl grunt_speak_request(void*,unsigned,unsigned,float,const ServerNpcGruntSpeechBindings*,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntRequestSpeechResult*) noexcept;
+bool perception_sentence(void* a,unsigned n,float now,bool idle,unsigned vt,const sin_independent::EntityHandleEntry* entries,unsigned count,const PerceptionSpeechRoute& route) noexcept{
+    auto sentence=route.bindings.sentence;sentence.speech.original_vtable=vt;sentence.entries=entries;sentence.count=count;
+    auto& result=idle?route.out.idle:route.out.refind;
+    auto& request=idle?route.out.idle_request:route.out.refind_request;
+    ++(idle?route.out.idle_calls:route.out.refind_calls);
+    return sentence_dispatch_request(a,n,now,idle?"GRUNT_IDLE":"GRUNT_REFIND_ENEMY",idle?0:2,2,&sentence,&route.bindings.request,&result,&request)!=0;
+}
+int grunt_memory_report_impl(void* actor,unsigned bytes,void* target,const float position[3],void* informer,float now,const ServerNpcGruntMemoryReportBindings* b,ServerNpcGruntMemoryReportResult* out,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;*out={};
     if(!actor||bytes<0x9c8||!b||!relation_grunt_class(b->original_vtable))return 0;
     if(read<std::uint8_t>(actor,0xb6)&1){out->blocked=1;return 1;}
@@ -836,7 +849,9 @@ int __cdecl grunt_memory_report(void* actor,unsigned bytes,void* target,const fl
     ServerNpcEnemyMemoryControlResult cr{};
     if(!memory_control(memory,extent,key,NpcMemoryEluded,0,0,&mb.storage,&cr))return 0;
     if(cr.value){
-        if(!b->cue||!b->cue(b->context,actor,"GRUNT_REFIND_ENEMY",2,2))return 0;
+        if(speech){
+            if(!perception_sentence(actor,bytes,now,false,b->original_vtable,b->mutation.entries,b->mutation.count,*speech))return 0;
+        }else if(!b->cue||!b->cue(b->context,actor,"GRUNT_REFIND_ENEMY",2,2))return 0;
         out->refind_cue=1;
     }
     const int state=read<int>(actor,0x850);
@@ -865,6 +880,9 @@ int __cdecl grunt_memory_report(void* actor,unsigned bytes,void* target,const fl
         ++out->forwarded;
     }
     return 1;
+}
+int __cdecl grunt_memory_report(void* actor,unsigned bytes,void* target,const float position[3],void* informer,float now,const ServerNpcGruntMemoryReportBindings* b,ServerNpcGruntMemoryReportResult* out) noexcept{
+    return grunt_memory_report_impl(actor,bytes,target,position,informer,now,b,out);
 }
 int __cdecl grunt_enemy_choice_gate(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemyChoiceGateBindings* b,ServerNpcGruntEnemyChoiceGateResult* out) noexcept{
     if(!out)return 0;*out={};out->condition=-1;
@@ -939,7 +957,7 @@ int __cdecl grunt_enemy_choice_gate(void* actor,unsigned bytes,float now,const S
     if(eligibility>=now){sync();return choose(NpcChoiceEligibility);}
     return 1;
 }
-int grunt_enemy_switch_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemySwitchBindings* b,ServerNpcGruntEnemySwitchResult* out,const ServerNpcSensedEntitiesBindings* senses) noexcept{
+int grunt_enemy_switch_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemySwitchBindings* b,ServerNpcGruntEnemySwitchResult* out,const ServerNpcSensedEntitiesBindings* senses,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;*out={};
     if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->gate.relation.original_vtable)||
        b->best.memory.count>sin_independent::kEntityHandleCapacity||(b->best.memory.count&&!b->best.memory.entries))return 0;
@@ -1006,7 +1024,12 @@ int grunt_enemy_switch_impl(void* actor,unsigned bytes,float now,const ServerNpc
     }
     if(!candidate){
         if(out->eluded){
-            if(!set_condition(0xb,out->lost_condition)||!b->lost_cue||!b->lost_cue(b->context,actor))return 0;
+            if(!set_condition(0xb,out->lost_condition))return 0;
+            if(speech){
+                ServerNpcGruntSpeechBindings cue{};cue.memory=b->best.memory;cue.original_vtable=gate.relation.original_vtable;cue.context=speech->bindings.context;cue.random=speech->bindings.lost_random;
+                ++speech->out.lost_calls;
+                if(!grunt_speak_request(actor,bytes,NpcGruntLost,now,&cue,&speech->bindings.sentence,&speech->bindings.request,&speech->out.lost))return 0;
+            }else if(!b->lost_cue||!b->lost_cue(b->context,actor))return 0;
             out->lost_cue=1;
         }
         if(special_flag){if(!b->fire_output||!b->fire_output(b->context,actor,0xb08))return 0;++out->outputs;}
@@ -1120,7 +1143,7 @@ int __cdecl sensed_contains(const void* senses,unsigned bytes,void* entity,const
     while(result.entity){if(result.entity==entity){*found=true;return 1;}if(!sensed_next(senses,bytes,b,&cursor,&result))return 0;}
     return 1;
 }
-int __cdecl grunt_visual_gather(void* actor,unsigned bytes,float now,const ServerNpcGruntVisualBindings* b,ServerNpcGruntVisualResult* out) noexcept{
+int grunt_visual_gather_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntVisualBindings* b,ServerNpcGruntVisualResult* out,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;*out={};
     if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->relation.original_vtable)||
        b->senses.count>sin_independent::kEntityHandleCapacity||(b->senses.count&&!b->senses.entries))return 0;
@@ -1164,7 +1187,7 @@ int __cdecl grunt_visual_gather(void* actor,unsigned bytes,float now,const Serve
                 }
                 float position[3];std::memcpy(position,static_cast<unsigned char*>(target)+0x2bc,12);
                 ServerNpcGruntMemoryReportResult mr{};
-                if(!grunt_memory_report(actor,bytes,target,position,nullptr,now,&report,&mr))return 0;
+                if(!grunt_memory_report_impl(actor,bytes,target,position,nullptr,now,&report,&mr,speech))return 0;
                 ++out->report_calls;out->records_created+=mr.mutation.created;
                 if(feared&&!store(8,true))return 0;
             }else if(rr.disposition==3)++out->friendly;else ++out->unknown;
@@ -1172,6 +1195,9 @@ int __cdecl grunt_visual_gather(void* actor,unsigned bytes,float now,const Serve
         if(!sensed_next(senses,n,&b->senses,&cursor,&row))return 0;
     }
     return 1;
+}
+int __cdecl grunt_visual_gather(void* actor,unsigned bytes,float now,const ServerNpcGruntVisualBindings* b,ServerNpcGruntVisualResult* out) noexcept{
+    return grunt_visual_gather_impl(actor,bytes,now,b,out);
 }
 unsigned __cdecl grunt_hearing_mask() noexcept{return 0x141fu;}
 int __cdecl grunt_hearing_filter(void* actor,unsigned bytes,const void* sound,unsigned n,const ServerNpcGruntHearingBindings* b,ServerNpcGruntHearingFilterResult* out) noexcept{
@@ -1289,7 +1315,7 @@ int __cdecl grunt_sound_scan(void* actor,unsigned bytes,float now,const ServerNp
     }
     return grunt_hearing_gather(actor,bytes,now,&b->hearing,&out->hearing);
 }
-int __cdecl perception_tick(void* actor,unsigned bytes,float now,const ServerNpcGruntPerceptionTickBindings* b,ServerNpcGruntPerceptionTickResult* out) noexcept{
+int perception_tick_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntPerceptionTickBindings* b,ServerNpcGruntPerceptionTickResult* out,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;
     // Avoid deep nested aggregate initialization on MSVC x86.
     out->visual={};out->sound={};out->maintenance={};out->enemy_switch={};
@@ -1312,15 +1338,18 @@ int __cdecl perception_tick(void* actor,unsigned bytes,float now,const ServerNpc
         write(senses,0xc,static_cast<float>(out->radius));write(senses,0x10,now);out->rebuilt=1;
     }
     // Original 220a31a0 calls +4f0 even on cache hit.
-    if(!grunt_visual_gather(actor,bytes,now,&visual,&out->visual))return 0;
+    if(!grunt_visual_gather_impl(actor,bytes,now,&visual,&out->visual,speech))return 0;
     auto sound=b->sound;sound.entries=best.memory.entries;sound.count=best.memory.count;
     sound.hearing.storage=visual.senses.storage;sound.hearing.original_vtable=vt;sound.hearing.schedule=b->enemy_switch.schedule;
     if(!grunt_sound_scan(actor,bytes,now,&sound,&out->sound))return 0;
     auto maintenance=b->maintenance;maintenance.entries=best.memory.entries;maintenance.count=best.memory.count;
     void* memory=nullptr;unsigned n=0;
     if(!memory_storage(&maintenance.storage,read<unsigned>(actor,0x984),0x40,memory,n)||!maintain_memory(memory,n,now,&maintenance,&out->maintenance))return 0;
-    if(!grunt_enemy_switch_impl(actor,bytes,now,&b->enemy_switch,&out->enemy_switch,&visual.senses))return 0;
+    if(!grunt_enemy_switch_impl(actor,bytes,now,&b->enemy_switch,&out->enemy_switch,&visual.senses,speech))return 0;
     out->completed=1;return 1;
+}
+int __cdecl perception_tick(void* actor,unsigned bytes,float now,const ServerNpcGruntPerceptionTickBindings* b,ServerNpcGruntPerceptionTickResult* out) noexcept{
+    return perception_tick_impl(actor,bytes,now,b,out);
 }
 int combat_visibility_query_impl(void* actor,unsigned bytes,void* target,unsigned mask,const ServerNpcGruntCombatVisibilityBindings* b,ServerNpcGruntCombatVisibilityResult* out,bool want_blocker) noexcept{
     if(!out)return 0;*out={};out->blocker=0xffffffffu;
@@ -1407,7 +1436,7 @@ int __cdecl combat_distance(void* actor,unsigned bytes,void* target,const Server
     if(!std::isfinite(squared))return 0;
     *result=std::sqrt(squared);return 1;
 }
-int __cdecl combat_range_gather(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatRangeBindings* b,ServerNpcGruntCombatRangeResult* out) noexcept{
+int combat_range_gather_impl(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatRangeBindings* b,ServerNpcGruntCombatRangeResult* out,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;*out={};
     if(!actor||bytes<0xa24||!target||!b||!std::isfinite(now))return 0;
     if(!combat_visibility_gather(actor,bytes,target,&b->visibility,&out->visibility))return 0;
@@ -1418,7 +1447,7 @@ int __cdecl combat_range_gather(void* actor,unsigned bytes,void* target,float no
     auto store=[&](int id,bool yes){ServerNpcConditionResult cr{};return cond->store(actor,bytes,id,NpcConditionCurrent,yes,&b->visibility.conditions,&cr)!=0;};
     auto report=[&](void* informer){
         auto rb=b->report;rb.original_vtable=b->visibility.original_vtable;rb.mutation.entries=b->visibility.memory.entries;rb.mutation.count=b->visibility.memory.count;
-        if(!grunt_memory_report(actor,bytes,target,out->observation,informer,now,&rb,&out->report))return false;
+        if(!grunt_memory_report_impl(actor,bytes,target,out->observation,informer,now,&rb,&out->report,speech))return false;
         out->reported=1;out->firsthand=informer==nullptr;return true;
     };
     auto origin=[&](){return b->origin&&b->origin(b->context,target,out->observation)&&finite_vec(out->observation);};
@@ -1457,6 +1486,9 @@ int __cdecl combat_range_gather(void* actor,unsigned bytes,void* target,float no
     const int nav_mode=read<int>(nav,0xc);
     out->attack_gate=nav_mode!=1&&nav_mode!=3&&in_view&&!out->too_far;
     return 1;
+}
+int __cdecl combat_range_gather(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatRangeBindings* b,ServerNpcGruntCombatRangeResult* out) noexcept{
+    return combat_range_gather_impl(actor,bytes,target,now,b,out);
 }
 int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* out) noexcept{
     if(!out)return 0;*out={};for(auto& id:out->conditions)id=-1;out->distance=distance;
@@ -1547,13 +1579,13 @@ int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float di
     return 1;
 }
 int __cdecl grunt_goal_refresh(void*,unsigned,unsigned,float,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntGoalRefreshResult*) noexcept;
-int combat_conditions_impl(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out,const ServerNpcGruntGoalRefreshBindings* goals,ServerNpcGruntGoalRefreshResult* goal_results) noexcept{
+int combat_conditions_impl(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out,const ServerNpcGruntGoalRefreshBindings* goals,ServerNpcGruntGoalRefreshResult* goal_results,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;
     out->range={};out->attack={};out->cache={};
     out->completed=out->attack_called=out->cleanup_called=out->nav_calls=out->unreachable_set=out->old_sight=out->close_mark=out->point_mark=out->point_queries=0;
     out->last_seen=out->horizontal_distance=0;for(float& v:out->remembered)v=0;
     if(!actor||bytes<0xa24||!target||!b||!std::isfinite(now))return 0;
-    if(!combat_range_gather(actor,bytes,target,now,&b->range,&out->range))return 0;
+    if(!combat_range_gather_impl(actor,bytes,target,now,&b->range,&out->range,speech))return 0;
     if(out->range.dead){out->completed=1;return 1;}
     const auto& vb=b->range.visibility;
     const auto& mb=vb.memory;
@@ -1874,7 +1906,7 @@ int __cdecl grunt_flinch(void* actor,unsigned bytes,float now,const ServerNpcGru
     }
     return 1;
 }
-int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out,int inactive_override) noexcept{
+int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out,int inactive_override,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;
     out->search={};out->combat={};out->combat_goals[0]={};out->combat_goals[1]={};out->target={};out->ammo={};out->snapshot={};out->flinch={};out->cleared_enemy={};
     out->completed=out->skipped_state=out->skipped_perception=out->cleared_sense_conditions=out->new_enemy_condition=out->combat_called=out->enemy_cleared=0;
@@ -1911,7 +1943,8 @@ int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,c
         if(void* e=current()){
             if(!(read<unsigned>(actor,0xb4)&0x10u)){
                 auto combat=b->combat;combat.range.visibility.memory=mb;combat.range.visibility.conditions=b->schedule.conditions;combat.range.visibility.original_vtable=aux.visibility.original_vtable;
-                if(!grunt_combat_goal(actor,bytes,e,now,&combat,&aux.goals,&out->combat,out->combat_goals))return 0;
+                out->combat_goals[0]={};out->combat_goals[1]={};
+                if(!combat_conditions_impl(actor,bytes,e,now,&combat,&out->combat,&aux.goals,out->combat_goals,speech))return 0;
                 write(actor,0x9a0,now);out->combat_called=1;
             }else{
                 auto eb=b->enemy;eb.entries=mb.entries;eb.count=mb.count;eb.conditions=b->schedule.conditions;
@@ -1928,7 +1961,7 @@ int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,c
 int __cdecl grunt_post_update(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out) noexcept{
     return grunt_post_update_impl(actor,bytes,now,perceived,b,out,-1);
 }
-int __cdecl grunt_update_gate(void* actor,unsigned bytes,const ServerNpcGruntUpdateGateBindings* b,ServerNpcGruntUpdateGateResult* out) noexcept{
+int grunt_update_gate_impl(void* actor,unsigned bytes,const ServerNpcGruntUpdateGateBindings* b,ServerNpcGruntUpdateGateResult* out,float now=0,const PerceptionSpeechRoute* speech=nullptr,const sin_independent::EntityHandleEntry* entries=nullptr,unsigned count=0) noexcept{
     if(!out)return 0;*out={};out->speech_result=-1;
     if(!actor||bytes<0xdb2||!b||!relation_grunt_class(b->original_vtable))return 0;
     write<std::uint8_t>(actor,0x84d,1);
@@ -1986,13 +2019,19 @@ int __cdecl grunt_update_gate(void* actor,unsigned bytes,const ServerNpcGruntUpd
         int roll=-1;out->idle_roll=1;
         if(!b->random_int||!b->random_int(b->context,0,99,&roll)||roll<0||roll>99)return 0;
         if(roll==0&&!(read<unsigned>(actor,0xb4)&2u)){
-            if(!b->idle_speech||!b->idle_speech(b->context,actor,0xcc0,"GRUNT_IDLE",0,2,&out->speech_result))return 0;
+            if(speech){
+                if(!perception_sentence(actor,bytes,now,true,b->original_vtable,entries,count,*speech))return 0;
+                out->speech_result=speech->out.idle.request_result;
+            }else if(!b->idle_speech||!b->idle_speech(b->context,actor,0xcc0,"GRUNT_IDLE",0,2,&out->speech_result))return 0;
             out->idle_emitted=1;
         }
     }
     return 1;
 }
-int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const ServerNpcGruntConditionUpdateBindings* b,ServerNpcGruntConditionUpdateResult* out) noexcept{
+int __cdecl grunt_update_gate(void* actor,unsigned bytes,const ServerNpcGruntUpdateGateBindings* b,ServerNpcGruntUpdateGateResult* out) noexcept{
+    return grunt_update_gate_impl(actor,bytes,b,out);
+}
+int grunt_condition_update_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntConditionUpdateBindings* b,ServerNpcGruntConditionUpdateResult* out,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;
     out->gate={};out->perception={};out->post={};out->completed=out->perception_called=out->post_called=0;
     if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->gate.original_vtable))return 0;
@@ -2002,18 +2041,21 @@ int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const Se
     auto gate=b->gate;gate.conditions=b->post.schedule.conditions;
     auto perception=b->perception;perception.enemy_switch.gate.relation.original_vtable=vt;perception.enemy_switch.schedule=b->post.schedule;
     auto post=b->post;post.aux.visibility.original_vtable=vt;post.aux.visibility.memory.entries=mb.entries;post.aux.visibility.memory.count=mb.count;
-    if(!grunt_update_gate(actor,bytes,&gate,&out->gate))return 0;
+    if(!grunt_update_gate_impl(actor,bytes,&gate,&out->gate,now,speech,mb.entries,mb.count))return 0;
     if(out->gate.perceive){
-        if(!perception_tick(actor,bytes,now,&perception,&out->perception))return 0;
+        if(!perception_tick_impl(actor,bytes,now,&perception,&out->perception,speech))return 0;
         out->perception_called=1;
     }
     // Inactive branch is selected at entry, not re-evaluated after engine callbacks.
-    if(!grunt_post_update_impl(actor,bytes,now,out->gate.perceive!=0,&post,&out->post,out->gate.inactive?1:0))return 0;
+    if(!grunt_post_update_impl(actor,bytes,now,out->gate.perceive!=0,&post,&out->post,out->gate.inactive?1:0,speech))return 0;
     out->post_called=out->completed=1;return 1;
+}
+int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const ServerNpcGruntConditionUpdateBindings* b,ServerNpcGruntConditionUpdateResult* out) noexcept{
+    return grunt_condition_update_impl(actor,bytes,now,b,out);
 }
 int __cdecl grunt_point_policy(void*,unsigned,const float[3],float,const ServerNpcGruntPointPolicyBindings*,ServerNpcGruntPointPolicyResult*) noexcept;
 int __cdecl grunt_object_search(void*,unsigned,int,const ServerNpcGruntObjectSearchBindings*,ServerNpcGruntObjectSearchResult*) noexcept;
-int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out,const ServerNpcGruntPointPolicyBindings* point_bindings,ServerNpcGruntPointPolicyResult* point_result,const ServerNpcGruntObjectSearchBindings* object_bindings=nullptr,ServerNpcGruntObjectSearchResult* object_result=nullptr) noexcept{
+int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out,const ServerNpcGruntPointPolicyBindings* point_bindings,ServerNpcGruntPointPolicyResult* point_result,const ServerNpcGruntObjectSearchBindings* object_bindings=nullptr,ServerNpcGruntObjectSearchResult* object_result=nullptr,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;
     out->base={};out->completed=out->base_called=out->component_called=out->hopper_exit=out->search_called=out->search_no_enemy=out->object_live=out->object_condition=out->point_called=out->point_schedule_blocked=out->point_condition=out->player_called=out->player_condition=0;
     for(float& v:out->point)v=0;
@@ -2030,7 +2072,7 @@ int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const Serv
     if(component){
         if(!b->component_update||!b->component_update(b->context,component))return 0;out->component_called=1;
     }else{
-        if(!grunt_condition_update(actor,bytes,now,&b->base,&out->base))return 0;out->base_called=1;
+        if(!grunt_condition_update_impl(actor,bytes,now,&b->base,&out->base,speech))return 0;out->base_called=1;
     }
     if(read<int>(actor,0x850)==3){
         void* e=current();
@@ -2237,6 +2279,33 @@ int __cdecl grunt_gather_native(void* a,unsigned n,float now,const ServerNpcGrun
     if(!b)return 0;
     return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object);
 }
+void reset_perception_speech(ServerNpcGruntPerceptionSpeechResult& out) noexcept{
+    out={};
+    out.lost.speech.cue.speech_result=out.lost.speech.sentence.request_result=out.idle.request_result=out.refind.request_result=-1;
+    for(auto* r:{&out.lost.request,&out.idle_request,&out.refind_request})r->group_id=r->pick_result=r->sentence_id=r->request_result=-1;
+}
+int __cdecl perception_speech_report(void* a,unsigned n,void* target,const float* pos,void* informer,float now,const ServerNpcGruntMemoryReportBindings* b,const ServerNpcGruntPerceptionSpeechBindings* speech,ServerNpcGruntMemoryReportResult* out,ServerNpcGruntPerceptionSpeechResult* result) noexcept{
+    if(!speech||!result)return 0;reset_perception_speech(*result);const PerceptionSpeechRoute route{*speech,*result};
+    return grunt_memory_report_impl(a,n,target,pos,informer,now,b,out,&route);
+}
+int __cdecl perception_speech_switch(void* a,unsigned n,float now,const ServerNpcGruntEnemySwitchBindings* b,const ServerNpcGruntPerceptionSpeechBindings* speech,ServerNpcGruntEnemySwitchResult* out,ServerNpcGruntPerceptionSpeechResult* result) noexcept{
+    if(!speech||!result)return 0;reset_perception_speech(*result);const PerceptionSpeechRoute route{*speech,*result};
+    return grunt_enemy_switch_impl(a,n,now,b,out,nullptr,&route);
+}
+int __cdecl perception_speech_prepare(void* a,unsigned n,float now,const ServerNpcGruntUpdateGateBindings* b,const ServerNpcGruntPerceptionSpeechBindings* speech,ServerNpcGruntUpdateGateResult* out,ServerNpcGruntPerceptionSpeechResult* result) noexcept{
+    if(!speech||!result||!std::isfinite(now))return 0;reset_perception_speech(*result);const PerceptionSpeechRoute route{*speech,*result};
+    return grunt_update_gate_impl(a,n,b,out,now,&route,speech->sentence.entries,speech->sentence.count);
+}
+int __cdecl perception_speech_update(void* a,unsigned n,float now,const ServerNpcGruntConditionUpdateBindings* b,const ServerNpcGruntPerceptionSpeechBindings* speech,ServerNpcGruntConditionUpdateResult* out,ServerNpcGruntPerceptionSpeechResult* result) noexcept{
+    if(!speech||!result)return 0;reset_perception_speech(*result);const PerceptionSpeechRoute route{*speech,*result};
+    return grunt_condition_update_impl(a,n,now,b,out,&route);
+}
+int __cdecl perception_speech_gather(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntPerceptionSpeechBindings* speech,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntPerceptionSpeechResult* result) noexcept{
+    if(!speech||!result||!out||!b)return 0;reset_perception_speech(*result);out->gather={};out->point={};out->object={};out->object.selected_handle=0xffffffffu;
+    const PerceptionSpeechRoute route{*speech,*result};
+    return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route);
+}
+const ServerNpcGruntPerceptionSpeechApi perception_speech_api{1,sizeof(ServerNpcGruntPerceptionSpeechApi),&perception_speech_report,&perception_speech_switch,&perception_speech_prepare,&perception_speech_update,&perception_speech_gather};
 bool preschedule_init(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out) noexcept{
     if(!out)return false;*out={};out->target_handle=0xffffffffu;
     return a&&bytes>=0xdb2&&b&&std::isfinite(now)&&relation_grunt_class(b->original_vtable)&&
@@ -2862,4 +2931,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRequestSpeechApi=_SiN_GetServerNpcGruntRequestSpeechApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRequestSpeechApi* __cdecl SiN_GetServerNpcGruntRequestSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRequestSpeechApi)?&request_speech_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPerceptionSpeechApi=_SiN_GetServerNpcGruntPerceptionSpeechApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSpeechApi* __cdecl SiN_GetServerNpcGruntPerceptionSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPerceptionSpeechApi)?&perception_speech_api:nullptr;
 }

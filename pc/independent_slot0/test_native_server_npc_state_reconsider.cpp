@@ -519,6 +519,14 @@ int main(int argc,char** argv){
     f.put(f.actor,0x8a0,0x9002u);f.put(f.schedule,0xc,0u);
     assert(switcher->update(f.actor,sizeof(f.actor),423,&swb,&switch_result)&&switch_result.forced_missing&&switch_result.assigned&&!switch_result.has_enemy&&switch_result.lost_condition&&switch_result.lost_cue&&switch_result.outputs==2&&switch_result.new_flags==0);
     assert(f.lost_cues==1&&f.outputs==2&&f.output_offsets[0]==0xb08&&f.output_offsets[1]==0xac0&&(f.get<unsigned>(0x7cc)&(1u<<11))&&!(f.get<unsigned>(0x7cc)&(1u<<25)));
+    auto gpspeech=reinterpret_cast<GetServerNpcGruntPerceptionSpeechApi>(GetProcAddress(s,server_npc_grunt_perception_speech_export));
+    assert(gpspeech&&!GetProcAddress(c,server_npc_grunt_perception_speech_export)&&!gpspeech(0,sizeof(ServerNpcGruntPerceptionSpeechApi))&&!gpspeech(1,0));
+    const auto* pspeech=gpspeech(1,sizeof(ServerNpcGruntPerceptionSpeechApi));assert(pspeech);
+    ServerNpcGruntPerceptionSpeechBindings psb{};ServerNpcGruntPerceptionSpeechResult psr{};
+    // Same lost-target transition, native mode 2 rejects absent squad without calling legacy lost_cue.
+    auto native_switch=swb;native_switch.lost_cue=nullptr;
+    f.put(f.actor,0x988,0x10000u);f.put(f.actor,0x8a0,0x9002u);f.put(f.actor,0xc88,0.f);f.put(f.actor,0xccc,41);f.outputs=0;
+    assert(pspeech->enemy_switch(f.actor,sizeof(f.actor),423,&native_switch,&psb,&switch_result,&psr)&&switch_result.lost_cue&&psr.lost_calls==1&&psr.lost.speech.cue.emitted&&!psr.lost.speech.sentence.mode_allowed&&f.get<int>(0xccc)==41&&f.lost_cues==1&&f.outputs==2);
     auto gspeech=reinterpret_cast<GetServerNpcGruntSpeechApi>(GetProcAddress(s,server_npc_grunt_speech_export));
     assert(gspeech&&!GetProcAddress(c,server_npc_grunt_speech_export)&&!gspeech(0,sizeof(ServerNpcGruntSpeechApi))&&!gspeech(1,0));
     const auto* speech=gspeech(1,sizeof(ServerNpcGruntSpeechApi));assert(speech);
@@ -947,6 +955,9 @@ int main(int argc,char** argv){
         f.put(f.actor,0x988,0x2000u);f.put(f.actor,0xb4,0u);f.put(f.actor,8,0u);f.put(f.actor,0x16c,14u);f.put(f.actor,0xc18,0u);
         assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.forced&&gate_result.yaw_flag_cleared&&gate_result.perceive&&gate_result.idle_emitted&&gate_result.speech_result==3&&!f.actor[0x84c]);
         assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&!gate_result.perceive&&!gate_result.forced);
+        auto native_gate=gate_bindings;native_gate.idle_speech=nullptr;
+        f.actor[0x84c]=1;f.put(f.actor,0x9c4,0u);
+        assert(pspeech->prepare(f.actor,sizeof(f.actor),625,&native_gate,&psb,&gate_result,&psr)&&gate_result.idle_emitted&&gate_result.speech_result==-1&&psr.idle_calls==1&&!psr.idle.mode_allowed&&!psr.idle.queue_reset);
         f.update_pvs=true;f.update_roll=1;f.put(f.update_motor,0x14,91.f);f.put(f.actor,0x988,0x2000u);
         assert(update_gate->prepare(f.actor,sizeof(f.actor),&gate_bindings,&gate_result)&&gate_result.pvs&&gate_result.perceive&&!gate_result.idle_emitted&&!gate_result.yaw_flag_cleared);
         f.update_pvs=false;f.put(f.actor,0xc18,711u);f.update_component[8]=9;f.update_component_handled=true;f.update_component_value=true;
@@ -984,6 +995,11 @@ int main(int argc,char** argv){
         const unsigned before_rebuild=f.rebuild_calls;
         assert(full->update(f.actor,sizeof(f.actor),630,&full_bindings,&full_result)&&full_result.completed&&full_result.gate.forced&&full_result.perception_called&&full_result.perception.completed&&full_result.post_called&&full_result.post.combat_called&&full_result.post.snapshot.snapshot);
         assert(full_result.perception.visual.report_calls==1&&full_result.perception.enemy_switch.assignment.new_handle==0x7001u&&f.get<unsigned>(0x8a0)==0x7001u&&f.get<float>(0x9a0)==630&&f.rebuild_calls==before_rebuild+3);
+        // Reacquisition through visual memory update uses native request route, no hosted cue.
+        auto native_full=full_bindings;native_full.gate.idle_speech=nullptr;native_full.perception.enemy_switch.lost_cue=nullptr;native_full.perception.visual.report.cue=nullptr;native_full.post.combat.range.report.cue=nullptr;
+        assert(control->control(f.memory,sizeof(f.memory),1000,NpcMemoryMarkEluded,0,0,&mb,&ctr));
+        f.actor[0x84c]=1;f.update_roll=0;f.put(f.actor,0x9c4,0u);
+        assert(pspeech->update(f.actor,sizeof(f.actor),630,&native_full,&psb,&full_result,&psr)&&full_result.completed&&psr.idle_calls==1&&psr.refind_calls==1&&!psr.refind.mode_allowed&&full_result.perception.visual.report_calls==1);
         auto get_gather=reinterpret_cast<GetServerNpcGruntGatherConditionsApi>(GetProcAddress(s,server_npc_grunt_gather_conditions_export));
         assert(get_gather&&!GetProcAddress(c,server_npc_grunt_gather_conditions_export)&&!get_gather(0,sizeof(ServerNpcGruntGatherConditionsApi))&&!get_gather(1,0));
         const auto* gather=get_gather(1,sizeof(ServerNpcGruntGatherConditionsApi));assert(gather);
