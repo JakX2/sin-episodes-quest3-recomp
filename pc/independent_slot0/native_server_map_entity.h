@@ -456,6 +456,20 @@ struct CampaignStartTouchResult {
 };
 inline constexpr char start_touch_output_export[]="SiN_StartCampaignTriggerOutput";
 using StartCampaignTriggerOutput=int (__cdecl *)(void*,unsigned,void*,unsigned,const CampaignStartTouchBindings*,CampaignStartTouchResult*) noexcept;
+struct CampaignEndTouchBindings {
+    void* context;
+    int (__cdecl *resolve_vector)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *foreign_handle)(void*,void*,unsigned*) noexcept;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const RelayQueueBindings* native_queue;
+};
+struct CampaignEndTouchResult {
+    unsigned completed,handle_reads,matched,removed,stale_removed,live_remaining,count;
+    unsigned end_output,all_output,queued,native_queued;
+};
+inline constexpr char end_touch_output_export[]="SiN_EndCampaignTriggerOutput";
+using EndCampaignTriggerOutput=int (__cdecl *)(void*,unsigned,void*,unsigned,const CampaignEndTouchBindings*,CampaignEndTouchResult*) noexcept;
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;

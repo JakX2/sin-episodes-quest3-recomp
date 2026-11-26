@@ -50,6 +50,8 @@ ORIGINAL_METHODS={
   "inherited_start_touch":(0x221D0DF0,91,"79882580908eeaf2ae0699834bb06403cc8dde65c79eaa1a958d94d6a6e49368"),
   "trigger_handle_append":(0x220A22B0,100,"b657875404237bca8be9251e9847b5217a062cfd4fa7307c4858d91cecc3669a"),
   "void_output_fire":(0x22156900,84,"9831538fbf90681abd884187a73a262d05aa6031d2b58a5156dd3b8c717c0e26"),
+  "inherited_end_touch":(0x221D3590,302,"a406f6f83bbde10c9ca03f6b28cdb3da0ab376c2b866e890bc90057cdc56c4cb"),
+  "trigger_handle_identity_find":(0x220A21F0,131,"b29f95c429940c6193361871918e463b8a258ea174cfabd6971f38141bed9050"),
 }
 PLAYER_ROWS=(
     (0x224aec3c,0x224d3ff0,0x2251e69c,0x22253c30,".?AVCHL2_Player@@"),
@@ -208,9 +210,9 @@ def verify_trigger_control(read_u32,read_text):
 
 def verify_contact_slots(read_u32):
     for table,touch in ((0x2243B96C,0x221CCB70),(0x2243BC0C,0x221CCC10)):
-        if (read_u32(table+0x160),read_u32(table+0x164),read_u32(table+0x298))!=(0x221D0DF0,touch,0x221CE520):
+        if (read_u32(table+0x160),read_u32(table+0x164),read_u32(table+0x168),read_u32(table+0x298))!=(0x221D0DF0,touch,0x221D3590,0x221CE520):
             raise EvidenceRefused("campaign contact dispatch slot changed")
-    return 6
+    return 8
 
 def verify_player_predicates(read_u32,read_text):
     for table,col,typedesc,target,name in PLAYER_ROWS:
@@ -400,7 +402,8 @@ def self_test()->None:
     contact_words={0x2243B96C+0x160:0x221D0DF0,0x2243B96C+0x164:0x221CCB70,
                    0x2243BC0C+0x160:0x221D0DF0,0x2243BC0C+0x164:0x221CCC10}
     contact_words.update({0x2243B96C+0x298:0x221CE520,0x2243BC0C+0x298:0x221CE520})
-    assert verify_contact_slots(contact_words.get)==6
+    contact_words.update({0x2243B96C+0x168:0x221D3590,0x2243BC0C+0x168:0x221D3590})
+    assert verify_contact_slots(contact_words.get)==8
     for key in contact_words:
         bad=dict(contact_words);bad[key]^=1
         try:verify_contact_slots(bad.get)
