@@ -7,6 +7,7 @@ extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalS
 #include <cstdlib>
 #include <cerrno>
 #include <climits>
+#include <charconv>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t,std::uint32_t) noexcept;
@@ -267,7 +268,7 @@ int __cdecl destroy_branch(void* actor,unsigned bytes,void* networkable,const Re
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -357,9 +358,19 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"InitialValue",0x394,6},{"SetValue",0x394,6},
         {"OnTrue",0x398,11},{"OnFalse",0x3b0,11}
     };
+    Spec numbered{};
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
     if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);
+    else if(vt==case_vtable){
+        if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
+        else for(unsigned i=1;i<=16;++i){
+            char key[]="Case00",out[]="OnCase00";
+            key[4]=out[6]=char('0'+i/10);key[5]=out[7]=char('0'+i%10);
+            if(equal_class(name,key)){numbered={nullptr,0x394+4*(i-1),2};spec=&numbered;break;}
+            if(equal_class(name,out)){numbered={nullptr,0x3d4+0x18*(i-1),11};spec=&numbered;break;}
+        }
+    }
     if(!spec){match(common);if(spec)o->base_field=1;}
     if(!spec)return foreign(name);
     o->offset=spec->offset;o->field_type=spec->type;
@@ -1046,7 +1057,80 @@ int __cdecl branch_input(void* a,unsigned n,const char* name,void* activator,uns
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch};
+bool case_text(const CaseBindings& b,unsigned token,const char** out) noexcept {
+    *out="";if(!token)return true;
+    unsigned bytes=0;
+    return b.resolve_text&&b.resolve_text(b.context,token,out,&bytes)&&*out&&bytes&&std::memchr(*out,0,bytes<4096?bytes:4096);
+}
+bool case_variant_text(const CaseBindings& b,const void* variant,char (&buffer)[512],const char** text) noexcept {
+    const unsigned type=read_field<unsigned>(variant,0x10);
+    if(type==2)return case_text(b,read_field<unsigned>(variant,0),text);
+    if(type==0){*text="";return true;}
+    if(type==6){*text=read_field<unsigned char>(variant,0)?"true":"false";return true;}
+    if(type==5){
+        const auto result=std::to_chars(buffer,buffer+sizeof(buffer)-1,read_field<int>(variant,0));
+        if(result.ec!=std::errc{})return false;*result.ptr=0;*text=buffer;return true;
+    }
+    if(type==1||type==3||type==9||type==13){
+        if(!b.format_variant||!b.format_variant(b.context,variant,0x14,buffer,sizeof(buffer))||!std::memchr(buffer,0,sizeof(buffer)))return false;
+        *text=buffer;return true;
+    }
+    *text="No conversion to string";return true;
+}
+// Original CLogicCase 2217ab00 and 22178cb0. Numbered match is
+// first populated case in ascending order, regardless of action count.
+// Random instead scans actual action lists, regardless of case token.
+int __cdecl case_input(void* a,unsigned n,const char* name,void* activator,const void* variant,unsigned vn,const CaseBindings* b,CaseResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<case_extent||entity_vtable(a)!=case_vtable||!name||!b)return 0;
+    using namespace sin_port::native_weapon_tables;
+    unsigned off=0;o->handled=1;
+    if(equal_class(name,"InValue")){
+        if(!variant||vn<0x14)return 0;
+        char buffer[512]{};const char* text=nullptr;
+        if(!case_variant_text(*b,variant,buffer,&text))return 0;
+        for(unsigned i=0;i<16;++i){
+            const auto token=read_field<unsigned>(a,0x394+i*4);if(!token)continue;
+            const char* key=nullptr;if(!case_text(*b,token,&key))return 0;
+            if(equal_class(key,text)){o->matched=1;o->selected=i+1;off=0x3d4+i*0x18;break;}
+        }
+        if(!off){
+            // 22154e40 with FIELD_INPUT (20) takes unsupported-type
+            // branch 22154eb9: clear value word and type, retain other words.
+            off=0x554;write_field(a,off,0u);write_field(a,off+0x10,0u);o->defaulted=1;
+        }
+    }else if(equal_class(name,"PickRandom")){
+        if(!b->output)return 0;
+        unsigned eligible[16]{};
+        for(unsigned i=0;i<16;++i){
+            unsigned token=read_field<unsigned>(a,0x3d4+i*0x18+0x14);
+            if(!token)continue;
+            unsigned seen[256]{},count=0;
+            while(token){
+                if(count==256)return 0;
+                for(unsigned j=0;j<count;++j)if(seen[j]==token)return 0;
+                seen[count++]=token;++o->visited;
+                void* row=nullptr;unsigned bytes=0;
+                if(!b->output->resolve||!b->output->resolve(b->output->context,token,&row,&bytes)||!row||bytes<0x1c)return 0;
+                token=read_field<unsigned>(row,0x18);
+            }
+            eligible[o->eligible++]=i;
+        }
+        if(!o->eligible){
+            if(b->empty_warning&&!b->empty_warning(b->context,a))return 0;
+            o->warned=o->completed=1;return 1;
+        }
+        int draw=-1;if(!b->random_int||!b->random_int(b->context,0,int(o->eligible)-1,&draw)||draw<0||unsigned(draw)>=o->eligible)return 0;
+        o->randomized=1;o->selected=eligible[draw]+1;off=0x3d4+eligible[draw]*0x18;
+    }else{o->handled=0;o->completed=1;return 1;}
+    // Existing void output route has canonical unused variant words.
+    // OnDefault's stored unused words above retain original state.
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    ServerEntityVoidOutputResult r{};
+    if(!fire||!b->output||!fire->fire(static_cast<unsigned char*>(a)+off,0x18,activator,a,n,0.f,b->output,&r))return 0;
+    o->fired=1;o->queued=r.queued;o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

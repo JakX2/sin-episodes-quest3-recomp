@@ -947,5 +947,57 @@ int main(int argc,char** argv){
         assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2242080c,0x3000,0x3000,variant,sizeof(variant),0.f,17,&co.queue,&cancel_qr));
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&bindings,&es)&&es.native_inputs==1&&es.direct==1&&co.released==1&&!actor[0x394]&&f.order=="0101");
     }
+    {
+        alignas(4) unsigned char actor[case_extent]{};
+        put(actor,0,case_vtable);
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=case_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            const char* values[]{"Alpha","alpha","16","relay","Trigger","other"};
+            for(unsigned i=0;i<6;++i)if(!std::strcmp(text,values[i])){*token=201+i;return 1;}return 0;
+        };
+        assert(api->key_value(actor,"Case01","Alpha",&keys,&kr)&&kr.offset==0x394);
+        assert(api->key_value(actor,"case02","alpha",&keys,&kr)&&kr.offset==0x398);
+        assert(api->key_value(actor,"Case16","16",&keys,&kr)&&kr.offset==0x3d0);
+        assert(api->key_value(actor,"OnCase02","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x3ec);
+        assert(api->key_value(actor,"OnCase05","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x434);
+        assert(api->key_value(actor,"OnCase16","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x53c);
+        assert(api->key_value(actor,"OnDefault","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x554);
+        struct CaseFixture {void* actor;void* activator;ActionPool* pool;std::string order;int draw=0;unsigned randoms=0,warnings=0;} f{actor,timer,&pool};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<CaseFixture*>(p);
+            for(unsigned i=0;i<4;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<CaseFixture*>(p);assert(a==f.activator&&c==f.actor&&action->action_id>=41&&action->action_id<=44);f.order+=char('0'+action->action_id-41);return 1;
+        };
+        CaseBindings behavior{};behavior.context=&f;behavior.output=&fire;
+        behavior.resolve_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            const char* values[]{"Alpha","alpha","16","relay","Trigger","other"};
+            if(token<201||token>206)return 0;*text=values[token-201];*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        behavior.random_int=[](void* p,int lo,int hi,int* value) noexcept ->int{
+            auto& f=*static_cast<CaseFixture*>(p);assert(lo==0&&hi==2);++f.randoms;*value=f.draw;return 1;
+        };
+        behavior.empty_warning=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<CaseFixture*>(p);assert(a==f.actor);++f.warnings;return 1;};
+        CaseResult result{};
+        unsigned variant[5]{202,0,0,0xffffffffu,2};
+        assert(api->case_input(actor,sizeof(actor),"InValue",timer,variant,sizeof(variant),&behavior,&result)&&result.selected==1&&result.matched&&result.fired&&!result.queued&&f.order.empty());
+        variant[0]=16;variant[4]=5;
+        assert(api->case_input(actor,sizeof(actor),"InValue",timer,variant,sizeof(variant),&behavior,&result)&&result.selected==16&&result.queued==1&&f.order=="2");
+        variant[0]=206;variant[4]=2;
+        put(actor,0x554,0x1234u);put(actor,0x558,0x5678u);put(actor,0x564,2u);
+        assert(api->case_input(actor,sizeof(actor),"InValue",timer,variant,sizeof(variant),&behavior,&result)&&result.defaulted&&result.queued==1&&f.order=="23"&&!word(actor,0x554)&&word(actor,0x558)==0x5678u&&!word(actor,0x564));
+        f.draw=1;
+        assert(api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&result.eligible==3&&result.visited==3&&result.selected==5&&result.queued==1&&f.order=="231");
+        f.draw=0;
+        assert(api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&result.selected==2&&f.order=="2310");
+        f.draw=3;
+        assert(!api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&!result.fired);
+        for(unsigned i=0;i<16;++i)put(actor,0x3d4+0x18*i+0x14,0u);
+        assert(api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&result.warned&&f.warnings==1&&!result.fired&&f.randoms==3);
+        assert(api->case_input(actor,sizeof(actor),"Unknown",timer,nullptr,0,&behavior,&result)&&!result.handled);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
