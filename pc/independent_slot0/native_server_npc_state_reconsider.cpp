@@ -1553,7 +1553,9 @@ int combat_range_gather_impl(void* actor,unsigned bytes,void* target,float now,c
 int __cdecl combat_range_gather(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatRangeBindings* b,ServerNpcGruntCombatRangeResult* out) noexcept{
     return combat_range_gather_impl(actor,bytes,target,now,b,out);
 }
-int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* out) noexcept{
+int __cdecl grunt_combat_line(void*,unsigned,const float*,const float*,float,bool,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntCombatLineResult*) noexcept;
+bool line_weapon_caps(void*,const ServerNpcGruntAssaultAdmissionBindings&,unsigned&) noexcept;
+int grunt_attack_gather_impl(void* actor,unsigned bytes,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* out,float now=0,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntCombatLineResult* line_results=nullptr) noexcept{
     if(!out)return 0;*out={};for(auto& id:out->conditions)id=-1;out->distance=distance;
     if(!actor||bytes<0x8f0||!target||!b||!relation_grunt_class(b->original_vtable)||!std::isfinite(distance)||distance<0||
        b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
@@ -1571,11 +1573,23 @@ int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float di
     auto cleanup=[&](){ServerNpcEnemyConditionResult cr{};++out->cleanup_calls;return clear_combat_conditions(actor,bytes,&b->conditions,&cr)!=0;};
     if(!cleanup())return 0;
     out->capabilities=read<unsigned>(actor,0x8ec);
+    auto weapon_caps=[&](void* w,unsigned& result){
+        if(native_line)return line_weapon_caps(w,*native_line->admission,result);
+        return b->weapon_caps&&b->weapon_caps(b->context,w,&result);
+    };
     if(void* w=active()){
-        if(!b->weapon_caps||!b->weapon_caps(b->context,w,&out->weapon_capabilities))return 0;out->capabilities|=out->weapon_capabilities;
+        if(!weapon_caps(w,out->weapon_capabilities))return 0;out->capabilities|=out->weapon_capabilities;
     }
     bool clear=false;
-    auto line=[&](){++out->line_calls;return get_origin(actor,origin)&&b->line&&b->line(b->context,actor,origin,point,&clear);};
+    auto line=[&](){
+        const unsigned index=out->line_calls++;
+        if(!get_origin(actor,origin))return false;
+        if(native_line){
+            if(!line_results||index>=2||!grunt_combat_line(actor,bytes,origin,point,now,true,native_line,&line_results[index]))return false;
+            clear=line_results[index].allowed!=0;return true;
+        }
+        return b->line&&b->line(b->context,actor,origin,point,&clear);
+    };
     if(!get_origin(actor,origin)||!b->aim_point||!b->aim_point(b->context,target,origin,point)||!finite_vec(point)||!line())return 0;
     if(!clear){
         if(!cleanup()||!b->eye||!b->eye(b->context,target,point)||!finite_vec(point)||!line())return 0;
@@ -1606,7 +1620,7 @@ int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float di
     }
     w=active();unsigned current_caps=0;
     if((caps&0x4000u)&&w){
-        if(!b->weapon_caps||!b->weapon_caps(b->context,w,&current_caps))return 0;
+        if(!weapon_caps(w,current_caps))return 0;
     }
     if((caps&0x4000u)&&w&&(current_caps&0x4000u)){
         if(!weapon(w,1,0x4b0,0x15))return 0;
@@ -1641,6 +1655,20 @@ int __cdecl grunt_attack_gather(void* actor,unsigned bytes,void* target,float di
     if(attack)for(int id:{0x24,0x25,0x28})if(!store(id,false))return 0;
     return 1;
 }
+int __cdecl grunt_attack_gather(void* a,unsigned n,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* o) noexcept{
+    return grunt_attack_gather_impl(a,n,target,distance,b,o);
+}
+int __cdecl grunt_native_line_attack(void* a,unsigned n,void* target,float distance,float now,const ServerNpcGruntAttackBindings* b,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* o) noexcept{
+    if(!o)return 0;*o={};
+    // Bind the identical actor class, entity registry and condition namespace
+    // used by attack cleanup and ready-condition writes; no borrowed pointers escape.
+    if(!a||n<0x9c8||!b||!line||!line->admission||!std::isfinite(now))return 0;
+    auto admission=*line->admission;
+    admission.actor_vtable=b->original_vtable;admission.entries=b->entries;admission.count=b->count;admission.conditions=b->conditions;
+    auto bound=*line;bound.admission=&admission;
+    return grunt_attack_gather_impl(a,n,target,distance,b,&o->attack,now,&bound,o->lines);
+}
+const ServerNpcGruntNativeLineAttackApi native_line_attack_api{1,sizeof(ServerNpcGruntNativeLineAttackApi),&grunt_native_line_attack};
 int __cdecl grunt_goal_refresh(void*,unsigned,unsigned,float,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntGoalRefreshResult*) noexcept;
 int combat_conditions_impl(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out,const ServerNpcGruntGoalRefreshBindings* goals,ServerNpcGruntGoalRefreshResult* goal_results,const PerceptionSpeechRoute* speech=nullptr) noexcept{
     if(!out)return 0;
@@ -9815,4 +9843,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatLineApi=_SiN_GetServerNpcGruntCombatLineApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatLineApi* __cdecl SiN_GetServerNpcGruntCombatLineApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatLineApi)?&combat_line_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntNativeLineAttackApi=_SiN_GetServerNpcGruntNativeLineAttackApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntNativeLineAttackApi* __cdecl SiN_GetServerNpcGruntNativeLineAttackApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntNativeLineAttackApi)?&native_line_attack_api:nullptr;
 }

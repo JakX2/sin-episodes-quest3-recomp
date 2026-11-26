@@ -3216,6 +3216,16 @@ struct ServerNpcGruntCombatLineApi {
     int (__cdecl *query)(void*,unsigned,const float*,const float*,float,bool,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntCombatLineResult*) noexcept;
 };
 using GetServerNpcGruntCombatLineApi=const ServerNpcGruntCombatLineApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_native_line_attack_export[]="SiN_GetServerNpcGruntNativeLineAttackApi";
+struct ServerNpcGruntNativeLineAttackResult {
+    ServerNpcGruntAttackResult attack;
+    ServerNpcGruntCombatLineResult lines[2];
+};
+struct ServerNpcGruntNativeLineAttackApi {
+    std::uint32_t version,size;
+    int (__cdecl *gather)(void*,unsigned,void*,float,float,const ServerNpcGruntAttackBindings*,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntNativeLineAttackResult*) noexcept;
+};
+using GetServerNpcGruntNativeLineAttackApi=const ServerNpcGruntNativeLineAttackApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 int grunt_schedule_cone_normal_internal(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*,const ServerNpcGruntScheduleConeServices*) noexcept;
 int grunt_schedule_line_jet_internal(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*,const ServerNpcGruntScheduleConeServices* = nullptr) noexcept;
 int grunt_schedule_line_failure_internal(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,const ServerNpcGruntScheduleConeServices* = nullptr) noexcept;
