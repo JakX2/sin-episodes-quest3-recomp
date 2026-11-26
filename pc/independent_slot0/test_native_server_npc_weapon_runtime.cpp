@@ -1806,6 +1806,23 @@ int main(int argc,char** argv){
     for(auto& trail:fresh_f.trails){trail[0x200]=0;f.put(trail,0x3a0,-0.f);}
     assert(fresh_run()&&catalog_o.thrust.configured==2&&!catalog_o.thrust.writes);
     assert(!fresh_f.trails[0][0x200]&&!fresh_f.trails[1][0x200]&&f.get<unsigned>(fresh_f.trails[0],0x3a0)==0x80000000u);
+    // Same fresh helper is consumed by the actual Jetpack wake prefix,
+    // with no legacy jet_prepare callback.
+    sin_independent::EntityHandleEntry fresh_wake_slots[4]{};
+    fresh_wake_slots[1]=fresh_slots[1];fresh_wake_slots[2]=fresh_slots[2];
+    fresh_wake_slots[3].serial=9;fresh_wake_slots[3].entity=reinterpret_cast<CBaseEntity*>(wt.member);
+    auto fresh_wake=wtb;fresh_wake.entities.entries=fresh_wake_slots;fresh_wake.entities.count=4;
+    fresh_wake.jet_prepare=nullptr;fresh_wake.fresh_thrust=&fresh_services;
+    fresh_wake.output=nullptr;fresh_wake.squad_next=nullptr;
+    f.put(path_actor,0xfe4,0xffffffffu);f.put(path_actor,0xfe8,0xffffffffu);
+    f.put(path_actor,0x1024,0x9003u);f.put(path_actor,0x218,123u);
+    f.put(path_actor,0x868,2);f.put(path_actor,0x78,0x20u);f.put(path_actor,0xbdc,0u);path_actor[0x870]=0;
+    f.put(wt.member,0,ground_vt);f.put(wt.member,0x868,2);f.put(wt.member,0xbdc,0u);wt.member[0x870]=0;
+    fresh_f.calls=fresh_f.lifetimes=fresh_f.parents=fresh_f.indices=0;fresh_f.order.clear();f.trace.clear();
+    assert(transition_wake->run(path_actor,sizeof(path_actor),vt,true,&fresh_wake,&wto)&&wto.completed&&wto.jet_prepared&&wto.jet_linked&&wto.jet_attachment&&wto.transitions==2);
+    assert(wto.thrust.created==2&&wto.thrust.configured==2&&!wto.thrust.writes&&f.get<int>(path_actor,0x868)==0&&f.get<int>(wt.member,0x868)==0);
+    assert((fresh_f.order==std::vector<unsigned>{1,2,10,20,30,11,21,31}));
+    f.trace.clear();
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
