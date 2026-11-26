@@ -2077,6 +2077,76 @@ int main(int argc,char** argv){
     assert(hd_run(0)&&catalog_o.health_scaled_amount==120.f&&hd_life_result.death_called&&hd_life_result.post_death_noop&&hd.deaths==1);
     assert(f.get<int>(f.actor,0x9c)==-80&&hd_life_result.alive.alive.life.health_after==-80&&hd.centers==4&&hd.normalizes==2&&hd.bones==4);
     assert((hd.outputs==std::vector<unsigned>{0xa48u,0xa78u}));
+    // Scripted health damage -> native output action lists -> delayed
+    // named queue -> actual native inputs on a second Grunt.
+    struct HealthQueueFixture {
+        F* f;void* recipient;
+        const ServerEntityAcceptInputApi* accept;
+        const ServerEntitySearchApi* search;
+        const ServerEntitySearchBindings* lookup;
+        ServerEntityAcceptInputBindings input;
+        alignas(4) unsigned char root[0x38]{},actions[2][0x1c]{},events[2][0x38]{};
+        unsigned allocated{},released_actions{},released_events{},delivered{},locks{};
+        std::vector<unsigned> ids;
+    } hq{&f,wt.member,accept,entity_search,&search_bind,leaves};
+    hq.input.entities=scripted.input.entities;
+    auto hq_resolve=[](void* p,unsigned token,void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<HealthQueueFixture*>(p);
+        if(token>=0x7100u&&token<0x7102u){*data=q.actions[token-0x7100u];*bytes=0x1c;return 1;}
+        if(token>=0x7200u&&token<0x7200u+q.allocated){*data=q.events[token-0x7200u];*bytes=0x38;return 1;}
+        return 0;
+    };
+    ServerEntityVoidOutputBindings hq_actions{};hq_actions.context=&hq;hq_actions.resolve=hq_resolve;
+    hq_actions.release=[](void* p,unsigned token,void* row) noexcept -> int{
+        auto& q=*static_cast<HealthQueueFixture*>(p);assert(token==0x7100u&&row==q.actions[0]);++q.released_actions;return 1;
+    };
+    ServerEntityNamedEventQueueBindings hq_queue{};hq_queue.context=&hq;hq_queue.resolve=hq_resolve;
+    hq_queue.allocate=[](void* p,unsigned* token,void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<HealthQueueFixture*>(p);assert(q.allocated<2);*token=0x7200u+q.allocated;*data=q.events[q.allocated++];*bytes=0x38;return 1;
+    };
+    hq_queue.string_nonempty=[](void*,unsigned token,bool* nonempty) noexcept -> int{
+        assert(token==500u||token==0x22485b74u||token==0x223db33cu);*nonempty=true;return 1;
+    };
+    ServerNpcHealthOutputQueueBindings hq_bind{&hq_actions,&hq_queue,hq.root,sizeof(hq.root),0x7000u};
+    hd_services.outputs=&hq_bind;output_hd.output=nullptr;output_hd.is_player=nullptr;output_hd.cast_npc=nullptr;
+    for(unsigned i=0;i<2;++i){
+        f.put(hq.actions[i],0,500u);f.put(hq.actions[i],4,i?0x22485b74u:0x223db33cu);
+        f.put(hq.actions[i],0xc,i?.125f:.25f);f.put(hq.actions[i],0x10,i?0xffffffffu:1u);f.put(hq.actions[i],0x14,10u+i);
+    }
+    f.put(f.actor,0xa5c,0x7100u);f.put(f.actor,0xa8c,0x7101u);f.actor[0xa8]=0;
+    f.put(f.actor,0x9c,100);f.put(f.actor,0x994,89.f);f.put(f.actor,0xc0,501u);f.put(wt.member,0xc0,500u);
+    wt.member[0xc65]=wt.member[0x968]=0;wt.member[0x1f0]=1;wt.member[0x200]=0;f.put(wt.member,0x16c,0u);
+    assert(hd_run()&&catalog_o.health_outputs==2&&catalog_o.health_output_actions==2&&catalog_o.health_output_enqueued==2&&catalog_o.health_output_removed==1);
+    assert(f.get<int>(f.actor,0x9c)==40&&hq.allocated==2&&hq.released_actions==1&&!f.get<unsigned>(f.actor,0xa5c)&&f.get<unsigned>(f.actor,0xa8c)==0x7101u);
+    assert(f.get<unsigned>(hq.root,0x30)==0x7201u&&f.get<unsigned>(hq.events[1],0x30)==0x7200u);
+    for(unsigned i=0;i<2;++i){
+        assert(f.get<unsigned>(hq.events[i],0xc)==0x8002u&&f.get<unsigned>(hq.events[i],0x10)==0x8002u);
+        assert(f.get<unsigned>(hq.events[i],0x14)==10u+i&&f.get<float>(hq.events[i],0)==90.f+(i?.125f:.25f));
+    }
+    ServerEntityEventServiceBindings hq_service{};hq_service.context=&hq;hq_service.entities=scripted.input.entities;hq_service.resolve=hq_resolve;
+    hq_service.lock=[](void* p,bool enter) noexcept -> int{
+        auto& q=*static_cast<HealthQueueFixture*>(p);if(enter){assert(!q.locks);++q.locks;}else{assert(q.locks==1);--q.locks;}return 1;
+    };
+    hq_service.release=[](void* p,unsigned token,void* row) noexcept -> int{
+        auto& q=*static_cast<HealthQueueFixture*>(p);assert(token>=0x7200u&&token<0x7202u&&row==q.events[token-0x7200u]);++q.released_events;return 1;
+    };
+    hq_service.find_named=[](void* p,void* previous,unsigned name,void* activator,void* caller,void** entity) noexcept -> int{
+        auto& q=*static_cast<HealthQueueFixture*>(p);assert(name==500u&&activator==q.f->actor&&caller==q.f->actor);
+        ServerEntitySearchResult result{};if(!q.search->named(previous,name,activator,caller,q.lookup,&result))return 0;*entity=result.entity;return 1;
+    };
+    hq_service.accept=[](void* p,void* target,unsigned name,void* activator,void* caller,const void* variant,unsigned id) noexcept -> int{
+        auto& q=*static_cast<HealthQueueFixture*>(p);assert(target==q.recipient&&activator==q.f->actor&&caller==q.f->actor&&q.locks==1);
+        ServerEntityAcceptInputResult result{};
+        if(!q.accept->run(target,0xfd8u,0x2249aaa4u,name,activator,caller,variant,0x14,id,&q.input,&result)||!result.native_handler||!result.accepted)return 0;
+        ++q.delivered;q.ids.push_back(id);return 1;
+    };
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.f,false,&steps,&hq_service,&sr)&&sr.future_stopped&&!hq.delivered);
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.125f,false,&steps,&hq_service,&sr)&&sr.events==1&&sr.deliveries==1&&hq.delivered==1);
+    assert(wt.member[0xc65]==1&&!wt.member[0x968]&&wt.member[0x200]);
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,90.25f,false,&steps,&hq_service,&sr)&&sr.events==1&&sr.deliveries==1&&hq.delivered==2);
+    assert(wt.member[0xc65]&&wt.member[0x968]&&hq.released_events==2&&!hq.locks&&!f.get<unsigned>(hq.root,0x30));
+    assert((hq.ids==std::vector<unsigned>{11u,10u}));
+    f.put(f.actor,0xa8c,0u);
     assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xd0,0xffffffffu);
     // Stale generation fails before advancement.
