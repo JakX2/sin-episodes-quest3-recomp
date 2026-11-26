@@ -3278,7 +3278,8 @@ const ServerNpcGruntEventSpeechApi event_speech_api{1,sizeof(ServerNpcGruntEvent
 const ServerNpcGruntReactionSpeechApi reaction_speech_api{1,sizeof(ServerNpcGruntReactionSpeechApi),&grunt_pain_speech,&grunt_death_speech};
 int __cdecl grunt_behavior_removal(void* a,unsigned n,std::uint32_t handle,void* attacker,bool event,float now,const ServerNpcGruntBehaviorRemovalBindings* b,ServerNpcGruntBehaviorRemovalResult* out) noexcept{
     if(!out)return 0;*out={};out->active_release.index=out->active_release.selected=-1;
-    if(!a||n<0xc2c||!b||!std::isfinite(now))return 0;
+    // Preflight the complete composed cleanup extent before component side effects.
+    if(!a||n<0xdb2||!b||!std::isfinite(now))return 0;
     const auto& sb=b->removal.leave.sentence;
     if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
     const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);

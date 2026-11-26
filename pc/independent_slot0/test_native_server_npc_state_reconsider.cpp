@@ -1731,6 +1731,31 @@ int main(int argc,char** argv){
         assert(behavior->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,108,&brb,&brr)&&brr.completed&&brr.components==2&&brr.active_cleared&&brr.active_ended&&brr.slot_released&&brr.active_release.old_cleared&&brr.removal.slot_released&&!brr.removal.release.accesses&&brr.removal.departure.removed&&brr.removal.finalized&&bf.calls==3);
         f.put(q.actor[0],0xc28,0);
         assert(behavior->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,108,&brb,&brr)&&brr.completed&&brr.removal.repeated&&!brr.components&&!brr.active_ended);
+        // Reject the incomplete composed extent before notifications or active-component mutation.
+        bf.calls=0;f.put(q.actor[0],0xc18,72u);f.put(q.actor[0],0xc28,2);
+        assert(!behavior->run(q.actor[0],0xdb1,0x1001u,q.targets[1],false,108,&brb,&brr));
+        assert(!bf.calls&&!brr.components&&!brr.active_cleared&&BroadcastFixture::rd(q.actor[0],0xc18)==72);
+        // The original removal loop reloads the live component count and array after each callback.
+        f.put(q.actor[0],0xc18,0u);f.put(q.actor[0],0xc28,1);f.put(q.actor[0],0xc1c,73u);
+        brb.component_storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& b=*static_cast<BehaviorFixture*>(p);
+            if(token==73){assert(b.calls==0);*out=b.tokens;*n=4;return 1;}
+            static std::uint32_t replacement[2]={71,99};
+            assert(token==74&&b.calls==1);*out=replacement;*n=8;return 1;
+        };
+        brb.component_removed=[](void* p,std::uint32_t token,void* attacker,bool event) noexcept -> int{
+            auto& b=*static_cast<BehaviorFixture*>(p);
+            assert(attacker==b.q->targets[1]&&!event&&b.q->actor[0][0xa44]);
+            if(b.calls==0){
+                assert(token==71);
+                const std::uint32_t count=2,array=74;
+                std::memcpy(b.q->actor[0]+0xc28,&count,4);
+                std::memcpy(b.q->actor[0]+0xc1c,&array,4);
+            }else{assert(b.calls==1&&token==99);}
+            ++b.calls;return 1;
+        };
+        assert(behavior->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,108,&brb,&brr)&&brr.completed&&brr.components==2&&bf.calls==2&&brr.removal.repeated&&!brr.active_ended);
+
     }
     {
         auto g=reinterpret_cast<GetServerNpcGruntReactionSpeechApi>(GetProcAddress(s,server_npc_grunt_reaction_speech_export));
