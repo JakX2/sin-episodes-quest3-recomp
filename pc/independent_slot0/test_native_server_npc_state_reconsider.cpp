@@ -2798,5 +2798,51 @@ int main(int argc,char** argv){
         death.event.activity_lookup=[](void*,void*,int id,int* v) noexcept -> int{assert(id==0x18);*v=-1;return 1;};
         assert(api->run(q.a,sizeof(q.a),0x1001u,q.damage,sizeof(q.damage),42,&b,&o)&&o.combat.life.completed&&o.combat.jet.final_mode==5&&o.branch.completed&&o.branch.aux_removed&&o.branch.base_called&&o.branch.effect_ended&&o.combat.ground_called&&q.step==4);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcJetpackDeathThinkApi>(GetProcAddress(s,server_npc_jetpack_death_think_export));
+        assert(g&&!GetProcAddress(c,server_npc_jetpack_death_think_export)&&!g(0,sizeof(ServerNpcJetpackDeathThinkApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcJetpackDeathThinkApi));assert(api);
+        struct ThinkFixture{
+            alignas(4) unsigned char a[0x1088]{},rag[4]{},aux[4]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[4]{};
+            float time=12;unsigned motions=0,scheduled=0,scope=0,removed=0,installed=0,base=0;
+            static ThinkFixture& self(void* p){return *static_cast<ThinkFixture*>(p);}
+            static unsigned rd(void* p,unsigned o){unsigned v;std::memcpy(&v,static_cast<unsigned char*>(p)+o,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.a);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.rag);
+        q.entries[3].serial=3;q.entries[3].entity=reinterpret_cast<CBaseEntity*>(q.aux);
+        static ServerNpcJetpackDeathThinkBindings b;b.context=&q;
+        auto& d=b.ground.base.combat.death;
+        auto& sb=d.event.prefix.removal.removal.leave.sentence;
+        sb.entries=q.entries;sb.count=4;sb.speech.original_vtable=0x2248c514;
+        b.time=[](void* p,float* v) noexcept -> int{*v=ThinkFixture::self(p).time;return 1;};
+        b.motion=[](void* p,void* a,void* rag,int mode) noexcept -> int{auto& q=ThinkFixture::self(p);assert(a==q.a&&rag==q.rag&&(mode==0||mode==1));++q.motions;return 1;};
+        b.schedule=[](void* p,void* a,float time) noexcept -> int{auto& q=ThinkFixture::self(p);assert(a==q.a&&time==static_cast<float>(static_cast<double>(q.time)+static_cast<double>(0.1f)));++q.scheduled;return 1;};
+        b.effect_begin=[](void* p,void* a) noexcept -> int{auto& q=ThinkFixture::self(p);assert(a==q.a&&!q.scope);q.scope=1;return 1;};
+        b.terminal_effect=[](void* p,void* a,void* e,bool mode4) noexcept -> int{auto& q=ThinkFixture::self(p);assert(a==q.a&&e==q.aux&&mode4&&q.scope==1);q.scope=2;return 1;};
+        b.remove=[](void* p,void* e) noexcept -> int{auto& q=ThinkFixture::self(p);assert(e==q.aux&&q.scope==2);++q.removed;return 1;};
+        b.effect_end=[](void* p,void* a) noexcept -> int{auto& q=ThinkFixture::self(p);assert(a==q.a&&q.scope==2&&q.removed==2);q.scope=3;return 1;};
+        b.install_think=[](void* p,void* a,std::uint32_t id) noexcept -> int{auto& q=ThinkFixture::self(p);assert(a==q.a&&id==0x221c0d40&&q.scope==3&&ThinkFixture::rd(a,0x1004)==4);++q.installed;return 1;};
+        b.ground.loot_enabled=[](void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        d.prepare.model_available=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        d.event.prefix.removal.removal.event=[](void*,void*,void*) noexcept -> int{return 1;};
+        d.event.prefix.removal.removal.finalize=[](void*,void*) noexcept -> int{return 1;};
+        d.event.prefix.jet_release=[](void*,std::uint32_t token) noexcept -> int{assert(!token);return 1;};
+        d.event.prefix.schedules.context=&q;d.event.prefix.schedules.descriptor=[](void* p,void*,const void** v,unsigned* n) noexcept -> int{*v=ThinkFixture::self(p).desc;*n=0x48;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        d.event.context=&q;d.event.base_death=[](void* p,void* a,void* damage) noexcept -> int{auto& q=ThinkFixture::self(p);assert(a==q.a&&damage==q.a+0x102c&&q.installed==1&&ThinkFixture::rd(a,0x1004)==3&&ThinkFixture::rd(damage,0x2c)==0x41880000u);++q.base;return 1;};
+        d.event.activity_lookup=[](void*,void*,int id,int* v) noexcept -> int{assert(id==0x18);*v=-1;return 1;};
+        f.put(q.a,0xffc,10.f);f.put(q.a,0x1000,0x2002u);f.put(q.a,0x1004,0);
+        f.put(q.a,0x8c,1);f.put(q.a,0x102c+0x28,0xffffffffu);f.put(q.a,0x102c+0x2c,17.f);
+        static ServerNpcJetpackDeathThinkResult o;
+        assert(api->run(q.a,sizeof(q.a),0x1001u,&b,&o)&&o.completed&&o.motion_called&&o.elapsed==2&&!o.expired&&o.scheduled_called&&q.motions==1&&q.scheduled==1);
+        f.put(q.a,0x1004,1);q.time=11.9f;
+        assert(api->run(q.a,sizeof(q.a),0x1001u,&b,&o)&&o.motion_called&&!o.expired&&q.motions==2&&q.scheduled==2);
+        f.put(q.a,0x1004,4);f.put(q.a,0x1028,0x3003u);f.put(q.a,0xfe8,0x3003u);f.put(q.a,0xfe4,0x9003u);q.time=12.01f;
+        assert(api->run(q.a,sizeof(q.a),0x1001u,&b,&o)&&o.completed&&o.expired&&!o.motion_called&&o.terminal_mode==4&&o.effect_closed&&o.aux_removed==1&&o.cleared==1&&o.primary_removed&&o.installed&&o.mode_written&&o.death_called&&o.ground.completed&&o.scheduled_called&&q.base==1&&q.scheduled==3&&ThinkFixture::rd(q.a,0xfe4)==0x9003u);
+        assert(!api->run(q.a,sizeof(q.a),0x9001u,&b,&o)&&q.scheduled==3);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

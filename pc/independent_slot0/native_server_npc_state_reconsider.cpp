@@ -4707,6 +4707,60 @@ int __cdecl jetpack_death_branches(void* a,unsigned n,std::uint32_t handle,const
     return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->combat.life,&c.life,&jet,&ground);
 }
 const ServerNpcJetpackDeathBranchesApi jetpack_death_branches_api{1,sizeof(ServerNpcJetpackDeathBranchesApi),&jetpack_death_branches};
+int __cdecl jetpack_death_think(void* a,unsigned n,std::uint32_t handle,const ServerNpcJetpackDeathThinkBindings* b,ServerNpcJetpackDeathThinkResult* out) noexcept{
+    if(!out)return 0;out->ground.completed=out->ground.base_called=0;
+    out->checked_time=out->scheduled=0;out->elapsed=0;out->motion_mode=out->terminal_mode=-1;
+    out->completed=out->motion_called=out->expired=out->effect_opened=out->effect_called=out->effect_closed=out->aux_removed=out->cleared=out->primary_removed=out->installed=out->mode_written=out->death_called=out->scheduled_called=0;
+    if(!a||n<0x1074||!b||!b->time||!b->schedule)return 0;
+    const auto& sb=b->ground.base.combat.death.event.prefix.removal.removal.leave.sentence;
+    if(!jetpack_death_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    if(registry.Resolve(handle)!=a)return 0;
+    if(void* ragdoll=registry.Resolve(read<unsigned>(a,0x1000))){
+        out->motion_mode=read<int>(a,0x1004);
+        if(out->motion_mode==0||out->motion_mode==1){
+            if(!b->motion||!b->motion(b->context,a,ragdoll,out->motion_mode))return 0;
+            out->motion_called=1;
+        }
+    }
+    if(!b->time(b->context,&out->checked_time)||!std::isfinite(out->checked_time))return 0;
+    const float start=read<float>(a,0xffc);if(!std::isfinite(start))return 0;
+    out->elapsed=static_cast<double>(out->checked_time)-start;
+    if(out->elapsed>2.0){
+        out->expired=1;out->terminal_mode=read<int>(a,0x1004);
+        if(!b->effect_begin||!b->effect_begin(b->context,a))return 0;
+        out->effect_opened=1;
+        const bool mode4=out->terminal_mode==4;
+        void* subject=registry.Resolve(read<unsigned>(a,mode4?0x1028:0x1000));
+        // Retail assumes valid subject here; adapter explicitly rejects stale ones.
+        bool ok=subject&&b->terminal_effect&&b->terminal_effect(b->context,a,subject,mode4);
+        out->effect_called=ok;
+        if(ok){
+            for(unsigned off:{0xfe8u,0xfe4u}){
+                if(void* e=registry.Resolve(read<unsigned>(a,off))){
+                    if(!b->remove||!b->remove(b->context,e)){ok=false;break;}
+                    ++out->aux_removed;write(a,off,0xffffffffu);++out->cleared;
+                }
+            }
+        }
+        if(ok){
+            ok=b->remove&&b->remove(b->context,registry.Resolve(read<unsigned>(a,0x1028)));
+            if(ok){out->primary_removed=1;write(a,0x1028,0xffffffffu);}
+        }
+        const bool ended=b->effect_end&&b->effect_end(b->context,a);out->effect_closed=ended;
+        if(!ok||!ended)return 0;
+        if(!b->install_think||!b->install_think(b->context,a,0x221c0d40u))return 0;
+        out->installed=1;write(a,0x1004,3);out->mode_written=1;
+        if(!grunt_ground_death(a,n,handle,static_cast<unsigned char*>(a)+0x102c,0x48,out->checked_time,&b->ground,&out->ground))return 0;
+        out->death_called=1;
+    }
+    float live=0;if(!b->time(b->context,&live)||!std::isfinite(live))return 0;
+    out->scheduled=static_cast<float>(static_cast<double>(live)+static_cast<double>(0.1f));
+    if(!std::isfinite(out->scheduled)||!b->schedule(b->context,a,out->scheduled))return 0;
+    out->scheduled_called=out->completed=1;return 1;
+}
+const ServerNpcJetpackDeathThinkApi jetpack_death_think_api{1,sizeof(ServerNpcJetpackDeathThinkApi),&jetpack_death_think};
+
 
 
 
@@ -5303,4 +5357,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcJetpackDeathBranchesApi=_SiN_GetServerNpcJetpackDeathBranchesApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathBranchesApi* __cdecl SiN_GetServerNpcJetpackDeathBranchesApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcJetpackDeathBranchesApi)?&jetpack_death_branches_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcJetpackDeathThinkApi=_SiN_GetServerNpcJetpackDeathThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathThinkApi* __cdecl SiN_GetServerNpcJetpackDeathThinkApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcJetpackDeathThinkApi)?&jetpack_death_think_api:nullptr;
 }
