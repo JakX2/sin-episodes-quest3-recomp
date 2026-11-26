@@ -1,5 +1,7 @@
 #include "native_server_grunt_schedule_selector.h"
 #include <cstring>
+#include <cmath>
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadSlotsApi* __cdecl SiN_GetServerNpcGruntSquadSlotsApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl
 SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcBehaviorSelectionApi* __cdecl
@@ -30,7 +32,7 @@ struct Call {
         if(!ok||!b.parent)return 0;out.parent_called=1;return b.parent(b.context,a,&out.schedule);
     }
 };
-int __cdecl select(void* a,unsigned bytes,const ServerGruntScheduleSelectorBindings* b,ServerGruntScheduleSelectorResult* out) noexcept {
+int select_impl(void* a,unsigned bytes,const ServerGruntScheduleSelectorBindings* b,ServerGruntScheduleSelectorResult* out,float now=0,const ServerNpcGruntSquadSlotsBindings* slots=nullptr,ServerGruntNativeSlotSelectorResult* slot_result=nullptr) noexcept {
     if(!out)return 0;*out={};out->schedule=out->flinch_sequence=-1;
     if(!a||bytes<0xdd8||!b||b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
     const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
@@ -136,13 +138,28 @@ int __cdecl select(void* a,unsigned bytes,const ServerGruntScheduleSelectorBindi
             if(yes)return q.chosen(0x1c);
         }
         if(q.has(0x33)&&read<std::uint32_t>(a,0x9c4)){
-            bool yes=false;if(!b->squad_gate||!b->squad_gate(b->context,a,4,&yes))return 0;
+            bool yes=false;
+            if(slots){
+                auto bound=*slots;bound.entries=b->entities.entries;bound.count=b->entities.count;
+                const auto* api=SiN_GetServerNpcGruntSquadSlotsApi(1,sizeof(ServerNpcGruntSquadSlotsApi));++slot_result->slot_calls;
+                if(!api||!api->reserve(a,bytes,4,4,now,&bound,&slot_result->slots))return 0;
+                yes=slot_result->slots.allowed!=0;
+            }else if(!b->squad_gate||!b->squad_gate(b->context,a,4,&yes))return 0;
             if(yes)return q.chosen(0xa);
         }
         if(!read<std::uint32_t>(a,0xdd4)&&(read<std::uint8_t>(a,0xc65)||q.has(0x44)))return q.chosen(0x64);
     }
     return q.parent();
 }
+int __cdecl select(void* a,unsigned n,const ServerGruntScheduleSelectorBindings* b,ServerGruntScheduleSelectorResult* out) noexcept{
+    return select_impl(a,n,b,out);
+}
+int __cdecl select_native_slots(void* a,unsigned n,float now,const ServerGruntScheduleSelectorBindings* b,const ServerNpcGruntSquadSlotsBindings* slots,ServerGruntNativeSlotSelectorResult* out) noexcept{
+    if(!out)return 0;*out={};out->slots.index=out->slots.selected=-1;
+    if(!slots||!std::isfinite(now))return 0;
+    return select_impl(a,n,b,&out->selection,now,slots,out);
+}
+const ServerGruntNativeSlotSelectorApi native_slot_api{1,sizeof(ServerGruntNativeSlotSelectorApi),&select_native_slots};
 const ServerGruntScheduleSelectorApi api{1,sizeof(ServerGruntScheduleSelectorApi),&select};
 }
 }
@@ -151,4 +168,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGru
 SiN_GetServerGruntScheduleSelectorApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerGruntScheduleSelectorApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerGruntNativeSlotSelectorApi=_SiN_GetServerGruntNativeSlotSelectorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntNativeSlotSelectorApi* __cdecl SiN_GetServerGruntNativeSlotSelectorApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerGruntNativeSlotSelectorApi)?&native_slot_api:nullptr;
 }

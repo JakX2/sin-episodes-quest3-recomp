@@ -2,6 +2,7 @@
 #include "native_server_npc_behavior_selection.h"
 #include "native_server_activity_translate.h"
 #include "native_server_weapon_activity.h"
+#include "native_server_npc_state_reconsider.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_grunt_schedule_selector_export[]="SiN_GetServerGruntScheduleSelectorApi";
 struct ServerGruntScheduleSound {std::uint32_t token,flags,entity_handle;};
@@ -42,4 +43,15 @@ struct ServerGruntScheduleSelectorApi {
     int (__cdecl *select)(void*,unsigned,const ServerGruntScheduleSelectorBindings*,ServerGruntScheduleSelectorResult*) noexcept;
 };
 using GetServerGruntScheduleSelectorApi=const ServerGruntScheduleSelectorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_grunt_native_slot_selector_export[]="SiN_GetServerGruntNativeSlotSelectorApi";
+struct ServerGruntNativeSlotSelectorResult {
+    ServerGruntScheduleSelectorResult selection;
+    ServerNpcGruntSquadSlotsResult slots;
+    unsigned slot_calls;
+};
+struct ServerGruntNativeSlotSelectorApi {
+    std::uint32_t version,size;
+    int (__cdecl *select)(void*,unsigned,float,const ServerGruntScheduleSelectorBindings*,const ServerNpcGruntSquadSlotsBindings*,ServerGruntNativeSlotSelectorResult*) noexcept;
+};
+using GetServerGruntNativeSlotSelectorApi=const ServerGruntNativeSlotSelectorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
