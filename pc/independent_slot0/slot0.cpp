@@ -52,6 +52,10 @@
 #include "native_server_startup.h"
 #include "native_server_level.h"
 extern "C" const sin_port::native_level::Api* __cdecl SiN_GetServerLevelApi(std::uint32_t,std::uint32_t) noexcept;
+int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::LevelArgs*,
+    const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*) noexcept;
+extern "C" int __cdecl SiN_TouchCampaignTriggerWithEngineEvents(void*,unsigned,void*,const sin_port::native_map::CampaignTriggerBindings*,
+    void*,sin_port::native_map::CampaignTriggerResult*,int*) noexcept;
 extern "C" const sin_port::native_server_startup::Api* __cdecl SiN_GetServerStartupApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_game_frame::Api* __cdecl SiN_GetServerGameFrameApi(std::uint32_t,std::uint32_t) noexcept;
 #endif
@@ -1212,6 +1216,7 @@ struct StartupInvocation {
     sin_port::native_server_startup::State* state;
     const sin_port::native_server_startup::Bindings* bindings;
     sin_port::native_server_startup::BoundaryResult* result;
+    sin_port::native_server_startup::EngineEventSession* events=nullptr;
 };
 static thread_local StartupInvocation* g_startup_invocation=nullptr;
 struct GameInitInvocation {sin_port::native_server_startup::State* state;const sin_port::native_server_startup::GameInitBindings* bindings;sin_port::native_server_startup::GameInitResult* result;bool entered=false;};
@@ -1221,6 +1226,7 @@ struct LevelInvocation {
     const sin_port::native_level::Bindings* bindings;
     sin_port::native_level::Result* result;
     bool activating,entered=false;int success=0;
+    void* event_manager=nullptr;
 };
 static thread_local LevelInvocation* g_level_invocation=nullptr;
 #endif
@@ -1279,7 +1285,10 @@ public:
             // optional copies in the owner's binding.
             bound.globals=globals;bound.engine=engineFactory;bound.physics=physicsFactory;
             bound.filesystem=fileSystemFactory;bound.event_manager=events;bound.cvar_interface=cvar;bound.engine_server=engineServer;
-            return api->post_connect(invocation->state,&bound,&out.tail)!=0;
+            const bool ok=api->post_connect(invocation->state,&bound,&out.tail)!=0;
+            if(ok&&invocation->events)
+                *invocation->events={invocation->state,events,GetCurrentThreadId()};
+            return ok;
         }
 #endif
 #if defined(SIN_SYNTHETIC_SOUND_CONNECT)
@@ -1318,6 +1327,8 @@ public:
             if(invocation->entered||invocation->activating)return false;invocation->entered=true;
             const auto* api=SiN_GetServerLevelApi(1,sizeof(sin_port::native_level::Api));
             const sin_port::native_level::LevelArgs args{map,entities,old_level,landmark,load_game,background};
+            if(invocation->event_manager)
+                return SinLevelInitWithEventsInternal(invocation->state,&args,invocation->bindings,invocation->result,invocation->event_manager)!=0;
             return api&&api->level_init(invocation->state,&args,invocation->bindings,invocation->result);
         }
 #endif
@@ -1531,6 +1542,49 @@ extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerDllInitBoundary(sin
     auto** table=*reinterpret_cast<void***>(&instance);
     out->original_return=reinterpret_cast<Slot>(table[0])(&instance,bindings->engine,bindings->physics,bindings->filesystem,static_cast<CGlobalVars*>(bindings->globals));
     g_startup_invocation=nullptr;return out->entered&&out->original_return;
+}
+// The same actual slot-zero interface is invoked, with a session output
+// populated only after successful native startup.
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerDllInitWithEngineEvents=_SiN_InvokeServerDllInitWithEngineEvents")
+extern "C" int __cdecl SiN_InvokeServerDllInitWithEngineEvents(
+    sin_port::native_server_startup::State* state,const sin_port::native_server_startup::Bindings* bindings,
+    sin_port::native_server_startup::BoundaryResult* out,sin_port::native_server_startup::EngineEventSession* session) noexcept {
+    if(!out||!session||g_startup_invocation||g_frame_invocation||g_gameinit_invocation||g_level_invocation)return 0;
+    *out={};*session={};
+    if(!state||!bindings||state->attempted||state->busy)return 0;
+    StartupInvocation invocation{state,bindings,out,session};g_startup_invocation=&invocation;
+    using Slot=bool (__thiscall *)(void*,Factory,Factory,Factory,CGlobalVars*) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    out->original_return=reinterpret_cast<Slot>(table[0])(&instance,bindings->engine,bindings->physics,bindings->filesystem,static_cast<CGlobalVars*>(bindings->globals));
+    g_startup_invocation=nullptr;return out->entered&&out->original_return;
+}
+static bool eventSessionReady(const sin_port::native_server_startup::EngineEventSession* session) noexcept {
+    return session&&session->startup&&session->manager&&session->thread==GetCurrentThreadId()&&
+        session->startup->complete&&session->startup->game_init_complete&&!session->startup->busy;
+}
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerLevelInitWithEngineEvents=_SiN_InvokeServerLevelInitWithEngineEvents")
+extern "C" int __cdecl SiN_InvokeServerLevelInitWithEngineEvents(
+    sin_port::native_level::State* state,const sin_port::native_level::LevelArgs* args,
+    const sin_port::native_level::Bindings* bindings,sin_port::native_level::Result* out,
+    const sin_port::native_server_startup::EngineEventSession* session) noexcept {
+    if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!args||!bindings||!eventSessionReady(session)||state->startup!=session->startup||
+       bindings->parse_entities||!bindings->native_map_pipeline)return 0;
+    LevelInvocation invocation{state,bindings,out,false};invocation.event_manager=session->manager;g_level_invocation=&invocation;
+    using Slot=bool (__thiscall *)(void*,const char*,const char*,const char*,const char*,bool,bool) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    const bool success=reinterpret_cast<Slot>(table[2])(&instance,args->map,args->entities,args->old_level,args->landmark,args->load_game,args->background);
+    g_level_invocation=nullptr;return invocation.entered&&success;
+}
+#pragma comment(linker,"/EXPORT:SiN_TouchStartedCampaignTrigger=_SiN_TouchStartedCampaignTrigger")
+extern "C" int __cdecl SiN_TouchStartedCampaignTrigger(
+    const sin_port::native_server_startup::EngineEventSession* session,void* actor,unsigned bytes,void* other,
+    const sin_port::native_map::CampaignTriggerBindings* bindings,sin_port::native_map::CampaignTriggerResult* result,int* publication) noexcept {
+    if(result)*result={};
+    if(publication)*publication=sin_port::native_map::engine_event_not_attempted;
+    if(!eventSessionReady(session)||g_startup_invocation||g_gameinit_invocation||g_level_invocation)return 0;
+    // Touch is permitted during the ordinary game-frame boundary.
+    return SiN_TouchCampaignTriggerWithEngineEvents(actor,bytes,other,bindings,session->manager,result,publication);
 }
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameBoundary=_SiN_InvokeServerGameFrameBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(bool simulating,const sin_port::native_game_frame::State* state,const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result) noexcept {

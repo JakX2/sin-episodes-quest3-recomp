@@ -1,0 +1,7 @@
+# Phase 1506: startup-acquired engine event session and native map pipeline
+
+The existing authenticated ServerGameDLL003 slot-zero query sequence acquires GAMEEVENTSMANAGER002 as the eleventh engine-factory request (after the filesystem request). No extra lookup is inserted. New opt-in startup export returns a caller-owned borrowed event session only after successful post-connect. It holds the actual factory pointer, associated startup state and thread ID. No existing public API record size changes. The owner must clear the session before engine/DLL teardown; it is not an authenticated capability or pointer-lifetime proof.
+
+The new slot-two wrapper verifies startup identity, GameInit completion and same thread, passes the acquired pointer explicitly through native LevelInit -> parse_all -> immediate/ordinary spawn -> both dispatch forms -> original-layout campaign event writer. Hosted parse is refused for this opt-in route. A separate touch entry uses the same session and permits normal GameFrame interaction. Legacy entry points keep their previous behavior. No generic physics implementation.
+
+Loaded-module regression covers actual slot0/1/2, acquired-pointer precedence over owner-supplied pointer, pre-GameInit refusal, wrong state/thread, secret Spawn and Touch descriptors and explicit invalidation. Synthetic manager, not a retail engine boot. Native Touch callback scheduling and automatic full retail Init remain outstanding. CI pending.
