@@ -135,6 +135,25 @@ struct LifecycleResult {
         master_assigned,master_retained,warning_called,think_cleared,removed,completed;
     float delay,next_time;
 };
+struct DispatchBindings {
+    void* context;
+    // Original 222895a0: PVS-filtered edict for actor's +16c token.
+    int (__cdecl *pvs_edict)(void*,std::uint32_t,const void**,unsigned*) noexcept;
+    int (__cdecl *max_clients)(void*,int*) noexcept;
+    int (__cdecl *edict)(void*,int,const void**,unsigned*) noexcept;
+    int (__cdecl *base_entity)(void*,std::uint32_t,void**) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *now)(void*,float*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+    const EvaluateBindings* evaluation;
+};
+struct DispatchResult {
+    unsigned pvs_called,local_called,slot_checked,edict_found,edict_free,unknown_called,
+        player_found,extent_read,retry,evaluated,completed;
+    int max_clients;
+    float next_time;
+    EvaluateResult evaluation;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -157,6 +176,9 @@ struct Api {
     int (__cdecl *activate)(void*,unsigned,const LifecycleBindings*,LifecycleResult*) noexcept;
     int (__cdecl *become_master)(void*,unsigned,const LifecycleBindings*,LifecycleResult*) noexcept;
     int (__cdecl *kill)(void*,unsigned,const LifecycleBindings*,LifecycleResult*) noexcept;
+    // 222f90d0 and 222f9120; the latter ignores inputdata_t.
+    int (__cdecl *check_pvs)(void*,unsigned,int,const DispatchBindings*,DispatchResult*) noexcept;
+    int (__cdecl *calculate_type)(void*,unsigned,int,const DispatchBindings*,DispatchResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

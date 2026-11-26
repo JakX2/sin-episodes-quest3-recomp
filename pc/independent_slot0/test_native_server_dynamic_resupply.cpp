@@ -276,15 +276,56 @@ int main(int argc,char** argv){
     assert(api->spawn(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.completed&&lr.precached==7&&lr.random_called&&lr.scheduled&&lr.think_installed&&lr.next_time==.75f&&LifeFixture::rd(lf.actor,8)==check_pvs_think);
     LifeFixture::wr(lf.actor,0xb4,3);LifeFixture::wr(lf.actor,8,0xabcdefu);
     assert(api->spawn(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.manual&&lr.precached==7&&!lr.random_called&&!lr.scheduled&&LifeFixture::rd(lf.actor,8)==0xabcdefu);
-    assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_assigned&&master_handle==0x3000u&&lr.warning_called);
-    master_handle=0x4001u;assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_retained&&!lr.master_assigned&&lr.warning_called);
+    assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_assigned&&master_handle==0x3000u&&!lr.warning_called);
+    master_handle=0x4001u;assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_retained&&!lr.master_assigned&&!lr.warning_called);
     master_handle=0x5001u;lf.now=1.f;assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_assigned&&!lr.warning_called);
     LifeFixture::wr(lf.actor,0xb4,1);master_handle=0xffffffffu;lf.now=.5f;
-    assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&!lr.master_assigned&&!lr.warning_called);
+    assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&!lr.master_assigned&&lr.warning_called);
+    lf.now=1.f;assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&!lr.warning_called);
     master_handle=0x4001u;
     assert(api->become_master(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_assigned&&lr.think_cleared&&master_handle==0x3000u&&!LifeFixture::rd(lf.actor,8));
     LifeFixture::wr(lf.actor,8,123);
     assert(api->kill(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.removed&&!lr.think_cleared&&LifeFixture::rd(lf.actor,8)==123&&master_handle==0x3000u);
     assert(!api->spawn(lf.actor,sizeof(lf.actor)-1,&lb,&lr)&&!lr.completed);
+    // Scheduled and explicit input entry points execute the same evaluator.
+    struct DispatchFixture{
+        EvalFixture* e;unsigned char edict[0x10]{};
+        bool present=false,base_present=true,fail_pvs=false;
+        unsigned bytes=0x10,pvs=0,clients_reads=0,slots=0,unknowns=0,extents=0,schedules=0;
+        int clients=1;float now=10.f,scheduled=0.f;
+    } df{&ef};
+    DispatchBindings db{};db.context=&df;db.evaluation=&eb;
+    db.pvs_edict=[](void* p,unsigned token,const void** v,unsigned* n) noexcept ->int{
+        auto& q=*static_cast<DispatchFixture*>(p);assert(token==0x4321u);++q.pvs;
+        *v=q.present?q.edict:nullptr;*n=q.bytes;return !q.fail_pvs;
+    };
+    db.max_clients=[](void* p,int* n) noexcept ->int{auto& q=*static_cast<DispatchFixture*>(p);*n=q.clients;++q.clients_reads;return 1;};
+    db.edict=[](void* p,int i,const void** v,unsigned* n) noexcept ->int{auto& q=*static_cast<DispatchFixture*>(p);assert(i==1);++q.slots;*v=q.present?q.edict:nullptr;*n=q.bytes;return 1;};
+    db.base_entity=[](void* p,unsigned token,void** v) noexcept ->int{auto& q=*static_cast<DispatchFixture*>(p);assert(token==0x1234u);++q.unknowns;*v=q.base_present?q.e->player:nullptr;return 1;};
+    db.extent=[](void* p,void* e,unsigned* n) noexcept ->int{auto& q=*static_cast<DispatchFixture*>(p);assert(e==q.e->player);++q.extents;*n=sizeof(q.e->player);return 1;};
+    db.now=[](void* p,float* t) noexcept ->int{*t=static_cast<DispatchFixture*>(p)->now;return 1;};
+    db.schedule=[](void* p,void* a,float t) noexcept ->int{auto& q=*static_cast<DispatchFixture*>(p);assert(a==q.e->actor&&EvalFixture::rd(a,8)==check_pvs_think);++q.schedules;q.scheduled=t;return 1;};
+    eb.entries=nullptr;eb.entry_count=0;eb.master_handle=nullptr;eb.native_player_inventory=false;eb.ammo=b;eb.fallback=fb;
+    auto dispatch_seed=[&](){seed();EvalFixture::u(ef.actor,0,resupply_vtable);EvalFixture::u(ef.actor,0x16c,0x4321u);EvalFixture::u(ef.actor,8,check_pvs_think);};
+    DispatchResult dr{};dispatch_seed();
+    assert(api->check_pvs(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.completed&&dr.retry&&dr.next_time==11.f&&!dr.evaluated&&!ef.creations);
+    df.present=true;assert(api->check_pvs(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.edict_found&&dr.retry&&!dr.unknown_called);
+    EvalFixture::u(df.edict,0xc,0x1234);df.base_present=false;
+    assert(api->check_pvs(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.unknown_called&&!dr.player_found&&dr.retry);
+    df.base_present=true;df.bytes=0xc;
+    assert(!api->check_pvs(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.edict_found&&!dr.retry&&!dr.evaluated);
+    df.bytes=0x10;df.fail_pvs=true;assert(!api->check_pvs(ef.actor,sizeof(ef.actor),0,&db,&dr)&&!dr.retry&&!dr.evaluated);
+    df.fail_pvs=false;
+    assert(api->check_pvs(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.completed&&dr.player_found&&dr.extent_read&&dr.evaluated&&dr.evaluation.normal_spawns==2&&dr.evaluation.removed&&!dr.retry&&df.schedules==3);
+    dispatch_seed();df.clients=2;
+    assert(!api->calculate_type(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.local_called&&!dr.slot_checked&&dr.evaluated&&!dr.retry&&!ef.creations);
+    df.clients=1;EvalFixture::u(df.edict,0,2);
+    assert(!api->calculate_type(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.slot_checked&&dr.edict_free&&!dr.unknown_called&&!dr.retry);
+    EvalFixture::u(df.edict,0,0);
+    assert(api->calculate_type(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.completed&&dr.local_called&&dr.slot_checked&&dr.evaluation.normal_spawns==2&&dr.evaluation.removed&&!dr.pvs_called&&!dr.retry);
+    // Self-master exits before touching a missing player.
+    dispatch_seed();entry.entity=reinterpret_cast<CBaseEntity*>(ef.actor);handle=0x3000;
+    eb.entries=&entry;eb.entry_count=1;eb.master_handle=&handle;df.clients=0;
+    assert(api->calculate_type(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.completed&&dr.evaluation.master_skipped&&!dr.player_found&&!dr.extent_read&&!ef.creations&&EvalFixture::rd(ef.actor,8)==check_pvs_think);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
