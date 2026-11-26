@@ -621,5 +621,59 @@ int main(int argc,char** argv){
     assert(ti("Disable")&&tf.next==-1.f);put(timer,0x3dc,0);put(timer,0x3e0,0);
     assert(api->timer_spawn(timer,sizeof(timer),&tb,&tr)&&tr.clamped&&tr.scheduled&&tf.next==static_cast<float>(10.0+double(.01f)));
     assert(ti("Unknown")&&!tr.handled);
+    // Optional timer factory and map-to-native-spawn route.
+    FactoryDictionary timer_dictionary{};
+    assert(api->register_factories(&timer_dictionary)&&api->register_timer(&timer_dictionary)&&timer_dictionary.count==13);
+    assert(api->register_auto(&timer_dictionary)&&api->register_relay(&timer_dictionary)&&timer_dictionary.count==15&&!api->register_timer(&timer_dictionary));
+    const auto* tspec=api->find_factory(&timer_dictionary,"LOGIC_TIMER");
+    assert(tspec&&tspec->family==Family::LogicTimer&&tspec->original_object==0x224fb604&&tspec->original_vtable==0x2241f590&&tspec->extent==timer_extent);
+    struct TimerFactoryFixture {
+        alignas(4) unsigned char storage[timer_extent]{};
+        unsigned alloc=0,base=0,init=0,released=0,cleared=0,spawn_begin=0,spawn_end=0;
+        bool short_alloc=false;
+    } tff;
+    RelayFactoryBindings tfb{};tfb.context=&tff;
+    tfb.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<TimerFactoryFixture*>(p);assert(n==timer_extent);++f.alloc;*a=f.storage;*bytes=f.short_alloc?n-1:n;return 1;
+    };
+    tfb.base_construct=[](void* p,void* a,int arg) noexcept ->int{
+        auto& f=*static_cast<TimerFactoryFixture*>(p);assert(a==f.storage&&arg==1);++f.base;
+        unsigned keep=0x12345678;std::memcpy(f.storage+0x398,&keep,4);return 1;
+    };
+    tfb.initialize=[](void* p,void* a,const char* cls) noexcept ->int{
+        auto& f=*static_cast<TimerFactoryFixture*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"logic_timer"));
+        unsigned vt=0;std::memcpy(&vt,a,4);assert(vt==timer_vtable);++f.init;return 1;
+    };
+    tfb.release_networkable=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<TimerFactoryFixture*>(p);assert(a==f.storage+0x160);++f.released;return 1;};
+    FactoryBindings timer_factories{};timer_factories.dictionary=&timer_dictionary;
+    FactoryResult tfr{};
+    assert(!api->create_factory("logic_timer",&timer_factories,&tfr)&&tfr.matched&&!tfr.actor);
+    timer_factories.logic_timer=&tfb;tff.short_alloc=true;
+    assert(!api->create_factory("logic_timer",&timer_factories,&tfr)&&tfr.matched&&!tfr.networkable&&!tff.base);tff.short_alloc=false;
+    ActionPool timer_map_pool{};OutputActionBindings tmpo=output;tmpo.context=&timer_map_pool;tmpo.next_id=&timer_map_pool.id;
+    auto tmk=tk;tmk.native_output=&tmpo;
+    Bindings tmp{};tmp.context=&tff;tmp.native_factory=&timer_factories;tmp.native_keys=&tmk;
+    tmp.clear_factory_global=[](void* p) noexcept ->int{++static_cast<TimerFactoryFixture*>(p)->cleared;return 1;};
+    TimerFixture tmf{tff.storage,&timer_map_pool};auto tmb=tb;tmb.context=&tmf;
+    auto tmo=to;tmo.context=&tmf;tmb.output=&tmo;tmb.now=&tmf.now;
+    SpawnBindings tms{};tms.context=&tff;tms.logic_timer=&tmb;
+    tms.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=timer_extent;return 1;};
+    tms.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="logic_timer";return 1;};
+    tms.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    tms.debug_enabled=[](void*,bool* enabled) noexcept ->int{*enabled=false;return 1;};
+    tms.native_spawn_begin=[](void* p,void* a,bool* proceed) noexcept ->int{auto& f=*static_cast<TimerFactoryFixture*>(p);assert(a==f.storage);++f.spawn_begin;*proceed=true;return 1;};
+    tms.native_spawn_end=[](void* p,void* a,int* code) noexcept ->int{auto& f=*static_cast<TimerFactoryFixture*>(p);assert(a==f.storage);++f.spawn_end;*code=0;return 1;};
+    PipelineBindings tmpipe{};tmpipe.context=&tff;tmpipe.parse=&tmp;tmpipe.spawn=&tms;
+    tmpipe.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    tmpipe.classify=[](void*,void*,Category* cat) noexcept ->int{*cat=Category::Ordinary;return 1;};
+    const char timer_map[]="{ classname logic_timer RefireTime 2 OnTimer \"relay,Trigger,,0,-1\" }";
+    PipelineResult tmpr{};
+    assert(api->parse_all(timer_map,sizeof(timer_map),false,&tmpipe,&tmpr)&&tmpr.parse.native_creates==1&&tmpr.spawn.native_spawns==1&&tmpr.spawn.spawned==1);
+    assert(tff.alloc==2&&tff.base==1&&tff.init==1&&tff.cleared==1&&tff.spawn_begin==1&&tff.spawn_end==1&&tmf.schedules==1&&tmf.next==12.f);
+    for(unsigned off=0x394;off<=0x3c4;off+=0x18)assert(word(tff.storage,off)==0&&word(tff.storage,off+0xc)==0xffffffffu&&word(tff.storage,off+0x10)==0);
+    assert(word(tff.storage,0x398)==0x12345678&&word(tff.storage,0x3a8)==ptrword(timer_map_pool.rows[0]));
+    assert(api->timer_input(tff.storage,sizeof(tff.storage),"FireTimer",0,0,&tmb,&tr)&&tr.fired&&tmf.order=="0");
+    assert(api->destroy_timer(nullptr,0,nullptr,nullptr)&&!api->destroy_timer(tff.storage,timer_extent,tff.storage+0x164,&tfb)&&!tff.released);
+    assert(api->destroy_timer(tff.storage,timer_extent,tff.storage+0x160,&tfb)&&tff.released==1);
     FreeLibrary(server);FreeLibrary(client);
 }
