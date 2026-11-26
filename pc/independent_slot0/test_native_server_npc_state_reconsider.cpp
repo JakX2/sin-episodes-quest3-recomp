@@ -4063,7 +4063,9 @@ int main(int argc,char** argv){
         struct TaskFixture {
             alignas(4) unsigned char a[0xde8]{},primary[0x3c0]{},secondary[0x3c0]{},desc[0x48]{},behavior[0x18]{},task[8]{};
             sin_independent::EntityHandleEntry entries[3]{};
-            bool target=false;double error=0.006;unsigned nav=0,targets=0,synthetic=0,requests=0,draws=0,finds=0;
+            bool target=false,ready=false,accept=false;double error=0.006;
+            unsigned nav=0,targets=0,synthetic=0,requests=0,draws=0,finds=0,shared_runs=0,shared_starts=0,other=0,aims=0,activity=0;
+            float point[3]{},invalid[3]{};unsigned weapon_caps=0;
             static TaskFixture& self(void* p){return *static_cast<TaskFixture*>(p);}
             static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
         } q;
@@ -4115,6 +4117,53 @@ int main(int argc,char** argv){
         f.put(q.a,0x79c,1000000301);assert(run(121)&&!o.debug_called&&o.debug_checks==2);
         f.put(q.a,0x7cc,1u<<10);f.put(q.primary,0x398,77u);p[0x25]=1;
         assert(run(121)&&o.advance_called&&o.reset_calls==1&&no.next_valid&&no.handle_written&&q.finds==1&&!p[0x25]&&TaskFixture::rd(p,0x14)==0x2002u&&p[8]);
+
+        // Owner-level StartTask/RunTask integration on the same actor and bindings.
+        auto lg=reinterpret_cast<GetServerNpcGruntAssaultLifecycleApi>(GetProcAddress(s,server_npc_grunt_assault_lifecycle_export));
+        assert(lg&&!GetProcAddress(c,server_npc_grunt_assault_lifecycle_export)&&!lg(0,sizeof(ServerNpcGruntAssaultLifecycleApi))&&!lg(1,0));
+        const auto* life=lg(1,sizeof(ServerNpcGruntAssaultLifecycleApi));assert(life);
+        ServerNpcGruntAssaultLifecycleBindings lb{};lb.tasks=&b;lb.context=&q;lb.invalid_point=q.invalid;
+        lb.shared_run=[](void* x,void* a,const void*,unsigned n) noexcept -> int{auto& q=TaskFixture::self(x);assert(a==q.a&&n==8);++q.shared_runs;return 1;};
+        gate.context=&q;gate.shared=[](void* x,void* a,const void*,unsigned n) noexcept -> int{auto& q=TaskFixture::self(x);assert(a==q.a&&n==8);++q.shared_starts;return 1;};
+        lb.other_run=[](void* x,void* a,void* c,unsigned n,std::uint32_t vt,const void*,unsigned) noexcept -> int{auto& q=TaskFixture::self(x);assert(a==q.a&&c==q.a+0xcd8&&n==sizeof(q.a)-0xcd8&&vt==0x224abec4);++q.other;static_cast<unsigned char*>(c)[8]=0;return 1;};
+        lb.prepare=[](void*,void*) noexcept -> int{return 1;};
+        lb.point=[](void* x,void*,float* v) noexcept -> int{std::memcpy(v,TaskFixture::self(x).point,12);return 1;};
+        lb.point_accept=[](void* x,void*,const float*,bool* v) noexcept -> int{*v=TaskFixture::self(x).accept;return 1;};
+        lb.aim=[](void* x,void* a,std::uint32_t token,const float*,bool) noexcept -> int{auto& q=TaskFixture::self(x);assert(a==q.a&&token==99);++q.aims;return 1;};
+        lb.owner_ready=[](void* x,void*,bool* v) noexcept -> int{*v=TaskFixture::self(x).ready;return 1;};
+        auto& eb=rb.events.events;eb.context=&q;
+        eb.weapon_caps=[](void* x,void* w,unsigned* v) noexcept -> int{auto& q=TaskFixture::self(x);assert(w==q.primary);*v=q.weapon_caps;return 1;};
+        eb.clear_activity=[](void* x,void* a,int activity) noexcept -> int{auto& q=TaskFixture::self(x);assert(a==q.a&&activity==16&&!TaskFixture::rd(q.a,0x878));++q.activity;return 1;};
+        rb.context=&q;rb.random_float=[](void*,float,float,double* v) noexcept -> int{*v=2;return 1;};
+        ServerNpcGruntAssaultLifecycleResult lo{};static ServerNpcGruntEventTimerResult to;
+        auto lr=[&](int id,bool actor=false){f.put(q.task,0,id);return life->run(q.a,sizeof(q.a),q.task,8,10,actor,&lb,&lo,&o,&no,&so,&to);};
+        auto ls=[&](int id){f.put(q.task,0,id);return life->start(q.a,sizeof(q.a),q.task,8,10,&lb,&no);};
+        f.put(q.a,0xc18,0x10db8u);f.put(q.a,0x7cc,0u);b.debug_enabled=false;p[8]=0;
+        f.put(q.a,0x8ec,0x1000000u);f.put(q.a,0x78c,0xffffffffu);
+        // The generic wrapper does NOT check capabilities for non-67 tasks.
+        assert(lr(100006)&&lo.completed&&lo.native_run&&lo.consumed&&lo.marker_set&&!lo.capability_queries&&p[8]);
+        assert(lr(77)&&lo.native_run&&lo.marker_cleared&&lo.shared_called&&q.shared_runs==1&&!p[8]);
+        assert(ls(100010)&&no.events.completed&&p[8]);
+        assert(ls(77)&&q.shared_starts==1&&!p[8]);
+        f.put(q.a,0xc18,0u);assert(lr(100006)&&lo.shared_called&&!lo.native_run&&q.shared_runs==2);
+        f.put(q.a,0xcd8,0x224abec4u);f.put(q.a,0xcdc,0x10000u);f.put(q.a,0xce4,0x10c14u);f.put(q.a,0xc18,0x10cd8u);
+        assert(lr(77)&&lo.other_called&&lo.marker_cleared&&lo.shared_called&&q.other==1);
+        f.put(q.a,0xc18,0x10db9u);assert(!lr(77)&&!lo.identity_valid&&!lo.shared_called);
+        f.put(q.a,0xc18,0x10db8u);p[8]=0x55;
+        assert(lr(0x43)&&lo.virtual_route&&lo.capability_route&&lo.prepared&&lo.point_called&&!lo.point_valid&&!lo.aim_called&&!lo.ready&&!lo.native_run&&p[8]==0x55);
+        q.point[0]=1;assert(lr(0x43)&&lo.capability_queries==2&&lo.aim_called&&!lo.point_accept_called&&!lo.aim_linked);
+        f.put(q.a,0x8ec,0x21000000u);q.accept=true;
+        assert(lr(0x43)&&lo.point_accept_called&&lo.point_accepted&&lo.aim_linked);
+        q.accept=false;assert(lr(0x47,true)&&lo.point_accept_called&&!lo.aim_linked);
+        q.ready=true;q.a[0x9ac]=1;f.put(q.a,0x9a8,11.f);
+        assert(lr(100006,true)&&lo.capability_route&&lo.timer_active&&lo.reset_called&&so.completed&&!lo.native_run);
+        q.a[0x9ac]=0;assert(lr(100006,true)&&!lo.timer_active&&!lo.timer_pending&&!lo.reset_called&&!lo.refresh_called);
+        f.put(q.a,0x9a8,10.f);f.put(q.a,0x9ae,static_cast<std::uint16_t>(2));f.put(q.a,0x878,16);
+        assert(lr(100006,true)&&lo.timer_pending&&lo.refresh_called&&lo.activity_cleared&&lo.activity_called&&q.activity==1&&to.deadline==12.f);
+        f.put(q.a,0x8ec,0u);f.put(q.a,0x78c,0x1001u);q.weapon_caps=0x1000000u;q.ready=false;
+        assert(lr(0x43)&&lo.capability_route&&lo.weapon_queries==4);
+        f.put(q.a,0x78c,0x9001u);assert(lr(0x43)&&!lo.capability_route&&lo.native_run&&lo.shared_called&&lo.weapon_queries==1);
+
     }
 
     {

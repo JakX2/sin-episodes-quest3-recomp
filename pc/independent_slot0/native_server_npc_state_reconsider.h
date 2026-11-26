@@ -2770,4 +2770,38 @@ struct ServerNpcGruntAssaultPointApi {
     int (__cdecl *private_id)(int) noexcept; // 220ce130
 };
 using GetServerNpcGruntAssaultPointApi=const ServerNpcGruntAssaultPointApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_lifecycle_export[]="SiN_GetServerNpcGruntAssaultLifecycleApi";
+struct ServerNpcGruntAssaultLifecycleBindings {
+    const ServerNpcGruntAssaultTaskBindings* tasks; // its node bindings are shared by StartTask
+    void* context;
+    int (__cdecl *shared_run)(void*,void*,const void*,unsigned) noexcept; // 220538d0
+    int (__cdecl *other_run)(void*,void*,void*,unsigned,std::uint32_t,const void*,unsigned) noexcept; // other verified active behavior +64
+    // 2202d980 capability-specific path; leaves remain explicit engine services.
+    int (__cdecl *prepare)(void*,void*) noexcept; // 2204d350(0,0)
+    int (__cdecl *point)(void*,void*,float*) noexcept; // 22031780
+    int (__cdecl *point_accept)(void*,void*,const float*,bool*) noexcept; // +304
+    int (__cdecl *aim)(void*,void*,std::uint32_t,const float*,bool) noexcept; // 2206bff0 or 2206c710, flag c0000000
+    int (__cdecl *owner_ready)(void*,void*,bool*) noexcept; // +298
+    const float* invalid_point; // original global 225885b8
+};
+struct ServerNpcGruntAssaultLifecycleResult {
+    std::uint32_t active_token,behavior_vtable,capabilities,navigation_token;
+    int task;
+    unsigned completed,virtual_route,capability_queries,weapon_queries,capability_route,identity_valid,
+        marker_set,marker_cleared,consumed,native_run,other_called,shared_called,
+        prepared,point_called,point_valid,point_accept_called,point_accepted,aim_called,
+        aim_linked,ready_called,ready,timer_active,timer_pending,reset_called,refresh_called,activity_cleared,activity_called;
+    float point[3];
+};
+struct ServerNpcGruntAssaultLifecycleApi {
+    std::uint32_t version,size;
+    // 2202d930 StartTask wrapper, already recovered through the node API.
+    int (__cdecl *start)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntAssaultLifecycleBindings*,ServerNpcGruntAssaultNodeResult*) noexcept;
+    // 2202daf0 RunTask wrapper; direct_actor=true selects the actual +784 implementation 2202d980.
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,bool,const ServerNpcGruntAssaultLifecycleBindings*,
+        ServerNpcGruntAssaultLifecycleResult*,ServerNpcGruntAssaultTaskResult*,ServerNpcGruntAssaultNodeResult*,
+        ServerNpcGruntRappelScheduleResult*,ServerNpcGruntEventTimerResult*) noexcept;
+};
+using GetServerNpcGruntAssaultLifecycleApi=const ServerNpcGruntAssaultLifecycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -6026,6 +6026,96 @@ int __cdecl grunt_assault_node(void* a,unsigned n,const void* ev,unsigned en,flo
 }
 const ServerNpcGruntAssaultNodeApi assault_node_api{1,sizeof(ServerNpcGruntAssaultNodeApi),&grunt_assault_node};
 
+int __cdecl assault_lifecycle_start(void* a,unsigned n,const void* task,unsigned tn,float now,const ServerNpcGruntAssaultLifecycleBindings* b,ServerNpcGruntAssaultNodeResult* o) noexcept{
+    if(!b||!b->tasks||!b->tasks->node)return 0;
+    return grunt_assault_node(a,n,task,tn,now,b->tasks->node,o);
+}
+int __cdecl assault_lifecycle_run(void* a,unsigned n,const void* task,unsigned tn,float now,bool direct_actor,const ServerNpcGruntAssaultLifecycleBindings* b,
+    ServerNpcGruntAssaultLifecycleResult* o,ServerNpcGruntAssaultTaskResult* task_out,ServerNpcGruntAssaultNodeResult* node_out,
+    ServerNpcGruntRappelScheduleResult* schedule_out,ServerNpcGruntEventTimerResult* timer_out) noexcept{
+    if(!o||!task_out||!node_out||!schedule_out||!timer_out)return 0;
+    *o={};*task_out={};*node_out={};*schedule_out={};*timer_out={};
+    o->task=-1;
+    if(!a||n<0xc1c||!task||tn<8||!b||!b->tasks||!b->tasks->node||!std::isfinite(now))return 0;
+    const auto& ab=b->tasks->node->events;
+    const auto& busy=ab.events.events.events;const auto& tank=busy.events.events.events;
+    const auto& timer=tank.events;const auto& rb=timer.events;const auto& eb=rb.events.events;
+    const auto& gate=eb.gate;const auto& sb=gate.speech.speech.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    o->task=read<int>(task,0);
+    auto done=[&](){o->completed=1;return 1;};
+    const sin_independent::EntityHandleView registry(sb.entries,sb.count);
+    auto capabilities=[&](){
+        ++o->capability_queries;o->capabilities=read<unsigned>(a,0x8ec);++o->weapon_queries;
+        if(registry.Resolve(read<unsigned>(a,0x78c))){
+            ++o->weapon_queries;void* w=registry.Resolve(read<unsigned>(a,0x78c));unsigned caps=0;
+            if(!w||!eb.weapon_caps||!eb.weapon_caps(eb.context,w,&caps))return false;
+            o->capabilities|=caps;
+        }
+        return true;
+    };
+    // General wrapper uses the actor virtual only for task 0x43.
+    if(direct_actor||o->task==0x43){
+        o->virtual_route=1;if(!capabilities())return 0;
+        if(o->capabilities&0x1000000u){
+            o->capability_route=1;
+            if(!b->prepare||!b->prepare(b->context,a))return 0;o->prepared=1;
+            if(!b->point||!b->invalid_point||!b->point(b->context,a,o->point))return 0;o->point_called=1;
+            // FUCOMPP: unordered components do not compare equal to the invalid vector.
+            o->point_valid=o->point[0]!=b->invalid_point[0]||o->point[1]!=b->invalid_point[1]||o->point[2]!=b->invalid_point[2];
+            if(o->point_valid){
+                bool linked=false;
+                if(o->task==0x43||o->task==0x47){
+                    if(!capabilities())return 0;
+                    if(o->capabilities&0x20000000u){
+                        if(!b->point_accept||!b->point_accept(b->context,a,o->point,&linked))return 0;
+                        o->point_accept_called=1;o->point_accepted=linked;
+                    }
+                }
+                o->navigation_token=read<unsigned>(a,0x908);o->aim_linked=linked;
+                if(!o->navigation_token||!b->aim||!b->aim(b->context,a,o->navigation_token,o->point,linked))return 0;o->aim_called=1;
+            }
+            bool ready=false;
+            if(!b->owner_ready||!b->owner_ready(b->context,a,&ready))return 0;o->ready_called=1;o->ready=ready;
+            if(!ready)return done();
+            const float deadline=read<float>(a,0x9a8);
+            o->timer_active=read<std::uint8_t>(a,0x9ac)!=0&&!(deadline<=now);
+            if(o->timer_active){
+                const RappelScheduleRoute schedule{&rb,schedule_out};
+                schedule_out->condition.global=schedule_out->condition.bit=schedule_out->slot.index=schedule_out->slot.selected=-1;
+                if(!rappel_schedule_reset(a,n,now,schedule))return 0;o->reset_called=1;
+            }else if((o->timer_pending=deadline<=now)){
+                const EventTimerRoute route{&timer,timer_out};
+                if(!event_timer_refresh(a,n,now,route))return 0;o->refresh_called=1;
+                if(read<int>(a,0x878)==16){write(a,0x878,0);o->activity_cleared=1;}
+                if(!eb.clear_activity||!eb.clear_activity(eb.context,a,16))return 0;o->activity_called=1;
+            }
+            return done();
+        }
+    }
+    const auto active=o->active_token=read<unsigned>(a,0xc18);
+    if(active){
+        EmbeddedBehaviorIdentity identity{};
+        if(!embedded_behavior_identity(a,n,sb.speech.original_vtable,gate.actor_token,active,false,identity))return 0;
+        o->identity_valid=1;o->behavior_vtable=identity.behavior_vtable;
+        auto* component=static_cast<unsigned char*>(a)+identity.embedded_offset;
+        write<std::uint8_t>(component,8,1);o->marker_set=1;
+        if(identity.behavior_vtable==0x223f5544){
+            if(!assault_task_run(a,n,task,tn,now,b->tasks,task_out,node_out,schedule_out))return 0;o->native_run=1;
+        }else{
+            if(!b->other_run||!b->other_run(b->context,a,component,n-identity.embedded_offset,identity.behavior_vtable,task,tn))return 0;
+            o->other_called=1;
+        }
+        // Read the original component marker even if a callback changed +c18.
+        o->marker_cleared=read<std::uint8_t>(component,8)==0;
+        if(!o->marker_cleared){o->consumed=1;return done();}
+    }
+    if(!b->shared_run||!b->shared_run(b->context,a,task,tn))return 0;o->shared_called=1;
+    return done();
+}
+const ServerNpcGruntAssaultLifecycleApi assault_lifecycle_api{1,sizeof(ServerNpcGruntAssaultLifecycleApi),&assault_lifecycle_start,&assault_lifecycle_run};
+
+
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
     auto& result=*route.behavior->result;
@@ -7921,4 +8011,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultPointApi=_SiN_GetServerNpcGruntAssaultPointApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultPointApi* __cdecl SiN_GetServerNpcGruntAssaultPointApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultPointApi)?&assault_point_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultLifecycleApi=_SiN_GetServerNpcGruntAssaultLifecycleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultLifecycleApi* __cdecl SiN_GetServerNpcGruntAssaultLifecycleApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultLifecycleApi)?&assault_lifecycle_api:nullptr;
 }
