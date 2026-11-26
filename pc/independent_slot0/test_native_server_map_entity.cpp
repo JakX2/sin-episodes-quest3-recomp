@@ -1576,5 +1576,59 @@ int main(int argc,char** argv){
         auto empty=owner;empty.resolve=nullptr;empty.release_action=nullptr;
         assert(api->destroy_logic(f.actor,l.extent,1,&empty,&result)&&result.outputs==17&&!result.actions&&result.base_called&&result.freed);
     }
+    {
+        alignas(4) unsigned char actor[menu_extent]{};
+        put(actor,0,menu_vtable);put(actor,0x394,menu_listener_vtable);
+        struct MenuFixture {void* actor;ActionPool* pool;const char* name;const char* button;unsigned names=0,buttons=0,queued=0,spawned=0,restored=0,subscriptions=0;bool mutate=false;} f{actor,nullptr,"gameui_selected","resume game"};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<MenuFixture*>(p);
+            for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<MenuFixture*>(p);assert(a==f.actor&&c==f.actor&&!action->variant_type);++f.queued;
+            if(f.mutate&&f.queued==1)f.button="new game";return 1;
+        };
+        MenuBindings behavior{};behavior.context=&f;behavior.output=&fire;
+        behavior.event_name=[](void* p,void* e,const char** text,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<MenuFixture*>(p);assert(e==&f);++f.names;*text=f.name;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        behavior.event_string=[](void* p,void* e,const char* key,const char* fallback,const char** text,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<MenuFixture*>(p);assert(e==&f&&!std::strcmp(key,"buttonname")&&!*fallback);++f.buttons;*text=f.button;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        behavior.base_spawn=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<MenuFixture*>(p);assert(a==f.actor);++f.spawned;return 1;};
+        behavior.base_restore=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<MenuFixture*>(p);assert(a==f.actor);++f.restored;return 1;};
+        behavior.subscribe=[](void* p,void* a,const char* name,bool server_side) noexcept ->int{
+            auto& f=*static_cast<MenuFixture*>(p);assert(a==static_cast<unsigned char*>(f.actor)+0x394&&server_side&&f.spawned+f.restored==f.subscriptions/2+1);
+            assert(!std::strcmp(name,f.subscriptions%2?"gameui_highlighted":"gameui_selected"));++f.subscriptions;return 1;
+        };
+        MenuResult result{};
+        assert(api->menu_listen(actor,sizeof(actor),false,&behavior,&result)&&result.base_called&&result.subscribed==2&&f.spawned==1);
+        assert(api->menu_listen(actor,sizeof(actor),true,&behavior,&result)&&result.base_called&&result.subscribed==2&&f.restored==1&&f.subscriptions==4);
+        constexpr const char* button_names[]{"resume game","new game","options","load game","save game","friends","stats","quit"};
+        constexpr const char* press_keys[]{"resumeGamePressed","newGamePressed","optionsPressed","loadGamePressed","saveGamePressed","friendsPressed","statsPressed","quitPressed"};
+        constexpr const char* hover_keys[]{"resumeGameMousedOver","newGameMousedOver","optionsMousedOver","loadGameMousedOver","saveGameMousedOver","friendsMousedOver","statsMousedOver","quitMousedOver"};
+        constexpr unsigned offsets[]{0x398,0x3b0,0x3c8,0x3e0,0x3f8,0x428,0x410,0x440};
+        for(unsigned hover=0;hover<2;++hover)for(unsigned i=0;i<8;++i){
+            std::memset(actor+0x398,0,sizeof(actor)-0x398);
+            ActionPool pool{};f.pool=&pool;OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+            auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=menu_extent;return 1;};
+            const unsigned off=offsets[i]+hover*0xc0;
+            assert(api->key_value(actor,hover?hover_keys[i]:press_keys[i],"relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==off&&kr.field_type==11);
+            f.name=hover?"gameui_highlighted":"gameui_selected";f.button=button_names[i];f.names=f.buttons=f.queued=0;
+            assert(api->menu_event(actor,sizeof(actor),&f,&behavior,&result)&&result.completed&&result.outputs==1&&result.queued==1&&result.first_offset==off&&result.last_offset==off);
+            assert(result.name_reads==1+hover&&result.button_reads==(i?i+1:8)&&f.names==result.name_reads&&f.buttons==result.button_reads&&f.queued==1);
+        }
+        // Resume falls through; a changed event string can match next button.
+        std::memset(actor+0x398,0,sizeof(actor)-0x398);
+        ActionPool pool{};f.pool=&pool;OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=menu_extent;return 1;};
+        assert(api->key_value(actor,"resumeGamePressed","relay,Trigger,,0,-1",&keys,&kr)&&api->key_value(actor,"newGamePressed","relay,Trigger,,0,-1",&keys,&kr));
+        f.name="gameui_selected";f.button="resume game";f.queued=0;f.mutate=true;
+        assert(api->menu_event(actor,sizeof(actor),&f,&behavior,&result)&&result.outputs==2&&result.queued==2&&result.first_offset==0x398&&result.last_offset==0x3b0&&result.button_reads==2);
+        f.mutate=false;f.name="GameUI_selected";assert(api->menu_event(actor,sizeof(actor),&f,&behavior,&result)&&!result.outputs&&result.name_reads==2&&!result.button_reads);
+        f.name="gameui_selected";f.button="Resume Game";assert(api->menu_event(actor,sizeof(actor),&f,&behavior,&result)&&!result.outputs&&result.button_reads==8);
+        put(actor,0x394,0);assert(!api->menu_event(actor,sizeof(actor),&f,&behavior,&result));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }

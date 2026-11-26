@@ -356,7 +356,7 @@ int __cdecl destroy_counter(void* actor,unsigned bytes,void* networkable,const R
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -467,10 +467,18 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"OnLessThan",0x39c,11},{"OnEqualTo",0x3b4,11},
         {"OnNotEqualTo",0x3cc,11},{"OnGreaterThan",0x3e4,11}
     };
+    constexpr Spec menu_keys[]{
+        {"resumeGamePressed",0x398,11},{"newGamePressed",0x3b0,11},{"optionsPressed",0x3c8,11},
+        {"loadGamePressed",0x3e0,11},{"saveGamePressed",0x3f8,11},{"statsPressed",0x410,11},
+        {"friendsPressed",0x428,11},{"quitPressed",0x440,11},
+        {"resumeGameMousedOver",0x458,11},{"newGameMousedOver",0x470,11},{"optionsMousedOver",0x488,11},
+        {"loadGameMousedOver",0x4a0,11},{"saveGameMousedOver",0x4b8,11},{"statsMousedOver",0x4d0,11},
+        {"friendsMousedOver",0x4e8,11},{"quitMousedOver",0x500,11}
+    };
     Spec numbered{};
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -1456,7 +1464,60 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
     if(flags&1u){if(!b->free_actor(b->context,a))return 0;o->freed=1;}
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic};
+bool menu_valid(void* a,unsigned n,const MenuBindings* b,MenuResult* o) noexcept {
+    if(!o)return false;*o={};
+    return a&&n>=menu_extent&&entity_vtable(a)==menu_vtable&&read_field<unsigned>(a,0x394)==menu_listener_vtable&&b;
+}
+int __cdecl menu_listen(void* a,unsigned n,bool restore,const MenuBindings* b,MenuResult* o) noexcept {
+    if(!menu_valid(a,n,b,o)||!b->subscribe)return 0;
+    const auto base=restore?b->base_restore:b->base_spawn;
+    if(!base||!base(b->context,a))return 0;o->base_called=1;
+    auto* listener=static_cast<unsigned char*>(a)+0x394;
+    // 22178e30 Spawn / 22178e80 restore call AddListener in this order.
+    if(!b->subscribe(b->context,listener,"gameui_selected",true))return 0;++o->subscribed;
+    if(!b->subscribe(b->context,listener,"gameui_highlighted",true))return 0;++o->subscribed;
+    o->completed=1;return 1;
+}
+bool menu_text(const char* value,unsigned bytes) noexcept {
+    return value&&bytes&&std::memchr(value,0,bytes<4096?bytes:4096);
+}
+int __cdecl menu_event(void* a,unsigned n,void* event,const MenuBindings* b,MenuResult* o) noexcept {
+    if(!menu_valid(a,n,b,o)||!event||!b->event_name)return 0;
+    const char* text=nullptr;unsigned bytes=0;
+    auto name=[&](){
+        text=nullptr;bytes=0;++o->name_reads;
+        return b->event_name(b->context,event,&text,&bytes)&&menu_text(text,bytes);
+    };
+    if(!name())return 0;
+    if(!std::strcmp(text,"gameui_selected"))o->selected=1;
+    else {
+        // Original calls GetName again before checking highlighted.
+        if(!name())return 0;
+        if(!std::strcmp(text,"gameui_highlighted"))o->highlighted=1;
+        else{o->completed=1;return 1;}
+    }
+    if(!b->event_string||!b->output)return 0;
+    constexpr const char* buttons[]{"resume game","new game","options","load game","save game","friends","stats","quit"};
+    constexpr unsigned offsets[]{0x398,0x3b0,0x3c8,0x3e0,0x3f8,0x428,0x410,0x440};
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    if(!fire)return 0;
+    for(unsigned i=0;i<8;++i){
+        // Original invokes GetString(buttonname,"") for every candidate;
+        // resume fires then falls through, all other matches return.
+        text=nullptr;bytes=0;++o->button_reads;
+        if(!b->event_string(b->context,event,"buttonname","",&text,&bytes)||!menu_text(text,bytes))return 0;
+        if(std::strcmp(text,buttons[i]))continue;
+        const unsigned off=offsets[i]+(o->highlighted?0xc0:0);
+        ServerEntityVoidOutputResult r{};
+        if(!fire->fire(static_cast<unsigned char*>(a)+off,0x18,a,a,n,0.f,b->output,&r))return 0;
+        if(!o->outputs)o->first_offset=off;
+        ++o->outputs;o->last_offset=off;o->queued+=r.queued;
+        if(i)break;
+    }
+    o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
