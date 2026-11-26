@@ -546,7 +546,7 @@ unsigned input_datamap(unsigned vt) noexcept {
 }
 // 223a5574 -> 223a8410 in the original C locale. A string pool
 // supplies actual bytes and extent; a numeric token is not a name.
-bool input_text(const ServerEntityAcceptInputBindings& b,unsigned token,const char** text) noexcept {
+template<class B>bool input_text(const B& b,unsigned token,const char** text) noexcept {
     *text="";if(!token)return true;
     unsigned bytes=0;
     if(!b.string_text||!b.string_text(b.context,token,text,&bytes)||!*text||!bytes)return false;
@@ -561,6 +561,82 @@ bool input_name_equal(const ServerEntityAcceptInputBindings& b,unsigned left,uns
     while(*a&&lower(static_cast<unsigned char>(*a))==lower(static_cast<unsigned char>(*c))){++a;++c;}
     same=lower(static_cast<unsigned char>(*a))==lower(static_cast<unsigned char>(*c));return true;
 }
+// 22138740/221387f0: ASCII comparison until mismatch, then a star
+// at the current pattern position accepts all remaining characters.
+unsigned char search_lower(unsigned char x) noexcept {return x>='A'&&x<='Z'?static_cast<unsigned char>(x+32):x;}
+bool search_equal(const char* a,const char* b) noexcept {
+    while(*a&&search_lower(static_cast<unsigned char>(*a))==search_lower(static_cast<unsigned char>(*b))){++a;++b;}
+    return search_lower(static_cast<unsigned char>(*a))==search_lower(static_cast<unsigned char>(*b));
+}
+bool search_pattern(const char* name,const char* pattern) noexcept {
+    while(*name&&*pattern&&search_lower(static_cast<unsigned char>(*name))==search_lower(static_cast<unsigned char>(*pattern))){++name;++pattern;}
+    return (!*name&&!*pattern)||*pattern=='*';
+}
+int search_entities(void* previous,unsigned token,void* activator,void* caller,bool classname,const ServerEntitySearchBindings* b,ServerEntitySearchResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!b||b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
+    const char* pattern=nullptr;if(!input_text(*b,token,&pattern))return 0;
+    auto done=[&](){o->matched=o->entity!=nullptr;o->completed=1;return 1;};
+    if(!classname){
+        if(!*pattern)return done();
+        if(*pattern=='!'){
+            o->contextual=1;if(previous)return done();
+            const char* keyword=pattern+1;
+            if(search_equal(keyword,"self"))o->entity=caller;
+            else if(search_equal(keyword,"activator"))o->entity=activator;
+            else if(search_equal(keyword,"player")){
+                if(!b->player_one||!b->player_one(b->context,&o->entity))return 0;
+            }else if(search_equal(keyword,"pvsplayer")){
+                void* reference=caller?caller:activator;
+                if(!reference){if(!b->player_one||!b->player_one(b->context,&o->entity))return 0;}
+                else {
+                    unsigned bytes=0;if(!b->extent||!b->extent(b->context,reference,&bytes)||bytes<0x170||!b->pvs_player||!b->pvs_player(b->context,rd<unsigned>(reference,0x16c),&o->entity))return 0;
+                }
+            }else if(search_equal(keyword,"picker")){
+                void* player=nullptr;if(!b->player_one||!b->player_one(b->context,&player)||!b->picker||!b->picker(b->context,player,&o->entity))return 0;
+            }else if(b->invalid_name&&!b->invalid_name(b->context,token))return 0;
+            return done();
+        }
+    }
+    const auto* entries=b->entities.entries;
+    const sin_independent::EntityHandleView registry(entries,b->entities.count);
+    const sin_independent::EntityHandleEntry* row=b->head;
+    if(previous){
+        unsigned bytes=0,handle=0;
+        if(!b->extent||!b->extent(b->context,previous,&bytes)||bytes<4)return 0;
+        if(input_datamap(rd<unsigned>(previous,0))){
+            if(bytes<0x37c)return 0;handle=rd<unsigned>(previous,0x378);
+        }else if(!b->foreign_handle||!b->foreign_handle(b->context,previous,&handle))return 0;
+        if(registry.Resolve(handle)!=previous)return 0;
+        row=entries[sin_independent::SplitEntityHandle(handle).entry].next;
+    }
+    bool seen[sin_independent::kEntityHandleCapacity]{};
+    while(row){
+        const auto address=reinterpret_cast<std::uintptr_t>(row),base=reinterpret_cast<std::uintptr_t>(entries);
+        if(address<base)return 0;
+        const auto delta=address-base;
+        if(delta%sizeof(*row)||delta/sizeof(*row)>=b->entities.count)return 0;
+        const auto i=delta/sizeof(*row);if(seen[i])return 0;seen[i]=true;++o->visited;
+        void* entity=row->entity;
+        if(!entity){++o->empty_slots;row=row->next;continue;}
+        unsigned bytes=0;if(!b->extent||!b->extent(b->context,entity,&bytes)||bytes<(classname?0x10u:0xc4u))return 0;
+        const unsigned own=rd<unsigned>(entity,classname?0xcu:0xc0u);
+        if(classname||own){
+            if(own==token){o->entity=entity;return done();}
+            const char* text=nullptr;if(!input_text(*b,own,&text))return 0;
+            if(search_pattern(text,pattern)){o->entity=entity;return done();}
+        }
+        row=row->next;
+    }
+    return done();
+}
+int __cdecl search_named(void* previous,unsigned token,void* activator,void* caller,const ServerEntitySearchBindings* b,ServerEntitySearchResult* o) noexcept {
+    return search_entities(previous,token,activator,caller,false,b,o);
+}
+int __cdecl search_class(void* previous,unsigned token,const ServerEntitySearchBindings* b,ServerEntitySearchResult* o) noexcept {
+    return search_entities(previous,token,nullptr,nullptr,true,b,o);
+}
+const ServerEntitySearchApi entity_search_api{1,sizeof(ServerEntitySearchApi),&search_named,&search_class};
 // Original 223a56cb tail-jumps to 223a5673. Its decimal accumulation is
 // explicitly modulo 2^32, including overflow and final two's-complement sign.
 unsigned input_decimal(const char* p) noexcept {
@@ -868,4 +944,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEnt
 #pragma comment(linker,"/EXPORT:SiN_GetServerEntityAcceptInputApi=_SiN_GetServerEntityAcceptInputApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityAcceptInputApi* __cdecl SiN_GetServerEntityAcceptInputApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntityAcceptInputApi)?&accept_input_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerEntitySearchApi=_SiN_GetServerEntitySearchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntitySearchApi* __cdecl SiN_GetServerEntitySearchApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntitySearchApi)?&entity_search_api:nullptr;
 }
