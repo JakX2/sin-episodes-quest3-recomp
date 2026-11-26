@@ -71,6 +71,26 @@ jobs:
             build-slot0/bin/Release/server.dll
           if-no-files-found: error
           retention-days: 7
+      - name: Package original weapon-policy owner audit
+        shell: pwsh
+        run: |
+          $bundle = New-Item -ItemType Directory -Path owner-weapon-policy-audit
+          $bin = 'build-slot0/bin/Release'
+          Copy-Item "$bin/server.dll", "$bin/sin_server_npc_weapon_ammo_audit.exe", "$bin/sin_server_npc_weapon_melee_audit.exe" $bundle
+          Copy-Item 'pc/independent_slot0/Run-OwnerWeaponPolicyAudit.ps1', 'pc/independent_slot0/Run-OwnerWeaponPolicyAudit.cmd', 'pc/independent_slot0/OwnerWeaponPolicyAudit-README.txt' $bundle
+          $tokens=$null
+          $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $bundle.FullName 'Run-OwnerWeaponPolicyAudit.ps1'),[ref]$tokens,[ref]$errors)
+          if ($errors.Count -ne 0) { throw ($errors | Out-String) }
+          & (Join-Path $bundle.FullName 'Run-OwnerWeaponPolicyAudit.ps1') -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item (Join-Path $bundle.FullName 'weapon-policy-audit.log')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SiN-Owner-Weapon-Policy-Differential-Win32
+          path: owner-weapon-policy-audit/
+          if-no-files-found: error
+          retention-days: 14
       - name: Prepare self-contained owner diagnostic bundle
         shell: pwsh
         run: |
