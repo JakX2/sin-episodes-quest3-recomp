@@ -612,6 +612,21 @@ int main(int argc,char** argv){
     nt.preschedule.speech_queue_tick=[](void*,void*,float) noexcept -> int{return 0;}; // stop after native prefix, no unrelated task services
     assert(!npt->run(f.actor,sizeof(f.actor),80,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.elite_called&&ntr.elite.spin_changed&&ntr.preschedule.component_called&&ntr.preschedule.speech_called&&!ntr.think.maintenance_called);
     int spin=0;std::memcpy(&spin,chain+0x594,4);assert(spin==2);
+    // Elite now uses the same original request/acquire cycle, not the older
+    // class translation adapter. Start on the real catalog's first stop task.
+    req_acquire.special_translate=nullptr;
+    req_arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=25;return 1;};
+    req_arbitration.shared_translate=nullptr;
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
+    f.put(f.actor,0xfdc,0x7001u);f.put(chain,0x594,1);f.put(chain,0x590,79.f);bind_nav();
+    ab.shared.context=&f;ab.shared.pending=[](void* p,void*,int id) noexcept -> int{F::self(p).last_pending=id;return 1;};
+    assert(request_think->run(f.actor,sizeof(f.actor),80,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
+    const auto& elite_cycle=req_run.think.think.think.squad.cycle.preschedule;
+    assert(elite_cycle.elite_called&&elite_cycle.elite.spin_changed&&elite_cycle.think.completed);
+    assert(req_run.requests.requests==1&&req_run.requests.request.requested==25&&req_run.requests.request.acquisition.translated==118&&req_run.requests.scheduler.maintenance.state.schedule==find(118));
+    assert(req_run.requests.scheduler.subclass==NpcSubclassElite&&req_run.requests.scheduler.maintenance.started==1);
+    ab.shared.context=nullptr;ab.shared.pending=old_pending;
+
     // Jetpack prefix invokes attachment +8 only after true +10.
     assert(f.api->build(f.actor,NpcSubclassJetpack,6000,99,&b,&f.image,&result));
     scheduler.original_vtable=0x2249964c;std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0xc18,711u);f.put(f.actor,0x218,321u);
@@ -621,5 +636,32 @@ int main(int argc,char** argv){
     assert(!npt->run(f.actor,sizeof(f.actor),81,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.jet_queried&&ntr.jet_called&&ntr.preschedule.component_called&&ntr.preschedule.speech_called&&!ntr.think.maintenance_called);
     ready=false;
     assert(!npt->run(f.actor,sizeof(f.actor),82,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.jet_queried&&!ntr.jet_called&&ntr.preschedule.speech_called);
+    // Full Jet request-think: original attachment tick -> shared request -> Jet
+    // remap41->122 -> real schedule initial TASK_SET_FAIL_SCHEDULE(119).
+    const auto gjrt=reinterpret_cast<GetServerNpcNativeJetRequestThinkApi>(GetProcAddress(s,server_npc_native_jet_request_think_export));
+    assert(gjrt&&!GetProcAddress(c,server_npc_native_jet_request_think_export)&&!gjrt(0,sizeof(ServerNpcNativeJetRequestThinkApi))&&!gjrt(1,0));
+    const auto* jet_think=gjrt(1,sizeof(ServerNpcNativeJetRequestThinkApi));assert(jet_think);
+    const float invalid_jet[3]{};
+    ServerNpcGruntJetSelectorBindings jet_request{};jet_request.combat=&req_combat;jet_request.invalid_point=invalid_jet;
+    ServerNpcNativeJetRequestThinkBindings jet_bind{};jet_bind.think=taskbind;jet_bind.selector=&jet_request;jet_bind.line=&req_line;
+    auto& jp=jet_bind.think.think.think.preschedule;
+    jp.jet_context=&ready;jp.jet_ready=nt.jet_ready;jp.jet_tick=nt.jet_tick;
+    static ServerNpcNativeJetRequestThinkResult jet_run;
+    req_arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=41;return 1;};
+    selection.translate=nullptr;selection.fail_select=nullptr;selection.special_select=nullptr;
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);f.put(f.actor,0x218,321u);ready=true;
+    assert(jet_think->run(f.actor,sizeof(f.actor),83,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_bind,&jet_run));
+    const auto& jet_cycle=jet_run.think.think.think.squad.cycle.preschedule;
+    assert(jet_cycle.jet_queried&&jet_cycle.jet_called&&jet_cycle.think.completed);
+    assert(jet_run.requests.base.requests==1&&jet_run.requests.base.request.requested==41&&jet_run.requests.base.request.acquisition.translated==122&&jet_run.requests.base.scheduler.maintenance.state.schedule==find(122));
+    int jet_fail=0;std::memcpy(&jet_fail,f.actor+0x7bc,4);assert(jet_fail==119);
+    // Retained original chase schedule, Jet custom task160 writes movement mode.
+    install_at(119,1);f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);f.put(f.actor,0x218,321u);ready=false;
+    assert(jet_think->run(f.actor,sizeof(f.actor),84,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_bind,&jet_run));
+    assert(!jet_run.requests.base.requests&&jet_cycle.jet_queried&&!jet_cycle.jet_called&&jet_cycle.think.completed&&jet_run.requests.base.scheduler.jetpack.lifecycle.completed);
+    int mode=0;std::memcpy(&mode,f.actor+0xfec,4);assert(mode==2);
+    std::memcpy(before,f.actor,sizeof(before));
+    assert(!jet_think->run(f.actor,0x1084,85,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_bind,&jet_run)&&!std::memcmp(before,f.actor,sizeof(before)));
+    assert(!request_think->run(f.actor,sizeof(f.actor),85,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run)&&!std::memcmp(before,f.actor,sizeof(before)));
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original schedule descriptor materialization and real task cursor");
 }
