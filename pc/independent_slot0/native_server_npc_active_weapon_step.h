@@ -129,6 +129,38 @@ struct ServerNpcOuterCadenceApi {
 };
 using GetServerNpcOuterCadenceApi=const ServerNpcOuterCadenceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Unnamed Jetpack death context only: original addresses are identity
+// tokens in independent actor storage, never executable host pointers.
+inline constexpr char server_npc_jetpack_primary_think_export[]="SiN_GetServerNpcJetpackPrimaryThinkApi";
+struct ServerNpcJetpackPrimaryThinkBindings {
+    ServerNpcOuterCadenceBindings cadence;
+    ServerWeaponActivityBindings entities;
+    const ServerNpcJetpackDeathThinkBindings* death;
+    ServerNpcJetpackDeathThinkResult* death_result;
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept; // live globals +c
+    int (__cdecl *record)(void*,void*,int,float,int) noexcept; // 22222b00
+    int (__cdecl *scope)(void*,void*,bool) noexcept; // 2221a030 engine enter/leave
+    int (__cdecl *remove)(void*,void*) noexcept; // deferred 22286bf0; actor bytes remain live
+    int (__cdecl *positive_health_warning)(void*,void*) noexcept; // optional diagnostic
+};
+struct ServerNpcJetpackPrimaryThinkResult {
+    ServerNpcOuterCadenceResult clear,reschedule;
+    int due_tick,last_tick,native_result;
+    float recorded_time,last_time;
+    std::uint32_t token;
+    unsigned completed,no_think,not_due,recorded,entered,closed,death_called,installed,rescheduled,removed,health_zeroed;
+};
+struct ServerNpcJetpackPrimaryThinkApi {
+    std::uint32_t version,size;
+    // 2214d6f0 null context. Only zero and the two recovered death tokens.
+    int (__cdecl *install)(void*,unsigned,std::uint32_t,std::uint32_t) noexcept;
+    // 22222c30 default gate + 22222b90 unnamed context; named contexts
+    // and unrelated think identities remain the outer engine's responsibility.
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,std::uint32_t,int,float,const ServerNpcJetpackPrimaryThinkBindings*,ServerNpcJetpackPrimaryThinkResult*) noexcept;
+};
+using GetServerNpcJetpackPrimaryThinkApi=const ServerNpcJetpackPrimaryThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_outer_update_export[]="SiN_GetServerNpcOuterUpdateApi";
 struct ServerNpcOuterUpdateBindings {
     const ServerNpcActivePostAnimationBindings* post;

@@ -2439,6 +2439,73 @@ int main(int argc,char** argv){
     assert(f.get<int>(f.actor,0x9c)==-200&&f.get<int>(f.actor,0x850)==7&&f.get<float>(f.actor,0x854)==92.125f);
     assert((hd.death_order==std::vector<unsigned>{30,31,32,33,35,1,2,3,4,34,5,6,36}));
     assert(hd.think_scheduled==static_cast<float>(double(92.125f)+double(.1f))&&hd.deaths==1);
+    // Exercise the recovered primary context scheduler end-to-end:
+    // install an identity token, write due tick, dispatch death and finally
+    // dispatch its replacement removal token. No raw PE call or manual
+    // invocation of DeathThink from this portion of the regression.
+    auto get_primary=reinterpret_cast<GetServerNpcJetpackPrimaryThinkApi>(GetProcAddress(server,server_npc_jetpack_primary_think_export));
+    assert(get_primary&&!GetProcAddress(client,server_npc_jetpack_primary_think_export)&&!get_primary(0,sizeof(ServerNpcJetpackPrimaryThinkApi))&&!get_primary(1,0));
+    const auto* primary=get_primary(1,sizeof(ServerNpcJetpackPrimaryThinkApi));assert(primary);
+    ServerNpcJetpackPrimaryThinkBindings primary_b{};
+    ServerNpcJetpackPrimaryThinkResult primary_o{};
+    primary_b.entities=hd_b.entities;primary_b.context=&hd;primary_b.clock=think.time;
+    primary_b.cadence.storage=&hd_storage;primary_b.cadence.context=&hd;
+    primary_b.cadence.notify_think_flags=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);
+        q.death_order.push_back(q.f->get<unsigned>(a,0xb8)&0x400000u?41:42);return 1;
+    };
+    primary_b.record=[](void* p,void* a,int tick,float time,int scheduled) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&tick>=scheduled&&scheduled==q.f->get<int>(a,0x74));
+        const float expected=scheduled*.125f;assert(time==(expected>q.think_clock?q.think_clock:expected));
+        q.death_order.push_back(43);return 1;
+    };
+    primary_b.scope=[](void* p,void* a,bool begin) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);
+        if(begin)assert(q.f->get<int>(a,0x74)==-1);
+        q.death_order.push_back(begin?44:45);return 1;
+    };
+    primary_b.remove=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x9c)<=0);
+        q.f->put(a,0xb8,q.f->get<unsigned>(a,0xb8)|1u);q.death_order.push_back(46);return 1;
+    };
+    primary_b.positive_health_warning=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x9c)==0);q.death_order.push_back(47);return 1;
+    };
+    // Intentionally omit hosted installation/scheduling and classifier in
+    // the bound death-think route; the primary dispatcher supplies them.
+    think.ground.classification=nullptr;think.install_think=nullptr;think.schedule=nullptr;
+    primary_b.death=&think;primary_b.death_result=&think_result;
+    constexpr unsigned primary_vt=0x224a4a4cu;
+    reset_subclass(primary_vt);f.actor[0xbf]&=static_cast<unsigned char>(~8u);
+    assert(hd_run(0,primary_vt)&&catalog_o.health_jet_route);
+    f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0u);
+    f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);
+    assert(primary->install(f.actor,sizeof(f.actor),primary_vt,0x22365760u));
+    assert(cadence->set_default(f.actor,sizeof(f.actor),90.125f,.125f,primary_vt,&primary_b.cadence,&co)&&co.tick==721);
+    hd.death_order.clear();hd.think_clock=90.f;
+    auto primary_run=[&](int tick,unsigned handle=0x8002u){return primary->run(f.actor,sizeof(f.actor),primary_vt,handle,tick,.125f,&primary_b,&primary_o);};
+    assert(primary_run(720)&&primary_o.not_due&&primary_o.native_result==1&&hd.death_order.empty());
+    assert(!primary_run(721,0x9002u)&&hd.death_order.empty());
+    f.put(f.actor,0xb8,0x400000u);assert(primary_run(721)&&primary_o.no_think&&hd.death_order.empty());f.put(f.actor,0xb8,0u);
+    f.put(f.actor,8,0xdeadbeefu);assert(!primary_run(721)&&f.get<int>(f.actor,0x74)==721&&hd.death_order.empty());
+    assert(primary->install(f.actor,sizeof(f.actor),primary_vt,0x22365760u));
+    hd.think_clock=92.f;
+    assert(primary_run(736)&&primary_o.completed&&primary_o.death_called&&primary_o.rescheduled&&!primary_o.installed&&!think_result.expired);
+    assert(primary_o.due_tick==721&&primary_o.last_tick==736&&f.get<int>(f.actor,0x34)==736&&f.get<int>(f.actor,0x74)==737&&primary_o.native_result==1);
+    assert((hd.death_order==std::vector<unsigned>{43,41,44,42,45}));
+    hd.death_order.clear();hd.think_clock=92.125f;
+    assert(primary_run(737)&&primary_o.death_called&&primary_o.installed&&primary_o.rescheduled&&think_result.expired&&think_result.death_called);
+    assert(f.get<unsigned>(f.actor,8)==0x221c0d40u&&f.get<int>(f.actor,0x74)==738&&f.get<int>(f.actor,0x34)==737&&think_result.ground.attacker_class==6);
+    assert((hd.death_order==std::vector<unsigned>{43,41,44,30,31,32,33,1,2,3,4,34,5,6,42,45}));
+    hd.death_order.clear();hd.think_clock=92.25f;
+    assert(primary_run(738)&&primary_o.completed&&primary_o.removed&&!primary_o.native_result&&!primary_o.health_zeroed);
+    assert(f.get<int>(f.actor,0x74)==-1&&f.get<int>(f.actor,0x34)==738&&(f.get<unsigned>(f.actor,0xb8)&0x400001u)==0x400001u);
+    assert((hd.death_order==std::vector<unsigned>{43,41,44,46,45}));
+    // The same removal leaf zeroes unexpected positive health before the warning.
+    f.put(f.actor,0xb8,0u);f.put(f.actor,0x74,739);f.put(f.actor,0x9c,5);
+    hd.death_order.clear();hd.think_clock=92.375f;
+    assert(primary_run(739)&&primary_o.removed&&primary_o.health_zeroed&&!primary_o.native_result);
+    assert((hd.death_order==std::vector<unsigned>{43,41,44,47,46,45}));
     std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
     assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);
     assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
