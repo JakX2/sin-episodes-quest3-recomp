@@ -942,6 +942,66 @@ int main(int argc,char** argv){
             else assert(step_result.outer_weapon.primary.clip==3-i&&step_result.outer_line.attack.conditions[0]==20);
         }
         assert(equipped.shots==3&&equipped.sounds==3&&equipped.prepares==3&&equipped.flashes==3);
+        // Real due-think wake route, using the original proximity branch
+        // with PVS false to retain the already verified combat fixture.
+        auto get_wake_outer=reinterpret_cast<GetServerNpcOuterWakeUpdateApi>(GetProcAddress(s,server_npc_outer_wake_update_export));
+        assert(get_wake_outer&&!GetProcAddress(c,server_npc_outer_wake_update_export));
+        const auto* wake_outer=get_wake_outer(1,sizeof(ServerNpcOuterWakeUpdateApi));assert(wake_outer);
+        ServerNpcOuterWakeUpdateBindings wake_bind{};wake_bind.outer=outer_bind;
+        wake_bind.policy.context=&equipped;wake_bind.policy.max_clients=1;
+        wake_bind.policy.local_player=[](void* p,void** e) noexcept -> int{*e=static_cast<EquippedThinkFixture*>(p)->enemy;return 1;};
+        wake_bind.policy.extent=extent;wake_bind.policy.origin=center;
+        wake_bind.transition.context=&equipped;wake_bind.transition.extent=extent;
+        unsigned wake_outputs=0;
+        wake_bind.transition.context=&wake_outputs;
+        wake_bind.transition.output=[](void* p,void* a,unsigned off) noexcept -> int{
+            int sleep=-1;std::memcpy(&sleep,static_cast<unsigned char*>(a)+0x868,4);
+            assert(!sleep&&off==0xbc8u);++*static_cast<unsigned*>(p);return 1;
+        };
+        wake_bind.transition.extent=nullptr; // no linked or squad members in this fixture
+        ServerNpcOuterWakeUpdateResult wake_result{};
+        for(bool prior_sleep_tick:{false,true}){
+            const float start=prior_sleep_tick?75.8f:75.7f;
+            prepare_engaged(2,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+            f.put(equipped.enemy,0xbc,0u);
+            assert(state->install(f.actor,sizeof(f.actor),attack_schedule,start,&sb,&sr));
+            f.put(f.actor,0x79c,global+191);
+            for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+            stamp=0;meta.reloading=false;meta.suppress=false;wake_outputs=0;
+            equipped.shots=equipped.sounds=equipped.prepares=equipped.flashes=0;
+            f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);f.put(f.actor,0x85c,0);
+            f.put(f.actor,0x864,start);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1514);
+            auto update_wake=[&](float now){
+                seed_anim(now);
+                const ServerNpcRunAnimationInput input{now,false,false};
+                const int ok=wake_outer->ground(f.actor,sizeof(f.actor),&input,.05f,&step_bind,&wake_bind,&step_result,&tail_result,&wake_result);
+                if(!ok)std::fprintf(stderr,"due wake now=%f policy=%u transition=%u bypass=%u admitted=%u active=%u think=%u animation=%u tail=%u finish=%u\n",now,wake_result.policy.completed,wake_result.transition.completed,wake_result.outer.sleep_bypassed,wake_result.outer.admission.admitted,wake_result.outer.active_called,step_result.think_completed,step_result.animation_called,tail_result.completed,wake_result.outer.finish.completed);
+                assert(ok&&wake_result.outer.completed);
+            };
+            if(prior_sleep_tick){
+                // Original 22043328 gate runs after wake policy. Sleeping
+                // cadence first establishes mode4, which survives the wake.
+                f.put(f.actor,0x86c,0.f);update_wake(start);
+                assert(wake_result.outer.wake_called&&!wake_result.policy.wake_calls&&wake_result.outer.sleep_bypassed&&wake_result.outer.finish.mode==4);
+                assert(!wake_result.outer.active_called&&!step_result.think_called&&!equipped.shots&&!wake_outputs);
+            }
+            f.put(f.actor,0x86c,100.f);
+            const float wake_now=prior_sleep_tick?wake_result.outer.finish.next_time:start;
+            update_wake(wake_now);
+            assert(wake_result.outer.wake_called&&wake_result.policy.reason==NpcWakeProximity&&wake_result.policy.distance_squared==10000.f);
+            assert(wake_result.transition.completed&&wake_result.transition.transitions==1&&wake_result.transition.flags_changed==1&&wake_outputs==1);
+            assert(wake_result.outer.finish.mode==0);
+            if(prior_sleep_tick){
+                assert(wake_result.outer.sleep_bypassed&&!wake_result.outer.active_called&&!step_result.think_called&&!equipped.shots);
+                const float next=wake_result.outer.finish.next_time;update_wake(next);
+                assert(!wake_result.outer.wake_called&&!wake_result.transition.transitions&&wake_outputs==1);
+            }
+            assert(!wake_result.outer.sleep_bypassed&&wake_result.outer.active_called&&wake_result.outer.think_called&&step_result.think_completed&&tail_result.completed);
+            assert(step_result.outer_weapon.primary.clip==2&&step_result.outer_line.attack.conditions[0]==20);
+            assert(step_result.animation.frame.frame.weapon_events==1&&step_result.animation.last.event.parent.weapon.clip_changed);
+            int remaining=-1;std::memcpy(&remaining,equipped.weapon+0x4ec,4);
+            assert(remaining==1&&equipped.shots==1&&equipped.prepares==1&&equipped.sounds==1&&equipped.flashes==1);
+        }
         // Exhausted engaged weapon: native idle state query sees condition10,
         // returns combat state3 and the native selector must choose 48.
         prepare_engaged(0,0);f.put(equipped.weapon,0,0x2247ab9cu);
