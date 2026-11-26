@@ -4461,7 +4461,7 @@ int main(int argc,char** argv){
         assert(g&&!GetProcAddress(c,server_npc_grunt_combat_selector_export)&&!g(0,sizeof(ServerNpcGruntCombatSelectorApi))&&!g(1,0));
         const auto* api=g(1,sizeof(ServerNpcGruntCombatSelectorApi));assert(api);
         struct CombatFixture{
-            alignas(4) unsigned char a[0x1085]{},enemy[0x900]{},weapon[0x630]{},desc[0x48]{},record[0x34]{},group[0x78]{},row[8]{};
+            alignas(4) unsigned char a[0x1085]{},enemy[0xa00]{},weapon[0x630]{},desc[0x48]{},record[0x34]{},group[0x78]{},row[8]{};
             sin_independent::EntityHandleEntry entries[3]{};
             bool leader_match=false,leader_present=false,leader_same=true,allow_speech=true,policy=true,visible=true,global=false,blocked=true;
             unsigned updates=0;float invalid[3]{},remembered[3]{},candidate_pos[3]{60,0,0},fraction=1.f,candidate_radius=10.f;double stamp=7;int target_class=0;
@@ -4776,6 +4776,44 @@ int main(int argc,char** argv){
         f.put(q.a,0x9c4,91u);f.put(q.a,0x9cc,-1);f.put(q.row,4,1u<<9);scene_run(33,88);scene_run(41,91);
         f.put(q.row,4,0u);scene_run(33,106);assert(CombatFixture::rd(q.row,4)==(1u<<9));
         f.put(q.a,0x9c4,0u);
+        // 41 body-target and weapon-line fallback; +c64 is cleared before scene calls.
+        const auto line_getter=reinterpret_cast<GetServerNpcGruntScheduleLineApi>(GetProcAddress(s,server_npc_grunt_schedule_line_export));
+        assert(line_getter&&!GetProcAddress(c,server_npc_grunt_schedule_line_export)&&!line_getter(0,sizeof(ServerNpcGruntScheduleLineApi))&&!line_getter(1,0));
+        const auto* line_api=line_getter(1,sizeof(ServerNpcGruntScheduleLineApi));assert(line_api);
+        struct LineFixture{void* actor=nullptr;void* hit=nullptr;void* combat=nullptr;float fraction=1.f,from[3]{},to[3]{};unsigned rolls=0,centers=0,traces=0,debugs=0,classes=0;int relation=1;} lf;
+        lf.actor=q.a;ServerNpcGruntScheduleLineServices line{};line.scene=&scene;line.context=&lf;
+        line.center=[](void* x,void*,float* v) noexcept -> int{auto& l=*static_cast<LineFixture*>(x);++l.centers;v[0]=v[1]=v[2]=0;return 1;};
+        line.random_float=[](void* x,float lo,float hi,float* v) noexcept -> int{auto& l=*static_cast<LineFixture*>(x);++l.rolls;assert((lo==0&&hi==.5f)||(lo==.7f&&hi==1.f));*v=lo==0?.25f:1.f;return 1;};
+        line.shoot_position=[](void* x,void* a,float* v) noexcept -> int{auto& l=*static_cast<LineFixture*>(x);assert(a==l.actor&&static_cast<unsigned char*>(a)[0xc64]==0);v[0]=10;v[1]=20;v[2]=30;return 1;};
+        line.line_trace=[](void* x,void* a,const float* from,const float* to,unsigned mask,int group,float* frac,void** hit) noexcept -> int{auto& l=*static_cast<LineFixture*>(x);assert(a==l.actor&&mask==0x46004003u&&group==6);++l.traces;std::memcpy(l.from,from,12);std::memcpy(l.to,to,12);*frac=l.fraction;*hit=l.hit;return 1;};
+        line.combat_entity=[](void* x,void*,void** v) noexcept -> int{auto& l=*static_cast<LineFixture*>(x);++l.classes;*v=l.combat;return 1;};
+        line.disposition=[](void* x,void*,void*,int* v) noexcept -> int{*v=static_cast<LineFixture*>(x)->relation;return 1;};
+        line.debug_enabled=true;line.debug_line=[](void* x,const float*,const float*) noexcept -> int{++static_cast<LineFixture*>(x)->debugs;return 1;};
+        f.put(q.enemy,0x2bc,0.f);f.put(q.enemy,0x2c0,0.f);f.put(q.enemy,0x2c4,0.f);q.enemy[0xbc]=0;
+        float body[3],source[3]{};
+        assert(line_api->body_point(q.enemy,source,true,&ab,&line,body)&&body[0]==.5f&&body[1]==1.f&&body[2]==1.5f&&lf.rolls==2&&lf.centers==2);
+        q.enemy[0xbc]=2;assert(line_api->body_point(q.enemy,source,false,&ab,&line,body)&&body[2]==-14.5f&&lf.rolls==2);q.enemy[0xbc]=0;
+        f.put(q.enemy,0,0x224aec3cu);f.put(q.enemy,0x9ac,0x9002u);
+        assert(line_api->body_point(q.enemy,source,true,&ab,&line,body)&&body[0]==4&&body[1]==8&&body[2]==12&&lf.rolls==3);
+        f.put(q.enemy,0x9ac,0x2002u);assert(!line_api->body_point(q.enemy,source,true,&ab,&line,body));
+        f.put(q.enemy,0,0x2249aaa4u);f.put(q.a,0x78c,0x2002u);f.put(q.weapon,0,0x224776acu);f.put(q.weapon,0x494,0x3000u);
+        // Include a serial-resolved actor entry for the weapon owner, without changing prior fixture tokens.
+        auto line_entries=q.entries; // array decays; use local checked copy below
+        sin_independent::EntityHandleEntry extended_entries[4]{};
+        for(unsigned i=0;i<3;++i)extended_entries[i]=line_entries[i];
+        extended_entries[0].serial=3;extended_entries[0].entity=reinterpret_cast<CBaseEntity*>(q.a);
+        ab.entries=extended_entries;ab.count=4;
+        f.put(q.a,0x8ec,0u);f.put(q.a,0x2bc,0.f);f.put(q.a,0x2c0,0.f);f.put(q.a,0x2c4,0.f);
+        f.put(q.a,0xb8,0u);f.put(q.a,0x360,0.f);f.put(q.enemy,0x360,257.f);f.put(q.a,0xc90,100.f);q.a[0xc66]=1;
+        auto line_run=[&](){f.put(q.record,0,1000000091);return line_api->acquire(q.a,sizeof(q.a),41,60,&ac,&line,&ar,&translation);};
+        q.a[0xc64]=1;assert(line_run()&&ar.translated==91&&ar.schedule_token==10&&!q.a[0xc64]&&lf.traces==1&&lf.debugs==1);
+        assert(lf.from[0]==10&&lf.from[1]==20&&lf.from[2]==30&&lf.to[0]==.5f&&lf.to[2]==1.5f);
+        lf.fraction=.5f;lf.hit=q.enemy;q.a[0xc64]=1;assert(line_run()&&!q.a[0xc64]&&lf.debugs==2);
+        lf.hit=q.weapon;lf.combat=nullptr;q.a[0xc64]=1;assert(line_run()&&q.a[0xc64]&&lf.classes==1);
+        lf.combat=q.enemy;lf.relation=1;assert(line_run()&&!q.a[0xc64]);lf.relation=2;assert(line_run()&&q.a[0xc64]);
+        f.put(q.a,0x8ec,0x10000000u);assert(!line_run()&&!ar.completed&&!q.a[0xc64]);f.put(q.a,0x8ec,0u);
+        f.put(q.weapon,0x494,0x9000u);q.a[0xc64]=1;assert(!line_run()&&!ar.completed&&!q.a[0xc64]);
+        ab.entries=q.entries;ab.count=3;
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
         f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
 
