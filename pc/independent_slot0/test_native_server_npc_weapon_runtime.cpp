@@ -624,6 +624,79 @@ int main(int argc,char** argv){
         assert(f.get<unsigned>(f.actor,0xbdc)==action_head);
     }
     f.put(f.actor,0xbdc,0u);
+    // Exercise actual original-shaped output action rows through the new
+    // independent DLL export and then through the wake output adapter.
+    auto get_void_output=reinterpret_cast<GetServerEntityVoidOutputApi>(GetProcAddress(server,server_entity_void_output_export));
+    assert(get_void_output&&!GetProcAddress(client,server_entity_void_output_export)&&!get_void_output(0,sizeof(ServerEntityVoidOutputApi))&&!get_void_output(1,0));
+    const auto* void_output=get_void_output(1,sizeof(ServerEntityVoidOutputApi));assert(void_output);
+    struct OutputFixture {
+        F* f;const ServerEntityVoidOutputApi* api;
+        alignas(4) unsigned char rows[4][0x1c]{};
+        std::vector<ServerEntityVoidOutputAction> actions;
+        std::vector<unsigned> order;
+        ServerEntityVoidOutputBindings bindings{};
+        ServerEntityVoidOutputResult result{};
+    } outf{&f,void_output};
+    outf.bindings.context=&outf;
+    outf.bindings.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);
+        if(token<1||token>4)return 0;*out=q.rows[token-1];*n=sizeof(q.rows[0]);return 1;
+    };
+    outf.bindings.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* a) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(activator==q.f->actor&&caller==q.f->actor);
+        q.actions.push_back(*a);q.order.push_back(a->action_id);return 1;
+    };
+    outf.bindings.debug_action=[](void* p,void* caller,const ServerEntityVoidOutputAction* a) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(caller==q.f->actor);
+        q.order.push_back(100+a->action_id);return 1;
+    };
+    outf.bindings.release=[](void* p,unsigned token,void* row) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(token>=1&&token<=4&&row==q.rows[token-1]);
+        q.order.push_back(200+token);std::memset(row,0xcc,0x1c);return 1;
+    };
+    auto seed_outputs=[&](){
+        std::memset(outf.rows,0,sizeof(outf.rows));outf.actions.clear();outf.order.clear();
+        const unsigned counts[]{1,2,1,0xffffffffu};
+        for(unsigned i=0;i<4;++i){
+            f.put(outf.rows[i],0,500u+i);f.put(outf.rows[i],4,600u+i);
+            f.put(outf.rows[i],8,i==1?777u:0u);f.put(outf.rows[i],0xc,.25f*(i+1));
+            f.put(outf.rows[i],0x10,counts[i]);f.put(outf.rows[i],0x14,10u+i);
+            f.put(outf.rows[i],0x18,i==3?0u:i+2);
+        }
+        f.put(f.actor,0xbdc,1u);
+    };
+    seed_outputs();f.actor[0xa8]|=0x10;
+    assert(void_output->fire(f.actor+0xbc8,0x18,f.actor,f.actor,sizeof(f.actor),.5f,&outf.bindings,&outf.result));
+    assert(outf.result.completed&&outf.result.visited==4&&outf.result.queued==4&&outf.result.parameter_overrides==1&&outf.result.countdowns==3&&outf.result.removed==2&&outf.result.debugged==4);
+    assert((outf.order==std::vector<unsigned>{10,110,201,11,111,12,112,203,13,113}));
+    assert(f.get<unsigned>(f.actor,0xbdc)==2&&f.get<unsigned>(outf.rows[1],0x18)==4&&f.get<unsigned>(outf.rows[1],0x10)==1&&f.get<unsigned>(outf.rows[3],0x10)==0xffffffffu);
+    assert(outf.actions[0].delay==.75f&&outf.actions[1].delay==.5f&&outf.actions[2].delay==1.25f&&outf.actions[3].delay==1.5f);
+    for(unsigned i=0;i<4;++i){
+        const auto& a=outf.actions[i];assert(a.target==500+i&&a.input==600+i&&a.action_id==10+i);
+        assert(a.parameter==(i==1?777u:0u)&&a.variant_type==(i==1?2u:0u));
+    }
+    // A repeat firing consumes the remaining finite row; unlimited stays.
+    outf.order.clear();outf.actions.clear();f.actor[0xa8]&=~0x10u;
+    assert(void_output->fire(f.actor+0xbc8,0x18,f.actor,f.actor,sizeof(f.actor),0.f,&outf.bindings,&outf.result)&&outf.result.queued==2&&outf.result.removed==1&&!outf.result.debugged);
+    assert(f.get<unsigned>(f.actor,0xbdc)==4&&(outf.order==std::vector<unsigned>{11,202,13}));
+    // A malformed cycle is bounded and does not repeatedly enqueue.
+    f.put(outf.rows[3],0x18,4u);outf.order.clear();
+    assert(!void_output->fire(f.actor+0xbc8,0x18,f.actor,f.actor,sizeof(f.actor),0.f,&outf.bindings,&outf.result)&&outf.result.queued==1&&!outf.result.completed);
+    assert((outf.order==std::vector<unsigned>{13}));
+    // A connected NPC wake now uses native action traversal, not a mock
+    // output marker. Only enqueue and allocator services are hosted.
+    seed_outputs();auto connected=empty_output;connected.context=&outf;
+    connected.output=[](void* p,void* actor,unsigned off) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(off==0xbc8&&actor==q.f->actor&&q.f->get<int>(actor,0x868)==0);
+        return q.api->fire(static_cast<unsigned char*>(actor)+off,0x18,actor,actor,sizeof(q.f->actor),0.f,&q.bindings,&q.result);
+    };
+    f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&connected,&wto)&&wto.completed&&wto.outputs==1&&outf.result.queued==4&&outf.result.removed==2);
+    assert((outf.order==std::vector<unsigned>{10,201,11,12,203,13}));
+    assert(f.get<unsigned>(f.actor,0xbdc)==2&&outf.actions[0].delay==.25f&&outf.actions[1].delay==.5f);
+    // Idempotent wake does not re-fire remaining actions.
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&connected,&wto)&&!wto.outputs&&outf.actions.size()==4);
+    f.put(f.actor,0xbdc,0u);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
