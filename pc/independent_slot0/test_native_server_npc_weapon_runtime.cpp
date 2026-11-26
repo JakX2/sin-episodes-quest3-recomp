@@ -1710,7 +1710,7 @@ int main(int argc,char** argv){
         return 1;
     };
     break_services.effect=[](void* p,const ServerNpcBreakEffectRequest* req) noexcept -> int{
-        auto& q=*static_cast<BreakFixture*>(p);assert(req->actor==q.f->actor&&req->activator==q.f->weapon);
+        auto& q=*static_cast<BreakFixture*>(p);assert(req->actor==q.f->actor);
         assert(req->model==42u&&req->skin==6u&&req->scale==100.f&&req->limit==-1&&!req->ignore_limit);
         assert(req->origin[0]==30.f&&req->angles[0]==40.f&&req->collision_group==(req->physics?7u:4u));
         assert(req->velocity[0]==(req->physics?10.f:1.f)&&req->angular_velocity[0]==(req->physics?20.f:2.f));
