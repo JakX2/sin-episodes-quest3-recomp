@@ -580,6 +580,7 @@ bool input_write(void* a,unsigned n,unsigned offset,const void* v,const ServerEn
     }else std::memcpy(dest,v,size);
     written=size;return true;
 }
+int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
     unsigned token=input_datamap(vt),seen[32]{};
@@ -611,7 +612,15 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(!ok)return rejected(EntityInputBadConversion);
                 o->converted=1;o->actual_type=rd<unsigned>(data.variant,0x10);
             }
-            if(o->handler){if(!b->handler||!b->handler(b->context,a,o->handler,&data))return 0;}
+            if(o->handler==0x220320b0u&&b->wake){
+                // InputWake replaces the inputdata stack argument with true,
+                // then tail-jumps to the authenticated +4d8 wake override.
+                auto bound=*b->wake;bound.storage=b->storage;bound.entities=b->entities;
+                ServerNpcWakeTransitionResult local{};
+                auto* result=b->wake_result?b->wake_result:&local;
+                if(!wake_transition(a,n,vt,true,&bound,result))return 0;
+                o->native_wake=1;
+            }else if(o->handler){if(!b->handler||!b->handler(b->context,a,o->handler,&data))return 0;}
             else if(flags&4u){if(!input_write(a,n,rd<unsigned>(row,8),data.variant,*b,o->written))return 0;}
             if(!dirty(a,*b->storage))return 0;
             o->dirty=o->accepted=o->completed=1;return 1;
