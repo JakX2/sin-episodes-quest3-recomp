@@ -276,11 +276,26 @@ struct ServerNpcInputSquadBindings {
 };
 // Original Jetpack input leaves; navigation reset, entity removal and
 // fresh thrust-pair initialization remain explicit engine boundaries.
+// 22366a20: two env_rockettrail factory requests, then original
+// conditional network field writes. Factory, lifetime scheduling and
+// attachment lookup/parenting remain owned by the engine.
+struct ServerNpcJetThrustBindings {
+    void* context;
+    int (__cdecl *create)(void*,std::uint32_t,std::uint32_t*) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *lifetime)(void*,void*,float) noexcept;
+    int (__cdecl *attach_parent)(void*,void*,void*,unsigned) noexcept;
+    int (__cdecl *attachment_index)(void*,void*,unsigned,std::uint32_t,std::uint32_t*) noexcept;
+};
+struct ServerNpcJetThrustResult {
+    unsigned reused,created,partial,configured,writes,lifetimes,parents,indices;
+};
 struct ServerNpcInputJetBindings {
     void* context;
     int (__cdecl *reset_navigation)(void*,void*,std::uint32_t) noexcept;
     int (__cdecl *remove_thrust)(void*,void*) noexcept;
     int (__cdecl *prepare_thrust)(void*,void*) noexcept;
+    const ServerNpcJetThrustBindings* fresh;
 };
 // Original embedded rappel behavior 223f956c, class namespace 2254c648.
 // BeginRappel's transform detachment remains an explicit engine operation.
@@ -372,6 +387,7 @@ struct ServerEntityAcceptInputBindings {
 };
 struct ServerEntityAcceptInputResult {
     unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed,rappel_mapped,rappel_condition,rappel_detached,rappel_snapshot,health_healed,health_damage,health_blocked,relationship_specs,relationship_entities,relationship_classes,relationship_updated,relationship_added,relationship_warnings,forget_found,forget_cleared,forget_removed,forget_warning,assault_candidates,assault_reserved,assault_selected,assault_linked,assault_reset,assault_missing,break_damage_disabled,break_non_solid,break_physics_snapshot,break_effect,break_removed;
+    ServerNpcJetThrustResult thrust;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
@@ -419,9 +435,11 @@ struct ServerNpcWakeTransitionBindings {
     int (__cdecl *external_wake)(void*,void*,bool) noexcept;
     int (__cdecl *jet_prepare)(void*,void*) noexcept; // optional 22366a20 override; required for fresh attachments
     int (__cdecl *jet_attachment)(void*,std::uint32_t) noexcept; // +218 virtual +8
+    const ServerNpcJetThrustBindings* fresh_thrust;
 };
 struct ServerNpcWakeTransitionResult {
     unsigned completed,transitions,flags_changed,refreshed,outputs,squad_visited,squad_woken,external_woken,jet_prepared,jet_linked,jet_attachment;
+    ServerNpcJetThrustResult thrust;
 };
 struct ServerNpcWakeTransitionApi {
     std::uint32_t version,size;
