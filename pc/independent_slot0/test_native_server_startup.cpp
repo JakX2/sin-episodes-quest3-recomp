@@ -100,6 +100,16 @@ static void __fastcall queue_command(void*,void*,const char* command){assert(!st
 static void __fastcall execute_command(void*,void*){assert(engine_commands==engine_executes+1);++engine_executes;}
 static void* engine_vtable[38]{};
 static void** engine_object=engine_vtable;
+static unsigned edict_queries=0;
+static void* edict_result=nullptr;
+static void* __fastcall get_edict(void* self,void*,int index){
+    assert(self==&engine_object&&index==1);++edict_queries;return edict_result;
+}
+struct LocalNetworkable {
+    virtual void s0(){} virtual void s1(){} virtual void s2(){} virtual void s3(){} virtual void s4(){}
+    virtual void* base(){++calls;return actor;}
+    void* actor=nullptr;unsigned calls=0;
+};
 static void* __cdecl engine_factory(const char*,int*);
 struct Sound {
     virtual bool connect(sin_independent::StartupFactory factory) noexcept {
@@ -192,6 +202,9 @@ int main(int argc,char** argv){
     assert(init_events&&level_events&&touch_events&&activate_events&&!GetProcAddress(client,event_session_export)&&!GetProcAddress(client,nl::engine_events_level_export)&&!GetProcAddress(client,nl::engine_events_activate_export));
     Fixture started(api);active=&started;b=started.bindings();b.engine=&engine_factory;b.filesystem=&filesystem_factory;
     b.event_manager=&reject.events;queries=sound_calls=0;
+    alignas(4) unsigned char globals[0x38]{};
+    auto set_clients=[&](int count){std::memcpy(globals+0x14,&count,4);};
+    b.globals=globals;set_clients(1);
     EngineEventSession session{};
     assert(init_events(&started.state,&b,&bo,&session)&&session.startup==&started.state&&session.manager==&started.events&&session.thread==GetCurrentThreadId());
     assert(!reject.events.calls&&started.events.calls==2);
@@ -213,6 +226,29 @@ int main(int argc,char** argv){
     nm::CampaignTriggerResult cr{};int publication=999;
     assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==nm::engine_event_not_attempted);
     assert(gameinit(&started.state,&gb,&go));
+    const auto resolve_player=reinterpret_cast<ResolveStartedLocalPlayer>(GetProcAddress(server,local_player_export));
+    assert(resolve_player&&!GetProcAddress(client,local_player_export));
+    alignas(4) unsigned char edict[0x10]{};LocalNetworkable network;
+    network.actor=m.player;
+    auto set_edict_network=[&](void* p){std::memcpy(edict+0xc,&p,4);};
+    auto set_edict_flags=[&](unsigned flags){std::memcpy(edict,&flags,4);};
+    engine_vtable[19]=reinterpret_cast<void*>(&get_edict);
+    void* player=reinterpret_cast<void*>(1);edict_queries=0;edict_result=edict;
+    set_clients(2);assert(resolve_player(&session,&player)&&!player&&!edict_queries);
+    set_clients(0);assert(resolve_player(&session,&player)&&!player&&!edict_queries);
+    set_clients(1);edict_result=nullptr;
+    assert(resolve_player(&session,&player)&&!player&&edict_queries==1);
+    edict_result=reinterpret_cast<void*>(1);assert(!resolve_player(&session,&player)&&!player&&edict_queries==2);
+    edict_result=edict;set_edict_flags(2);set_edict_network(&network);
+    assert(resolve_player(&session,&player)&&!player&&edict_queries==3&&!network.calls);
+    set_edict_flags(0);set_edict_network(nullptr);
+    assert(resolve_player(&session,&player)&&!player&&edict_queries==4&&!network.calls);
+    set_edict_network(reinterpret_cast<void*>(1));
+    assert(!resolve_player(&session,&player)&&!player&&edict_queries==5);
+    set_edict_network(&network);network.actor=nullptr;
+    assert(resolve_player(&session,&player)&&!player&&network.calls==1&&edict_queries==6);
+    network.actor=m.player;
+    assert(resolve_player(&session,&player)&&player==m.player&&network.calls==2&&edict_queries==7);
     nm::Bindings mp{};mp.context=&m;
     mp.create=[](void* p,const char* cls,void** actor) noexcept ->int{assert(!std::strcmp(cls,"trigger_secret"));*actor=static_cast<Map*>(p)->actor;return 1;};
     mp.clear_factory_global=[](void*) noexcept ->int{return 1;};
@@ -243,7 +279,8 @@ int main(int argc,char** argv){
     lb.entity_scope=[](void*,bool) noexcept ->int{return 1;};
     lb.system_activate=[](void*,void*) noexcept ->int{return 1;};
     lb.set_activation_flag=[](void*,int flag) noexcept ->int{assert(!flag);return 1;};
-    lb.local_player=[](void* p,void** actor) noexcept ->int{*actor=static_cast<Map*>(p)->player;return 1;};
+    // The local-player callback is intentionally absent: the session
+    // uses acquired engine slot19 and the edict networkable slot5.
     lb.activation_cvar=[](void*,bool* value) noexcept ->int{*value=true;return 1;};
     lb.manager_activate=[](void*) noexcept ->int{return 1;};
     nl::LevelArgs la{current,lump,nullptr,nullptr,false,false};nl::Result lr{};
@@ -257,7 +294,9 @@ int main(int argc,char** argv){
     // remains published and activation continues; no double free.
     started.events.fire_ok=false;
     assert(activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&lr.completed&&lr.map_event&&lr.health_event&&started.events.creates==5&&started.events.fires==5&&!started.events.frees);
-    assert(!activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&started.events.creates==5);
-    session={};assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&m.removed==1);
+    assert(network.calls==3&&edict_queries==8);
+    assert(!activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&started.events.creates==5&&edict_queries==8);
+    session={};assert(!resolve_player(&session,&player)&&!player&&edict_queries==8);
+    assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&m.removed==1);
     FreeLibrary(server);FreeLibrary(client);
 }

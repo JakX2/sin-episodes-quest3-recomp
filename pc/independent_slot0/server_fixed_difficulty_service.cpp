@@ -2443,6 +2443,32 @@ int __cdecl SinPublishMapEventInternal(void* manager,int descriptor,const char* 
         string(e,"mapname",map_copy.c_str());string(e,"filename",file_copy.c_str());
     });
 }
+// Original 22288a40: single-client guard, engine slot 19 index one,
+// edict free-bit check, networkable slot 5. A null result is ordinary;
+// malformed memory, unverified virtual slots or exceptions are refusal.
+int __cdecl SinResolveLocalPlayerInternal(void* globals,void* engine,void** out) noexcept {
+    if(!out)return 0;*out=nullptr;
+    if(!memory::Readable(globals,0x18))return 0;
+    int max_clients=0;std::memcpy(&max_clients,static_cast<const unsigned char*>(globals)+0x14,4);
+    if(max_clients!=1)return 1;
+    methods::CallResult refused=methods::CallResult::InvalidObject;
+    const auto get_edict=methods::VerifiedMethod(engine,19,refused);
+    if(!get_edict)return 0;
+    using GetEdict=void* (__thiscall *)(void*,int);
+    using GetBase=void* (__thiscall *)(void*);
+    void* edict=nullptr;
+    try{edict=reinterpret_cast<GetEdict>(get_edict)(engine,1);}catch(...){return 0;}
+    if(!edict)return 1;
+    if(!memory::Readable(edict,0x10))return 0;
+    unsigned flags=0;std::memcpy(&flags,edict,4);
+    if(flags&2u)return 1;
+    void* networkable=nullptr;std::memcpy(&networkable,static_cast<const unsigned char*>(edict)+0xc,4);
+    if(!networkable)return 1;
+    const auto get_base=methods::VerifiedMethod(networkable,5,refused);
+    if(!get_base)return 0;
+    try{*out=reinterpret_cast<GetBase>(get_base)(networkable);}catch(...){return 0;}
+    return 1;
+}
 // 221e9047 calls 222b6260(descriptor=21, player, null, health, 0, null).
 // The CHL2_Player primary slot +8 is 22001b00, returning &actor+378.
 // Read the full handle at its original setter position, not a low index.

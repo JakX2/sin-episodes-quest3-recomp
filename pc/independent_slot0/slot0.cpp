@@ -54,6 +54,7 @@
 extern "C" const sin_port::native_level::Api* __cdecl SiN_GetServerLevelApi(std::uint32_t,std::uint32_t) noexcept;
 int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::LevelArgs*,
     const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*) noexcept;
+int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
 int __cdecl SinServerActivateWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::Bindings*,
     sin_port::native_level::Result*,void*) noexcept;
 extern "C" int __cdecl SiN_TouchCampaignTriggerWithEngineEvents(void*,unsigned,void*,const sin_port::native_map::CampaignTriggerBindings*,
@@ -1565,6 +1566,13 @@ extern "C" int __cdecl SiN_InvokeServerDllInitWithEngineEvents(
 static bool eventSessionReady(const sin_port::native_server_startup::EngineEventSession* session) noexcept {
     return session&&session->startup&&session->manager&&session->thread==GetCurrentThreadId()&&
         session->startup->complete&&session->startup->game_init_complete&&!session->startup->busy;
+}
+#pragma comment(linker,"/EXPORT:SiN_ResolveStartedLocalPlayer=_SiN_ResolveStartedLocalPlayer")
+extern "C" int __cdecl SiN_ResolveStartedLocalPlayer(
+    const sin_port::native_server_startup::EngineEventSession* session,void** out) noexcept {
+    if(!out)return 0;*out=nullptr;
+    if(!eventSessionReady(session)||g_startup_invocation||g_gameinit_invocation||g_level_invocation)return 0;
+    return SinResolveLocalPlayerInternal(session->startup->post.globals,session->startup->engine_server,out);
 }
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerLevelInitWithEngineEvents=_SiN_InvokeServerLevelInitWithEngineEvents")
 extern "C" int __cdecl SiN_InvokeServerLevelInitWithEngineEvents(

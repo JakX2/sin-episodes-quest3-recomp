@@ -120,4 +120,6 @@ struct EngineEventSession {
 };
 inline constexpr char event_session_export[]="SiN_InvokeServerDllInitWithEngineEvents";
 using InvokeEventSession=int (__cdecl *)(State*,const Bindings*,BoundaryResult*,EngineEventSession*) noexcept;
+inline constexpr char local_player_export[]="SiN_ResolveStartedLocalPlayer";
+using ResolveStartedLocalPlayer=int (__cdecl *)(const EngineEventSession*,void**) noexcept;
 }
