@@ -45,6 +45,8 @@ ORIGINAL_METHODS={
   "get_handle":(0x22001B00,7,"0e8c31f2e49bf659ab4d49f07c04d6b715991eba3737f43ca492e011d3d9b8e7"),
   "is_player_true":(0x22253C30,3,"e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619"),
   "is_player_false":(0x220017E0,3,"01cb47d078b4841b8408ec4fe278efa83115c6f6e101972987507d2b2b57dcf0"),
+  "contact_touch_notify":(0x2221E740,41,"1c31ff18df45681bbacb993d69fb9fe4c16391394082a160262e815a194b7cbf"),
+  "contact_start_touch_notify":(0x2221E770,55,"d9cfe927b17a5181d07c6635cab4e8deba30cb3d59da8df378cb72d6c0d503b5"),
 }
 PLAYER_ROWS=(
     (0x224aec3c,0x224d3ff0,0x2251e69c,0x22253c30,".?AVCHL2_Player@@"),
@@ -201,6 +203,12 @@ def verify_trigger_control(read_u32,read_text):
                 raise EvidenceRefused("trigger control virtual slot changed")
     return len(CONTROL_ROWS),len(CONTROL_CLASSES)*(len(CONTROL_SLOTS)+1)
 
+def verify_contact_slots(read_u32):
+    for table,touch in ((0x2243B96C,0x221CCB70),(0x2243BC0C,0x221CCC10)):
+        if (read_u32(table+0x160),read_u32(table+0x164))!=(0x221D0DF0,touch):
+            raise EvidenceRefused("campaign contact dispatch slot changed")
+    return 4
+
 def verify_player_predicates(read_u32,read_text):
     for table,col,typedesc,target,name in PLAYER_ROWS:
         if (read_u32(table-4),read_u32(col),read_u32(col+4),
@@ -254,6 +262,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
     control_rows,control_slots=verify_trigger_control(pe.u32,pe.text)
     subject_sites=verify_subject_operands(pe.at,pe.text)
     player_rows=verify_player_predicates(pe.u32,pe.text)
+    contact_slots=verify_contact_slots(pe.u32)
     va,length,digest=BASE_TOGGLE_ROWS
     if hashlib.sha256(pe.at(va,length)).hexdigest()!=digest:
         raise EvidenceRefused("changed inherited CBaseToggle datamap")
@@ -289,6 +298,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "trigger_control_virtual_slots":control_slots,
         "subject_operand_sites":subject_sites,
         "player_predicate_primary_rows":player_rows,
+        "campaign_contact_dispatch_slots":contact_slots,
         "base_toggle_rows_without_inputs":15,
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
         "limitations":"No real game entity creation, map load, AI or playable DLL Init."
@@ -384,6 +394,14 @@ def self_test()->None:
         try:verify_trigger_control(control_words.get,lambda va,s:bad.get(va)==s)
         except EvidenceRefused:pass
         else:raise AssertionError("mutated trigger input name accepted")
+    contact_words={0x2243B96C+0x160:0x221D0DF0,0x2243B96C+0x164:0x221CCB70,
+                   0x2243BC0C+0x160:0x221D0DF0,0x2243BC0C+0x164:0x221CCC10}
+    assert verify_contact_slots(contact_words.get)==4
+    for key in contact_words:
+        bad=dict(contact_words);bad[key]^=1
+        try:verify_contact_slots(bad.get)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated campaign contact slot accepted")
     player_words={}
     player_text={}
     for table,col,typedesc,target,name in PLAYER_ROWS:

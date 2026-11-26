@@ -302,6 +302,23 @@ int main(int argc,char** argv){
     wrong=session;wrong.thread=0;
     assert(!level_events(&ls,&la,&lb,&lr,&wrong)&&!ls.level_ready);
     assert(level_events(&ls,&la,&lb,&lr,&session)&&lr.completed&&lr.map_event&&lr.map_pipeline.spawn.native_spawns==1&&started.events.fires==2&&started.events.creates==2);
+    const auto contact=reinterpret_cast<nl::DispatchCampaignContact>(GetProcAddress(server,nl::campaign_contact_export));
+    assert(contact&&!GetProcAddress(client,nl::campaign_contact_export));
+    nl::CampaignContactBindings cb{};cb.campaign=&tr;cb.context=&m;
+    nl::CampaignContactResult contact_result{};
+    using ContactKind=nl::CampaignContactKind;
+    assert(contact(&session,m.actor,sizeof(m.actor),nullptr,0,ContactKind::Continuing,&cb,&contact_result)&&contact_result.missing_other&&!contact_result.touch_called);
+    assert(!contact(&session,m.actor,4,&m.player,sizeof(m.player),ContactKind::Continuing,&cb,&contact_result));
+    put(0xb8,1);
+    assert(contact(&session,m.actor,sizeof(m.actor),reinterpret_cast<void*>(1),0,ContactKind::Continuing,&cb,&contact_result)&&contact_result.marked_actor&&!contact_result.touch_called);
+    put(0xb8,0);m.player[0xb8]=1;
+    assert(contact(&session,m.actor,sizeof(m.actor),&m.player,sizeof(m.player),ContactKind::Continuing,&cb,&contact_result)&&contact_result.marked_other&&!contact_result.touch_called);
+    m.player[0xb8]=0;
+    assert(!contact(&session,m.actor,sizeof(m.actor),&m.player,4,ContactKind::Continuing,&cb,&contact_result));
+    assert(!contact(&session,m.actor,sizeof(m.actor),&m.player,sizeof(m.player),ContactKind::Starting,&cb,&contact_result)&&!contact_result.start_called);
+    cb.start_touch=[](void*,void*,void*) noexcept ->int{return 0;};
+    assert(!contact(&session,m.actor,sizeof(m.actor),&m.player,sizeof(m.player),ContactKind::Starting,&cb,&contact_result)&&contact_result.start_called&&!contact_result.touch_called);
+    assert(started.events.creates==2&&!m.removed);
     const auto classify=reinterpret_cast<nm::ClassifyCampaignPlayer>(GetProcAddress(server,nm::player_predicate_export));
     assert(classify&&!GetProcAddress(client,nm::player_predicate_export));
     unsigned candidate=0;
@@ -333,7 +350,15 @@ int main(int argc,char** argv){
     tr.is_player=[](void*,void*,bool* yes) noexcept ->int{*yes=false;return 1;};
     assert(touch_events(&session,m.actor,sizeof(m.actor),&candidate,&tr,&cr,&publication)&&cr.nonplayer&&started.events.creates==2);
     tr.is_player=nullptr;
-    assert(touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&cr.removed&&m.removed==1&&started.events.fires==3&&!started.events.frees);
+    cb.start_touch=[](void* p,void* actor,void* other) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);assert(actor==m.actor&&other==m.player&&!m.removed);
+        // Original wrapper enters Touch even if StartTouch marks actor.
+        m.actor[0xb8]=1;return 1;
+    };
+    assert(contact(&session,m.actor,sizeof(m.actor),&m.player,sizeof(m.player),ContactKind::Starting,&cb,&contact_result)&&
+        contact_result.start_called&&contact_result.touch_called&&contact_result.publication==fs::EventFired&&contact_result.trigger.removed&&m.removed==1&&started.events.fires==3&&!started.events.frees);
+    assert(contact(&session,m.actor,sizeof(m.actor),&m.player,sizeof(m.player),ContactKind::Continuing,&cb,&contact_result)&&contact_result.marked_actor&&!contact_result.touch_called&&started.events.creates==3);
+    put(0xb8,0);
     // Original map writer ignores ordinary FireEvent false. Health
     // remains published and activation continues; no double free.
     started.events.fire_ok=false;
@@ -347,7 +372,8 @@ int main(int argc,char** argv){
     started.events.fire_ok=true;started.events.event.lookups=&edict_queries;
     started.events.event.expected_lookups=9;started.events.event.expected_owner=0x6002;
     started.events.event.mutation=m.player+0x378;
-    assert(!tr.owner_word&&touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&m.removed==2&&edict_queries==9&&network.calls==4);
+    assert(!tr.owner_word&&contact(&session,m.actor,sizeof(m.actor),&m.player,sizeof(m.player),ContactKind::Continuing,&cb,&contact_result)&&
+        !contact_result.start_called&&contact_result.touch_called&&contact_result.publication==fs::EventFired&&m.removed==2&&edict_queries==9&&network.calls==4);
     set_clients(2);started.events.event.expected_owner=-1;started.events.event.mutation=nullptr;
     assert(touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&m.removed==3&&edict_queries==9);
     set_clients(1);started.events.unavailable=true;
