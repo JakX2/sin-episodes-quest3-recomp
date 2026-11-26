@@ -2213,30 +2213,30 @@ int main(int argc,char** argv){
     hd_ground.loot_enabled=[](void* p,bool* enabled) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);assert(q.f->get<int>(q.f->actor,0xc68)==11);q.death_order.push_back(1);*enabled=false;return 1;
     };
-    auto& gd=hd_ground.base.combat.death;
-    gd.prepare.context=&hd;
-    gd.prepare.model_available=[](void* p,void* a,bool* yes) noexcept -> int{
+    auto& script_death_binding=hd_ground.base.combat.death;
+    script_death_binding.prepare.context=&hd;
+    script_death_binding.prepare.model_available=[](void* p,void* a,bool* yes) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);q.death_order.push_back(2);*yes=false;return 1;
     };
-    gd.event.context=&hd;
-    auto& gp=gd.event.prefix;
-    gp.schedules.context=&hd;
-    gp.schedules.descriptor=[](void* p,void* a,const void** desc,unsigned* bytes) noexcept -> int{
+    script_death_binding.event.context=&hd;
+    auto& script_death_prefix=script_death_binding.event.prefix;
+    script_death_prefix.schedules.context=&hd;
+    script_death_prefix.schedules.descriptor=[](void* p,void* a,const void** desc,unsigned* bytes) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);*desc=q.death_descriptor;*bytes=sizeof(q.death_descriptor);return 1;
     };
     f.put(hd.death_descriptor,0x34,npc_global_condition_base);f.put(hd.death_descriptor,0x38,0);f.put(hd.death_descriptor,0x3c,100);
-    gp.removal.removal.context=&hd;
-    gp.removal.removal.event=[](void* p,void* a,void* attacker) noexcept -> int{
+    script_death_prefix.removal.removal.context=&hd;
+    script_death_prefix.removal.removal.event=[](void* p,void* a,void* attacker) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&attacker==a&&q.f->get<int>(a,0x8c)==1);q.death_order.push_back(3);return 1;
     };
-    gp.removal.removal.finalize=[](void* p,void* a) noexcept -> int{
+    script_death_prefix.removal.removal.finalize=[](void* p,void* a) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<std::uint8_t>(a,0xa44)==1);q.death_order.push_back(4);return 1;
     };
-    gd.event.base_death=[](void* p,void* a,void* record) noexcept -> int{
+    script_death_binding.event.base_death=[](void* p,void* a,void* record) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x9c)==-200&&q.f->get<float>(record,0x2c)==300.f&&q.f->get<float>(record,0x30)==100.f);
         q.death_order.push_back(5);return 1;
     };
-    gd.event.activity_lookup=[](void* p,void* a,int activity,int* result) noexcept -> int{
+    script_death_binding.event.activity_lookup=[](void* p,void* a,int activity,int* result) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&activity==0x18);q.death_order.push_back(6);*result=42;return 1;
     };
     hd_services.ground_death=&hd_ground;hd_services.ground_result=&hd_ground_result;hd_life.death=nullptr;
@@ -2256,7 +2256,7 @@ int main(int argc,char** argv){
     // Mode zero deliberately stops before lethal class-specific effects;
     // those bodies have their own loaded Phase 1228/1225 regressions.
     static ServerNpcGruntEliteLifeBindings hd_subclass{};
-    static ServerNpcGruntEliteLifeResult hd_subclass_result{};
+    static ServerNpcGruntEliteLifeResult hd_subclass_result;
     hd_subclass.combat.combat.ground=hd_ground;
     hd_services.subclass_death=&hd_subclass;hd_services.subclass_result=&hd_subclass_result;
     auto& sub_life=hd_subclass_result.combat.combat.life;
