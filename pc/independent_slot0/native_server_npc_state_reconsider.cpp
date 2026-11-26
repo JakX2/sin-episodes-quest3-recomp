@@ -6375,14 +6375,52 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         if(read<std::uint8_t>(a,0x1084)&&id==23)return native(118);
         switch(id){case 11:case 41:return native(122);case 33:case 88:return native(2);case 37:case 112:return native(123);case 48:return native(49);}
     }
-    // 2235d5b0: only these jump table arms differ from the ordinary wrapper.
+    // 2235d5b0: preserve the existing explicit compatibility override.
     switch(id){
     case 18:case 25:case 26:case 33:case 36:case 41:case 42:case 48:case 79:case 80:case 87:case 98:case 100:case 107:
-        if(!b.special_translate||!b.special_translate(b.context,a,id,now,&o.translated))return false;
-        o.translated_special=1;return true;
+        if(b.special_translate){
+            if(!b.special_translate(b.context,a,id,now,&o.translated))return false;
+            o.translated_special=1;return true;
+        }
+        break;
+    default:
+        if(!assault_owner_translate(a,n,id,now,b.arbitration,&route))return false;
+        return native(route.schedule);
     }
-    if(!assault_owner_translate(a,n,id,now,b.arbitration,&route))return false;
-    return native(route.schedule);
+    // Independently verified leaf arms and callback-free branches of mixed arms.
+    const auto& ab=b.arbitration->activation->schedule->admission;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto target=[&](){return assault_owner_target(a,registry);};
+    switch(id){
+    case 18:return native(82); // 2235da0e
+    case 26:return native(94); // 2235d6f7
+    case 79:return native(target()?81:79); // 2235daa4
+    case 100:{ // 2235dac0: reload target before life-state read
+        if(!target())return native(100);
+        void* e=target();unsigned extent=0;
+        if(!e||!ab.extent||!ab.extent(ab.context,e,&extent)||extent<0x90)return false;
+        return native(read<int>(e,0x8c)==0?103:100);
+    }
+    case 42: // 2235d9d3: live weapon needs +4a0 service
+        if(!registry.Resolve(read<unsigned>(a,0x78c)))return native(92);
+        return false;
+    case 80: // 2235da1b: missing enemy takes the unmodified route
+        if(!target())return native(80);
+        return false;
+    case 87: // 2235d79a: missing enemy and no secondary state
+        if(!target()&&!read<unsigned>(a,0x9d0))return native(87);
+        return false;
+    case 36:case 98:{
+        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));ServerNpcConditionResult cr{};
+        if(!api||!api->test(a,n,id==36?10:20,NpcConditionCurrent,&b.schedule.conditions,&cr))return false;
+        // The other branches enter 25/41 or enemy-update/slot services;
+        // leave them explicitly unresolved rather than guess their result.
+        if(cr.value)return false;
+        if(id==36){if(target())return false;return schedule_translate_grunt(a,n,100,now,b,o,route);}
+        return schedule_translate_grunt(a,n,79,now,b,o,route);
+    }
+    default:return false;
+    }
 }
 bool schedule_acquire_impl(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route) noexcept{
     o.requested=id;
