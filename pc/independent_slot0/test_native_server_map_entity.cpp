@@ -1638,7 +1638,7 @@ int main(int argc,char** argv){
         assert(spec&&spec->family==Family::LogicMenuListener&&spec->original_object==0x224fb634&&spec->original_vtable==0x2241f620&&spec->extent==menu_extent);
         struct MenuOwner {
             alignas(4) unsigned char storage[menu_extent]{};
-            ActionPool* pool=nullptr;const Api* api=nullptr;
+            ActionPool* pool=nullptr;const sin_port::native_map::Api* api=nullptr;
             LogicDestroyBindings teardown{};LogicDestroyResult destroyed{};
             unsigned alloc=0,base=0,init=0,cleared=0,begin=0,end=0,spawned=0,restored=0,subscribed=0,unregistered=0,released=0,base_dead=0,freed=0;
         } f;f.api=api;
