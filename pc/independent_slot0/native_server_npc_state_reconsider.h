@@ -2922,4 +2922,34 @@ struct ServerNpcGruntScheduleRequestApi {
     int (__cdecl *failure)(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,ServerNpcGruntScheduleRequestResult*) noexcept; // 2216e940 -> 2204e8a0
 };
 using GetServerNpcGruntScheduleRequestApi=const ServerNpcGruntScheduleRequestApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_selector_tail_export[]="SiN_GetServerNpcGruntSelectorTailApi";
+struct ServerNpcGruntSelectorTailBindings {
+    const ServerNpcGruntScheduleRequestBindings* request;
+    void* context;
+    int (__cdecl *auxiliary)(void*,std::uint32_t,void**,unsigned*) noexcept; // resolve +ca8 PE32 pointer
+    // Two original scene predicates: owner +304(player origin), then player +300(owner).
+    int (__cdecl *speech_gate)(void*,void*,bool*) noexcept;
+    int (__cdecl *probability)(void*,float,bool*) noexcept; // original random service +1a0
+    int (__cdecl *combat_schedule)(void*,void*,int*) noexcept; // +844
+    // Original 2206b220, +2fc, 2213c760(0x4081,0) chain: true means choose 28.
+    int (__cdecl *navigation_blocked)(void*,void*,bool*) noexcept;
+};
+struct ServerNpcGruntSelectorTailResult {
+    ServerNpcConditionResult condition;
+    ServerNpcGruntSquadSlotsResult slot;
+    int schedule;
+    std::uint32_t auxiliary_token;
+    unsigned completed,condition_tests,condition_clears,auxiliary_reset,speech_gate_called,speech_gate_passed,
+        probability_called,combat_called,navigation_called,slot_called,slot_allowed;
+    float probability_argument;
+};
+struct ServerNpcGruntSelectorTailApi {
+    std::uint32_t version,size;
+    // Original normal tail starting at 2235e719 after condition74/+ca4 tests.
+    int (__cdecl *tail)(void*,unsigned,float,const ServerNpcGruntSelectorTailBindings*,ServerNpcGruntSelectorTailResult*) noexcept;
+    // Integrated owner-level choose, with native normal tail instead of prior broad callback.
+    int (__cdecl *choose)(void*,unsigned,float,const ServerNpcGruntSelectorTailBindings*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*) noexcept;
+};
+using GetServerNpcGruntSelectorTailApi=const ServerNpcGruntSelectorTailApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
