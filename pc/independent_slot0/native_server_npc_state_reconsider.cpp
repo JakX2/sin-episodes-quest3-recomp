@@ -2795,12 +2795,21 @@ int __cdecl squad_attach(void* a,unsigned n,std::uint32_t handle,float now,std::
     if(!grunt_squad_join(a,n,out->token,out->array_token,handle,now,join,&out->join))return 0;
     out->completed=1;return 1;
 }
-int __cdecl squad_input(void* a,unsigned n,std::uint32_t handle,float now,std::uint32_t* head,unsigned type,std::uint32_t token,const ServerNpcGruntSquadRegistryBindings* b,const ServerNpcGruntSquadJoinBindings* join,ServerNpcGruntSquadInputResult* out) noexcept{
+int __cdecl squad_input(void* a,unsigned n,std::uint32_t handle,float now,std::uint32_t* head,unsigned type,std::uint32_t token,const ServerNpcGruntSquadInputBindings* input,ServerNpcGruntSquadInputResult* out) noexcept{
     if(!out)return 0;*out={};
-    if(!a||n<0xdb2||!head||!b||!join||!std::isfinite(now)||!relation_grunt_class(join->group.sentence.speech.original_vtable))return 0;
+    if(!input)return 0;const auto* b=&input->registry;const auto* join=&input->join;
+    if(!a||n<0xdb2||!head||!std::isfinite(now)||!relation_grunt_class(join->group.sentence.speech.original_vtable))return 0;
     auto done=[&](){out->completed=1;return 1;};
-    // All eight +5c0 = 22030360, reads actor capability word +8ec.
-    if(!(read<unsigned>(a,0x8ec)&0x04000000u)){out->capability_blocked=1;return done();}
+    // All eight +5c0 = 22030360: owner capabilities OR live weapon +4a0.
+    const auto& sb=join->group.sentence;
+    if(sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    unsigned caps=read<unsigned>(a,0x8ec),weapon_caps=0;
+    if(void* weapon=sin_independent::EntityHandleView(sb.entries,sb.count).Resolve(read<unsigned>(a,0x78c))){
+        ++out->weapon_queried;
+        if(!input->weapon_capabilities||!input->weapon_capabilities(input->context,weapon,&weapon_caps))return 0;
+        caps|=weapon_caps;
+    }
+    if(!(caps&0x04000000u)){out->capability_blocked=1;return done();}
     if(type!=2){token=0;out->nonstring=1;}
     write(a,0x9c8,token);out->name_token=token;
     if(!token){

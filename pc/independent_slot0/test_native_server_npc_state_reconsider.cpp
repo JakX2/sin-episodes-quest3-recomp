@@ -1517,15 +1517,18 @@ int main(int argc,char** argv){
         assert(gi&&!GetProcAddress(c,server_npc_grunt_squad_input_export)&&!gi(0,sizeof(ServerNpcGruntSquadInputApi))&&!gi(1,0));
         const auto* input=gi(1,sizeof(ServerNpcGruntSquadInputApi));assert(input);
         ServerNpcGruntSquadInputResult ir{};
-        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,31,&rb,&jb,&ir)&&ir.capability_blocked&&RegistryFixture::rd(q.actor,0x9c4)==13&&RegistryFixture::rd(q.actor,0x9c8)==32);
-        f.put(q.actor,0x8ec,0x04000000u);
-        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,31,&rb,&jb,&ir)&&ir.attachment.join.detached&&ir.attachment.join.appended&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==10&&RegistryFixture::rd(q.groups[3],0x48)==0);
-        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,1,32,&rb,&jb,&ir)&&ir.nonstring&&ir.clearing&&ir.departure.removed&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==0&&RegistryFixture::rd(q.actor,0x9c8)==0);
+        ServerNpcGruntSquadInputBindings ib{};ib.registry=rb;ib.join=jb;ib.context=&q;
+        ib.weapon_capabilities=[](void* p,void* w,std::uint32_t* out) noexcept -> int{assert(w==RegistryFixture::self(p).actor);*out=0x04000000u;return 1;};
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,31,&ib,&ir)&&ir.capability_blocked&&RegistryFixture::rd(q.actor,0x9c4)==13&&RegistryFixture::rd(q.actor,0x9c8)==32);
+        f.put(q.actor,0x78c,0x1001u); // synthetic live capability provider
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,31,&ib,&ir)&&ir.weapon_queried&&ir.attachment.join.detached&&ir.attachment.join.appended&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==10&&RegistryFixture::rd(q.groups[3],0x48)==0);
+        f.put(q.actor,0x78c,0xffffffffu);f.put(q.actor,0x8ec,0x04000000u);
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,1,32,&ib,&ir)&&ir.nonstring&&ir.clearing&&ir.departure.removed&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==0&&RegistryFixture::rd(q.actor,0x9c8)==0);
         f.put(q.actor,0x8c,1);
-        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,32,&rb,&jb,&ir)&&ir.attachment.join.blocked&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==13&&RegistryFixture::rd(q.groups[3],0x48)==0);
-        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,0,&rb,&jb,&ir)&&ir.departure.missing&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==0);
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,32,&ib,&ir)&&ir.attachment.join.blocked&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==13&&RegistryFixture::rd(q.groups[3],0x48)==0);
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,0,&ib,&ir)&&ir.departure.missing&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==0);
         f.put(q.actor,0x8c,0);
-        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,32,&rb,&jb,&ir)&&ir.attachment.join.appended&&RegistryFixture::rd(q.actor,0x9c4)==13);
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,32,&ib,&ir)&&ir.attachment.join.appended&&RegistryFixture::rd(q.actor,0x9c4)==13);
         f.put(q.groups[0],0,10u);assert(!api->lookup(head,"absent",&rb,&rr)&&!rr.completed);f.put(q.groups[0],0,0u);
         assert(q.allocated==4&&q.interned==2&&!q.released);
         auto gd=reinterpret_cast<GetServerNpcGruntSquadDestroyApi>(GetProcAddress(s,server_npc_grunt_squad_destroy_export));
