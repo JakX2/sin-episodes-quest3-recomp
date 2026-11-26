@@ -613,6 +613,23 @@ struct ScriptedSequencePrimaryResult {
 };
 inline constexpr char scripted_sequence_primary_export[]="SiN_RunScriptedSequencePrimaryThink";
 using RunScriptedSequencePrimaryThink=int (__cdecl *)(void*,unsigned,int,const ScriptedSequencePrimaryBindings*,ScriptedSequencePrimaryResult*) noexcept;
+struct ScriptedSequenceSpawnBindings {
+    const ScriptedSequenceControlBindings* control;
+    void* context;
+    int (__cdecl *solid_type)(void*,void*,int) noexcept; // original collision member +fc, 22201ac0
+};
+struct ScriptedSequenceSpawnResult {unsigned completed,solid_called,think_installed,scheduled,waiting,interruptible;int due_tick;};
+struct ScriptedSequenceActivateBindings {
+    const ScriptedSequenceControlBindings* control;
+    const native_weapon_tables::ServerEntitySearchBindings* search;
+    void* context;
+    int (__cdecl *base_activate)(void*,void*) noexcept;
+};
+struct ScriptedSequenceActivateResult {unsigned completed,base_called,searches,visited,npc_found,next_found,next_handle,next_name_cleared;};
+inline constexpr char scripted_sequence_spawn_export[]="SiN_SpawnScriptedSequence";
+inline constexpr char scripted_sequence_activate_export[]="SiN_ActivateScriptedSequence";
+using SpawnScriptedSequence=int (__cdecl *)(void*,unsigned,const ScriptedSequenceSpawnBindings*,ScriptedSequenceSpawnResult*) noexcept;
+using ActivateScriptedSequence=int (__cdecl *)(void*,unsigned,const ScriptedSequenceActivateBindings*,ScriptedSequenceActivateResult*) noexcept;
 struct ScriptedSequenceEventBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     const RelayQueueBindings* native_queue;

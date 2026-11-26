@@ -3385,6 +3385,82 @@ int scripted_sequence_think(void* a,unsigned n,const ScriptedSequenceThinkBindin
     if(!api||!api->set_default(a,n,o->retry_time,*c.interval,scripted_sequence_vtable,c.cadence,&cadence))return 0;
     o->due_tick=cadence.tick;o->retry_scheduled=o->completed=1;return 1;
 }
+// Original Spawn 221b0be0: configure collision through owner, install
+// acquisition think on unnamed or auto-start scripts, then reset latches.
+int scripted_sequence_spawn(void* a,unsigned n,const ScriptedSequenceSpawnBindings* b,ScriptedSequenceSpawnResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned vt=0;
+    if(!b||!b->control||!b->solid_type||n<scripted_sequence_extent||
+       !SinReadCampaignTouchMarkerInternal(a,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(a,scripted_sequence_extent))return 0;
+    const auto& c=*b->control;
+    if(!b->solid_type(b->context,static_cast<unsigned char*>(a)+0xfc,0))return 0;o->solid_called=1;
+    if(!read_field<unsigned>(a,0xc0)||(read_field<unsigned>(a,0xb4)&0x10u)){
+        if(!c.now||!c.interval||!c.cadence||!std::isfinite(*c.now)||!std::isfinite(*c.interval)||*c.interval<=0)return 0;
+        write_field(a,0x3cd,static_cast<unsigned char>(0));write_field(a,0x3d8,static_cast<unsigned char>(1));
+        write_field(a,8,0x221afc90u);o->think_installed=1;
+        using namespace sin_port::native_weapon_tables;
+        const auto* api=SiN_GetServerNpcOuterCadenceApi(1,sizeof(ServerNpcOuterCadenceApi));
+        ServerNpcOuterCadenceResult cadence{};
+        if(!api||!api->set_default(a,n,static_cast<float>(double(*c.now)+1.),*c.interval,vt,c.cadence,&cadence))return 0;
+        o->scheduled=1;o->due_tick=cadence.tick;
+        if(read_field<unsigned>(a,0xc0))write_field(a,0x3c0,static_cast<unsigned char>(1));
+    }
+    const auto flag=static_cast<unsigned char>((read_field<unsigned>(a,0xb4)&0x20u)==0);
+    write_field(a,0x3cc,flag);write_field(a,0x3cd,static_cast<unsigned char>(0));write_field(a,0x3bc,0u);
+    write_field(a,0x3d4,0xffffffffu);write_field(a,0x3dc,0xffffffffu);
+    o->waiting=read_field<unsigned char>(a,0x3c0);o->interruptible=flag;o->completed=1;return 1;
+}
+// Original Activate 221ae430: base first, name-or-class presence scan,
+// then exact first named successor (no RTTI cast in the original).
+int scripted_sequence_activate(void* a,unsigned n,const ScriptedSequenceActivateBindings* b,ScriptedSequenceActivateResult* o) noexcept {
+    if(!o)return 0;*o={};o->next_handle=0xffffffffu;
+    unsigned vt=0;
+    if(!b||!b->control||!b->search||!b->base_activate||n<scripted_sequence_extent||
+       !SinReadCampaignTouchMarkerInternal(a,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(a,scripted_sequence_extent))return 0;
+    const auto& c=*b->control;
+    if(!c.extent||c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return 0;
+    if(!b->base_activate(b->context,a))return 0;o->base_called=1;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerEntitySearchApi(1,sizeof(ServerEntitySearchApi));
+    if(!api)return 0;
+    auto search=*b->search;search.entities.entries=c.entries;search.entities.count=c.entry_count;
+    void* previous=nullptr;
+    for(unsigned i=0;;++i){
+        if(i==4096)return 0;
+        const unsigned name=read_field<unsigned>(a,0x3a8);
+        if(!name)break;
+        ServerEntitySearchResult found{};++o->searches;
+        if(!api->named(previous,name,nullptr,nullptr,&search,&found))return 0;
+        if(!found.entity){++o->searches;if(!api->classname(previous,name,&search,&found))return 0;}
+        if(!found.entity)break;if(found.entity==previous)return 0;previous=found.entity;++o->visited;
+        unsigned bytes=0,marker=0;
+        if(!c.extent(c.context,previous,&bytes)||bytes<4||!SinReadCampaignTouchMarkerInternal(previous,&marker))return 0;
+        bool npc=scripted_npc_marker(marker);
+        if(!npc&&campaign_player_marker(marker)==PlayerPredicate::Unknown&&!campaign_filter_class(marker)&&marker!=scripted_sequence_vtable){
+            if(!c.foreign_is_npc||!c.foreign_is_npc(c.context,previous,&npc))return 0;
+        }
+        if(npc){o->npc_found=1;break;}
+    }
+    const unsigned name=read_field<unsigned>(a,0x3a4);
+    if(name){
+        ServerEntitySearchResult found{};++o->searches;
+        if(!api->named(nullptr,name,nullptr,nullptr,&search,&found))return 0;
+        if(found.entity){
+            unsigned bytes=0,marker=0;
+            if(!c.extent(c.context,found.entity,&bytes)||bytes<4||!SinReadCampaignTouchMarkerInternal(found.entity,&marker))return 0;
+            if(scripted_npc_marker(marker)||marker==scripted_sequence_vtable||campaign_filter_class(marker)||campaign_player_marker(marker)!=PlayerPredicate::Unknown){
+                if(!SinReadCampaignHandleInternal(found.entity,bytes,&o->next_handle))return 0;
+            }else if(!search.foreign_handle||!search.foreign_handle(search.context,found.entity,&o->next_handle))return 0;
+            o->next_found=registry.Resolve(o->next_handle)!=nullptr;
+        }
+    }
+    write_field(a,0x3d4,o->next_handle);
+    if(!registry.Resolve(o->next_handle)){write_field(a,0x3a4,0u);o->next_name_cleared=1;}
+    o->completed=1;return 1;
+}
 // No-edict 2221c35f -> 22222c30 -> 22222b90 default context.
 int sequence_primary(void* a,unsigned n,int tick,const ScriptedSequencePrimaryBindings* b,ScriptedSequencePrimaryResult* o) noexcept {
     if(!o)return 0;*o={};o->due_tick=o->next_tick=o->last_tick=-1;
@@ -3946,4 +4022,15 @@ extern "C" int __cdecl SiN_ControlScriptedSequenceNative(void* actor,unsigned by
 extern "C" int __cdecl SiN_RunScriptedSequencePrimaryThink(void* actor,unsigned bytes,int tick,const sin_port::native_map::ScriptedSequencePrimaryBindings* b,
     sin_port::native_map::ScriptedSequencePrimaryResult* o) noexcept {
     return sin_port::native_map::sequence_primary(actor,bytes,tick,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_SpawnScriptedSequence=_SiN_SpawnScriptedSequence")
+extern "C" int __cdecl SiN_SpawnScriptedSequence(void* actor,unsigned bytes,const sin_port::native_map::ScriptedSequenceSpawnBindings* b,
+    sin_port::native_map::ScriptedSequenceSpawnResult* o) noexcept {
+    return sin_port::native_map::scripted_sequence_spawn(actor,bytes,b,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_ActivateScriptedSequence=_SiN_ActivateScriptedSequence")
+extern "C" int __cdecl SiN_ActivateScriptedSequence(void* actor,unsigned bytes,const sin_port::native_map::ScriptedSequenceActivateBindings* b,
+    sin_port::native_map::ScriptedSequenceActivateResult* o) noexcept {
+    return sin_port::native_map::scripted_sequence_activate(actor,bytes,b,o);
 }
