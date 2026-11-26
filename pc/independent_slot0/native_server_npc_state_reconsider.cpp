@@ -4440,7 +4440,8 @@ int __cdecl jetpack_death_mode(void* a,unsigned n,void* damage,unsigned dn,const
     out->tail_required=out->branch!=0x223669fb;
     out->completed=1;return 1;
 }
-struct JetpackDeathRoute {const ServerNpcJetpackDeathModeBindings* bindings;ServerNpcJetpackDeathModeResult* result;};
+struct JetpackBranchRoute {const ServerNpcJetpackDeathBranchBindings* bindings;ServerNpcJetpackDeathBranchResult* result;};
+struct JetpackDeathRoute {const ServerNpcJetpackDeathModeBindings* bindings;ServerNpcJetpackDeathModeResult* result;const JetpackBranchRoute* branch=nullptr;};
 int __cdecl grunt_ground_death(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntGroundDeathBindings*,ServerNpcGruntGroundDeathResult*) noexcept;
 struct GroundDeathRoute {
     const ServerNpcGruntGroundDeathBindings* bindings;
@@ -4448,6 +4449,71 @@ struct GroundDeathRoute {
     std::uint32_t handle;
     unsigned* called;
 };
+
+int jetpack_branch(void* a,unsigned n,void* damage,unsigned dn,float now,unsigned mode,const ServerNpcGruntSentenceBindings& sb,const GroundDeathRoute& ground,const JetpackBranchRoute& branch) noexcept{
+    auto& out=*branch.result;out={};out.mode=mode;
+    const auto& b=*branch.bindings;
+    if(!a||n<0x1074||!damage||dn<0x48||!jetpack_death_class(sb.speech.original_vtable))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    const bool delayed=mode==0||mode==1||mode==4,immediate=mode==3||mode==5;
+    if(!delayed&&!immediate){out.completed=1;return 1;}
+    if(mode==4||immediate){
+        // 22363f30 removes only serial-valid entities, in +fe8 then +fe4 order.
+        for(unsigned offset:{0xfe8u,0xfe4u}){
+            if(void* e=registry.Resolve(read<unsigned>(a,offset))){
+                if(!b.remove||!b.remove(b.context,e))return 0;
+                ++out.removed;write(a,offset,0xffffffffu);++out.cleared;
+            }
+        }
+        out.cleanup=1;
+    }
+    auto sentence=[&](){
+        if(read<std::uint8_t>(a,0xc44))return true;
+        if(!b.sentence||!b.sentence(b.context,a,"SINTEK_JETPACK_DEATH"))return false;
+        out.sentence=1;return true;
+    };
+    if(delayed){
+        if(!b.powerdown||!b.powerdown(b.context,a,"NPC_Jetpack.Powerdown"))return 0;
+        out.powerdown=1;
+        if(!sentence())return 0;
+        if(!b.ignite||!b.ignite(b.context,a,1.f,1,nullptr,nullptr,25.f,1))return 0;
+        out.ignited=1;
+        if(read<int>(a,0x8c)!=1){
+            if(!death_dirty(a,b.dirty_storage,out.local_dirty,out.external_dirty))return 0;
+            write(a,0x8c,1);out.life_changed=1;
+        }
+        for(unsigned i=0;i<3;++i)out.force[i]=read<float>(damage,4*i);
+        if(!finite_vec(out.force)||!b.ragdoll||!b.ragdoll(b.context,a,damage,out.force))return 0;
+        out.ragdoll=1;
+        if(!b.time||!b.time(b.context,&out.stamp)||!std::isfinite(out.stamp))return 0;
+        write(a,0xffc,out.stamp);
+        if(!b.install_think||!b.install_think(b.context,a,0x22365760u))return 0;
+        out.installed=1;
+        if(!b.time(b.context,&out.scheduled)||!std::isfinite(out.scheduled)||!b.schedule||!b.schedule(b.context,a,out.scheduled))return 0;
+        out.scheduled_called=out.completed=1;return 1;
+    }
+    // 22366922 calls removal even if the +1028 handle is stale or null.
+    if(!b.remove||!b.remove(b.context,registry.Resolve(read<unsigned>(a,0x1028))))return 0;
+    out.aux_removed=1;write(a,0x1028,0xffffffffu);
+    if(!b.effect_begin||!b.effect_begin(b.context,a))return 0;
+    out.effect_scope=1;
+    // Always close the temporary scope once opened, including adapter failures.
+    bool ok=sentence();
+    if(ok&&(read<unsigned>(a,0xb8)&0x800u)){
+        ok=b.refresh_origin&&b.refresh_origin(b.context,a);out.refreshed=ok;
+    }
+    if(ok){ok=b.immediate_effect&&b.immediate_effect(b.context,a);out.effect_called=ok;}
+    if(ok){
+        auto bound=*ground.bindings;
+        auto& identity=bound.base.combat.death.event.prefix.removal.removal.leave.sentence;
+        identity.entries=sb.entries;identity.count=sb.count;identity.speech.original_vtable=sb.speech.original_vtable;
+        ok=grunt_ground_death(a,n,ground.handle,damage,dn,now,&bound,ground.result);
+        out.base_called=ok;if(ok)*ground.called=1;
+    }
+    const bool ended=b.effect_end&&b.effect_end(b.context,a);out.effect_ended=ended;
+    if(!ok||!ended)return 0;
+    out.completed=1;return 1;
+}
 bool ground_death_class(std::uint32_t vt) noexcept{
     return vt==0x224954a4||vt==0x2249aaa4||vt==0x224a416c;
 }
@@ -4498,7 +4564,9 @@ int grunt_life_dispatch_impl(void* a,unsigned n,const void* damage,unsigned dn,f
                 auto bound=*jet->bindings;bound.original_vtable=sb.speech.original_vtable;
                 if(!jetpack_death_mode(a,n,copy,sizeof(copy),&bound,jet->result))return 0;
                 if(jet->result->tail_required){
-                    if(!bound.tail||!bound.tail(bound.context,a,copy,static_cast<unsigned>(jet->result->final_mode),jet->result->branch))return 0;
+                    if(jet->branch){
+                        if(!ground||!jetpack_branch(a,n,copy,sizeof(copy),now,static_cast<unsigned>(jet->result->final_mode),sb,*ground,*jet->branch))return 0;
+                    }else if(!bound.tail||!bound.tail(bound.context,a,copy,static_cast<unsigned>(jet->result->final_mode),jet->result->branch))return 0;
                     jet->result->tail_called=1;
                 }
             }else if(ground&&ground_death_class(sb.speech.original_vtable)){
@@ -4625,6 +4693,21 @@ int __cdecl grunt_ground_life(void* a,unsigned n,std::uint32_t handle,const void
     return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->life,&out->life,&jet,&ground);
 }
 const ServerNpcGruntGroundLifeApi ground_life_api{1,sizeof(ServerNpcGruntGroundLifeApi),&grunt_ground_life};
+int __cdecl jetpack_death_branches(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcJetpackDeathBranchesBindings* b,ServerNpcJetpackDeathBranchesResult* out) noexcept{
+    if(!out)return 0;out->branch={};
+    auto& c=out->combat;
+    c.ground.completed=c.ground.base_called=0;c.ground_called=0;c.jet={};c.jet.sample=c.jet.initial_mode=c.jet.final_mode=-1;
+    if(!b||!a)return 0;
+    const auto& sb=b->combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
+    if(!jetpack_death_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries)||
+        sin_independent::EntityHandleView(sb.entries,sb.count).Resolve(handle)!=a)return 0;
+    const JetpackBranchRoute branch{&b->branch,&out->branch};
+    const JetpackDeathRoute jet{&b->combat.jet,&c.jet,&branch};
+    const GroundDeathRoute ground{&b->combat.ground,&c.ground,handle,&c.ground_called};
+    return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->combat.life,&c.life,&jet,&ground);
+}
+const ServerNpcJetpackDeathBranchesApi jetpack_death_branches_api{1,sizeof(ServerNpcJetpackDeathBranchesApi),&jetpack_death_branches};
+
 
 
 
@@ -5215,4 +5298,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSpecialImpactApi=_SiN_GetServerNpcGruntSpecialImpactApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpecialImpactApi* __cdecl SiN_GetServerNpcGruntSpecialImpactApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSpecialImpactApi)?&special_impact_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcJetpackDeathBranchesApi=_SiN_GetServerNpcJetpackDeathBranchesApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathBranchesApi* __cdecl SiN_GetServerNpcJetpackDeathBranchesApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcJetpackDeathBranchesApi)?&jetpack_death_branches_api:nullptr;
 }

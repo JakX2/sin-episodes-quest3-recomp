@@ -2744,5 +2744,59 @@ int main(int argc,char** argv){
         b.entities.speech.original_vtable=0x2249aaa4;f.put(q.damage,0x28,0x9001u);
         assert(!api->prefix(q.a,sizeof(q.a),q.damage,sizeof(q.damage),&b,&o)&&!o.completed);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcJetpackDeathBranchesApi>(GetProcAddress(s,server_npc_jetpack_death_branches_export));
+        assert(g&&!GetProcAddress(c,server_npc_jetpack_death_branches_export)&&!g(0,sizeof(ServerNpcJetpackDeathBranchesApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcJetpackDeathBranchesApi));assert(api);
+        struct JetTailFixture {
+            alignas(4) unsigned char a[0x1088]{},aux[4]{},damage[0x48]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float shared[3]{};unsigned step=0,removed=0,clocks=0;int sample=27;
+            static JetTailFixture& self(void* p){return *static_cast<JetTailFixture*>(p);}
+            static unsigned rd(const void* p,unsigned o){unsigned v;std::memcpy(&v,static_cast<const unsigned char*>(p)+o,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.a);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.aux);
+        static ServerNpcJetpackDeathBranchesBindings b;
+        auto& sb=b.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
+        sb.entries=q.entries;sb.count=3;sb.speech.original_vtable=0x2248c514;
+        b.combat.life.combat.alive.life.shared_direction=q.shared;
+        b.combat.life.combat.alive.chain.detail.damage.cast_grunt=[](void*,void*,void** out,unsigned* n) noexcept -> int{*out=nullptr;*n=0;return 1;};
+        b.combat.jet.context=&q;b.combat.jet.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{assert(lo==0&&hi==100);*v=JetTailFixture::self(p).sample;return 1;};
+        b.combat.jet.effect_rule=[](void*,void*,bool* v) noexcept -> int{*v=false;return 1;};
+        b.combat.jet.force_mode3=[](void*,bool* v) noexcept -> int{*v=false;return 1;};
+        auto& j=b.branch;j.context=&q;
+        j.remove=[](void* p,void* e) noexcept -> int{
+            auto& q=JetTailFixture::self(p);assert(q.sample==27?e==q.aux:e==nullptr);++q.removed;return 1;};
+        j.powerdown=[](void* p,void* a,const char* cue) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&!std::strcmp(cue,"NPC_Jetpack.Powerdown")&&q.removed==1&&q.step==0);++q.step;return 1;};
+        j.sentence=[](void* p,void* a,const char* cue) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&!std::strcmp(cue,"SINTEK_JETPACK_DEATH")&&q.step==1);++q.step;return 1;};
+        j.ignite=[](void* p,void* a,float t,int flag,void* attacker,void* inflictor,float extra,int last) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&t==1&&flag==1&&!attacker&&!inflictor&&extra==25&&last==1&&q.step==2);++q.step;return 1;};
+        j.ragdoll=[](void* p,void* a,void* d,const float* f) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&d!=q.damage&&f[0]==3&&JetTailFixture::rd(a,0x8c)==1&&q.step==3);++q.step;return 1;};
+        j.time=[](void* p,float* v) noexcept -> int{auto& q=JetTailFixture::self(p);*v=40.f+q.clocks++;return 1;};
+        j.install_think=[](void* p,void* a,std::uint32_t identity) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&identity==0x22365760&&q.step==4&&JetTailFixture::rd(a,0xffc)==0x42200000u);++q.step;return 1;};
+        j.schedule=[](void* p,void* a,float time) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&time==41&&q.step==5);++q.step;return 1;};
+        f.put(q.a,0x94,2);f.put(q.a,0x9c,0);f.put(q.a,0xe8,0xffffffffu);f.put(q.a,0xfe8,0x2002u);f.put(q.a,0xfe4,0x9002u);
+        q.a[0x1f0]=1;f.put(q.damage,0x38,0x400000u);f.put(q.damage,0x28,0xffffffffu);f.put(q.damage,0,3.f);
+        static ServerNpcJetpackDeathBranchesResult o;
+        assert(api->run(q.a,sizeof(q.a),0x1001u,q.damage,sizeof(q.damage),40,&b,&o)&&o.combat.life.completed&&o.combat.jet.final_mode==4&&o.combat.jet.tail_called&&o.branch.completed&&o.branch.cleanup&&o.branch.removed==1&&o.branch.cleared==1&&o.branch.life_changed&&o.branch.local_dirty==1&&o.branch.installed&&o.branch.scheduled_called&&q.step==6&&q.clocks==2&&JetTailFixture::rd(q.a,0xfe8)==0xffffffffu&&JetTailFixture::rd(q.a,0xfe4)==0x9002u);
+        // Immediate mode 5 invokes common death after the effect scope; no hosted branch callback.
+        q.sample=100;q.step=0;q.removed=0;q.a[0xbf]=8;q.a[0xc44]=1;f.put(q.a,0x8c,0);f.put(q.a,0x1028,0x9002u);
+        j.effect_begin=[](void* p,void* a) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&q.step==0&&q.removed==1&&JetTailFixture::rd(a,0x1028)==0xffffffffu);++q.step;return 1;};
+        j.immediate_effect=[](void* p,void* a) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&q.step==1);++q.step;return 1;};
+        j.effect_end=[](void* p,void* a) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&q.step==3&&JetTailFixture::rd(a,0x8c)==1);++q.step;return 1;};
+        auto& gd=b.combat.ground;gd.loot_enabled=[](void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        auto& death=gd.base.combat.death;
+        death.prepare.model_available=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        death.event.context=&q;death.event.prefix.context=&q;
+        death.event.prefix.removal.removal.event=[](void*,void*,void*) noexcept -> int{return 1;};
+        death.event.prefix.removal.removal.finalize=[](void*,void*) noexcept -> int{return 1;};
+        death.event.prefix.jet_release=[](void*,std::uint32_t token) noexcept -> int{assert(token==0);return 1;};
+        death.event.prefix.schedules.context=&q;death.event.prefix.schedules.descriptor=[](void* p,void*,const void** v,unsigned* n) noexcept -> int{*v=JetTailFixture::self(p).desc;*n=0x48;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        death.event.base_death=[](void* p,void* a,void*) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&q.step==2);++q.step;return 1;};
+        death.event.activity_lookup=[](void*,void*,int id,int* v) noexcept -> int{assert(id==0x18);*v=-1;return 1;};
+        assert(api->run(q.a,sizeof(q.a),0x1001u,q.damage,sizeof(q.damage),42,&b,&o)&&o.combat.life.completed&&o.combat.jet.final_mode==5&&o.branch.completed&&o.branch.aux_removed&&o.branch.base_called&&o.branch.effect_ended&&o.combat.ground_called&&q.step==4);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
