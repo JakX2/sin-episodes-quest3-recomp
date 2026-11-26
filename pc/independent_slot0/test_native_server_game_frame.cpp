@@ -155,5 +155,114 @@ int main(int argc,char** argv){
     assert(boundary(true,&state,&b,&out)&&out.native_auto==1&&out.logic_auto.no_think&&af.records==1&&af.outputs=="12");
     // Stale serial is rejected even before an idle check.
     auto_entries[0].serial=4;assert(!boundary(true,&state,&b,&out)&&out.iteration_closed&&out.curtime_restored);
+    // Full native output chain: map-created actions -> scheduled auto ->
+    // GameFrame event queue -> relay AcceptInput -> downstream and refire.
+    struct CampaignFixture {
+        alignas(4) unsigned char automatic[nm::auto_extent]{},relay[nm::relay_extent]{},target[4]{};
+        alignas(4) unsigned char actions[2][0x1c]{},root[0x38]{},events[4][0x38]{};
+        Fixture* frame=nullptr;
+        const ServerEntityNamedEventQueueApi* api=nullptr;
+        ServerEntityNamedEventQueueBindings queue{};
+        unsigned allocated=0,action_id=0,action_releases=0,event_alloc=0,event_releases=0,delivered=0;
+        unsigned notifications=0,records=0,base=0;
+        bool locked=false;
+        int load=0;
+    } camp;
+    camp.frame=&f;
+    const auto queue_get=reinterpret_cast<GetServerEntityNamedEventQueueApi>(GetProcAddress(server,server_entity_named_event_queue_export));
+    assert(queue_get);camp.api=queue_get(1,sizeof(ServerEntityNamedEventQueueApi));assert(camp.api);
+    put(camp.automatic,0,nm::auto_vtable);put(camp.automatic,0x378,0x3000u);
+    put(camp.automatic,0x74,-1);put(camp.automatic,0xb8,0x400000u);
+    put(camp.relay,0,nm::relay_vtable);put(camp.relay,0x378,0x4001u);
+    auto word=[](const void* a,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(a)+off,4);return v;};
+    nm::OutputActionBindings actions{};actions.context=&camp;actions.next_id=&camp.action_id;
+    actions.allocate=[](void* p,unsigned n,void** row) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);if(n!=0x1c||q.allocated==2)return 0;*row=q.actions[q.allocated++];return 1;
+    };
+    actions.release=[](void* p,void*) noexcept ->int{++static_cast<CampaignFixture*>(p)->action_releases;return 1;};
+    nm::KeyBindings keys{};keys.context=&camp;keys.native_output=&actions;
+    keys.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);*bytes=a==q.automatic?nm::auto_extent:a==q.relay?nm::relay_extent:0;return *bytes!=0;
+    };
+    keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+        const char* names[]{"startup_relay","Trigger","final","Use","EnableRefire"};
+        for(unsigned i=0;i<5;++i)if(!std::strcmp(text,names[i])){*token=201+i;return 1;}return 0;
+    };
+    nm::KeyResult kr{};
+    assert(map->key_value(camp.automatic,"OnNewGame","startup_relay,Trigger,,0,1",&keys,&kr)&&kr.output);
+    assert(map->key_value(camp.relay,"OnTrigger","final,Use,,0.25,-1",&keys,&kr)&&kr.output);
+    const unsigned auto_id=word(camp.actions[0],0x14),relay_id=word(camp.actions[1],0x14);
+    camp.queue.context=&camp;
+    camp.queue.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);if(!token||token>q.event_alloc)return 0;*row=q.events[token-1];*bytes=0x38;return 1;
+    };
+    camp.queue.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);if(q.event_alloc==4)return 0;*row=q.events[q.event_alloc++];*token=q.event_alloc;*bytes=0x38;return 1;
+    };
+    camp.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=201&&token<=205;return 1;};
+    ServerEntityVoidOutputBindings fire{};fire.context=&camp;
+    fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);
+        for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(q.actions[i]))){*row=q.actions[i];*bytes=0x1c;return 1;}return 0;
+    };
+    fire.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* action) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);
+        assert(!activator&&(caller==q.automatic||caller==q.relay));
+        assert(caller==q.automatic?(!q.locked&&q.frame->depth==1):(q.locked&&!q.frame->depth));
+        ServerEntityNamedEventQueueResult out{};
+        return q.api->enqueue(q.root,sizeof(q.root),99,q.frame->g.curtime,0xffffffffu,caller==q.automatic?0x3000u:0x4001u,action,&q.queue,&out);
+    };
+    fire.release=[](void* p,unsigned token,void* row) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);assert(row==q.actions[0]&&token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(row)));++q.action_releases;return 1;
+    };
+    sin_independent::EntityHandleEntry ce[2]{};
+    ce[0].serial=3;ce[0].entity=reinterpret_cast<CBaseEntity*>(camp.automatic);
+    ce[1].serial=4;ce[1].entity=reinterpret_cast<CBaseEntity*>(camp.relay);
+    nm::AutoBindings cb{};cb.context=&camp;cb.now=&f.g.curtime;cb.load_type=&camp.load;cb.output=&fire;
+    cb.base_activate=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(a==q.automatic);++q.base;return 1;};
+    cb.low_violence=[](void*,bool* low) noexcept ->int{*low=false;return 1;};
+    ServerNpcOuterCadenceBindings cc{};cc.context=&camp;
+    cc.notify_think_flags=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(a==q.automatic);++q.notifications;return 1;};
+    nm::AutoPrimaryBindings cp{};cp.behavior=&cb;cp.cadence=&cc;cp.entries=ce;cp.entry_count=2;cp.context=&camp;
+    cp.record=[](void* p,void* a,int tick,float time,int due) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(a==q.automatic&&tick==82&&due==82&&time==10.25f);++q.records;return 1;};
+    cp.scope=[](void*,void*,bool) noexcept ->int{return 1;};
+    nm::RelayQueueBindings rq{};rq.context=&camp;rq.root=camp.root;rq.root_bytes=sizeof(camp.root);rq.root_token=99;rq.queue=&camp.queue;
+    rq.entries=ce;rq.entry_count=2;rq.now=&f.g.curtime;rq.intern=keys.intern;
+    rq.handle=[](void* p,void* a,unsigned* handle) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(a==q.relay);*handle=0x4001;return 1;};
+    nm::RelayBindings relay_bind{};relay_bind.context=&camp;relay_bind.output=&fire;relay_bind.native_queue=&rq;
+    ServerNpcActivePostAnimationBindings storage{};
+    ServerEntityAcceptInputBindings input{};input.storage=&storage;input.relay=&relay_bind;
+    input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+        *text=token==202?"Trigger":token==205?"EnableRefire":nullptr;if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    ServerEntitySearchBindings search{};search.context=&camp;
+    search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);*bytes=a==q.relay?nm::relay_extent:a==q.target?4u:0u;return *bytes!=0;
+    };
+    ServerEntityEventServiceBindings events{};events.context=&camp;events.entities.entries=ce;events.entities.count=2;events.resolve=camp.queue.resolve;
+    events.native_search=&search;events.native_input=&input;
+    events.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(!q.frame->depth&&q.locked!=enter);q.locked=enter;return 1;};
+    events.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** target) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);assert(q.locked&&!a&&(name==201||name==203));
+        assert(c==(name==201?q.automatic:q.relay));*target=prev?nullptr:(name==201?q.relay:q.target);return 1;
+    };
+    events.accept=[](void* p,void* target,unsigned input,void* a,void* c,const void* variant,unsigned id) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);unsigned type=99,wanted=0;std::memcpy(&type,static_cast<const unsigned char*>(variant)+0x10,4);std::memcpy(&wanted,q.actions[1]+0x14,4);
+        assert(q.locked&&target==q.target&&input==204&&!a&&c==q.relay&&!type&&id==wanted);++q.delivered;return 1;
+    };
+    events.release=[](void* p,unsigned token,void* row) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);assert(q.locked&&token&&token<=q.event_alloc&&row==q.events[token-1]);++q.event_releases;return 1;
+    };
+    rq.release=events.release;
+    int steps=0;std::uint8_t single_step=0;EventQueue eq{camp.root,sizeof(camp.root),99,&steps,&single_step,&events};
+    b.logic_auto=&cp;b.queue=&eq;f.slots[0]=camp.automatic;f.g.curtime=10.f;f.g.tick=80;
+    assert(map->auto_primary_activate(camp.automatic,sizeof(camp.automatic),f.g.interval,&cp,&apr)&&apr.due_tick==82);
+    assert(boundary(true,&state,&b,&out)&&out.logic_auto.not_due&&out.native_events&&!out.events.events&&!camp.event_alloc);
+    f.g.tick=82;f.g.curtime=10.25f;
+    assert(boundary(true,&state,&b,&out)&&out.logic_auto.invoked&&out.logic_auto.behavior.queued==1&&out.events.events==1&&out.events.native_inputs==1&&out.events.future_stopped&&camp.relay[0x3ad]&&camp.event_alloc==3&&camp.event_releases==1&&camp.action_releases==1&&!word(camp.automatic,0x3f0)&&word(camp.events[0],0x14)==auto_id&&word(camp.events[1],0x14)==relay_id&&!camp.delivered);
+    f.g.tick=84;f.g.curtime=10.5f;
+    assert(boundary(true,&state,&b,&out)&&out.logic_auto.no_think&&out.events.events==1&&out.events.foreign_inputs==1&&out.events.future_stopped&&camp.delivered==1&&camp.relay[0x3ad]);
+    f.g.tick=85;f.g.curtime=10.625f;
+    assert(boundary(true,&state,&b,&out)&&out.events.events==1&&out.events.native_inputs==1&&out.events.direct==1&&!camp.relay[0x3ad]&&!word(camp.root,0x30)&&camp.event_releases==3&&camp.records==1&&camp.notifications==2&&!camp.locked);
     FreeLibrary(server);FreeLibrary(client);
 }
