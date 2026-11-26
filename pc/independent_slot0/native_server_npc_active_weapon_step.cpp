@@ -1,4 +1,6 @@
 #include "native_server_npc_active_weapon_step.h"
+#include "native_server_map_entity.h"
+extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cmath>
 #include <cstring>
@@ -529,13 +531,30 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
         if(!search_class(prev,name,&native_search,&result))return false;
         *entity=result.entity;return true;
     };
+    unsigned dispatch_token=0;
     auto accept=[&](void* entity,unsigned input,void* activator,void* caller,const void* variant,unsigned id){
         if(b->native_input){
             unsigned bytes=0;
             if(!native_search.extent||!native_search.extent(native_search.context,entity,&bytes)||bytes<4)return false;
             const unsigned vt=rd<unsigned>(entity,0);
-            if(input_datamap(vt)||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)){
+            if(input_datamap(vt)||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)||
+               (vt==sin_port::native_map::relay_vtable&&b->native_input->relay)){
                 auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=clock();if(!std::isfinite(bound.now))return false;
+                sin_port::native_map::RelayBindings relay{};
+                sin_port::native_map::RelayQueueBindings relay_queue{};
+                if(vt==sin_port::native_map::relay_vtable&&bound.relay){
+                    relay=*bound.relay;
+                    if(relay.native_queue){
+                        relay_queue=*relay.native_queue;
+                        // Do not dispatch into a second queue or registry. The
+                        // active node cannot be canceled before service unlinks it.
+                        if(relay_queue.root!=sentinel||relay_queue.root_token!=root)return false;
+                        relay_queue.root_bytes=n;relay_queue.entries=b->entities.entries;relay_queue.entry_count=b->entities.count;
+                        relay_queue.now=b->live_now?b->live_now:&bound.now;
+                        relay_queue.protected_node=&dispatch_token;relay.native_queue=&relay_queue;
+                    }
+                    bound.relay=&relay;
+                }
                 ServerEntityAcceptInputResult result{};
                 if(!accept_input(entity,bytes,vt,input,activator,caller,variant,0x14,id,&bound,&result)||!result.completed)return false;
                 // Retail ignores the virtual AcceptInput return. A rejected
@@ -558,6 +577,7 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
         const float current=clock();if(!std::isfinite(current))return 0;
         if(at>current){o->future_stopped=o->completed=1;return 1;}
         if(!b->lock||!b->lock(b->context,true))return 0;++o->locks;
+        dispatch_token=token;
         auto dispatch=[&](){
             const auto target=rd<unsigned>(row,4);
             bool found=false;
@@ -835,6 +855,14 @@ constexpr NativeInputRow jet_inputs[]{
     {23,0,0x22498894u,0x22366110u,"DeactivateJets"},
     {24,0,0x2249886cu,0x22363be0u,"EnableForcePath"},
     {25,0,0x22498840u,0x22363c40u,"DisableForcePath"}
+};
+constexpr NativeInputRow relay_inputs[]{
+    {2,0,0x223edd00u,0x2217ded0u,"Enable"},
+    {3,0,0x224228a8u,0x2217dee0u,"EnableRefire"},
+    {4,0,0x223edce8u,0x2217df10u,"Disable"},
+    {5,0,0x223d4914u,0x2217df20u,"Toggle"},
+    {6,0,0x22422b7cu,0x2217df50u,"Trigger"},
+    {7,0,0x22422b58u,0x2217def0u,"CancelPending"}
 };
 constexpr NativeInputRow resupply_inputs[]{
     {1,0,0x2240b624u,0x222f8520u,"Kill"},
@@ -2121,6 +2149,16 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
     default:return -1;
     }
 }
+constexpr NativeInputMap relay_map{0x224fda70u,0x224f0350u,9,relay_inputs,6};
+int native_relay_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
+    if(!b.relay)return -1;
+    const char* text=nullptr;
+    for(const auto& row:relay_inputs)if(row.handler==handler){text=row.text;break;}
+    if(!text)return -1;
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+    sin_port::native_map::RelayResult result{};
+    return api&&api->relay_input(a,n,text,data.activator,b.relay,&result)&&result.completed&&result.handled?1:0;
+}
 constexpr NativeInputMap resupply_map{0x22528b58u,0x224f0350u,6,resupply_inputs,3};
 int native_resupply_input(void* a,unsigned n,unsigned handler,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
     using namespace sin_port::native_resupply;
@@ -2152,7 +2190,9 @@ const NativeInputMap* native_input_map(unsigned token) noexcept {
 int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
-    unsigned token=vt==sin_port::native_resupply::resupply_vtable&&b&&b->resupply?resupply_map.token:input_datamap(vt),seen[32]{};
+    unsigned token=vt==sin_port::native_map::relay_vtable&&b&&b->relay?relay_map.token:
+        vt==sin_port::native_resupply::resupply_vtable&&b&&b->resupply?resupply_map.token:input_datamap(vt),seen[32]{};
+    if(vt==sin_port::native_map::relay_vtable&&n<sin_port::native_map::relay_extent)return 0;
     if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||(!b->name_equal&&!b->string_text))return 0;
     ServerEntityInputData data{};data.activator=activator;data.caller=caller;data.output_id=id;
     std::memcpy(data.variant,variant,0x14);
@@ -2164,7 +2204,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         if(o->maps>=32)return 0;
         for(unsigned i=0;i<o->maps;++i)if(seen[i]==token)return 0;
         seen[o->maps++]=token;
-        const auto* native=token==resupply_map.token&&b->resupply?&resupply_map:b->native_npc_datamaps?native_input_map(token):nullptr;
+        const auto* native=token==relay_map.token&&b->relay?&relay_map:
+            token==resupply_map.token&&b->resupply?&resupply_map:b->native_npc_datamaps?native_input_map(token):nullptr;
         void* map=nullptr;void* rows=nullptr;int count=0;unsigned parent=0;
         if(native){
             ++o->native_maps;count=static_cast<int>(native->count);parent=native->parent;
@@ -2213,7 +2254,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
                 o->native_wake=1;
             }else if(o->handler){
-                const int status=vt==sin_port::native_resupply::resupply_vtable?native_resupply_input(a,n,o->handler,*b,*o):b->native_npc_handlers?native_npc_input(a,n,vt,o->handler,data,*b,*o):-1;
+                const int status=vt==sin_port::native_map::relay_vtable?native_relay_input(a,n,o->handler,data,*b):
+                    vt==sin_port::native_resupply::resupply_vtable?native_resupply_input(a,n,o->handler,*b,*o):b->native_npc_handlers?native_npc_input(a,n,vt,o->handler,data,*b,*o):-1;
                 if(status==0)return 0;
                 if(status>0)o->native_handler=1;
                 else if(!b->handler||!b->handler(b->context,a,o->handler,&data))return 0;
