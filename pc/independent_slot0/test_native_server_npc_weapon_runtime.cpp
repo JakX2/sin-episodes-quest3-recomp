@@ -2255,7 +2255,7 @@ int main(int argc,char** argv){
     // All five subclass tables select the existing class-aware life entry.
     // Mode zero deliberately stops before lethal class-specific effects;
     // those bodies have their own loaded Phase 1228/1225 regressions.
-    static ServerNpcGruntEliteLifeBindings hd_subclass{};
+    static ServerNpcGruntEliteLifeBindings hd_subclass;
     static ServerNpcGruntEliteLifeResult hd_subclass_result;
     hd_subclass.combat.combat.ground=hd_ground;
     hd_services.subclass_death=&hd_subclass;hd_services.subclass_result=&hd_subclass_result;
