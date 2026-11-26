@@ -574,3 +574,67 @@
         f.expected=0x4001;f.mode=1;put(m,0x3cc,14);
         assert(!activate(m,sizeof(f.filters[2]),&b,&r)&&r.base_called&&!r.lookups&&word(m,0x3e0)==0x4001);
     }
+
+// Four independent filter factories and real native keyvalue parsing.
+// A separate creation adapter avoids expanding the ABI-pinned dictionary.
+    {
+        struct FilterFactoryFixture {
+            alignas(4) unsigned char storage[4][0x3f4]{};
+            unsigned allocated=0,constructed=0,initialized=0,accepted=0,cleared=0,foreign=0;
+            ActionPool pool{};
+        } f;
+        const auto make=reinterpret_cast<CreateCampaignFilterEntity>(GetProcAddress(server,filter_factory_export));
+        const auto map_create=reinterpret_cast<CreateCampaignFilterForMap>(GetProcAddress(server,filter_map_create_export));
+        assert(make&&map_create&&!GetProcAddress(client,filter_factory_export)&&!GetProcAddress(client,filter_map_create_export));
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FilterFactoryFixture*>(p);constexpr unsigned extents[]{0x3c8,0x3f4,0x3cc,0x3cc};
+            assert(f.allocated<4&&n==extents[f.allocated]);*actor=f.storage[f.allocated++];*bytes=n;return 1;
+        };
+        owner.base_construct=[](void* p,void* actor,int arg) noexcept ->int{
+            auto& f=*static_cast<FilterFactoryFixture*>(p);assert(arg==1&&actor==f.storage[f.constructed]);++f.constructed;return 1;
+        };
+        owner.initialize=[](void* p,void* actor,const char* name) noexcept ->int{
+            auto& f=*static_cast<FilterFactoryFixture*>(p);constexpr unsigned vts[]{base_filter_vtable,multi_filter_vtable,name_filter_vtable,class_filter_vtable};
+            unsigned vt=0;std::memcpy(&vt,actor,4);assert(actor==f.storage[f.initialized]&&vt==vts[f.initialized]&&name);++f.initialized;return 1;
+        };
+        CampaignFilterFactoryBindings fb{};fb.owner=&owner;fb.fallback_context=&f;
+        fb.fallback_create=[](void* p,const char* name,void** actor) noexcept ->int{
+            auto& f=*static_cast<FilterFactoryFixture*>(p);assert(!std::strcmp(name,"unknown"));++f.foreign;*actor=nullptr;return 1;
+        };
+        FactoryResult missing{};assert(make("unknown",&fb,&missing)&&missing.completed&&!missing.matched&&!f.allocated);
+        OutputActionBindings actions=output;actions.context=&f.pool;actions.next_id=&f.pool.id;
+        KeyBindings keys{};keys.context=&f;keys.native_output=&actions;
+        keys.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FilterFactoryFixture*>(p);constexpr unsigned extents[]{0x3c8,0x3f4,0x3cc,0x3cc};
+            for(unsigned i=0;i<4;++i)if(actor==f.storage[i]){*bytes=extents[i];return 1;}return 0;
+        };
+        keys.intern=[](void*,const char* value,unsigned* token) noexcept ->int{
+            *token=!std::strcmp(value,"name1")?21:!std::strcmp(value,"class1")?22:
+                !std::strcmp(value,"hero")?23:!std::strcmp(value,"player")?24:
+                !std::strcmp(value,"relay")?25:!std::strcmp(value,"Trigger")?26:27;return 1;
+        };
+        Bindings parse{};parse.context=&fb;parse.create=map_create;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{
+            ++static_cast<FilterFactoryFixture*>(static_cast<CampaignFilterFactoryBindings*>(p)->owner->context)->cleared;return 1;
+        };
+        parse.accept_entity=[](void* p,void* actor,const char*,unsigned,const EntitySlice*) noexcept ->int{
+            auto& f=*static_cast<FilterFactoryFixture*>(static_cast<CampaignFilterFactoryBindings*>(p)->owner->context);
+            assert(actor==f.storage[f.accepted]);++f.accepted;return 1;
+        };
+        parse.missing=[](void*,const char* name) noexcept ->int{return name&&!std::strcmp(name,"unknown");};
+        const char lump[]="{ classname filter_base Negated 1 OnPass \"relay,Trigger,,0,-1\" OnFail \"relay,Trigger,,0,-1\" } "
+            "{ classname filter_multi FilterType 1 Filter01 name1 Filter02 class1 } "
+            "{ classname filter_activator_name targetname name1 filtername hero } "
+            "{ classname filter_activator_class targetname class1 filterclass player } { classname unknown }";
+        Result result{};
+        assert(api->parse(lump,sizeof(lump),&parse,&result)&&result.created==4&&result.missing_factory==1&&f.allocated==4&&f.initialized==4&&f.accepted==4&&f.foreign==1&&f.cleared==5);
+        assert(f.storage[0][0x394]==1&&word(f.storage[0],0x3a4)==0xffffffffu&&word(f.storage[0],0x3bc)==0xffffffffu&&f.pool.used==2);
+        assert(word(f.storage[0],0x3ac)==ptrword(f.pool.rows[0])&&word(f.storage[0],0x3c4)==ptrword(f.pool.rows[1]));
+        assert(word(f.storage[1],0x3c8)==1&&word(f.storage[1],0x3cc)==21&&word(f.storage[1],0x3d0)==22);
+        for(unsigned i=0;i<5;++i)assert(word(f.storage[1],0x3e0+4*i)==0xffffffffu);
+        assert(word(f.storage[2],0x3c8)==23&&word(f.storage[3],0x3c8)==24);
+        KeyResult key{};
+        assert(api->key_value(f.storage[2],"Negated#1","1",&keys,&key)&&key.base_field&&f.storage[2][0x394]);
+        assert(!api->key_value(f.storage[2],"FilterType","1",&keys,&key));
+    }

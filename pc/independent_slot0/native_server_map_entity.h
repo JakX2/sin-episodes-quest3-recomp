@@ -9,7 +9,7 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare,MathRemap,MathColorBlend,TriggerDynamic,TriggerSecret};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare,MathRemap,MathColorBlend,TriggerDynamic,TriggerSecret,FilterBase,FilterMultiple,FilterName,FilterClass};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
 struct FactoryDictionary {const FactorySpec* slots[27]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
@@ -57,6 +57,17 @@ struct FactoryResult {
     const FactorySpec* spec;
     void* actor;void* networkable;unsigned bytes,matched,completed;
 };
+// Separate opt-in factory route: the existing 27-entry dictionary is
+// ABI-pinned and has no capacity for these four additional classes.
+struct CampaignFilterFactoryBindings {
+    const RelayFactoryBindings* owner;
+    void* fallback_context;
+    int (__cdecl *fallback_create)(void*,const char*,void**) noexcept;
+};
+inline constexpr char filter_factory_export[]="SiN_CreateCampaignFilterEntity";
+inline constexpr char filter_map_create_export[]="SiN_CreateCampaignFilterForMap";
+using CreateCampaignFilterEntity=int (__cdecl *)(const char*,const CampaignFilterFactoryBindings*,FactoryResult*) noexcept;
+using CreateCampaignFilterForMap=int (__cdecl *)(void*,const char*,void**) noexcept;
 struct Result {unsigned completed,entities,pairs,filtered,created,missing_factory,missing_classname,clears;unsigned offset,native_creates,foreign_creates;FactoryResult last_factory;};
 // Pool storage must remain live until the native output firing path releases it.
 // The counter is shared across all entity outputs, not per entity.

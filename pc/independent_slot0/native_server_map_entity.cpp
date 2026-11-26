@@ -528,8 +528,43 @@ int __cdecl destroy_campaign_trigger(void* a,unsigned n,void* networkable,const 
     const unsigned extent=vt==dynamic_trigger_vtable?dynamic_trigger_extent:vt==secret_trigger_vtable?secret_trigger_extent:0;
     return extent&&n>=extent&&networkable==static_cast<unsigned char*>(a)+0x160&&b->release_networkable(b->context,networkable);
 }
+constexpr FactorySpec filter_specs[]{
+    {"filter_base",Family::FilterBase,0x224f8ad4,0x22414800,0x3c8},
+    {"filter_multi",Family::FilterMultiple,0x224f8ad8,0x2241480c,0x3f4},
+    {"filter_activator_name",Family::FilterName,0x224f8adc,0x22414818,0x3cc},
+    {"filter_activator_class",Family::FilterClass,0x224f8ae0,0x22414824,0x3cc}
+};
+constexpr unsigned filter_tables[]{base_filter_vtable,multi_filter_vtable,name_filter_vtable,class_filter_vtable};
+int create_filter_factory(const char* name,const CampaignFilterFactoryBindings* b,FactoryResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!name||!b)return 0;
+    unsigned i=0;for(;i<4;++i)if(equal_class(name,filter_specs[i].name))break;
+    if(i==4){o->completed=1;return 1;}
+    o->spec=&filter_specs[i];o->matched=1;
+    const auto* owner=b->owner;const unsigned extent=o->spec->extent;
+    if(!owner||!owner->allocate||!owner->base_construct||!owner->initialize||
+       !owner->allocate(owner->context,extent,&o->actor,&o->bytes)||!o->actor||o->bytes<extent||
+       !SinCampaignStorageReadableInternal(o->actor,extent))return 0;
+    auto* a=static_cast<unsigned char*>(o->actor);
+    if(!owner->base_construct(owner->context,a,1))return 0;
+    // The original allocator zeroes fresh derived storage. Base filter
+    // constructor sets six output words, leaving action heads untouched.
+    unsigned pass_head=0,fail_head=0;
+    std::memcpy(&pass_head,a+0x3ac,4);std::memcpy(&fail_head,a+0x3c4,4);
+    if(pass_head||fail_head||a[0x394])return 0;
+    for(unsigned off=0x3c8;off<(i==1?0x3e0u:extent);off+=4){
+        unsigned value=0;std::memcpy(&value,a+off,4);if(value)return 0;
+    }
+    write_field(a,0,filter_tables[i]);
+    for(unsigned off:{0x398u,0x3b0u}){
+        write_field(a,off,0u);write_field(a,off+0xc,0xffffffffu);write_field(a,off+0x10,0u);
+    }
+    if(i==1)for(unsigned j=0;j<5;++j)write_field(a,0x3e0+j*4,0xffffffffu);
+    if(!owner->initialize(owner->context,a,name))return 0;
+    o->networkable=a+0x160;o->completed=1;return 1;
+}
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)return true;
+    if(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable||campaign_filter_class(vt))return true;
     if(vt==colorblend_vtable||vt==remap_vtable||vt==multicompare_vtable||vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
@@ -659,6 +694,11 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     // take priority. Remaining brush/base keys stay owner supplied.
     constexpr Spec trigger_keys[]{{"filtername",0x40c,2},{"StartDisabled",0x408,6},
         {"OnStartTouch",0x414,11},{"OnEndTouch",0x42c,11},{"OnEndTouchAll",0x444,11}};
+    constexpr Spec filter_base_keys[]{{"Negated",0x394,6},{"OnPass",0x398,11},{"OnFail",0x3b0,11}};
+    constexpr Spec filter_multi_keys[]{{"FilterType",0x3c8,5},{"Filter01",0x3cc,2},{"Filter02",0x3d0,2},
+        {"Filter03",0x3d4,2},{"Filter04",0x3d8,2},{"Filter05",0x3dc,2}};
+    constexpr Spec filter_name_keys[]{{"filtername",0x3c8,2}};
+    constexpr Spec filter_class_keys[]{{"filterclass",0x3c8,2}};
     constexpr Spec navigation_keys[]{{"target",0x90,2}};
     constexpr Spec menu_keys[]{
         {"resumeGamePressed",0x398,11},{"newGamePressed",0x3b0,11},{"optionsPressed",0x3c8,11},
@@ -673,6 +713,9 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
     if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);else if(vt==autosave_vtable)match(autosave_keys);else if(vt==multicompare_vtable)match(multicompare_keys);else if(vt==remap_vtable)match(remap_keys);else if(vt==colorblend_vtable)match(colorblend_keys);
     else if(vt==dynamic_trigger_vtable)match(dynamic_keys);
+    else if(vt==multi_filter_vtable)match(filter_multi_keys);
+    else if(vt==name_filter_vtable)match(filter_name_keys);
+    else if(vt==class_filter_vtable)match(filter_class_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -685,6 +728,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     if(!spec&&(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)){
         match(trigger_keys);if(spec)o->base_field=1;
     }
+    if(!spec&&campaign_filter_class(vt)){match(filter_base_keys);if(spec)o->base_field=1;}
     if(!spec){match(common);if(spec)o->base_field=1;}
     if(!spec)return foreign(name);
     o->offset=spec->offset;o->field_type=spec->type;
@@ -3247,4 +3291,19 @@ extern "C" int __cdecl SiN_CampaignFilterEntityCallback(void* context,void* filt
 extern "C" int __cdecl SiN_ActivateCampaignFilter(void* actor,unsigned bytes,
     const sin_port::native_map::CampaignFilterActivationBindings* b,sin_port::native_map::CampaignFilterActivationResult* o) noexcept {
     return sin_port::native_map::campaign_filter_activate(actor,bytes,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_CreateCampaignFilterEntity=_SiN_CreateCampaignFilterEntity")
+extern "C" int __cdecl SiN_CreateCampaignFilterEntity(const char* name,const sin_port::native_map::CampaignFilterFactoryBindings* b,
+    sin_port::native_map::FactoryResult* o) noexcept {
+    return sin_port::native_map::create_filter_factory(name,b,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_CreateCampaignFilterForMap=_SiN_CreateCampaignFilterForMap")
+extern "C" int __cdecl SiN_CreateCampaignFilterForMap(void* context,const char* name,void** actor) noexcept {
+    if(!actor)return 0;*actor=nullptr;
+    auto* b=static_cast<const sin_port::native_map::CampaignFilterFactoryBindings*>(context);
+    sin_port::native_map::FactoryResult r{};
+    if(!sin_port::native_map::create_filter_factory(name,b,&r))return 0;
+    if(r.matched){*actor=r.actor;return 1;}
+    return b->fallback_create&&b->fallback_create(b->fallback_context,name,actor);
 }
