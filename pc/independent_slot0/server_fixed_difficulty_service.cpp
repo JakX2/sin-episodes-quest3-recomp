@@ -2169,7 +2169,7 @@ struct EngineReadScope {
 extern "C" int __cdecl SiN_ReadResupplyEngineConvar(void* cvar,sin_port::native_resupply::Convar id,void* out) noexcept {
     using namespace sin_port::native_resupply;
     const auto index=static_cast<unsigned>(id);
-    if(!out||index>=3||reading_engine_skill)return 0;
+    if(!out||index>=sizeof(convars)/sizeof(convars[0])||reading_engine_skill)return 0;
     EngineReadScope scope;
     if(id==Convar::Debug){
         int value=0;if(!read_engine_cvar(cvar,convars[index].name,int_offset,value))return 0;
