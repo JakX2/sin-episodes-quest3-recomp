@@ -419,6 +419,28 @@ int main(int argc,char** argv){
     install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
     assert(npt->run(f.actor,sizeof(f.actor),69.46f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.think.completed&&ntr.preschedule.completed&&ntr.preschedule.component_called&&ntr.preschedule.speech_called&&f.actor[0x102]&&component_calls==1&&ntr.think.scheduler.scheduler.tactical.last.accepted&&!ntr.elite_called&&!ntr.jet_called);
     assert(f.think_component_tasks==2);
+    // Full outer AI cycle: native pending speech, no broad speech/preschedule callback.
+    auto gst=reinterpret_cast<GetServerNpcNativeSpeechThinkApi>(GetProcAddress(s,server_npc_native_speech_think_export));
+    assert(gst&&!GetProcAddress(c,server_npc_native_speech_think_export)&&!gst(0,sizeof(ServerNpcNativeSpeechThinkApi))&&!gst(1,0));
+    const auto* stapi=gst(1,sizeof(ServerNpcNativeSpeechThinkApi));assert(stapi);
+    ServerNpcNativeSpeechThinkBindings stbind{};stbind.preschedule=nt;stbind.preschedule.preschedule.speech_queue_tick=nullptr;
+    stbind.speech.context=&f;stbind.speech.volume=1;stbind.speech.level=75;
+    stbind.speech.deliver=[](void* p,std::uint32_t token,int index,float volume,int level,int zero,std::uint32_t extra) noexcept -> int{
+        auto& f=F::self(p);assert(f.actor[0x101]&&token==37&&index==17&&volume==1&&level==75&&!zero&&extra==9);f.actor[0x102]=1;return 1;
+    };
+    stbind.speech.random_float=[](void* p,float lo,float hi,float* out) noexcept -> int{
+        assert(F::self(p).actor[0x102]&&lo==1.5f&&hi==2.f);*out=1.5f;return 1;
+    };
+    auto cover_submit=tcb.submit_goal;
+    tcb.submit_goal=[](void* p,std::uint32_t nav,const ServerNpcSoundCoverGoal*,bool* accepted) noexcept -> int{
+        auto& f=F::self(p);int queued=0;std::memcpy(&queued,f.actor+0xccc,4);assert(nav==100&&queued==-1&&f.actor[0x102]);*accepted=true;return 1;
+    };
+    ServerNpcNativeSpeechThinkResult strun;
+    install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
+    f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,69.47f);f.put(f.actor,0xcd4,2);
+    assert(stapi->run(f.actor,sizeof(f.actor),69.47f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&stbind,&strun));
+    assert(strun.preschedule.think.completed&&strun.preschedule.preschedule.completed&&strun.speech.delivered&&strun.speech.owner_written&&strun.speech.cleared&&strun.preschedule.think.scheduler.scheduler.tactical.last.accepted&&component_calls==1&&f.think_component_tasks==3);
+    tcb.submit_goal=cover_submit;
     ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;
     m.before_selection=old_before;
     ab.shared.pending=old_pending;ab.shared.context=nullptr;

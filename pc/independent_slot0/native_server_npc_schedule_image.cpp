@@ -10,6 +10,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherNativeApi* __cdecl SiN_GetServerNpcGruntGatherNativeApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPrescheduleApi* __cdecl SiN_GetServerNpcGruntPrescheduleApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEliteTaskApi* __cdecl SiN_GetServerEliteTaskApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpeechQueueApi* __cdecl SiN_GetServerNpcGruntSpeechQueueApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 bool private_activity(const ServerGruntRegistration* r,int index,float& value) noexcept{
@@ -93,6 +94,8 @@ template<class T>T think_read(const void* p,unsigned off) noexcept {T v{};std::m
 struct PrescheduleRoute {
     const ServerNpcNativePrescheduleThinkBindings* bindings;
     ServerNpcNativePrescheduleThinkResult* result;
+    const ServerNpcGruntSpeechQueueBindings* speech=nullptr;
+    ServerNpcGruntSpeechQueueResult* speech_result=nullptr;
 };
 struct ThinkRoute {
     const ServerNpcThinkCatalogBindings* bindings;
@@ -123,6 +126,10 @@ bool native_preschedule(void* actor,unsigned bytes,float now,const ServerNpcSubc
         if(ready){out.jet_called=1;if(!b.jet_tick||!b.jet_tick(b.jet_context,attachment))return false;}
     }
     auto bound=b.preschedule;bound.entries=reg.entries;bound.count=reg.count;bound.original_vtable=scheduler.original_vtable;bound.conditions=selection.grunt.schedule.conditions;
+    if(route.speech){
+        const auto* queue=SiN_GetServerNpcGruntSpeechQueueApi(1,sizeof(ServerNpcGruntSpeechQueueApi));
+        return queue&&queue->preschedule(actor,bytes,now,&bound,route.speech,&out.preschedule,route.speech_result);
+    }
     return api->run(actor,bytes,now,&bound,&out.preschedule)!=0;
 }
 bool think_before(void* actor,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings& scheduler,const ThinkRoute& route) noexcept{
@@ -325,14 +332,23 @@ int run_think_impl(void* a,unsigned bytes,float now,const ServerScheduleImage* i
 int __cdecl run_think_catalog(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcThinkCatalogBindings* think,ServerNpcThinkCatalogResult* result) noexcept{
     return run_think_impl(a,bytes,now,image,b,full,attack,facing,target,movement,cue,observe,sound_cover,tactical,think,result,nullptr);
 }
-int __cdecl run_native_preschedule_think(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcNativePrescheduleThinkBindings* bindings,ServerNpcNativePrescheduleThinkResult* result) noexcept{
+int run_native_preschedule_impl(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcNativePrescheduleThinkBindings* bindings,ServerNpcNativePrescheduleThinkResult* result,const ServerNpcGruntSpeechQueueBindings* speech,ServerNpcGruntSpeechQueueResult* speech_result) noexcept{
     if(!result)return 0;
     result->preschedule={};result->preschedule.target_handle=0xffffffffu;result->elite={};
     result->elite_called=result->jet_queried=result->jet_called=0;
     if(!bindings)return 0;
-    const PrescheduleRoute route{bindings,result};
+    const PrescheduleRoute route{bindings,result,speech,speech_result};
     return run_think_impl(a,bytes,now,image,b,full,attack,facing,target,movement,cue,observe,sound_cover,tactical,&bindings->think,&result->think,&route);
 }
+int __cdecl run_native_preschedule_think(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcNativePrescheduleThinkBindings* bindings,ServerNpcNativePrescheduleThinkResult* result) noexcept{
+    return run_native_preschedule_impl(a,bytes,now,image,b,full,attack,facing,target,movement,cue,observe,sound_cover,tactical,bindings,result,nullptr,nullptr);
+}
+int __cdecl run_native_speech_think(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcNativeSpeechThinkBindings* bindings,ServerNpcNativeSpeechThinkResult* result) noexcept{
+    if(!result)return 0;result->speech={};result->speech.index=-1;
+    if(!bindings)return 0;
+    return run_native_preschedule_impl(a,bytes,now,image,b,full,attack,facing,target,movement,cue,observe,sound_cover,tactical,&bindings->preschedule,&result->preschedule,&bindings->speech,&result->speech);
+}
+const ServerNpcNativeSpeechThinkApi native_speech_think_api{1,sizeof(ServerNpcNativeSpeechThinkApi),&run_native_speech_think};
 const ServerNpcNativePrescheduleThinkApi native_preschedule_think_api{1,sizeof(ServerNpcNativePrescheduleThinkApi),&run_native_preschedule_think};
 const ServerNpcThinkCatalogApi think_catalog_api{1,sizeof(ServerNpcThinkCatalogApi),&run_think_catalog};
 const ServerNpcNativeGatherCatalogSchedulerApi native_gather_catalog_api{1,sizeof(ServerNpcNativeGatherCatalogSchedulerApi),&run_native_gather_catalog};
@@ -429,4 +445,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativePrescheduleThinkApi=_SiN_GetServerNpcNativePrescheduleThinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativePrescheduleThinkApi* __cdecl SiN_GetServerNpcNativePrescheduleThinkApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcNativePrescheduleThinkApi)?&native_preschedule_think_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativeSpeechThinkApi=_SiN_GetServerNpcNativeSpeechThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeSpeechThinkApi* __cdecl SiN_GetServerNpcNativeSpeechThinkApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcNativeSpeechThinkApi)?&native_speech_think_api:nullptr;
 }
