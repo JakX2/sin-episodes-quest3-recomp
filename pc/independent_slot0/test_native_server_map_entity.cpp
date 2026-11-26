@@ -1885,5 +1885,59 @@ int main(int argc,char** argv){
         assert(!api->autosave_input(f.storage,autosave_extent-1,"Save",&behavior,&result));
         assert(api->destroy_autosave(f.storage,autosave_extent,f.storage+0x160,&owner)&&f.released==1);
     }
+    {
+        alignas(4) unsigned char actor[multicompare_extent]{};
+        put(actor,0,multicompare_vtable);
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=multicompare_extent;return 1;};
+        assert(api->key_value(actor,"IntegerValue","5",&keys,&kr)&&kr.offset==0x3c4);
+        assert(api->key_value(actor,"ShouldComparetoValue","0",&keys,&kr)&&kr.offset==0x3c8);
+        assert(api->key_value(actor,"OnEqual","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x394);
+        assert(api->key_value(actor,"OnNotEqual","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x3ac);
+        struct MultiFixture {void* actor;void* activator;ActionPool* pool;alignas(4) unsigned char rows[4][0x1c]{};unsigned alloc=0,scheduled=0,last_id=0;std::string order;} f{actor,timer,&pool};
+        MultiCompareBindings behavior{};behavior.context=&f;
+        behavior.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<MultiFixture*>(p);if(!token||token>f.alloc)return 0;*row=f.rows[token-1];*bytes=0x1c;return 1;
+        };
+        behavior.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<MultiFixture*>(p);if(f.alloc==4)return 0;*row=f.rows[f.alloc];*token=++f.alloc;*bytes=0x1c;return 1;
+        };
+        behavior.resolve_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            if(token!=201)return 0;*text="5 trailing";*bytes=11;return 1;
+        };
+        behavior.schedule=[](void* p,void* target,void* a,void* c,const char* input,float delay,unsigned id) noexcept ->int{
+            auto& f=*static_cast<MultiFixture*>(p);assert(target==f.actor&&a==f.activator&&c==f.actor&&!std::strcmp(input,"ForceRecompare")&&!delay);
+            ++f.scheduled;f.last_id=id;return 1;
+        };
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<MultiFixture*>(p);for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<MultiFixture*>(p);assert(a==f.activator&&c==f.actor&&!action->variant_type);f.order+=char('0'+action->action_id-41);return 1;
+        };
+        behavior.output=&fire;MultiCompareResult result{};
+        unsigned v[5]{5,0x11223344,0x55667788,0xffffffffu,5};
+        auto mi=[&](const char* name,unsigned id=0){return api->multicompare_input(actor,sizeof(actor),name,timer,v,sizeof(v),id,&behavior,&result);};
+        assert(mi("CompareValues")&&result.equal&&f.order=="0");
+        assert(mi("InputValue",17)&&result.inserted&&result.scheduled&&f.last_id==17&&word(actor,0x3d0)==1&&word(actor,0x3cc)==1);
+        assert(!std::memcmp(f.rows[0],v,0x14)&&word(f.rows[0],0x14)==17&&!word(f.rows[0],0x18));
+        v[0]=0x40b00000u;v[4]=1;
+        assert(mi("InputValue",18)&&result.inserted&&!result.scheduled&&word(f.rows[1],0)==5&&word(f.rows[1],0x10)==5&&word(f.rows[1],0x18)==1&&word(actor,0x3cc)==2);
+        v[0]=201;v[4]=2;
+        assert(mi("InputValue",17)&&result.replaced&&!result.scheduled&&f.alloc==2&&word(f.rows[0],0)==5);
+        assert(mi("ForceRecompare")&&!result.handled&&word(actor,0x3d0)==1);
+        assert(mi("CompareValues")&&result.equal&&result.visited==2&&!word(actor,0x3d0)&&f.order=="00");
+        v[0]=6;v[4]=5;
+        assert(mi("InputValue",18)&&result.replaced&&result.scheduled&&f.last_id==18);
+        assert(mi("CompareValues")&&!result.equal&&f.order=="001");
+        assert(api->key_value(actor,"ShouldComparetoValue","1",&keys,&kr));
+        v[0]=6;assert(mi("InputValue",17)&&result.replaced);
+        assert(mi("CompareValues")&&!result.equal&&f.order=="0011");
+        assert(api->key_value(actor,"IntegerValue","6",&keys,&kr));
+        assert(mi("CompareValues")&&result.equal&&f.order=="00110");
+        v[4]=6;assert(mi("InputValue",19)&&result.rejected&&f.alloc==2&&!word(actor,0x3d0));
+        put(f.rows[0],0x18,2);assert(!mi("CompareValues")&&!result.completed);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
