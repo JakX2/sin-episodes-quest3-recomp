@@ -2207,12 +2207,14 @@ int __cdecl grunt_point_policy(void* actor,unsigned bytes,const float point[3],f
     };
     float origin[3]{};
     if(!b->origin||!b->origin(b->context,actor,origin)||!finite_vec(origin))return 0;
-    // Erratum: 2235b0da..2235b0f7 loads stack+10 twice and +0c once.
-    // This is z*z + z*z + y*y, NOT x*x+y*y+z*z.
+    // 2235b0da..2235b0f7: push ecx shifts the second +10 and final +0c
+    // references to the previous +0c (Y) and +08 (X), respectively.
+    const float dx=static_cast<float>(static_cast<double>(point[0])-origin[0]);
     const float dy=static_cast<float>(static_cast<double>(point[1])-origin[1]);
     const float dz=static_cast<float>(static_cast<double>(point[2])-origin[2]);
-    out->distance=std::sqrt(static_cast<float>(static_cast<double>(dz)*dz+static_cast<double>(dz)*dz+static_cast<double>(dy)*dy));
-    if(!std::isfinite(out->distance))return 0;
+    const float squared=static_cast<float>(static_cast<double>(dz)*dz+static_cast<double>(dy)*dy+static_cast<double>(dx)*dx);
+    if(!std::isfinite(squared))return 0;
+    out->distance=std::sqrt(squared);
     if(out->distance<128.f||out->distance>1024.f){out->range_blocked=1;return deadline();}
     const float scalar=read<float>(actor,0x394);if(!std::isfinite(scalar))return 0;
     if(scalar==0){out->scalar_blocked=1;return 1;}
@@ -6729,7 +6731,7 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         return native(allowed?84:49);
     }
     case 107:{
-        if(!policy)return false;
+        if(!policy||n<0xca1)return false;
         write<std::uint8_t>(a,0xca0,1);
         if(void* w=registry.Resolve(read<unsigned>(a,0x78c))){
             if(!span(w,4))return false;
@@ -6775,6 +6777,7 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         return native(route.schedule);
     }
     case 33: // 2235d809: write precedes +790, even on rejection
+        if(n<0xc94)return false;
         write<std::uint8_t>(a,0xc64,1);
         if(policy_rejected())return native(88);
         {
@@ -6784,6 +6787,7 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
             return native(yes?106:88);
         }
     case 41:{ // 2235d8a1: ordered conditions, then +790 false route
+        if(n<0xc94)return false;
         bool yes=false;
         if(!condition(4,yes))return false;
         if(!yes&&!condition(3,yes))return false;
@@ -6839,6 +6843,7 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         return native(caps&0x4000?42:92);
     }
     case 80:{ // 2235da1b: player predicate, latch, clean cached absolute origins
+        if(n<0xc68)return false;
         void* e=target();if(!e)return native(80);
         bool player=false,npc=false;if(!target_kind(e,player,npc))return false;
         if(!player||!read<std::uint8_t>(a,0xc67))return native(80);
