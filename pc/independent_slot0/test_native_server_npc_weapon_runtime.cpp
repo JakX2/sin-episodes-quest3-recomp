@@ -263,7 +263,9 @@ int main(int argc,char** argv){
         auto& q=*static_cast<PostFixture*>(p);
         if(token==0x1111u){*data=q.nav;*n=sizeof(q.nav);return 1;}
         if(token==0x2222u){*data=q.path;*n=sizeof(q.path);return 1;}
-        if(token==0x3333u){*data=&q.dirty;*n=4;return 1;}return 0;
+        if(token==0x3333u){*data=&q.dirty;*n=4;return 1;}
+        if(token==0x1000u){*data=q.f->component;*n=sizeof(q.f->component);return 1;}
+        if(token==0x2000u){*data=q.f->path;*n=sizeof(q.f->path);return 1;}return 0;
     };
     pb.navigation_update=[](void* p,void* a,std::uint32_t token,float dt) noexcept -> int {
         auto& q=*static_cast<PostFixture*>(p);assert(a==q.f->actor&&token==0x1111u&&q.f->actor[0x794]==1&&dt>0.09f&&dt<0.11f);
@@ -360,6 +362,8 @@ int main(int argc,char** argv){
     f.put(f.actor,0x74,123);f.put(f.actor,0xb8,0u);f.put(f.actor,0x85c,0);f.put(f.actor,0x860,0);
     f.put(f.actor,0x850,3);f.put(f.actor,0x868,0);f.put(f.actor,0x8c,1);f.put(f.actor,0x864,20.f);
     f.put(f.actor,0x8ec,0u);f.put(f.actor,0x78c,0x7001u);f.actor[0xc10]=0;f.actor[0xbe1]=1;
+    // Both animation and post-animation must resolve the same nav/path.
+    f.put(f.actor,0x8f8,0x1000u);f.put(f.component,0x24,0x2000u);
     f.put(f.weapon,0x4ec,0);f.put(f.weapon,0x4f0,-1);f.put(f.weapon,0x580,0.f);
     seed_frame();assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&oo.impact_called&&oo.active_called&&!oo.think_called&&po.completed&&jet_out.animation.fixed_resets==1);
     assert(f.get<int>(f.weapon,0x4ec)==31&&oo.finish.next_time==static_cast<float>(double(in.now)+.1)&&oo.finish.deadline==20.f);
