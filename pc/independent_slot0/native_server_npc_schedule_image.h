@@ -210,4 +210,18 @@ struct ServerNpcNativePrescheduleThinkApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativePrescheduleThinkBindings*,ServerNpcNativePrescheduleThinkResult*) noexcept;
 };
 using GetServerNpcNativePrescheduleThinkApi=const ServerNpcNativePrescheduleThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_native_speech_think_export[]="SiN_GetServerNpcNativeSpeechThinkApi";
+struct ServerNpcNativeSpeechThinkBindings {
+    ServerNpcNativePrescheduleThinkBindings preschedule;
+    ServerNpcGruntSpeechQueueBindings speech;
+};
+struct ServerNpcNativeSpeechThinkResult {
+    ServerNpcNativePrescheduleThinkResult preschedule;
+    ServerNpcGruntSpeechQueueResult speech;
+};
+struct ServerNpcNativeSpeechThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativeSpeechThinkBindings*,ServerNpcNativeSpeechThinkResult*) noexcept;
+};
+using GetServerNpcNativeSpeechThinkApi=const ServerNpcNativeSpeechThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
