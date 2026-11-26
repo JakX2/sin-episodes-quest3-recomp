@@ -2599,6 +2599,75 @@ int __cdecl grunt_squad_leave(void* a,unsigned n,std::uint32_t group_token,std::
     write(a,0x9c4,0u);write(a,0x9c8,0u);out->cleared=1;out->remaining=read<int>(group,0x48);
     return done();
 }
+int __cdecl grunt_squad_join(void* a,unsigned n,std::uint32_t group_token,std::uint32_t array_token,std::uint32_t handle,float now,const ServerNpcGruntSquadJoinBindings* b,ServerNpcGruntSquadJoinResult* out) noexcept{
+    if(!out)return 0;*out={};out->index=-1;out->evicted_handle=0xffffffffu;
+    if(!b||!std::isfinite(now))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(!a)return done();
+    const auto& sb=b->group.sentence;
+    if(n<0xdb2||!relation_grunt_class(sb.speech.original_vtable)||!group_token||!array_token||
+       sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    if(read<int>(a,0x8c)){out->blocked=1;return done();}
+    const auto previous=read<unsigned>(a,0x9c4);
+    if(previous==group_token){out->already_member=1;return done();}
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    if(registry.Resolve(handle)!=a)return 0;
+    if(previous){
+        out->detached=1;
+        if(!grunt_squad_leave(a,n,previous,handle,false,now,&b->group,&out->previous))return 0;
+    }
+    void* group=nullptr;if(!speech_squad(sb.speech,group_token,group))return 0;
+    int count=read<int>(group,0x48);if(count<0||count>16)return 0;
+    // At capacity only the inline array count changes: evicted owner is NOT detached.
+    if(count==16){out->evicted=1;out->evicted_handle=read<unsigned>(group,8+15*4);write(group,0x48,--count);}
+    out->index=count;write(group,0x48,count+1);write(group,0x4c,array_token);write(group,8+4*count,handle);
+    out->appended=1;out->count=count+1;
+    write(a,0x9c4,group_token);write(a,0x9c8,read<unsigned>(group,4));out->owner_written=1;
+    if(out->count<=1)return done();
+    // 22060cc0: first raw slot, not first eligible; invalid slot is a host failure.
+    void* first=registry.Resolve(read<unsigned>(group,8));if(!first)return 0;
+    out->first_resolved=1;
+    unsigned vt=0,extent=0,token=0;
+    if(!b->group.member_class||!b->group.member_class(b->group.context,first,&vt,&extent))return 0;
+    if(relation_grunt_class(vt)){if(extent<0x988)return 0;token=read<unsigned>(first,0x984);}
+    else if(!b->other_memory||!b->other_memory(b->group.context,first,&token))return 0;
+    // Original assumes valid memory. Do not traverse a null/aliased mutable owner tree.
+    if(!token||token==read<unsigned>(a,0x984))return 0;
+    void* memory=nullptr;unsigned mn=0;MemoryTree tree;unsigned height=0;
+    if(!memory_storage(&b->source_memory,token,0x40,memory,mn)||!tree.open(memory,mn,&b->source_memory)||!tree.check(height))return 0;
+    unsigned stack[255]{},depth=0,i=tree.root;
+    auto report=b->report;report.original_vtable=sb.speech.original_vtable;report.mutation.entries=sb.entries;report.mutation.count=sb.count;
+    ServerNpcGruntPerceptionSpeechBindings dialogue{};dialogue.sentence=sb;dialogue.request=b->group.request;
+    reset_perception_speech(out->dialogue);const PerceptionSpeechRoute route{dialogue,out->dialogue};
+    // Valid stable tree: 2206b7b0/2206b130 visit in-order, skip unresolved handles.
+    while(i!=MemoryTree::nil||depth){
+        while(i!=MemoryTree::nil){stack[depth++]=i;i=tree.edge(i,0);}
+        i=stack[--depth];++out->records;
+        void* record=nullptr;unsigned rn=0;
+        if(!memory_storage(&b->source_memory,tree.record(i),0x10,record,rn))return 0;
+        void* target=registry.Resolve(read<unsigned>(record,0));
+        if(!target)++out->stale;
+        else{
+            float pos[3];std::memcpy(pos,static_cast<unsigned char*>(record)+4,12);
+            ++out->reports;
+            if(!grunt_memory_report_impl(a,n,target,pos,first,now,&report,&out->last_report,&route))return 0;
+            out->created+=out->last_report.mutation.created;out->updated+=out->last_report.mutation.updated;
+        }
+        i=tree.edge(i,1);
+    }
+    return done();
+}
+int __cdecl grunt_squad_detach(void* a,unsigned n,std::uint32_t handle,float now,const ServerNpcGruntSquadLeaveBindings* b,ServerNpcGruntSquadLeaveResult* out) noexcept{
+    if(!out)return 0;*out={};out->index=-1;
+    if(!a||n<0x9cc||!b||!relation_grunt_class(b->sentence.speech.original_vtable)||!std::isfinite(now))return 0;
+    const auto token=read<unsigned>(a,0x9c4);
+    if(token){
+        if(!grunt_squad_leave(a,n,token,handle,false,now,b,out))return 0;
+        write(a,0x9c4,0u); // wrapper writes even after leave's missing return
+    }
+    out->completed=1;return 1;
+}
+const ServerNpcGruntSquadJoinApi squad_join_api{1,sizeof(ServerNpcGruntSquadJoinApi),&grunt_squad_join,&grunt_squad_detach};
 const ServerNpcGruntSquadLeaveApi squad_leave_api{1,sizeof(ServerNpcGruntSquadLeaveApi),&grunt_squad_leave};
 const ServerNpcGruntRequestSpeechApi request_speech_api{1,sizeof(ServerNpcGruntRequestSpeechApi),&grunt_speak_request,&grunt_survivor_request};
 const ServerNpcGruntNativeSpeechApi native_speech_api{1,sizeof(ServerNpcGruntNativeSpeechApi),&grunt_speak_native,&grunt_survivor};
@@ -2984,4 +3053,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadLeaveApi=_SiN_GetServerNpcGruntSquadLeaveApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadLeaveApi* __cdecl SiN_GetServerNpcGruntSquadLeaveApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadLeaveApi)?&squad_leave_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadJoinApi=_SiN_GetServerNpcGruntSquadJoinApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadJoinApi* __cdecl SiN_GetServerNpcGruntSquadJoinApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadJoinApi)?&squad_join_api:nullptr;
 }
