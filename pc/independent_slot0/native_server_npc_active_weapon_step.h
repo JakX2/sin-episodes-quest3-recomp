@@ -250,6 +250,34 @@ struct ServerEntityEventServiceApi {
 };
 using GetServerEntityEventServiceApi=const ServerEntityEventServiceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Original CBaseEntity::AcceptInput 22141400. Datamap records and name
+// tokens are original PE32-shaped storage, supplied by the independent owner.
+inline constexpr char server_entity_accept_input_export[]="SiN_GetServerEntityAcceptInputApi";
+struct ServerEntityInputData {
+    void* activator;
+    void* caller;
+    unsigned char variant[0x14];
+    std::uint32_t output_id;
+};
+struct ServerEntityAcceptInputBindings {
+    const ServerNpcActivePostAnimationBindings* storage;
+    void* context;
+    ServerWeaponActivityBindings entities;
+    int (__cdecl *name_equal)(void*,std::uint32_t,std::uint32_t,bool*) noexcept;
+    int (__cdecl *convert)(void*,void* variant,unsigned target_type,bool* converted) noexcept;
+    int (__cdecl *handler)(void*,void* entity,std::uint32_t original_handler,const ServerEntityInputData*) noexcept;
+    int (__cdecl *diagnostic)(void*,void* entity,void* caller,std::uint32_t input,unsigned reason,const void* variant) noexcept;
+};
+struct ServerEntityAcceptInputResult {
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason;
+};
+enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
+struct ServerEntityAcceptInputApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t original_vtable,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned variant_bytes,std::uint32_t output_id,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*) noexcept;
+};
+using GetServerEntityAcceptInputApi=const ServerEntityAcceptInputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_wake_transition_export[]="SiN_GetServerNpcWakeTransitionApi";
 struct ServerNpcWakeTransitionBindings {
     const ServerNpcActivePostAnimationBindings* storage;
