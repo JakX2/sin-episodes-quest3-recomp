@@ -1,0 +1,2 @@
+# Phase 1218: correct ignition repeat regression
+Phase1214 and 1215 all four workflows passed. Phase1216 run 45745585272 and Phase1217 run 45745645469 failed 1/200 at the same second standalone ignition assertion. Re-disassembled authenticated original 220f2213 TEST BYTE [esi+bf],8 / JNE 220f22f2; this aliases bit27 of dword +bc set by 220f228c. The second call must stop after wrapper attribution and before flame creation or output. Correct expectation and counters, keep separate factory-null and full-chain assertions. Production unchanged; Windows CI pending.
