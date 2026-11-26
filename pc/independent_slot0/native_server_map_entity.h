@@ -112,12 +112,14 @@ struct AutoBindings {
     int (__cdecl *schedule)(void*,void*,float) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
     void* schedule_context; // optional native tick scheduler
+    const RelayQueueBindings* native_queue;
 };
 struct AutoResult {
     unsigned completed,base_called,scheduled,global_checked,blocked,outputs,queued,removed;
     unsigned load_output,violence_output;
     int global_state,load_type;
     float next_think;
+    unsigned native_output_queued;
 };
 inline constexpr unsigned timer_vtable=0x22420e14,timer_extent=0x3f4;
 inline constexpr unsigned branch_vtable=0x22422294,branch_extent=0x3c8;
@@ -199,9 +201,10 @@ struct MenuBindings {
     int (__cdecl *base_restore)(void*,void*) noexcept;
     // Return transport success, not the original manager's bool result.
     int (__cdecl *subscribe)(void*,void*,const char*,bool) noexcept;
+    const RelayQueueBindings* native_queue;
 };
 struct MenuResult {
-    unsigned completed,base_called,subscribed,name_reads,button_reads,selected,highlighted,outputs,queued,first_offset,last_offset;
+    unsigned completed,base_called,subscribed,name_reads,button_reads,selected,highlighted,outputs,queued,first_offset,last_offset,native_output_queued;
 };
 struct LogicDestroyBindings {
     void* context;
