@@ -57,8 +57,8 @@ int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State*,const 
 int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
 int __cdecl SinServerActivateWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::Bindings*,
     sin_port::native_level::Result*,void*) noexcept;
-extern "C" int __cdecl SiN_TouchCampaignTriggerWithEngineEvents(void*,unsigned,void*,const sin_port::native_map::CampaignTriggerBindings*,
-    void*,sin_port::native_map::CampaignTriggerResult*,int*) noexcept;
+int __cdecl SinTouchCampaignTriggerFromStartupInternal(void*,unsigned,void*,const sin_port::native_map::CampaignTriggerBindings*,
+    void*,sin_port::native_map::CampaignTriggerResult*,int*,void*,void*) noexcept;
 extern "C" const sin_port::native_server_startup::Api* __cdecl SiN_GetServerStartupApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_game_frame::Api* __cdecl SiN_GetServerGameFrameApi(std::uint32_t,std::uint32_t) noexcept;
 #endif
@@ -1607,9 +1607,13 @@ extern "C" int __cdecl SiN_TouchStartedCampaignTrigger(
     const sin_port::native_map::CampaignTriggerBindings* bindings,sin_port::native_map::CampaignTriggerResult* result,int* publication) noexcept {
     if(result)*result={};
     if(publication)*publication=sin_port::native_map::engine_event_not_attempted;
-    if(!eventSessionReady(session)||g_startup_invocation||g_gameinit_invocation||g_level_invocation)return 0;
+    static thread_local bool touching=false;
+    if(touching||!eventSessionReady(session)||g_startup_invocation||g_gameinit_invocation||g_level_invocation)return 0;
+    struct Guard {bool& active;~Guard(){active=false;}} guard{touching};touching=true;
     // Touch is permitted during the ordinary game-frame boundary.
-    return SiN_TouchCampaignTriggerWithEngineEvents(actor,bytes,other,bindings,session->manager,result,publication);
+    // The acquired startup owner replaces the hosted owner-word callback.
+    return SinTouchCampaignTriggerFromStartupInternal(actor,bytes,other,bindings,session->manager,result,publication,
+        session->startup->post.globals,session->startup->engine_server);
 }
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameBoundary=_SiN_InvokeServerGameFrameBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(bool simulating,const sin_port::native_game_frame::State* state,const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result) noexcept {

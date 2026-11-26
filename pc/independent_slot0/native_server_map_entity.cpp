@@ -3,7 +3,7 @@
 #include <cmath>
 #include "server_fixed_difficulty_service.h"
 int __cdecl SinPublishCampaignEventInternal(void*,const sin_port::fixed_service::NativeTriggerEvent*,
-    int (__cdecl *)(void*,int*) noexcept,void*,const unsigned char*) noexcept;
+    int (__cdecl *)(void*,int*) noexcept,void*,const unsigned char*,void*,void*) noexcept;
 extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::fixed_service::Api* __cdecl SiN_GetFixedDifficultyApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
@@ -848,14 +848,14 @@ bool campaign_name(void* a,const CampaignTriggerBindings& b,const char*& name) n
 // 222b63b0 / 222b64d0. Owner event operations are explicit; original
 // CreateEvent null skips every setter and still permits removal.
 bool campaign_event(void* a,const char* name,int descriptor,float value,int decision,const CampaignTriggerBindings& b,CampaignTriggerResult& o,
-    void* manager,int* publication) noexcept {
+    void* manager,int* publication,void* startup_globals=nullptr,void* startup_engine=nullptr) noexcept {
     if(manager){
         namespace fs=sin_port::fixed_service;
         const fs::NativeTriggerEvent event{o.dynamic?fs::TriggerDynamicEvent:fs::TriggerGameEvent,
             descriptor,-1,-1,decision,value,0,0,0,name};
         o.event_attempted=1;o.descriptor=descriptor;
         *publication=SinPublishCampaignEventInternal(manager,&event,b.owner_word,b.context,
-            o.dynamic?static_cast<const unsigned char*>(a)+0x2bc:nullptr);
+            o.dynamic?static_cast<const unsigned char*>(a)+0x2bc:nullptr,startup_globals,startup_engine);
         if(*publication==fs::EventUnavailable){o.event_unavailable=1;return true;}
         if(*publication==fs::EventFired){o.event_fired=1;return true;}
         // Ordinary FireEvent false consumes the event. The original trigger
@@ -911,7 +911,8 @@ int campaign_trigger_spawn_impl(void* a,unsigned n,const CampaignTriggerBindings
     }
     o->completed=1;return 1;
 }
-int campaign_trigger_touch_impl(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o,void* manager,int* publication) noexcept {
+int campaign_trigger_touch_impl(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o,void* manager,int* publication,
+    void* startup_globals=nullptr,void* startup_engine=nullptr) noexcept {
     if(!campaign_valid(a,n,b,o)||!other||!b->is_player)return 0;
     bool player=false;if(!b->is_player(b->context,other,&player))return 0;
     if(!player){o->nonplayer=o->completed=1;return 1;}
@@ -939,7 +940,7 @@ int campaign_trigger_touch_impl(void* a,unsigned n,void* other,const CampaignTri
         value=read_field<float>(a,0x470);decision=read_field<int>(a,0x474);
     }
     if(fixed&&!std::isfinite(value))return 0;
-    if(!campaign_event(a,name,o->dynamic?0:12,value,decision,*b,*o,manager,publication))return 0;
+    if(!campaign_event(a,name,o->dynamic?0:12,value,decision,*b,*o,manager,publication,startup_globals,startup_engine))return 0;
     // EndOfGame is read after the event helper, and only its LOW BYTE.
     if(o->dynamic){
         const unsigned end=read_field<unsigned char>(a,0x478);
@@ -2806,4 +2807,11 @@ extern "C" int __cdecl SiN_TouchCampaignTriggerWithEngineEvents(void* a,unsigned
 int __cdecl SinParseMapWithEventsInternal(const char* text,unsigned bytes,bool activate,
     const sin_port::native_map::PipelineBindings* b,sin_port::native_map::PipelineResult* o,void* manager) noexcept {
     return manager&&sin_port::native_map::parse_all_impl(text,bytes,activate,b,o,manager);
+}
+
+int __cdecl SinTouchCampaignTriggerFromStartupInternal(void* a,unsigned n,void* other,
+    const sin_port::native_map::CampaignTriggerBindings* b,void* manager,
+    sin_port::native_map::CampaignTriggerResult* o,int* publication,void* globals,void* engine) noexcept {
+    if(!manager||!publication||!globals||!engine)return 0;
+    return sin_port::native_map::campaign_trigger_touch_impl(a,n,other,b,o,manager,publication,globals,engine);
 }

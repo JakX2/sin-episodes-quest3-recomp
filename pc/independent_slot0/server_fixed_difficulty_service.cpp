@@ -2321,10 +2321,11 @@ extern "C" int SIN_FIXED_CALL SiN_DecideNpcWithEngineRandom(void* engine,
 // original executable are called by absolute VA.
 // Optional raw-layout source: owner lookup must follow successful CreateEvent.
 // Position words are read immediately before their corresponding setter.
+int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
 int SIN_FIXED_CALL SinPublishCampaignEventInternal(void* manager,
     const abi::NativeTriggerEvent* input,
     int (SIN_FIXED_CALL *owner_reader)(void*,int*) noexcept,void* context,
-    const unsigned char* position) noexcept {
+    const unsigned char* position,void* startup_globals,void* startup_engine) noexcept {
     if(native_event_active||(reading_engine_skill&&!trigger_publish_active)||
        !manager||!input||!bounded_string(input->name))return abi::EventRejected;
     auto event=*input;
@@ -2364,12 +2365,29 @@ int SIN_FIXED_CALL SinPublishCampaignEventInternal(void* manager,
         catch(...){return abi::EventCleanupUncertain;}
     };
     if(!integer||!string||(dynamic&&!real))return discard();
-    if(dynamic&&position&&(!owner_reader||!owner_reader(context,&event.owner)))return discard();
+    const bool native_owner=dynamic&&position&&startup_globals&&startup_engine;
+    void* owner_actor=nullptr;
+    if(native_owner){
+        // Original 222b64ee acquires the pointer before descriptor.
+        if(!SinResolveLocalPlayerInternal(startup_globals,startup_engine,&owner_actor))return discard();
+    }else if(dynamic&&position&&(!owner_reader||!owner_reader(context,&event.owner)))return discard();
     const auto set_int=reinterpret_cast<SetInt>(integer);
     const auto set_string=reinterpret_cast<SetString>(string);
     const auto set_float=reinterpret_cast<SetFloat>(real);
     try {
         set_int(object,"descriptor",event.descriptor);
+        if(native_owner){
+            // Original 222b650e obtains the full handle AFTER descriptor.
+            // Independent raw-layout objects use an authenticated marker,
+            // not a callable original vtable address.
+            event.owner=-1;
+            if(owner_actor){
+                if(!memory::Readable(owner_actor,0x37c))return discard();
+                unsigned vt=0;std::memcpy(&vt,owner_actor,4);
+                if(vt!=0x224aec3cu)return discard();
+                std::memcpy(&event.owner,static_cast<const unsigned char*>(owner_actor)+0x378,4);
+            }
+        }
         set_int(object,"owner",event.owner);
         set_int(object,"subject",event.advisor);
         set_string(object,"name",name.c_str());
@@ -2394,7 +2412,7 @@ int SIN_FIXED_CALL SinPublishCampaignEventInternal(void* manager,
 #pragma comment(linker,"/EXPORT:SiN_PublishCampaignTriggerEvent=_SiN_PublishCampaignTriggerEvent")
 extern "C" int SIN_FIXED_CALL SiN_PublishCampaignTriggerEvent(void* manager,
     const abi::NativeTriggerEvent* input) noexcept {
-    return SinPublishCampaignEventInternal(manager,input,nullptr,nullptr,nullptr);
+    return SinPublishCampaignEventInternal(manager,input,nullptr,nullptr,nullptr,nullptr,nullptr);
 }
 
 // Map and activation-health writers use the same verified manager/event
