@@ -3202,6 +3202,48 @@ int main(int argc,char** argv){
         f.put(q.player,0,0x2245222cu);f.put(q.player,0x650,4);
         reset_reward();q.expected_pickup="item_ammo_magnum";
         assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_native&&o.reward_factory&&o.finished);
+        // Verify all six retail pickup class mappings through the native
+        // definition catalog, not just MAG and AR. A full second ammo type
+        // prevents the running-minimum equality gate from suppressing a
+        // single exactly-representable low reserve (e.g. DUAG 1/8).
+        struct RewardCase{const char* name;const char* pickup;unsigned index;int capacity;};
+        constexpr RewardCase reward_cases[]{
+            {"mAg","item_ammo_magnum",1,80},
+            {"aR","item_ammo_ar",2,330},
+            {"bUcK","item_ammo_buckshot",3,30},
+            {"aRnAdE","item_ammo_ar_grenade",6,3},
+            {"fLaK","item_ammo_flak",10,10},
+            {"dUaG","item_ammo_duag",9,8},
+        };
+        reward.ammo_index=nullptr;reward.max_carry=nullptr;
+        for(const auto& c:reward_cases){
+            std::memset(q.script_records[0]+0x17c,0,64);
+            std::memcpy(q.script_records[0]+0x17c,c.name,std::strlen(c.name)+1);
+            const unsigned other=c.index==1?2:1;
+            std::memcpy(q.script_records[0]+0x19c,other==2?"AR":"MAG",other==2?3:4);
+            for(unsigned i=0;i<32;++i)f.put(q.player,0x64c+4*i,0);
+            f.put(q.player,0x64c+4*c.index,1);
+            f.put(q.player,0x64c+4*other,other==2?330:80);
+            reset_reward();q.expected_pickup=c.pickup;
+            assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.reward_slots==48&&o.reward_weapons==1&&o.reward_candidates==2);
+            assert(o.reward_native_indices==2&&o.reward_native_maxima==4&&!q.index_reads&&!q.max_reads);
+            assert(o.reward_ammo_index==static_cast<int>(c.index)&&o.reward_minimum==1.f/c.capacity&&o.reward_factory&&q.factories==1&&o.finished&&q.step==6);
+        }
+        // Reject an unterminated primary or secondary name without invoking
+        // the factory, even when a valid primary has already selected a class.
+        for(unsigned off:{0x17cu,0x19cu}){
+            std::memset(q.script_records[0]+0x17c,0,64);
+            std::memcpy(q.script_records[0]+0x17c,"MAG",4);
+            std::memset(q.script_records[0]+off,'X',32);
+            reset_reward();
+            assert(!api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_native&&!o.reward_factory&&!q.factories&&!q.step);
+        }
+        // A valid handle with a missing script token is not a stale handle
+        // and must fail rather than create an arbitrary fallback pickup.
+        f.put(q.script_rows,12,0u);
+        reset_reward();
+        assert(!api->post(q.a,sizeof(q.a),&b,&o)&&o.reward_native&&o.reward_weapons==1&&!o.reward_candidates&&!q.factories&&!q.step);
+        f.put(q.script_rows,12,1u);
         // Bad player vtable is rejected before inventory and factory access.
         f.put(q.player,0,0xdeadbeefu);reset_reward();assert(!api->post(q.a,sizeof(q.a),&b,&o)&&!o.reward_native&&!q.factories);
 
