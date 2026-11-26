@@ -976,4 +976,26 @@ struct ServerNpcGruntNativeSpeechApi {
     int (__cdecl *survivor)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntSentenceBindings*,ServerNpcGruntSurvivorResult*) noexcept;
 };
 using GetServerNpcGruntNativeSpeechApi=const ServerNpcGruntNativeSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_sentence_request_export[]="SiN_GetServerNpcGruntSentenceRequestApi";
+struct ServerNpcGruntSentenceRequestBindings {
+    void* context;
+    bool manager_ready; // original 2256e684 nonzero
+    int (__cdecl *suffix)(void*,std::uint32_t,const char**,unsigned*) noexcept; // raw actor+8e8
+    int (__cdecl *group_index)(void*,const char*,int*) noexcept; // engine +84
+    int (__cdecl *pick_name)(void*,int,char*,unsigned,int*) noexcept; // +74, 64 bytes
+    int (__cdecl *name_index)(void*,const char*,int*) noexcept; // +7c, name+1
+    // Engine submission/recipient/audio boundary 22145e00, preserving raw arguments.
+    int (__cdecl *submit)(void*,std::uint32_t,int,float,int,int,std::uint32_t) noexcept;
+};
+struct ServerNpcGruntSentenceRequestResult {
+    char group[128],selected[64];
+    int group_id,pick_result,sentence_id,request_result;
+    unsigned completed,suffix_used,manager_missing,group_called,pick_called,lookup_called,submitted;
+};
+struct ServerNpcGruntSentenceRequestApi {
+    std::uint32_t version,size;
+    int (__cdecl *request)(void*,unsigned,const char*,const ServerNpcGruntSpeechQueueBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntSentenceRequestResult*) noexcept;
+    int (__cdecl *dispatch)(void*,unsigned,float,const char*,int,unsigned,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntSentenceResult*,ServerNpcGruntSentenceRequestResult*) noexcept;
+};
+using GetServerNpcGruntSentenceRequestApi=const ServerNpcGruntSentenceRequestApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
