@@ -1,4 +1,5 @@
 #include "native_server_npc_state_reconsider.h"
+#include "native_server_weapon_script_view.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -4527,7 +4528,7 @@ int main(int argc,char** argv){
         b.final_cue=[](void* x,void*) noexcept -> int{++CombatFixture::self(x).finals;return 1;};
         b.random_int=[](void* x,int lo,int hi,int* v) noexcept -> int{assert(lo==0&&hi==99);*v=CombatFixture::self(x).roll;return 1;};
         b.special_combat=[](void* x,void*,bool,int* v) noexcept -> int{*v=CombatFixture::self(x).special;return 1;};
-        b.extent=[](void* x,void* e,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);if(e==q.enemy){*n=sizeof(q.enemy);return 1;}if(e==q.weapon){*n=sizeof(q.weapon);return 1;}return 0;};
+        b.extent=[](void* x,void* e,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);if(e==q.a){*n=sizeof(q.a);return 1;}if(e==q.enemy){*n=sizeof(q.enemy);return 1;}if(e==q.weapon){*n=sizeof(q.weapon);return 1;}return 0;};
         b.position=[](void* x,void* e,bool,float* v) noexcept -> int{auto& q=CombatFixture::self(x);if(e==q.a){v[0]=v[1]=v[2]=0;return 1;}assert(e==q.enemy||e==q.weapon);std::memcpy(v,e==q.enemy?q.position:q.candidate_pos,12);return 1;};
         f.put(q.a,0x8a0,0x1001u);f.put(q.a,0x78c,0x2002u);f.put(q.a,0x9cc,-1);
         f.put(q.group,0x5c,200u);f.put(q.group,0x60,200u);f.put(q.group,0x64,1);f.put(q.group,0x6c,1);f.put(q.group,0x74,100.f);
@@ -5039,6 +5040,44 @@ int main(int argc,char** argv){
         assert(gather_attack(99.f)&&nar.attack.conditions[0]==36);
         assert(gather_attack()&&nar.attack.conditions[0]==20);
         f.put(q.weapon,0x4e4,0);assert(!gather_attack()); // unresolved +330, fail closed
+        // All nine weapon classes share +330 / +334.
+        const auto ammo_getter=reinterpret_cast<GetServerNpcWeaponAmmoApi>(GetProcAddress(s,server_npc_weapon_ammo_export));
+        assert(ammo_getter&&!GetProcAddress(c,server_npc_weapon_ammo_export)&&!ammo_getter(0,sizeof(ServerNpcWeaponAmmoApi))&&!ammo_getter(1,0));
+        const auto* ammo_api=ammo_getter(1,sizeof(ServerNpcWeaponAmmoApi));assert(ammo_api);
+        unsigned char script[0x168]{};ServerWeaponScriptView script_view{};script_view.fallback=script;script_view.fallback_bytes=sizeof(script);
+        f.put(q.weapon,0x51c,static_cast<std::uint16_t>(0xffff));
+        f.put(script,0x160,8);f.put(script,0x164,1);
+        ServerNpcWeaponAmmoBindings ammo{};ammo.scripts=&script_view;ammo.context=&q;
+        ammo.combat_owner=[](void* p,void* owner,void** out) noexcept -> int{assert(owner==CombatFixture::self(p).a);*out=owner;return 1;};
+        ServerNpcWeaponAmmoResult am{};
+        auto ammo_query=[&](unsigned slot=0x330){return ammo_api->query(q.weapon,slot,&ab,&ammo,&am);};
+        f.put(q.weapon,0x4e4,1);f.put(q.weapon,0x4e8,2);f.put(q.weapon,0x4ec,1);
+        assert(ammo_query()&&am.available&&am.clip_positive&&!am.owner_live);
+        f.put(q.weapon,0x4ec,0);f.put(q.a,0x650,3);
+        assert(ammo_query()&&am.available&&am.combat_live&&am.max_carry==80&&am.reserve==3);
+        f.put(q.a,0x650,0);f.put(q.weapon,0x4cc,99);
+        assert(ammo_query()&&!am.available&&am.reserve_read&&am.reserve==0);
+        assert(ammo_api->attack(q.a,sizeof(q.a),q.enemy,200,60,&nab,&cl,&ammo,&nar)&&nar.attack.conditions[0]==4);
+        f.put(q.a,0x650,3);
+        assert(ammo_api->attack(q.a,sizeof(q.a),q.enemy,200,60,&nab,&cl,&ammo,&nar)&&nar.attack.conditions[0]==20);
+        f.put(q.weapon,0x4f0,0);f.put(q.a,0x654,2);
+        assert(ammo_query(0x334)&&am.available&&am.ammo_type==2&&am.reserve==2);
+        f.put(q.a,0x654,0);assert(ammo_query(0x334)&&!am.available);
+        f.put(q.weapon,0x494,0xffffffffu);
+        assert(ammo_query()&&am.available&&!am.owner_live&&am.reserve==99);
+        assert(ammo_query(0x334)&&!am.available&&!am.reserve_read);
+        f.put(q.weapon,0x494,0x9000u);assert(ammo_query()&&am.available&&!am.owner_live);
+        f.put(q.weapon,0x494,0x3000u);ammo.combat_owner=[](void*,void*,void** out) noexcept -> int{*out=nullptr;return 1;};
+        assert(ammo_query()&&am.available&&am.owner_live&&!am.combat_live&&am.reserve==99);
+        ammo.combat_owner=[](void*,void* owner,void** out) noexcept -> int{*out=owner;return 1;};
+        ammo.max_carry=[](void*,int,int* out) noexcept -> int{*out=-2;return 1;};
+        assert(ammo_query()&&am.available&&am.unlimited&&am.reserve==999&&!am.reserve_read);
+        f.put(q.weapon,0x4e4,-1);assert(ammo_query()&&!am.available&&!am.reserve_read&&!am.unlimited);
+        ammo.max_carry=nullptr;f.put(q.weapon,0x4e4,32);assert(!ammo_query()&&!am.completed);
+        f.put(q.weapon,0x4e4,1);f.put(script,0x160,-1);f.put(q.weapon,0x4ec,5);f.put(q.a,0x650,0);
+        assert(ammo_query()&&!am.uses_clip&&!am.available);
+        f.put(q.a,0x650,0);f.put(q.a,0x654,0);
+
         // No hosted melee/secondary conditions for the reviewed zero-return slots.
         f.put(q.weapon,0,0x224776acu);f.put(q.weapon,0x4ec,1);
         f.put(q.a,0x8ec,0x18000u);
