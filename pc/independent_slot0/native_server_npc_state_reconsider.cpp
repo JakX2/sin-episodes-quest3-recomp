@@ -3760,9 +3760,17 @@ int __cdecl grunt_damage_notify(void* a,unsigned n,void* attacker,const ServerNp
     }
     out->completed=1;return 1;
 }
+struct DamageReportRoute {
+    const ServerNpcGruntMemoryReportBindings* bindings;
+    const ServerNpcGruntSquadReportBindings* squad;
+    ServerNpcGruntMemoryReportResult* result;
+    ServerNpcGruntSquadReportResult* stats;
+    unsigned* called;
+};
 struct DamageNotifyRoute {
     const ServerNpcGruntDamageNotificationBindings* bindings;
     ServerNpcGruntDamageNotificationResult* result;
+    const DamageReportRoute* report=nullptr;
 };
 
 int grunt_damage_tail_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageTailBindings* b,ServerNpcGruntDamageTailResult* out,const DamageNotifyRoute* route) noexcept{
@@ -3829,7 +3837,14 @@ int grunt_damage_tail_impl(void* a,unsigned n,void* damage,unsigned dn,float now
                 if(!lookup(false))return 0;
                 target=out->lookup.record?attacker():nullptr;
             }
-            if(!b->report||!b->report(b->context,a,target,out->position,source))return 0;
+            if(route&&route->report){
+                const auto& r=*route->report;
+                auto bound=*r.bindings;bound.original_vtable=sb.speech.original_vtable;
+                bound.mutation.entries=sb.entries;bound.mutation.count=sb.count;
+                ++*r.called;
+                // +678 returns a creation flag, not an adapter-success flag; retail ignores it here.
+                if(!squad_report(a,n,target,out->position,source,now,&bound,r.squad,r.result,r.stats))return 0;
+            }else if(!b->report||!b->report(b->context,a,target,out->position,source))return 0;
             out->reported=1;
         }
         out->amount=read<float>(damage,0x2c);if(!std::isfinite(out->amount))return 0;
@@ -3947,7 +3962,7 @@ int __cdecl grunt_impact(void* a,unsigned n,void* damage,unsigned dn,float now,c
     if(!sentence_dispatch_request(a,n,now,"GRUNT_HEAD",2,0,&sb,&b->reaction.request,&out->speech,&out->request))return 0;
     out->speech_called=1;out->completed=1;return 1;
 }
-struct DamageDetailRoute {const ServerNpcGruntDamageDetailBindings* bindings;ServerNpcGruntDamageDetailResult* result;};
+struct DamageDetailRoute {const ServerNpcGruntDamageDetailBindings* bindings;ServerNpcGruntDamageDetailResult* result;const DamageNotifyRoute* notify=nullptr;};
 
 int grunt_damage_override_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings* b,ServerNpcGruntDamageOverrideResult* out,const DamageDetailRoute* route) noexcept{
     if(!out)return 0;
@@ -4053,7 +4068,7 @@ int grunt_damage_override_impl(void* a,unsigned n,void* damage,unsigned dn,float
         if(!b->component_damage||!b->component_damage(b->context,out->component,forwarded,&out->native_result))return 0;
         out->component_called=1;return done();
     }
-    if(!grunt_damage_event(a,n,forwarded,0x48,now,&b->base,&out->base))return 0;
+    if(!grunt_damage_event_impl(a,n,forwarded,0x48,now,&b->base,&out->base,route?route->notify:nullptr))return 0;
     out->native_result=out->base.native_result;out->base_called=1;return done();
 }
 int __cdecl grunt_damage_override(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings* b,ServerNpcGruntDamageOverrideResult* out) noexcept{
@@ -4067,6 +4082,26 @@ int __cdecl grunt_damage_detail(void* a,unsigned n,void* damage,unsigned dn,floa
     return grunt_damage_override_impl(a,n,damage,dn,now,&b->damage,&out->damage,&route);
 }
 const ServerNpcGruntDamageDetailApi damage_detail_api{1,sizeof(ServerNpcGruntDamageDetailApi),&grunt_bone_hit,&grunt_impact,&grunt_damage_detail};
+int __cdecl grunt_damage_native_tail(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageNativeTailBindings* b,ServerNpcGruntDamageNativeTailResult* out) noexcept{
+    if(!out)return 0;
+    out->tail={};out->notify={};out->report={};reset_squad_report(out->squad);out->report_called=0;
+    if(!b)return 0;
+    const DamageReportRoute report{&b->report,&b->squad,&out->report,&out->squad,&out->report_called};
+    const DamageNotifyRoute notify{&b->notify,&out->notify,&report};
+    return grunt_damage_tail_impl(a,n,damage,dn,now,&b->tail,&out->tail,&notify);
+}
+int __cdecl grunt_damage_native_chain(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageNativeChainBindings* b,ServerNpcGruntDamageNativeChainResult* out) noexcept{
+    if(!out)return 0;
+    out->detail.impact={};out->detail.right={};out->detail.left={};
+    out->notify={};out->report={};reset_squad_report(out->squad);out->report_called=0;
+    if(!b)return 0;
+    const DamageReportRoute report{&b->report,&b->squad,&out->report,&out->squad,&out->report_called};
+    const DamageNotifyRoute notify{&b->notify,&out->notify,&report};
+    const DamageDetailRoute detail{&b->detail,&out->detail,&notify};
+    return grunt_damage_override_impl(a,n,damage,dn,now,&b->detail.damage,&out->detail.damage,&detail);
+}
+const ServerNpcGruntDamageNativeChainApi damage_native_chain_api{1,sizeof(ServerNpcGruntDamageNativeChainApi),&grunt_damage_native_tail,&grunt_damage_native_chain};
+
 
 
 
@@ -4599,4 +4634,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageDetailApi=_SiN_GetServerNpcGruntDamageDetailApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageDetailApi* __cdecl SiN_GetServerNpcGruntDamageDetailApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageDetailApi)?&damage_detail_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageNativeChainApi=_SiN_GetServerNpcGruntDamageNativeChainApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageNativeChainApi* __cdecl SiN_GetServerNpcGruntDamageNativeChainApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageNativeChainApi)?&damage_native_chain_api:nullptr;
 }
