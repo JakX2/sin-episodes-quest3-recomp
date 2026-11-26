@@ -1150,6 +1150,11 @@ add_executable(sin_server_npc_state_reconsider_test test_native_server_npc_state
 target_compile_features(sin_server_npc_state_reconsider_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_npc_state_reconsider_native COMMAND sin_server_npc_state_reconsider_test "$<TARGET_FILE:sin_slot0_client>" "$<TARGET_FILE:sin_slot0_server>")
 
+# Original bytes are never required in public CI. The owner can supply an authenticated server.dll.
+add_executable(sin_server_npc_cone_distance_audit test_original_npc_cone_distance.cpp)
+target_compile_features(sin_server_npc_cone_distance_audit PRIVATE cxx_std_17)
+add_test(NAME independent_server_npc_cone_distance_math COMMAND sin_server_npc_cone_distance_audit --self-test)
+
 add_executable(sin_server_npc_schedule_resolution_test test_native_server_npc_schedule_resolution.cpp)
 target_compile_features(sin_server_npc_schedule_resolution_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_npc_schedule_resolution_native COMMAND sin_server_npc_schedule_resolution_test "$<TARGET_FILE:sin_slot0_client>" "$<TARGET_FILE:sin_slot0_server>")
