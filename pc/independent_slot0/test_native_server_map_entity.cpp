@@ -2159,5 +2159,53 @@ int main(int argc,char** argv){
             assert(word(co.rows[3],4)==201&&word(co.rows[3],8)==(i?0x223edd00u:0x223edce8u)&&word(co.rows[3],0xc)==0x3000u&&word(co.rows[3],0x10)==0x4001u&&word(co.rows[3],0x14)==41+i&&!word(co.rows[3],0x2c));
         }
     }
+    {
+        alignas(4) unsigned char actor[remap_extent]{};
+        put(actor,0,remap_vtable);
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=remap_extent;return 1;};
+        assert(api->key_value(actor,"in1","2",&keys,&kr)&&kr.offset==0x394);
+        assert(api->key_value(actor,"in2","6",&keys,&kr)&&kr.offset==0x398);
+        assert(api->key_value(actor,"out1","10",&keys,&kr)&&kr.offset==0x39c);
+        assert(api->key_value(actor,"out2","30",&keys,&kr)&&kr.offset==0x3a0);
+        assert(api->key_value(actor,"OutValue","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x3a4);
+        put(actor,0x3a8,0x11223344u);put(actor,0x3ac,0x55667788u);put(actor,0x3b0,0xffffffffu);
+        struct RemapFixture {ActionPool* pool;void* actor;void* activator;unsigned calls=0,bits=0;} f{&pool,actor,timer};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<RemapFixture*>(p);if(token!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[0])))return 0;*row=f.pool->rows[0];*bytes=0x1c;return 1;
+        };
+        fire.enqueue_variant=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
+            auto& f=*static_cast<RemapFixture*>(p);assert(a==f.activator&&c==f.actor&&bytes==0x14&&action->variant_type==1&&action->action_id==41&&!action->delay);
+            unsigned v[5]{};std::memcpy(v,variant,sizeof(v));assert(v[1]==0x11223344u&&v[2]==0x55667788u&&v[3]==0xffffffffu&&v[4]==1);
+            f.bits=v[0];++f.calls;return 1;
+        };
+        RemapBindings behavior{&fire};RemapResult result{};
+        auto in=[&](unsigned type,float v){return api->remap_input(actor,sizeof(actor),"iNvAlUe",timer,type,v,&behavior,&result);};
+        assert(api->remap_spawn(actor,sizeof(actor),&result)&&result.completed&&!result.reset_bounds);
+        assert(in(1,4.f)&&result.value==20.f&&result.queued==1&&result.stored&&f.calls==1&&f.bits==0x41a00000u);
+        assert(in(1,-1.f)&&result.clamped&&result.clamped_input==2.f&&result.value==10.f&&f.calls==2);
+        assert(in(1,9.f)&&result.clamped_input==6.f&&result.value==30.f&&f.calls==3);
+        put(actor,0xb4,1u);
+        assert(in(1,9.f)&&result.suppressed&&!result.stored&&f.calls==3&&word(actor,0x3a4)==0x41f00000u);
+        assert(in(1,6.f)&&!result.suppressed&&f.calls==4);
+        unsigned nanbits=0x7fc00000u;float nan=0;std::memcpy(&nan,&nanbits,4);
+        assert(in(1,nan)&&result.suppressed&&f.calls==4);
+        put(actor,0xb4,0u);
+        assert(api->key_value(actor,"out1","30",&keys,&kr)&&api->key_value(actor,"out2","10",&keys,&kr));
+        assert(in(1,3.f)&&result.value==25.f&&f.calls==5);
+        assert(in(5,99.f)&&result.input==0.f&&result.value==30.f&&f.calls==6);
+        // Equal signed-zero endpoints reset; descending inputs do not.
+        put(actor,0x394,0x80000000u);put(actor,0x398,0u);
+        assert(api->remap_spawn(actor,sizeof(actor),&result)&&result.reset_bounds&&!word(actor,0x394)&&word(actor,0x398)==0x3f800000u);
+        put(actor,0x394,0x41200000u);put(actor,0x398,0u);
+        assert(api->remap_spawn(actor,sizeof(actor),&result)&&!result.reset_bounds&&word(actor,0x394)==0x41200000u&&!word(actor,0x398));
+        assert(in(1,5.f)&&result.clamped_input==0.f&&result.value==10.f&&f.calls==7);
+        put(actor,0x394,nanbits);
+        assert(api->remap_spawn(actor,sizeof(actor),&result)&&!result.reset_bounds&&word(actor,0x394)==nanbits);
+        assert(api->remap_input(actor,sizeof(actor),"InputValue",timer,1,1.f,&behavior,&result)&&!result.handled&&f.calls==7);
+        assert(!api->remap_input(actor,remap_extent-1,"InValue",timer,1,1.f,&behavior,&result));
+        assert(!api->remap_spawn(timer,timer_extent,&result));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
