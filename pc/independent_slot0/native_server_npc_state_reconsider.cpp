@@ -6658,15 +6658,25 @@ bool cone_line_distance(const float* point,const float* start,const float* end,b
     const double denom=static_cast<double>(dx)*dx+py*py+pz*pz;
     double k=0;
     if(denom>=static_cast<double>(.00001f)){
-        const double numerator=(static_cast<double>(point[0])-start[0])*dx+
-            (static_cast<double>(point[1])-start[1])*py+(static_cast<double>(point[2])-start[2])*pz;
+        // 2226bdab..2226bdd5 / 2226c003..2226c01f: subtract separately
+        // accumulated dot products, rather than pre-subtracting the coordinates.
+        const double point_dot=horizontal?
+            (static_cast<double>(point[1])*py+static_cast<double>(point[0])*dx):
+            ((static_cast<double>(point[1])*py+static_cast<double>(point[2])*pz)+static_cast<double>(point[0])*dx);
+        const double start_dot=horizontal?
+            (static_cast<double>(start[0])*dx+static_cast<double>(start[1])*py):
+            ((static_cast<double>(start[0])*dx+static_cast<double>(start[1])*py)+static_cast<double>(start[2])*pz);
+        const double numerator=point_dot-start_dot;
         k=numerator/denom;
     }
     if(horizontal)k=static_cast<float>(k); // 2226c09e
     const float xdiff=static_cast<float>(static_cast<double>(point[0])-(start[0]+k*dx));
     const double ydiff=static_cast<double>(point[1])-(start[1]+k*y);
     const double zdiff=horizontal?0.:static_cast<double>(point[2])-static_cast<float>(start[2]+k*z);
-    const float sum=static_cast<float>(static_cast<double>(xdiff)*xdiff+ydiff*ydiff+zdiff*zdiff);
+    // 3D accumulates Z^2 + Y^2 first; the horizontal helper starts with X^2.
+    const float sum=static_cast<float>(horizontal?
+        static_cast<double>(xdiff)*xdiff+ydiff*ydiff:
+        (zdiff*zdiff+ydiff*ydiff)+static_cast<double>(xdiff)*xdiff);
     if(!std::isfinite(sum)||sum<0)return false;
     out=std::sqrt(sum);return true;
 }
