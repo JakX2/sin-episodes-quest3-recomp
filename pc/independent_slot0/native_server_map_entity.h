@@ -125,6 +125,7 @@ inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
 // Derived scalar-deleting destructor boundary, distinct from the
 // factory's owner networkable-release boundary.
 inline constexpr unsigned multicompare_vtable=0x22420b84,multicompare_extent=0x3d4;
+struct RelayQueueBindings;
 struct MultiCompareBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -134,9 +135,10 @@ struct MultiCompareBindings {
     // Original zero-delay direct void event: target and caller self,
     // incoming activator and output ID, exact literal ForceRecompare.
     int (__cdecl *schedule)(void*,void*,void*,void*,const char*,float,unsigned) noexcept;
+    const RelayQueueBindings* native_queue;
 };
 struct MultiCompareResult {
-    unsigned completed,handled,converted,rejected,visited,inserted,replaced,scheduled,compared,equal,output_offset,queued;
+    unsigned completed,handled,converted,rejected,visited,inserted,replaced,scheduled,compared,equal,output_offset,queued,native_scheduled;
 };
 inline constexpr unsigned autosave_vtable=0x2241f9e4,autosave_extent=0x398;
 struct AutosaveBindings {

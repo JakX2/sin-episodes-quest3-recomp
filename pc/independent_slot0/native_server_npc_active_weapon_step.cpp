@@ -563,7 +563,8 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                (vt==sin_port::native_map::compare_vtable&&b->native_input->logic_compare)||
                (vt==sin_port::native_map::counter_vtable&&b->native_input->math_counter)||
                (vt==sin_port::native_map::navigation_vtable&&b->native_input->logic_navigation)||
-               (vt==sin_port::native_map::autosave_vtable&&b->native_input->logic_autosave)){
+               (vt==sin_port::native_map::autosave_vtable&&b->native_input->logic_autosave)||
+               (vt==sin_port::native_map::multicompare_vtable&&b->native_input->logic_multicompare)){
                 auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=clock();if(!std::isfinite(bound.now))return false;
                 sin_port::native_map::RelayBindings relay{};
                 sin_port::native_map::RelayQueueBindings relay_queue{};
@@ -579,6 +580,19 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                         relay_queue.protected_node=&dispatch_token;relay.native_queue=&relay_queue;
                     }
                     bound.relay=&relay;
+                }
+                sin_port::native_map::MultiCompareBindings multi{};
+                sin_port::native_map::RelayQueueBindings multi_queue{};
+                if(vt==sin_port::native_map::multicompare_vtable&&bound.logic_multicompare){
+                    multi=*bound.logic_multicompare;
+                    if(multi.native_queue){
+                        multi_queue=*multi.native_queue;
+                        if(multi_queue.root!=sentinel||multi_queue.root_token!=root)return false;
+                        multi_queue.root_bytes=n;multi_queue.entries=b->entities.entries;multi_queue.entry_count=b->entities.count;
+                        multi_queue.now=b->live_now?b->live_now:&bound.now;
+                        multi_queue.protected_node=&dispatch_token;multi.native_queue=&multi_queue;
+                    }
+                    bound.logic_multicompare=&multi;
                 }
                 sin_port::native_map::TimerBindings timer{};
                 if(vt==sin_port::native_map::timer_vtable&&bound.timer){
@@ -942,6 +956,10 @@ constexpr NativeInputRow relay_inputs[]{
     {5,0,0x223d4914u,0x2217df20u,"Toggle"},
     {6,0,0x22422b7cu,0x2217df50u,"Trigger"},
     {7,0,0x22422b58u,0x2217def0u,"CancelPending"}
+};
+constexpr NativeInputRow multicompare_inputs[]{
+    {5,20,0x2241ffb8u,0x2217a080u,"InputValue"},
+    {6,20,0x2241ff14u,0x22179270u,"CompareValues"}
 };
 constexpr NativeInputRow autosave_inputs[]{{1,0,0x22420850u,0x22178dd0u,"Save"}};
 constexpr NativeInputRow base_kill_inputs[]{{78,0,0x2240b624u,0x2213cdc0u,"Kill"}};
@@ -2272,6 +2290,16 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
     default:return -1;
     }
 }
+constexpr NativeInputMap multicompare_map{0x224fb4b0u,0x224f0350u,7,multicompare_inputs,2};
+int native_multicompare_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
+    if(!b.logic_multicompare)return -1;
+    const char* text=nullptr;
+    for(const auto& row:multicompare_inputs)if(row.handler==handler){text=row.text;break;}
+    if(!text)return -1;
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+    sin_port::native_map::MultiCompareResult result{};
+    return api&&api->multicompare_input(a,n,text,data.activator,data.variant,sizeof(data.variant),data.output_id,b.logic_multicompare,&result)&&result.completed&&result.handled?1:0;
+}
 constexpr NativeInputMap autosave_map{0x224fb5b8u,0x224f0350u,2,autosave_inputs,1};
 constexpr NativeInputMap autosave_base_kill_map{0x224f0350u,0,115,base_kill_inputs,1};
 int native_autosave_input(void* a,unsigned n,unsigned handler,const ServerEntityAcceptInputBindings& b) noexcept {
@@ -2387,7 +2415,8 @@ const NativeInputMap* native_input_map(unsigned token) noexcept {
 int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
-    unsigned token=vt==sin_port::native_map::autosave_vtable&&b&&b->logic_autosave?autosave_map.token:
+    unsigned token=vt==sin_port::native_map::multicompare_vtable&&b&&b->logic_multicompare?multicompare_map.token:
+        vt==sin_port::native_map::autosave_vtable&&b&&b->logic_autosave?autosave_map.token:
         vt==sin_port::native_map::navigation_vtable&&b&&b->logic_navigation?navigation_map.token:
         vt==sin_port::native_map::counter_vtable&&b&&b->math_counter?counter_map.token:
         vt==sin_port::native_map::compare_vtable&&b&&b->logic_compare?compare_map.token:
@@ -2404,6 +2433,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
     if(vt==sin_port::native_map::counter_vtable&&(!a||n<sin_port::native_map::counter_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(vt==sin_port::native_map::navigation_vtable&&(!a||n<sin_port::native_map::navigation_extent||rd<unsigned>(a,0)!=vt||rd<unsigned>(a,0x394)!=sin_port::native_map::navigation_listener_vtable))return 0;
     if(vt==sin_port::native_map::autosave_vtable&&(!a||n<sin_port::native_map::autosave_extent||rd<unsigned>(a,0)!=vt))return 0;
+    if(vt==sin_port::native_map::multicompare_vtable&&(!a||n<sin_port::native_map::multicompare_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||(!b->name_equal&&!b->string_text))return 0;
     if(vt==sin_port::native_map::timer_vtable&&b->timer&&b->timer->cadence){
         const auto& t=*b->timer;
@@ -2430,6 +2460,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             else{const char* actual=nullptr;if(!input_text(*b,input,&actual))return 0;base_kill=search_equal("Kill",actual);}
         }
         const auto* native=base_kill?&autosave_base_kill_map:
+            token==multicompare_map.token&&b->logic_multicompare?&multicompare_map:
             token==autosave_map.token&&b->logic_autosave?&autosave_map:
             token==navigation_map.token&&b->logic_navigation?&navigation_map:
             token==counter_map.token&&b->math_counter?&counter_map:
@@ -2501,7 +2532,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
                 o->native_wake=1;
             }else if(o->handler){
-                const int status=vt==sin_port::native_map::autosave_vtable?native_autosave_input(a,n,o->handler,*b):
+                const int status=vt==sin_port::native_map::multicompare_vtable?native_multicompare_input(a,n,o->handler,data,*b):
+                    vt==sin_port::native_map::autosave_vtable?native_autosave_input(a,n,o->handler,*b):
                     vt==sin_port::native_map::navigation_vtable?native_navigation_input(a,n,o->handler,*b):
                     vt==sin_port::native_map::counter_vtable?native_counter_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::compare_vtable?native_compare_input(a,n,o->handler,data,*b):
