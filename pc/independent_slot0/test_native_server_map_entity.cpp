@@ -2276,14 +2276,15 @@ int main(int argc,char** argv){
         keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
             if(!std::strcmp(text,"sink"))*token=201;
             else if(!std::strcmp(text,"SetValue"))*token=0x224202e4u;
+            else if(!std::strcmp(text,"7"))*token=403;
             else return 0;return 1;
         };
         assert(api->key_value(actor,"in1","2",&keys,&kr)&&api->key_value(actor,"in2","6",&keys,&kr)&&api->key_value(actor,"out1","10",&keys,&kr)&&api->key_value(actor,"out2","30",&keys,&kr));
         assert(api->key_value(actor,"OutValue","sink,SetValue,,0,-1",&keys,&kr));
-        struct RemapQueue {ConnectedOutput* queue;ActionPool* pool;void* actor;void* target;unsigned fired=0;} f{&co,&pool,actor,target};
+        struct RemapQueue {ConnectedOutput* queue;ActionPool* pool;void* actor;void* target;unsigned fired=0,debug=0;} f{&co,&pool,actor,target};
         nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
         fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
-            auto& f=*static_cast<RemapQueue*>(p);if(token!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[0])))return 0;*row=f.pool->rows[0];*bytes=0x1c;return 1;
+            auto& f=*static_cast<RemapQueue*>(p);for(unsigned i=0;i<f.pool->used;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
         };
         fire.enqueue_variant=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
             auto& f=*static_cast<RemapQueue*>(p);assert(a==f.target&&c==f.actor&&bytes==0x14&&action->variant_type==1&&action->action_id==41);
@@ -2299,6 +2300,7 @@ int main(int argc,char** argv){
                 case 0x224202e4u:*text="SetValue";break;
                 case 401:*text="4 trailing";break;
                 case 402:*text="iNvAlUe";break;
+                case 403:*text="7";break;
                 default:return 0;
             }
             *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
@@ -2330,6 +2332,36 @@ int main(int argc,char** argv){
         assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,402,0x3000,0x3000,outside,sizeof(outside),0.f,18,&co.queue,&cancel_qr));
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&f.fired==1&&co.released==3&&!word(co.root,0x30));
         assert(actor[0x200]&&!target[0x200]&&word(actor,0x3a4)==0x41a00000u&&word(target,0x394)==0x41a00000u);
+        // Same connected path with no owner enqueue callback. The finite
+        // parameter override is prepended and delayed; typed output is due now.
+        put(actor,0xb4,0u);actor[0xa8]=0x10;
+        assert(api->key_value(actor,"OutValue","sink,SetValue,7,0.25,1",&keys,&kr));
+        fire.enqueue_variant=nullptr;
+        fire.release=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& f=*static_cast<RemapQueue*>(p);assert(row==f.pool->rows[1]&&token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(row)));++f.pool->released;return 1;
+        };
+        fire.debug_action=[](void* p,void* caller,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<RemapQueue*>(p);assert(caller==f.actor);
+            if(!f.debug)assert(action->action_id==42&&action->parameter==403&&action->variant_type==2&&action->delay==.25f);
+            else assert(action->action_id==41&&!action->parameter&&action->variant_type==1&&!action->delay);
+            ++f.debug;return 1;
+        };
+        RelayQueueBindings route{};route.context=&f;route.root=co.root;route.root_token=98;route.queue=&co.queue;
+        route.handle=[](void* p,void* actor,unsigned* handle) noexcept ->int{
+            auto& f=*static_cast<RemapQueue*>(p);if(actor==f.actor)*handle=0x4001u;else if(actor==f.target)*handle=0x3000u;else return 0;return 1;
+        };
+        remap.native_queue=&route;
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=181.f;
+        unsigned next[5]{5,0,0,0xffffffffu,5};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2242014cu,0x3000,0x3000,next,sizeof(next),0.f,19,&co.queue,&cancel_qr));
+        assert(!service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&!co.locked&&co.alloc==1&&!co.released&&!f.debug&&word(actor,0x3a4)==0x41a00000u);
+        route.root_token=99; // service supplies correct extent, registry and time
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==2&&es.native_inputs==2&&es.future_stopped&&f.fired==1&&f.debug==2&&pool.released==1&&co.released==2);
+        assert(word(actor,0x3a4)==0x41c80000u&&word(target,0x394)==0x41c80000u&&word(actor,0x3b8)==ptrword(pool.rows[0]));
+        assert(word(co.rows[1],0x14)==42&&word(co.rows[1],0x1c)==403&&word(co.rows[1],0x2c)==2&&word(co.rows[2],0x14)==41&&word(co.rows[2],0x1c)==0x41c80000u&&word(co.rows[2],0x2c)==1);
+        co.now+=.25f;
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&co.released==3&&!word(co.root,0x30));
+        assert(word(target,0x394)==0x40e00000u&&word(actor,0x3a4)==0x41c80000u);
     }
     FreeLibrary(server);FreeLibrary(client);
 }

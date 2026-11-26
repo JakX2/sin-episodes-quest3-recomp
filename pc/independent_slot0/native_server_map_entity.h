@@ -225,10 +225,12 @@ struct CounterResult {
 inline constexpr unsigned remap_vtable=0x22421334,remap_extent=0x3bc;
 struct RemapBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const RelayQueueBindings* native_queue;
 };
 struct RemapResult {
     unsigned completed,handled,reset_bounds,clamped,suppressed,stored,queued;
     float input,clamped_input,value;
+    unsigned native_output_queued;
 };
 struct CompareBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
