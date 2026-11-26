@@ -99,15 +99,26 @@ constexpr FactorySpec native_specs[]{
     {antigen_factories[2].classname,Family::Antigen,antigen_factories[2].object,antigen_factories[2].vtable,antigen_factories[2].extent}
 };
 constexpr FactorySpec relay_spec{"logic_relay",Family::Relay,0x224fda88,0x224228bc,relay_extent};
+constexpr FactorySpec auto_spec{"logic_auto",Family::LogicAuto,0x224fb288,0x2241efcc,auto_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||(d->count!=12&&d->count!=13))return false;
+    if(!d||!d->registered||d->count<12||d->count>14)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    return d->count==12?d->slots[12]==nullptr:d->slots[12]==&relay_spec;
+    bool relay=false,logic_auto=false;
+    for(unsigned i=12;i<14;++i){
+        if(i>=d->count){if(d->slots[i])return false;continue;}
+        if(d->slots[i]==&relay_spec&&!relay)relay=true;
+        else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
+        else return false;
+    }
+    return true;
 }
-int __cdecl register_relay(FactoryDictionary* d) noexcept {
-    if(!valid_dictionary(d)||d->count!=12)return 0;
-    d->slots[d->count++]=&relay_spec;return 1;
+int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
+    if(!valid_dictionary(d)||d->count==14)return 0;
+    for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
+    d->slots[d->count++]=spec;return 1;
 }
+int __cdecl register_relay(FactoryDictionary* d) noexcept {return register_optional(d,&relay_spec);}
+int __cdecl register_auto(FactoryDictionary* d) noexcept {return register_optional(d,&auto_spec);}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -148,6 +159,26 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
     }
+    if(o->spec->family==Family::LogicAuto){
+        const auto* r=b->logic_auto;
+        if(!r||!r->allocate||!r->base_construct||!r->initialize||
+           !r->allocate(r->context,auto_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<auto_extent)return 0;
+        auto* a=static_cast<unsigned char*>(o->actor);
+        // Original 221788e0: base constructor argument 0, seven output
+        // triplets. The allocator/owner supplies untouched zeroed heads.
+        if(!r->base_construct(r->context,a,0))return 0;
+        unsigned gate=0;std::memcpy(&gate,a+0x43c,4);if(gate)return 0;
+        for(unsigned off=0x394;off<=0x424;off+=0x18){
+            unsigned head=0;std::memcpy(&head,a+off+0x14,4);if(head)return 0;
+        }
+        const unsigned zero=0,invalid=0xffffffffu,vt=auto_vtable;
+        std::memcpy(a,&vt,4);
+        for(unsigned off=0x394;off<=0x424;off+=0x18){
+            std::memcpy(a+off,&zero,4);std::memcpy(a+off+0xc,&invalid,4);std::memcpy(a+off+0x10,&zero,4);
+        }
+        if(!r->initialize(r->context,a,name))return 0;
+        o->networkable=a+0x160;o->completed=1;return 1;
+    }
     const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return 0;
     bool ok=false;
     if(o->spec->family==Family::Resupply){
@@ -170,6 +201,12 @@ int __cdecl destroy_relay(void* actor,unsigned bytes,void* networkable,const Rel
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     // Original factory destroy 2217dff0 calls networkable virtual +18.
     // The owner may synchronously destroy the actor; never read it again.
+    return b->release_networkable(b->context,networkable);
+}
+int __cdecl destroy_auto(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!actor||bytes<auto_extent||entity_vtable(actor)!=auto_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
@@ -752,7 +789,7 @@ int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activa
     else if(!b->refire||!b->refire(b->context,actor,o->refire_delay))return 0;
     o->refire=1;return done();
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

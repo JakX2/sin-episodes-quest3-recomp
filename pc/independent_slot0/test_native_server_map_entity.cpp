@@ -488,6 +488,60 @@ int main(int argc,char** argv){
     put(auto_actor,0x43c,0);put(auto_actor,0xb4,1);af.load=99;af.low=true;af.order.clear();
     assert(api->auto_think(auto_actor,sizeof(auto_actor),&ab,&ar)&&!ar.global_checked&&!ar.load_output&&ar.outputs==2&&ar.removed&&af.order=="01R"&&af.removes==1);
     assert(globals->clear());
+    // Real logic_auto factory, independent optional registration order,
+    // map parsing, ordinary activation and scheduled think leaf.
+    FactoryDictionary auto_first{};assert(api->register_factories(&auto_first)&&api->register_auto(&auto_first)&&auto_first.count==13);
+    assert(api->find_factory(&auto_first,"logic_auto")&&!api->find_factory(&auto_first,"logic_relay"));
+    assert(api->register_relay(&auto_first)&&auto_first.count==14&&!api->register_auto(&auto_first));
+    assert(api->register_auto(&dictionary)&&dictionary.count==14&&!api->register_auto(&dictionary));
+    const auto* autospec=api->find_factory(&dictionary,"LOGIC_AUTO");
+    assert(autospec&&autospec->family==Family::LogicAuto&&autospec->original_object==0x224fb288&&autospec->original_vtable==0x2241efcc&&autospec->extent==auto_extent);
+    assert(!api->create_factory("logic_auto",&factories,&fr)&&fr.matched&&!fr.actor);
+    struct AutoFactoryFixture {
+        alignas(4) unsigned char storage[auto_extent]{};
+        unsigned alloc=0,base=0,init=0,released=0,cleared=0,spawned=0;
+        bool short_alloc=false;
+    } aff;
+    RelayFactoryBindings afb{};afb.context=&aff;
+    afb.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<AutoFactoryFixture*>(p);assert(n==auto_extent);++f.alloc;*a=f.storage;*bytes=f.short_alloc?n-1:n;return 1;
+    };
+    afb.base_construct=[](void* p,void* a,int arg) noexcept ->int{
+        auto& f=*static_cast<AutoFactoryFixture*>(p);assert(a==f.storage&&arg==0);++f.base;
+        const unsigned untouched=0x12345678;std::memcpy(f.storage+0x398,&untouched,4);return 1;
+    };
+    afb.initialize=[](void* p,void* a,const char* cls) noexcept ->int{
+        auto& f=*static_cast<AutoFactoryFixture*>(p);assert(a==f.storage&&!std::strcmp(cls,"logic_auto")&&f.base==1);
+        unsigned vt=0;std::memcpy(&vt,f.storage,4);assert(vt==auto_vtable);++f.init;return 1;
+    };
+    afb.release_networkable=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<AutoFactoryFixture*>(p);assert(a==f.storage+0x160);++f.released;return 1;};
+    factories.logic_auto=&afb;
+    aff.short_alloc=true;assert(!api->create_factory("logic_auto",&factories,&fr)&&fr.matched&&fr.actor==aff.storage&&!fr.networkable&&!aff.base);
+    aff.short_alloc=false;
+    ActionPool auto_map_pool{};OutputActionBindings ampo=output;ampo.context=&auto_map_pool;ampo.next_id=&auto_map_pool.id;
+    auto amk=ak;amk.native_output=&ampo;
+    Bindings amp{};amp.context=&aff;amp.native_factory=&factories;amp.native_keys=&amk;
+    amp.clear_factory_global=[](void* p) noexcept ->int{++static_cast<AutoFactoryFixture*>(p)->cleared;return 1;};
+    af.actor=aff.storage;af.pool=&auto_map_pool;af.load=0;af.low=false;af.order.clear();
+    SpawnBindings ams{};ams.context=&aff;ams.logic_auto=&ab;
+    ams.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=auto_extent;return 1;};
+    ams.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="logic_auto";return 1;};
+    ams.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    ams.debug_enabled=[](void*,bool* enabled) noexcept ->int{*enabled=false;return 1;};
+    ams.engine_scope=[](void*,bool) noexcept ->int{return 1;};
+    ams.spawn=[](void* p,void* a,int* code) noexcept ->int{auto& f=*static_cast<AutoFactoryFixture*>(p);assert(a==f.storage);++f.spawned;*code=0;return 1;};
+    PipelineBindings ampipe{};ampipe.context=&aff;ampipe.parse=&amp;ampipe.spawn=&ams;
+    ampipe.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    ampipe.classify=[](void*,void*,Category* cat) noexcept ->int{*cat=Category::Ordinary;return 1;};
+    const char auto_map_text[]="{ classname logic_auto OnMapSpawn \"relay,Trigger,,0,-1\" OnNewGame \"relay,Trigger,,0,-1\" }";
+    PipelineResult amr{};
+    assert(api->parse_all(auto_map_text,sizeof(auto_map_text),true,&ampipe,&amr)&&amr.parse.native_creates==1&&amr.spawn.native_activations==1&&amr.spawn.spawned==1);
+    assert(aff.alloc==2&&aff.base==1&&aff.init==1&&aff.cleared==1&&aff.spawned==1&&af.base==2&&af.schedules==2);
+    for(unsigned off=0x394;off<=0x424;off+=0x18)assert(word(aff.storage,off)==0&&word(aff.storage,off+0xc)==0xffffffffu&&word(aff.storage,off+0x10)==0);
+    assert(word(aff.storage,0x398)==0x12345678&&word(aff.storage,0x3a8)==ptrword(auto_map_pool.rows[0])&&word(aff.storage,0x3f0)==ptrword(auto_map_pool.rows[1]));
+    assert(api->auto_think(aff.storage,sizeof(aff.storage),&ab,&ar)&&ar.outputs==3&&ar.queued==2&&af.order=="10");
+    assert(api->destroy_auto(nullptr,0,nullptr,nullptr)&&!api->destroy_auto(aff.storage,auto_extent,aff.storage+0x164,&afb)&&!aff.released);
+    assert(api->destroy_auto(aff.storage,auto_extent,aff.storage+0x160,&afb)&&aff.released==1);
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
     struct PipelineFixture {
