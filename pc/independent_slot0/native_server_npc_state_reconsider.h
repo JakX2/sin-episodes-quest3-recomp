@@ -1862,4 +1862,34 @@ struct ServerNpcGruntLifeDispatchApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntLifeDispatchBindings*,ServerNpcGruntLifeDispatchResult*) noexcept;
 };
 using GetServerNpcGruntLifeDispatchApi=const ServerNpcGruntLifeDispatchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_jetpack_death_mode_export[]="SiN_GetServerNpcJetpackDeathModeApi";
+struct ServerNpcJetpackDeathModeBindings {
+    std::uint32_t original_vtable;
+    void* context;
+    int (__cdecl *random_int)(void*,int,int,int*) noexcept;
+    int (__cdecl *effect_rule)(void*,void*,bool*) noexcept; // 22572914 +184
+    int (__cdecl *effect)(void*,void*) noexcept; // original 223667bb..223667f1
+    int (__cdecl *force_mode3)(void*,bool*) noexcept; // 22572198 +170
+    int (__cdecl *tail)(void*,void*,void*,unsigned,std::uint32_t) noexcept; // branch ID as data, never an executable VA
+};
+struct ServerNpcJetpackDeathModeResult {
+    int sample,initial_mode,final_mode;
+    std::uint32_t branch;
+    unsigned completed,copied,on_fire,random_called,effect_checked,effect_called,force_checked,forced,tail_required,tail_called;
+};
+struct ServerNpcJetpackDeathDispatchBindings {
+    ServerNpcGruntLifeDispatchBindings life;
+    ServerNpcJetpackDeathModeBindings jet;
+};
+struct ServerNpcJetpackDeathDispatchResult {
+    ServerNpcGruntLifeDispatchResult life;
+    ServerNpcJetpackDeathModeResult jet;
+};
+struct ServerNpcJetpackDeathModeApi {
+    std::uint32_t version,size;
+    int (__cdecl *select)(void*,unsigned,void*,unsigned,const ServerNpcJetpackDeathModeBindings*,ServerNpcJetpackDeathModeResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcJetpackDeathDispatchBindings*,ServerNpcJetpackDeathDispatchResult*) noexcept;
+};
+using GetServerNpcJetpackDeathModeApi=const ServerNpcJetpackDeathModeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
