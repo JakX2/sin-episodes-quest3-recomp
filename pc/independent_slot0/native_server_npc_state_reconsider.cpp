@@ -3129,6 +3129,55 @@ int __cdecl native_state_apply(void* a,unsigned n,int desired,float now,const Se
     if(!state_route_init(now,native,out))return 0;const NativeStateRoute route{*native,*out,now};
     return apply_impl(a,n,desired,now,b,&out->state,&route);
 }
+int __cdecl grunt_removal(void* a,unsigned n,std::uint32_t handle,void* attacker,bool event,float now,const ServerNpcGruntRemovalBindings* b,ServerNpcGruntRemovalResult* out) noexcept{
+    if(!out)return 0;*out={};out->release.index=out->release.selected=out->departure.index=-1;
+    if(!a||n<0xdb2||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->leave.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(read<std::uint8_t>(a,0xa44)){out->repeated=1;return done();}
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    if(registry.Resolve(handle)!=a)return 0;
+    write<std::uint8_t>(a,0xa44,1);out->latched=1;
+    if(read<int>(a,0x850)==4){
+        if(void* link=registry.Resolve(read<unsigned>(a,0x970))){
+            if(!b->state4_link||!b->state4_link(b->context,a,link))return 0;
+            out->state4_link=1;
+        }
+    }
+    if(void* link=registry.Resolve(read<unsigned>(a,0xa18))){
+        if(!b->clear_link||!b->clear_link(b->context,a,link)||!b->clear_owner||!b->clear_owner(b->context,a))return 0;
+        out->cleared_link=1;
+    }
+    if(event){if(!b->event||!b->event(b->context,a,attacker))return 0;out->event=1;}
+    auto slots=b->reports.perception.slots;slots.entries=sb.entries;slots.count=sb.count;
+    if(const auto token=read<unsigned>(a,0x9c4)){
+        if(!slots_release(token,registry.Resolve(read<unsigned>(a,0x8a0)),read<int>(a,0x9cc),now,&slots,&out->release))return 0;
+        write(a,0x9cc,-1);out->slot_released=1;
+    }
+    if(read<unsigned>(a,0x9c4)){
+        if(read<int>(a,0x850)==1&&attacker){
+            void* memory=nullptr;unsigned extent=0;
+            if(!memory_storage(&b->memory.mutation.storage,read<unsigned>(a,0x984),0x1c,memory,extent)||
+                !memory_lookup(memory,extent,0,false,&b->memory.mutation.storage,&out->zero_key))return 0;
+            out->report_checked=1;
+            if(!out->zero_key.record){
+                float origin[3]{};
+                if(!b->origin||!b->origin(b->context,a,origin)||!finite_vec(origin))return 0;
+                auto report=b->memory;report.original_vtable=sb.speech.original_vtable;report.mutation.entries=sb.entries;report.mutation.count=sb.count;
+                if(!squad_report(a,n,attacker,origin,nullptr,now,&report,&b->reports,&out->report,&out->forwarding))return 0;
+                out->report_called=1;
+            }
+        }
+        // Report callback may have changed the current group, matching original reload.
+        const auto token=read<unsigned>(a,0x9c4);
+        if(!token||!grunt_squad_leave(a,n,token,handle,true,now,&b->leave,&out->departure))return 0;
+        write(a,0x9c4,0u);out->owner_cleared=1;
+    }
+    if(!b->finalize||!b->finalize(b->context,a))return 0;
+    out->finalized=1;return done();
+}
+const ServerNpcGruntRemovalApi removal_api{1,sizeof(ServerNpcGruntRemovalApi),&grunt_removal};
 const ServerNpcGruntNativeStateApi native_state_api{1,sizeof(ServerNpcGruntNativeStateApi),&native_state_choose,&native_state_apply};
 const ServerNpcGruntSquadEnemyApi squad_enemy_api{1,sizeof(ServerNpcGruntSquadEnemyApi),&squad_enemy_broadcast};
 const ServerNpcGruntSquadReportApi squad_report_api{1,sizeof(ServerNpcGruntSquadReportApi),&squad_report,&squad_report_update,&squad_report_gather};
@@ -3567,4 +3616,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadInputApi=_SiN_GetServerNpcGruntSquadInputApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadInputApi* __cdecl SiN_GetServerNpcGruntSquadInputApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadInputApi)?&squad_input_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRemovalApi=_SiN_GetServerNpcGruntRemovalApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRemovalApi* __cdecl SiN_GetServerNpcGruntRemovalApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRemovalApi)?&removal_api:nullptr;
 }

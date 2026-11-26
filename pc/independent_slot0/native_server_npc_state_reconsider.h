@@ -1253,4 +1253,32 @@ struct ServerNpcGruntSquadInputApi {
     int (__cdecl *change)(void*,unsigned,std::uint32_t,float,std::uint32_t*,unsigned,std::uint32_t,const ServerNpcGruntSquadInputBindings*,ServerNpcGruntSquadInputResult*) noexcept;
 };
 using GetServerNpcGruntSquadInputApi=const ServerNpcGruntSquadInputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_removal_export[]="SiN_GetServerNpcGruntRemovalApi";
+struct ServerNpcGruntRemovalBindings {
+    ServerNpcGruntSquadLeaveBindings leave;
+    ServerNpcGruntSquadReportBindings reports;
+    ServerNpcGruntMemoryReportBindings memory;
+    void* context;
+    // Original non-squad engine leaves, in call order.
+    int (__cdecl *state4_link)(void*,void*,void*) noexcept;
+    int (__cdecl *clear_link)(void*,void*,void*) noexcept;
+    int (__cdecl *clear_owner)(void*,void*) noexcept;
+    int (__cdecl *event)(void*,void*,void*) noexcept;
+    int (__cdecl *origin)(void*,void*,float*) noexcept;
+    int (__cdecl *finalize)(void*,void*) noexcept;
+};
+struct ServerNpcGruntRemovalResult {
+    ServerNpcGruntSquadSlotsResult release;
+    ServerNpcGruntSquadLeaveResult departure;
+    ServerNpcEnemyMemoryLookup zero_key;
+    ServerNpcGruntMemoryReportResult report;
+    ServerNpcGruntSquadReportResult forwarding;
+    unsigned completed,repeated,latched,state4_link,cleared_link,event,slot_released,report_checked,report_called,owner_cleared,finalized;
+};
+struct ServerNpcGruntRemovalApi {
+    std::uint32_t version,size;
+    // 22039180: ordered cleanup; caller supplies original actor handle and attacker.
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,bool,float,const ServerNpcGruntRemovalBindings*,ServerNpcGruntRemovalResult*) noexcept;
+};
+using GetServerNpcGruntRemovalApi=const ServerNpcGruntRemovalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
