@@ -4166,14 +4166,14 @@ int embedded_behavior_identity(void* a,unsigned n,std::uint32_t actor_vtable,std
        read<unsigned>(component,4)!=actor_token||read<unsigned>(component,0xc)!=parent)return 0;
     return 1;
 }
-int __cdecl grunt_behavior_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntBehaviorEventBindings* b,ServerNpcGruntBehaviorEventResult* out) noexcept{
+int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntBehaviorEventBindings* b,ServerNpcGruntBehaviorEventResult* out,bool bypass43=true) noexcept{
     if(!out)return 0;*out={};
     if(!a||n<0xc1c||!ev||en<8||!b||!std::isfinite(now))return 0;
     const auto vt=b->speech.speech.sentence.speech.original_vtable;
     if(!relation_grunt_class(vt))return 0;
     const int id=out->event=read<int>(ev,0);
     auto done=[&](){out->completed=1;return 1;};
-    if(id==0x43){
+    if(id==0x43&&bypass43){
         out->bypass=1;if(!b->event43||!b->event43(b->context,a,ev,en))return 0;return done();
     }
     const auto active=out->active_token=read<unsigned>(a,0xc18);
@@ -4233,7 +4233,56 @@ int __cdecl grunt_behavior_event(void* a,unsigned n,const void* ev,unsigned en,f
     }else if(!b->shared||!b->shared(b->context,a,ev,en))return 0;
     return done();
 }
+int __cdecl grunt_behavior_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntBehaviorEventBindings* b,ServerNpcGruntBehaviorEventResult* out) noexcept{
+    return grunt_behavior_event_impl(a,n,ev,en,now,b,out);
+}
 const ServerNpcGruntBehaviorEventApi behavior_event_api{1,sizeof(ServerNpcGruntBehaviorEventApi),&grunt_behavior_event};
+int __cdecl grunt_event43(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntEvent43Bindings* b,ServerNpcGruntEvent43Result* out) noexcept{
+    if(!out)return 0;*out={};out->activity=-1;
+    if(!a||n<0xc1c||!ev||en<8||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->gate.speech.speech.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(read<int>(ev,0)!=0x43){
+        if(!grunt_behavior_event_impl(a,n,ev,en,now,&b->gate,&out->gate))return 0;
+        return done();
+    }
+    out->capabilities=read<unsigned>(a,0x8ec);
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    ++out->weapon_queries;
+    if(registry.Resolve(read<unsigned>(a,0x78c))){
+        // 22030360 performs the second original weapon lookup before +4a0.
+        ++out->weapon_queries;
+        void* w=registry.Resolve(read<unsigned>(a,0x78c));unsigned caps=0;
+        if(!w||!b->weapon_caps||!b->weapon_caps(b->context,w,&caps))return 0;
+        out->capabilities|=caps;
+    }
+    if(!(out->capabilities&0x1000000u)){
+        if(!grunt_behavior_event_impl(a,n,ev,en,now,&b->gate,&out->gate,false))return 0;
+        return done();
+    }
+    out->capability_route=1;out->gate.event=0x43;out->gate.bypass=1;
+    const float deadline=read<float>(a,0x9a8);
+    // x87 TEST AH,41h / JNP: deadline is strictly after now, or unordered.
+    out->timer_active=read<std::uint8_t>(a,0x9ac)!=0&&!(deadline<=now);
+    if(out->timer_active){
+        out->activity=10;
+        if(!b->request||!b->request(b->context,a,10))return 0;
+        out->requested=1;
+    }else{
+        // 220b1ba0 returns true for deadline <= now (ordered).
+        out->timer_pending=deadline<=now;
+        if(out->timer_pending){
+            if(!b->refresh||!b->refresh(b->context,a))return 0;
+            out->refreshed=1;out->activity=16;
+        }else out->activity=72;
+        if(read<int>(a,0x878)==out->activity){write(a,0x878,0);out->cleared=1;}
+        if(!b->clear_activity||!b->clear_activity(b->context,a,out->activity))return 0;
+        out->activity_called=1;
+    }
+    out->gate.completed=1;return done();
+}
+const ServerNpcGruntEvent43Api event43_api{1,sizeof(ServerNpcGruntEvent43Api),&grunt_event43};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6035,4 +6084,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorEventApi=_SiN_GetServerNpcGruntBehaviorEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorEventApi* __cdecl SiN_GetServerNpcGruntBehaviorEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorEventApi)?&behavior_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEvent43Api=_SiN_GetServerNpcGruntEvent43Api")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEvent43Api* __cdecl SiN_GetServerNpcGruntEvent43Api(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEvent43Api)?&event43_api:nullptr;
 }
