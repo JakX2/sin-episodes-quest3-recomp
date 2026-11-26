@@ -5,13 +5,14 @@ namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings
 namespace sin_port::native_resupply {
 inline constexpr char export_name[]="SiN_GetServerDynamicResupplyApi";
 inline constexpr unsigned count=6;
-enum class Convar : unsigned { Modifier, HealthKit, Debug, HealthVial };
+enum class Convar : unsigned { Modifier, HealthKit, Debug, HealthVial, MegaHealth };
 struct ConvarSpec {const char* name;const char* initial;unsigned flags;unsigned original_object;};
 inline constexpr ConvarSpec convars[]{
     {"sk_dynamic_resupply_modifier","1.0",0,0x22596510u},
     {"sk_healthkit","25",0x4000u,0x225965e0u},
     {"g_debug_dynamicresupplies","0",0,0x22596558u},
-    {"sk_healthvial","10",0x4000u,0x22596628u}
+    {"sk_healthvial","10",0x4000u,0x22596628u},
+    {"sk_healthmega","100",0,0x225966b8u}
 };
 struct AmmoType {const char* classname;const char* name;int units;float full_weight;};
 inline constexpr AmmoType ammo_types[count]{
@@ -252,6 +253,8 @@ struct PlayerHealthResult {
     int before,maximum_before,maximum_after,converted,raw_health,raw_delta,event_type,after,delta,accepted;
     unsigned damage_mask_written,maximum_reset,overheal_flag_cleared,event_called,fade_called,completed;
 };
+inline constexpr unsigned megahealth_vtable=0x2246bfe4u,megahealth_secondary=0x2246bfbcu;
+inline constexpr char megahealth_classname[]="item_megahealth";
 struct VialPickupBindings {
     void* context;
     int (__cdecl *base_construct)(void*,void*) noexcept;
@@ -272,6 +275,8 @@ struct VialPickupResult {
     unsigned constructed,value_read,heal_called,message,sound,rule_called,respawned,removed,accepted,completed;
     float value;
     int healed,rule;
+    unsigned mega_max_set;
+    int mega_units,mega_max_before,mega_max_after;
     PlayerHealthResult native_heal;
 };
 inline constexpr unsigned item_touch_token=0x22175770u;
@@ -291,6 +296,7 @@ struct ItemTouchBindings {
     const VialPickupBindings* vial;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     bool native_singleplayer_rules;
+    const VialPickupBindings* mega;
 };
 struct ItemTouchResult {
     void* player;
@@ -299,17 +305,18 @@ struct ItemTouchResult {
         touch_cleared,think_cleared,picked_up,rule_called,respawned,removed,completed;
     int rule;
     AmmoPickupResult ammo;
-    VialPickupResult vial;
+    VialPickupResult vial,mega;
 };
 struct PickupFactorySpec {unsigned object,vtable,create,extent;};
-inline constexpr PickupFactorySpec pickup_factory_specs[count+1]{
+inline constexpr PickupFactorySpec pickup_factory_specs[count+2]{
     {0x22528114,0x22468a9c,0x222f5470,0x4d8},
     {0x22528118,0x22468aa8,0x222f55c0,0x4d8},
     {0x2252811c,0x22468ab4,0x222f5690,0x4d8},
     {0x22528128,0x22468ad8,0x222f5900,0x4d8},
     {0x2252812c,0x22468ae4,0x222f59d0,0x4d8},
     {0x22528130,0x22468af0,0x222f5aa0,0x4d8},
-    {0x22528c08,0x2246b920,0x222fa280,0x4cc}
+    {0x22528c08,0x2246b920,0x222fa280,0x4cc},
+    {0x22528c0c,0x2246b92c,0x222fa470,0x4cc}
 };
 struct PickupFactoryBindings {
     void* context;
@@ -318,13 +325,14 @@ struct PickupFactoryBindings {
     int (__cdecl *release_networkable)(void*,void*) noexcept;
     const AmmoPickupBindings* ammo;
     const VialPickupBindings* vial;
+    const VialPickupBindings* mega;
 };
 struct PickupFactoryResult {
     void* actor;
     void* networkable;
     unsigned type,bytes,allocation_called,allocated,constructed,initialized,released,completed;
     AmmoPickupResult ammo;
-    VialPickupResult vial;
+    VialPickupResult vial,mega;
 };
 // CAntigenDispenser: original PE identity tokens, never callable vtables.
 inline constexpr unsigned antigen_vtable=0x2246aa6cu,antigen_extent=0x4e8u,
@@ -568,6 +576,8 @@ struct Api {
     int (__cdecl *antigen_gas_create)(const float*,float,float,float,float,const AntigenGasBindings*,AntigenGasResult*) noexcept;
     int (__cdecl *antigen_gas_think)(void*,unsigned,const AntigenGasBindings*,AntigenGasResult*) noexcept;
     int (__cdecl *antigen_gas_stop)(void*,unsigned,const AntigenGasBindings*,AntigenGasResult*) noexcept;
+    int (__cdecl *mega_construct)(void*,unsigned,const VialPickupBindings*,VialPickupResult*) noexcept;
+    int (__cdecl *mega_touch)(void*,unsigned,void*,const VialPickupBindings*,VialPickupResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

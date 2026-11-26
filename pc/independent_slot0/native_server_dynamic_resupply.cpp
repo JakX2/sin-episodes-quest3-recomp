@@ -682,13 +682,7 @@ int __cdecl player_take_health(void* player,float amount,unsigned flags,const Pl
     if(field<int>(player,0x9c)>100){set_field(player,0x12a1,static_cast<unsigned char>(0));o->overheal_flag_cleared=1;}
     o->accepted=1;return done();
 }
-int __cdecl vial_touch(void* item,unsigned bytes,void* player,const VialPickupBindings* b,VialPickupResult* o) noexcept {
-    if(!o)return 0;*o={};
-    if(!item||bytes<0x4cc||field<unsigned>(item,0)!=vial_vtable||!player||!b)return 0;
-    if(!(b->value?b->value(b->context,&o->value):SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::HealthVial,&o->value)))return 0;
-    o->value_read=1;
-    if(b->heal){if(!b->heal(b->context,player,o->value,0,&o->healed))return 0;}
-    else{if(!player_take_health(player,o->value,0,b->native_heal,&o->native_heal))return 0;o->healed=o->native_heal.accepted;}
+int finish_health_pickup(void* item,void* player,const VialPickupBindings* b,VialPickupResult* o) noexcept {
     o->heal_called=1;
     if(!o->healed){o->completed=1;return 1;}
     if(!b->item_pickup||!b->item_pickup(b->context,player,field<unsigned>(item,0xc)))return 0;
@@ -702,12 +696,50 @@ int __cdecl vial_touch(void* item,unsigned bytes,void* player,const VialPickupBi
     else{if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;}
     o->accepted=o->completed=1;return 1;
 }
+int __cdecl vial_touch(void* item,unsigned bytes,void* player,const VialPickupBindings* b,VialPickupResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!item||bytes<0x4cc||field<unsigned>(item,0)!=vial_vtable||!player||!b)return 0;
+    if(!(b->value?b->value(b->context,&o->value):SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::HealthVial,&o->value)))return 0;
+    o->value_read=1;
+    if(b->heal){if(!b->heal(b->context,player,o->value,0,&o->healed))return 0;}
+    else{if(!player_take_health(player,o->value,0,b->native_heal,&o->native_heal))return 0;o->healed=o->native_heal.accepted;}
+    return finish_health_pickup(item,player,b,o);
+}
+int __cdecl mega_construct(void* item,unsigned bytes,const VialPickupBindings* b,VialPickupResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!item||bytes<0x4cc||!b||!b->base_construct||!b->base_construct(b->context,item))return 0;
+    set_field(item,0,megahealth_vtable);set_field(item,0x494,megahealth_secondary);
+    o->constructed=o->completed=1;return 1;
+}
+int __cdecl mega_touch(void* item,unsigned bytes,void* player,const VialPickupBindings* b,VialPickupResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!item||bytes<0x4cc||field<unsigned>(item,0)!=megahealth_vtable||!player||!b||
+       !b->native_heal||b->native_heal->player!=player||b->native_heal->bytes<0x12a2)return 0;
+    const unsigned vt=field<unsigned>(player,0);if(vt!=0x2245222cu&&vt!=0x224aec3cu)return 0;
+    if(!(b->value?b->value(b->context,&o->value):SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::MegaHealth,&o->value)))return 0;
+    o->value_read=1;
+    const double tr=std::trunc(double(o->value));
+    o->mega_units=(!std::isfinite(tr)||tr<double(std::numeric_limits<int>::min())||tr>double(std::numeric_limits<int>::max()))?std::numeric_limits<int>::min():int(tr);
+    o->mega_max_before=field<int>(player,0x98);
+    const int requested=signed_word(unsigned(o->mega_max_before)+unsigned(o->mega_units));
+    // 2224bfd0 writes requested then caps at 200; both player +1b0
+    // notification targets are RET. The >100 byte is NOT permanent.
+    set_field(player,0x98,requested);
+    if(requested>200)set_field(player,0x98,200);
+    o->mega_max_after=field<int>(player,0x98);
+    set_field(player,0x12a1,static_cast<unsigned char>(o->mega_max_after>100));o->mega_max_set=1;
+    // Original converts the integer grant back to float and calls TakeHealth.
+    // Maximum-health mutation persists even if healing is rejected.
+    if(b->heal){if(!b->heal(b->context,player,float(o->mega_units),0,&o->healed))return 0;}
+    else{if(!player_take_health(player,float(o->mega_units),0,b->native_heal,&o->native_heal))return 0;o->healed=o->native_heal.accepted;}
+    return finish_health_pickup(item,player,b,o);
+}
 int __cdecl item_touch(void* item,unsigned bytes,void* other,unsigned other_bytes,const ItemTouchBindings* b,ItemTouchResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!item||bytes<0x4cc||!other||other_bytes<4||!b)return 0;
     const unsigned vt=field<unsigned>(item,0);
-    bool is_vial=vt==vial_vtable,known=is_vial;
-    if(!is_vial&&bytes>=0x4d8)for(const auto& p:ammo_pickups)if(vt==p.vtable){known=true;break;}
+    bool is_vial=vt==vial_vtable,is_mega=vt==megahealth_vtable,known=is_vial||is_mega;
+    if(!known&&bytes>=0x4d8)for(const auto& p:ammo_pickups)if(vt==p.vtable){known=true;break;}
     if(!known)return 0;
     auto done=[&](){o->completed=1;return 1;};
     auto native_player=[](void* a){const auto v=field<unsigned>(a,0);return v==0x2245222cu||v==0x224aec3cu;};
@@ -736,6 +768,8 @@ int __cdecl item_touch(void* item,unsigned bytes,void* other,unsigned other_byte
     o->subclass_called=1;
     if(is_vial){
         if(!vial_touch(item,bytes,player,b->vial,&o->vial))return 0;o->accepted=o->vial.accepted;
+    }else if(is_mega){
+        if(!mega_touch(item,bytes,player,b->mega,&o->mega))return 0;o->accepted=o->mega.accepted;
     }else{
         if(!ammo_pickup_touch(item,bytes,player,b->ammo,&o->ammo))return 0;o->accepted=o->ammo.accepted;
     }
@@ -766,23 +800,26 @@ int __cdecl item_touch(void* item,unsigned bytes,void* other,unsigned other_byte
 }
 unsigned pickup_type(unsigned vt) noexcept {
     if(vt==vial_vtable)return count;
+    if(vt==megahealth_vtable)return count+1;
     for(unsigned i=0;i<count;++i)if(vt==ammo_pickups[i].vtable)return i;
-    return count+1;
+    return count+2;
 }
 int __cdecl pickup_factory_create(const char* name,const PickupFactoryBindings* b,PickupFactoryResult* o) noexcept {
-    if(!o)return 0;*o={};o->type=count+1;
+    if(!o)return 0;*o={};o->type=count+2;
     if(!name||!b||!b->allocate||!b->initialize)return 0;
     if(class_equal(name,health_classname))o->type=count;
+    else if(class_equal(name,megahealth_classname))o->type=count+1;
     else for(unsigned i=0;i<count;++i)if(class_equal(name,ammo_types[i].classname)){o->type=i;break;}
-    if(o->type>count)return 0;
-    const bool vial=o->type==count;
-    if(vial?!b->vial:!b->ammo)return 0;
+    if(o->type>count+1)return 0;
+    const bool vial=o->type==count,mega=o->type==count+1;
+    if(vial?!b->vial:mega?!b->mega:!b->ammo)return 0;
     const unsigned extent=pickup_factory_specs[o->type].extent;
     o->allocation_called=1;
     if(!b->allocate(b->context,extent,&o->actor,&o->bytes)||!o->actor)return 0;
     o->allocated=1;
     if(o->bytes<extent)return 0;
     if(vial){if(!vial_construct(o->actor,o->bytes,b->vial,&o->vial))return 0;}
+    else if(mega){if(!mega_construct(o->actor,o->bytes,b->mega,&o->mega))return 0;}
     else if(!ammo_pickup_construct(o->actor,o->bytes,o->type,b->ammo,&o->ammo))return 0;
     o->constructed=1;
     if(!b->initialize(b->context,o->actor,name))return 0;
@@ -790,11 +827,11 @@ int __cdecl pickup_factory_create(const char* name,const PickupFactoryBindings* 
     o->completed=1;return 1;
 }
 int __cdecl pickup_factory_destroy(void* actor,unsigned bytes,void* networkable,const PickupFactoryBindings* b,PickupFactoryResult* o) noexcept {
-    if(!o)return 0;*o={};o->type=count+1;
+    if(!o)return 0;*o={};o->type=count+2;
     if(!networkable){o->completed=1;return 1;}
     if(!actor||bytes<4||networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     o->type=pickup_type(field<unsigned>(actor,0));
-    if(o->type>count||bytes<pickup_factory_specs[o->type].extent)return 0;
+    if(o->type>count+1||bytes<pickup_factory_specs[o->type].extent)return 0;
     o->actor=actor;o->bytes=bytes;
     if(!b->release_networkable(b->context,networkable))return 0;
     o->released=o->completed=1;return 1;
@@ -1366,7 +1403,7 @@ int __cdecl antigen_canister_damage(void* c,unsigned n,const void* info,unsigned
     }
     return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak,&antigen_gas_create,&antigen_gas_think,&antigen_gas_stop};
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak,&antigen_gas_create,&antigen_gas_think,&antigen_gas_stop,&mega_construct,&mega_touch};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
