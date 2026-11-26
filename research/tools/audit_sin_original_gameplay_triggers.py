@@ -66,6 +66,7 @@ ORIGINAL_METHODS={
   "trigger_npc_query":(0x22139F60,19,"d5ea9253030765bcd70227e7860e4620758e52644047e564b5756b5d78eaef44"),
   "trigger_vehicle_query":(0x22035100,56,"53a6bdb618de249bc00c327d2326511c8dd944c26a2f4692f3e366f8fd756c6a"),
   "trigger_custom_filter":(0x2216B2A0,46,"e3cf0c2990ba6e8464a74f92378827c0e2d2123b27cab476a05fcdbc5acf2324"),
+  "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_raw":(0x2216B290,5,"f4c6d7ae520f88aecb3ea65952e885437fa4a6ce4b5c3439a161d1c5d8e42863"),
   "name_filter_raw":(0x2216BDB0,139,"0040852e4e4dd65b0a35c530d22e3894599441c146d65b3b23e02ab80a6c7f48"),
   "class_filter_raw":(0x2216BEF0,38,"ffeb9f83148ef71a7ab6d225b4dedcd6911da474b47e0b98322441d7323e7ba8"),
@@ -265,6 +266,8 @@ def verify_filter_factory_keys(read_u32,read_text):
     for row,typ,offset,external,name in FILTER_KEY_ROWS:
         if (read_u32(row),read_u32(row+8),read_u32(row+20))!=(typ,offset,external) or not read_text(external,name):
             raise EvidenceRefused("filter map key changed "+name)
+    if tuple(read_u32(0x224f8c80+off) for off in (0,8,16,20,28))!=(20,0,0x80001,0x22414844,0x2216b300) or not read_text(0x22414844,"TestActivator"):
+        raise EvidenceRefused("filter TestActivator row changed")
     if not read_text(0x2241487c,"OnFail"):
         raise EvidenceRefused("runtime OnFail descriptor literal changed")
     return len(FILTER_FACTORY_ROWS),len(FILTER_KEY_ROWS)
@@ -492,6 +495,8 @@ def self_test()->None:
     for row,typ,offset,external,name in FILTER_KEY_ROWS:
         factory_words.update({row:typ,row+8:offset,row+20:external})
         factory_text[external]=name
+    factory_words.update({0x224f8c80:20,0x224f8c88:0,0x224f8c90:0x80001,0x224f8c94:0x22414844,0x224f8c9c:0x2216b300})
+    factory_text[0x22414844]="TestActivator"
     assert verify_filter_factory_keys(factory_words.get,lambda va,s:factory_text.get(va)==s)==(4,10)
     for key in factory_words:
         bad=dict(factory_words);bad[key]^=1

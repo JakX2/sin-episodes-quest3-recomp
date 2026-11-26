@@ -24,6 +24,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathThinkApi* __cdecl SiN_GetServerNpcJetpackDeathThinkApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRagdollRouteApi* __cdecl SiN_GetServerNpcGruntRagdollRouteApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSentenceRequestApi* __cdecl SiN_GetServerNpcGruntSentenceRequestApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" int __cdecl SiN_CampaignFilterTestActivator(void*,unsigned,void*,const sin_port::native_map::CampaignFilterInputBindings*,sin_port::native_map::CampaignFilterInputResult*) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -2444,6 +2445,25 @@ constexpr NativeInputRow trigger_control_inputs[]{
     {4,0,0x223edce8u,0x22060820u,"Disable"},
     {5,0,0x223d4914u,0x22060830u,"Toggle"}
 };
+constexpr NativeInputRow filter_inputs[]{{1,20,0x22414844u,0x2216b300u,"TestActivator"}};
+constexpr NativeInputMap filter_base_map{0x224f8a44u,0x224f0350u,4,filter_inputs,1};
+constexpr NativeInputMap filter_multi_map{0x224f8a5cu,0x224f8a44u,11,nullptr,0};
+constexpr NativeInputMap filter_name_map{0x224f8a74u,0x224f8a44u,1,nullptr,0};
+constexpr NativeInputMap filter_class_map{0x224f8a8cu,0x224f8a44u,1,nullptr,0};
+const NativeInputMap* filter_input_map(unsigned token) noexcept {
+    switch(token){
+    case 0x224f8a44u:return &filter_base_map;
+    case 0x224f8a5cu:return &filter_multi_map;
+    case 0x224f8a74u:return &filter_name_map;
+    case 0x224f8a8cu:return &filter_class_map;
+    default:return nullptr;
+    }
+}
+unsigned filter_input_token(unsigned vt) noexcept {
+    using namespace sin_port::native_map;
+    return vt==base_filter_vtable?filter_base_map.token:vt==multi_filter_vtable?filter_multi_map.token:
+        vt==name_filter_vtable?filter_name_map.token:vt==class_filter_vtable?filter_class_map.token:0;
+}
 constexpr NativeInputMap dynamic_trigger_map{0x2250b374u,0x2250b17cu,3,nullptr,0};
 constexpr NativeInputMap secret_trigger_map{0x2250b38cu,0x2250b17cu,1,nullptr,0};
 constexpr NativeInputMap trigger_control_map{0x2250b17cu,0x22508b14u,9,trigger_control_inputs,3};
@@ -2596,13 +2616,17 @@ const NativeInputMap* shared_kill_map(unsigned vt) noexcept {
     default:return nullptr;
     }
 }
-int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
+int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o,
+    const native_map::CampaignFilterInputBindings* filters=nullptr,native_map::CampaignFilterInputResult* filter_result=nullptr) noexcept {
+    if(filter_result)*filter_result={};
+    if(filters&&(!filter_result||!native_map::campaign_filter_class(vt)||!a||n<(vt==native_map::base_filter_vtable?0x3c8u:vt==native_map::multi_filter_vtable?0x3f4u:0x3ccu)||rd<unsigned>(a,0)!=vt))return 0;
     if(!o)return 0;*o={};
     const int shared_kill=b?logic_kill_requested(vt,input,*b):0;
     if(shared_kill<0)return 0;
     const auto* kill_map=shared_kill?shared_kill_map(vt):nullptr;
     if(shared_kill&&(!kill_map||!a||n<sin_port::native_map::removal_entity_extent(vt)||rd<unsigned>(a,0)!=vt))return 0;
     unsigned token=kill_map?kill_map->token:
+        filters?filter_input_token(vt):
         vt==sin_port::native_map::dynamic_trigger_vtable&&b&&b->campaign_trigger_control?dynamic_trigger_map.token:
         vt==sin_port::native_map::secret_trigger_vtable&&b&&b->campaign_trigger_control?secret_trigger_map.token:
         vt==sin_port::native_map::colorblend_vtable&&b&&b->math_colorblend?colorblend_map.token:
@@ -2658,6 +2682,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             else{const char* actual=nullptr;if(!input_text(*b,input,&actual))return 0;base_kill=search_equal("Kill",actual);}
         }
         const auto* native=base_kill?&logic_base_kill_map:
+            filters&&filter_input_map(token)?filter_input_map(token):
             kill_map&&token==kill_map->token?kill_map:
             token==dynamic_trigger_map.token&&b->campaign_trigger_control?&dynamic_trigger_map:
             token==secret_trigger_map.token&&b->campaign_trigger_control?&secret_trigger_map:
@@ -2744,6 +2769,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                     shared_status=api&&(campaign_trigger_class(vt)?api->trigger_kill(a,n,vt,b->entities.entries,b->entities.count,b->campaign_trigger_kill,&result):api->logic_kill(a,n,vt,b->entities.entries,b->entities.count,b->logic_kill,&result))&&result.completed&&result.handled?1:0;
                 }
                 const int status=shared_status>=0?shared_status:
+                    filters&&o->handler==0x2216b300u?SiN_CampaignFilterTestActivator(a,n,data.activator,filters,filter_result):
                     (vt==sin_port::native_map::dynamic_trigger_vtable||vt==sin_port::native_map::secret_trigger_vtable)?native_trigger_control_input(a,n,o->handler,*b):
                     vt==sin_port::native_map::colorblend_vtable?native_colorblend_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::remap_vtable?native_remap_input(a,n,o->handler,data,*b):
@@ -2768,6 +2794,9 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         token=parent;
     }
     return rejected(EntityInputUnknown);
+}
+int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
+    return accept_input_impl(a,n,vt,input,activator,caller,variant,vn,id,b,o);
 }
 const ServerEntityAcceptInputApi accept_input_api{1,sizeof(ServerEntityAcceptInputApi),&accept_input};
 bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept;
@@ -3004,4 +3033,12 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerRes
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAntigenPrimaryThinkApi* __cdecl SiN_GetServerAntigenPrimaryThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerAntigenPrimaryThinkApi)?&antigen_primary_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_AcceptCampaignFilterInput=_SiN_AcceptCampaignFilterInput")
+extern "C" int __cdecl SiN_AcceptCampaignFilterInput(void* a,unsigned n,unsigned vt,unsigned input,void* activator,void* caller,const void* variant,unsigned vn,unsigned id,
+    const sin_port::native_weapon_tables::ServerEntityAcceptInputBindings* b,sin_port::native_weapon_tables::ServerEntityAcceptInputResult* o,
+    const sin_port::native_map::CampaignFilterInputBindings* filters,sin_port::native_map::CampaignFilterInputResult* result) noexcept {
+    if(o)*o={};if(result)*result={};
+    return filters&&result&&sin_port::native_weapon_tables::accept_input_impl(a,n,vt,input,activator,caller,variant,vn,id,b,o,filters,result);
 }

@@ -638,3 +638,57 @@
         assert(api->key_value(f.storage[2],"Negated#1","1",&keys,&key)&&key.base_field&&f.storage[2][0x394]);
         assert(!api->key_value(f.storage[2],"FilterType","1",&keys,&key));
     }
+
+// InputTestActivator via actual native datamap AcceptInput, not a
+// handler callback. Variant payload is irrelevant; caller is self.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct TestFilterFixture {
+            alignas(4) unsigned char actor[0x3f4]{},player[0x37c]{};
+            unsigned rows[2][7]{},calls=0,last=0;
+            void* activator=nullptr;
+        } f;
+        const auto leaf=reinterpret_cast<CampaignFilterTestActivator>(GetProcAddress(server,filter_test_activator_export));
+        const auto accept=reinterpret_cast<nw::AcceptCampaignFilterInput>(GetProcAddress(server,nw::accept_campaign_filter_export));
+        assert(leaf&&accept&&!GetProcAddress(client,filter_test_activator_export)&&!GetProcAddress(client,nw::accept_campaign_filter_export));
+        put(f.player,0,0x224aec3cu);put(f.player,0xc0,1);put(f.player,0xc,2);
+        for(unsigned i=0;i<2;++i){f.rows[i][0]=201+i;f.rows[i][1]=203;f.rows[i][4]=0xffffffffu;f.rows[i][5]=80+i;}
+        CampaignCustomFilterBindings pred{};pred.context=&f;
+        pred.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<TestFilterFixture*>(p);*bytes=a==f.actor?sizeof(f.actor):a==f.player?sizeof(f.player):0;return *bytes!=0;
+        };
+        pred.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            if(token==1)*text="hero";else if(token==2)*text="player";else if(token==3)*text="wrong";else return 0;
+            *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nw::ServerEntityVoidOutputBindings out{};out.context=&f;
+        out.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<TestFilterFixture*>(p);if(token<11||token>12)return 0;*row=f.rows[token-11];*bytes=0x1c;return 1;
+        };
+        out.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<TestFilterFixture*>(p);assert(activator==f.activator&&caller==f.actor&&action->delay==0.f);++f.calls;f.last=action->target;return 1;
+        };
+        CampaignFilterInputBindings b{&pred,&out,nullptr};
+        nw::ServerNpcActivePostAnimationBindings storage{};
+        nw::ServerEntityAcceptInputBindings ai{};ai.storage=&storage;
+        ai.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            if(token!=90)return 0;*text="tEsTaCtIvAtOr";*bytes=14;return 1;
+        };
+        nw::ServerEntityAcceptInputResult ar{};CampaignFilterInputResult r{};
+        unsigned variant[5]{123,0,0,0,5};
+        for(unsigned vt:{base_filter_vtable,name_filter_vtable,class_filter_vtable,multi_filter_vtable}){
+            std::memset(f.actor,0,sizeof(f.actor));put(f.actor,0,vt);put(f.actor,0x3ac,11);put(f.actor,0x3c4,12);
+            put(f.actor,0x3c8,vt==name_filter_vtable?1:vt==class_filter_vtable?2:0);
+            for(unsigned i=0;i<5;++i)put(f.actor,0x3e0+4*i,0xffffffffu);
+            f.actor[0x1f0]=1;f.activator=f.player;f.calls=0;
+            const unsigned extent=vt==base_filter_vtable?0x3c8u:vt==multi_filter_vtable?0x3f4u:0x3ccu;
+            assert(accept(f.actor,extent,vt,90,f.player,nullptr,variant,sizeof(variant),13,&ai,&ar,&b,&r)&&ar.accepted&&ar.native_handler&&ar.dirty&&ar.handler==0x2216b300u&&ar.map==0x224f8a44u&&ar.actual_type==5&&ar.expected_type==20);
+            assert(r.completed&&r.pass_output&&!r.fail_output&&r.queued==1&&f.calls==1&&f.last==201&&f.actor[0x200]);
+            f.actor[0x394]=1;
+            assert(leaf(f.actor,extent,f.player,&b,&r)&&r.fail_output&&!r.pass_output&&f.calls==2&&f.last==202);
+            assert(!leaf(f.actor,extent-1,f.player,&b,&r)&&f.calls==2);
+            f.actor[0x394]=0;f.activator=nullptr;
+            if(vt==base_filter_vtable||vt==multi_filter_vtable)assert(leaf(f.actor,extent,nullptr,&b,&r)&&r.pass_output&&f.calls==3);
+            else assert(!leaf(f.actor,extent,nullptr,&b,&r)&&f.calls==2);
+        }
+    }
