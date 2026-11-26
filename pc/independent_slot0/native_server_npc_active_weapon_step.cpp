@@ -1296,6 +1296,59 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
     auto life=*dispatch.life;
     auto& identity=life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
     identity.entries=b.entities.entries;identity.count=b.entities.count;identity.speech.original_vtable=vt;
+    struct OutputRoute {
+        void* actor;unsigned extent,handle;float now;
+        const ServerNpcHealthOutputQueueBindings* queue;
+        const ServerNpcGruntDamageOutputBindings* original;
+        ServerEntityAcceptInputResult* result;
+        const ServerWeaponActivityBindings* entities;
+    } route{a,n,rd<unsigned>(a,0x378),b.now,dispatch.outputs,&dispatch.life->combat.alive.chain.detail.damage.base.chain.outputs,&o,&b.entities};
+    if(dispatch.outputs){
+        if(!route.queue->actions||!route.queue->queue)return false;
+        auto& outputs=life.combat.alive.chain.detail.damage.base.chain.outputs;
+        outputs.context=&route;
+        outputs.output=[](void* p,void* actor,unsigned off) noexcept -> int{
+            auto& q=*static_cast<OutputRoute*>(p);
+            if(actor!=q.actor||(off!=0xa48u&&off!=0xa78u&&off!=0xb68u&&off!=0xb80u)||q.extent<off+0x18)return 0;
+            if(sin_independent::EntityHandleView(q.entities->entries,q.entities->count).Resolve(q.handle)!=actor)return 0;
+            // All output services keep their original independent contexts.
+            ServerEntityVoidOutputBindings actions{};actions.context=&q;
+            actions.resolve=[](void* p,unsigned token,void** data,unsigned* bytes) noexcept -> int{
+                const auto& src=*static_cast<OutputRoute*>(p)->queue->actions;
+                return src.resolve&&src.resolve(src.context,token,data,bytes);
+            };
+            actions.release=[](void* p,unsigned token,void* data) noexcept -> int{
+                const auto& src=*static_cast<OutputRoute*>(p)->queue->actions;
+                return src.release&&src.release(src.context,token,data);
+            };
+            actions.debug_action=[](void* p,void* caller,const ServerEntityVoidOutputAction* action) noexcept -> int{
+                const auto& src=*static_cast<OutputRoute*>(p)->queue->actions;
+                return src.debug_action&&src.debug_action(src.context,caller,action);
+            };
+            actions.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* action) noexcept -> int{
+                auto& q=*static_cast<OutputRoute*>(p);const auto& queue=*q.queue;
+                if(activator!=q.actor||caller!=q.actor)return 0;
+                ServerEntityNamedEventQueueResult result{};
+                if(!enqueue_named_event(queue.sentinel,queue.sentinel_bytes,queue.sentinel_token,q.now,q.handle,q.handle,action,queue.queue,&result))return 0;
+                ++q.result->health_output_enqueued;return 1;
+            };
+            ServerEntityVoidOutputResult result{};
+            if(!fire_void_output(static_cast<unsigned char*>(actor)+off,q.extent-off,actor,actor,q.extent,0.f,&actions,&result))return 0;
+            ++q.result->health_outputs;q.result->health_output_actions+=result.queued;q.result->health_output_removed+=result.removed;return 1;
+        };
+        // The authenticated original Grunt +120 returns false and the
+        // CBaseNPC cast of self succeeds. Only local-player lookup is hosted.
+        outputs.is_player=[](void* p,void* e,bool* player) noexcept -> int{
+            auto& q=*static_cast<OutputRoute*>(p);if(e!=q.actor)return 0;*player=false;return 1;
+        };
+        outputs.cast_npc=[](void* p,void* e,void** npc,unsigned* bytes) noexcept -> int{
+            auto& q=*static_cast<OutputRoute*>(p);if(e!=q.actor)return 0;*npc=e;*bytes=q.extent;return 1;
+        };
+        outputs.local_player=[](void* p,void** player) noexcept -> int{
+            const auto& src=*static_cast<OutputRoute*>(p)->original;
+            return src.local_player&&src.local_player(src.context,player);
+        };
+    }
     const auto* api=SiN_GetServerNpcGruntLifeDispatchApi(1,sizeof(ServerNpcGruntLifeDispatchApi));
     if(!api||!api->run(a,n,info,0x48,b.now,&life,dispatch.life_result))return false;
     // 2213bc80 immediately skips its player-attacker statistics branch
