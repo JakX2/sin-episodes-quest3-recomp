@@ -513,7 +513,8 @@ int main(int argc,char** argv){
     };
     install_at(88,3);bind_nav();f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);component_calls=0;
     auto no_legacy_cue=cb;no_legacy_cue.cue=nullptr;
-    ServerNpcNativeSquadTaskThinkResult taskrun{};
+    // MSVC x86 C1054: static zero-initialization avoids recursive aggregate initialization.
+    static ServerNpcNativeSquadTaskThinkResult taskrun;
     assert(taskthink->run(f.actor,sizeof(f.actor),69.494f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&taskbind,&taskrun)&&taskrun.think.think.squad.cycle.preschedule.think.completed&&taskrun.speech_tasks.calls==1&&taskrun.speech_tasks.native==1&&taskrun.speech_tasks.last.mode==1&&taskrun.speech_tasks.last.event.metric==241&&!taskrun.speech_tasks.last.event.sentence.mode_allowed&&taskrun.speech_tasks.last.shared.lifecycle.completed&&component_calls==1&&f.think_component_tasks==8);
     ab.shared.component_task=saved_component_task;
     tcb.submit_goal=cover_submit;
