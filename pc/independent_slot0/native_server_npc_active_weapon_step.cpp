@@ -13,6 +13,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryMutationApi* __cdecl SiN_GetServerNpcEnemyMemoryMutationApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryTreeApi* __cdecl SiN_GetServerNpcEnemyMemoryTreeApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntMemoryReportApi* __cdecl SiN_GetServerNpcGruntMemoryReportApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadLeaveApi* __cdecl SiN_GetServerNpcGruntSquadLeaveApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -838,6 +839,22 @@ int native_set_squad(void* a,unsigned n,unsigned vt,const ServerEntityInputData&
         const int count=rd<int>(group,0x48);if(count<0||count>16)return false;
         const unsigned handle=rd<unsigned>(a,0x378);
         if(registry.Resolve(handle)!=a)return false;
+        if(s.native_leave){
+            // Both entry points must resolve the same group, not parallel
+            // shadow copies. The input owner supplies registry/class identity.
+            auto leave=*s.native_leave;
+            leave.sentence.entries=b.entities.entries;leave.sentence.count=b.entities.count;
+            auto& speech=leave.sentence.speech;speech.original_vtable=vt;
+            void* check=nullptr;unsigned bytes=0;
+            if(!speech.squad_storage||!speech.squad_storage(speech.context,group_token,&check,&bytes)||check!=group||bytes<0x58)return false;
+            const auto* api=SiN_GetServerNpcGruntSquadLeaveApi(1,sizeof(ServerNpcGruntSquadLeaveApi));
+            if(!api||!api->leave(a,n,group_token,handle,notify,b.now,&leave,&o.squad_leave))return false;
+            o.squad_removed+=o.squad_leave.removed;o.squad_notices+=o.squad_leave.notifications;
+            o.squad_native_notices+=o.squad_leave.native_notifications;o.squad_external_notices+=o.squad_leave.external_notifications;
+            o.squad_stale_notices+=o.squad_leave.stale;
+            if(o.squad_leave.missing)return warning(0x223ee75cu);
+            return true;
+        }
         int i=0;for(;i<count;++i)if(registry.Resolve(rd<unsigned>(group,8+4*i))==a)break;
         if(i==count)return warning(0x223ee75cu);
         auto* rows=static_cast<unsigned char*>(group)+8;
