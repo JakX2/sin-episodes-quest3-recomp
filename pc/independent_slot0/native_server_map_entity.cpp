@@ -427,7 +427,7 @@ int __cdecl destroy_autosave(void* actor,unsigned bytes,void* networkable,const 
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==multicompare_vtable||vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -547,6 +547,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"OnLessThan",0x39c,11},{"OnEqualTo",0x3b4,11},
         {"OnNotEqualTo",0x3cc,11},{"OnGreaterThan",0x3e4,11}
     };
+    constexpr Spec multicompare_keys[]{{"OnEqual",0x394,11},{"OnNotEqual",0x3ac,11},{"IntegerValue",0x3c4,5},{"ShouldComparetoValue",0x3c8,5}};
     constexpr Spec autosave_keys[]{{"NewLevelUnit",0x394,6}};
     constexpr Spec navigation_keys[]{{"target",0x90,2}};
     constexpr Spec menu_keys[]{
@@ -560,7 +561,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     Spec numbered{};
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);else if(vt==autosave_vtable)match(autosave_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);else if(vt==autosave_vtable)match(autosave_keys);else if(vt==multicompare_vtable)match(multicompare_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -1748,7 +1749,96 @@ int __cdecl autosave_kill(void* a,unsigned n,const sin_independent::EntityHandle
     if(!b->remove(b->context,a))return 0;
     o->remove_requested=o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill};
+// Original variant_t::Convert(5), 22155e60. FIELD_INTEGER,
+ // FLOAT (x87 truncating conversion), STRING (atoi); other types reject.
+bool multi_integer(unsigned (&value)[5],const MultiCompareBindings& b,bool& accepted) noexcept {
+    accepted=true;
+    if(value[4]==5)return true;
+    if(value[4]==1){
+        float scalar=0;std::memcpy(&scalar,value,4);
+        const double truncated=std::trunc(double(scalar));
+        const int i=(!std::isfinite(truncated)||truncated<double(INT_MIN)||truncated>double(INT_MAX))?INT_MIN:static_cast<int>(truncated);
+        std::memcpy(value,&i,4);value[4]=5;return true;
+    }
+    if(value[4]==2){
+        const char* text="";unsigned bytes=1;
+        if(value[0]&&(!b.resolve_text||!b.resolve_text(b.context,value[0],&text,&bytes)||!text||!bytes||!std::memchr(text,0,bytes<4096?bytes:4096)))return false;
+        while(*text==' '||(*text>='\t'&&*text<='\r'))++text;
+        const bool negative=*text=='-';if(negative||*text=='+')++text;
+        unsigned raw=0;while(*text>='0'&&*text<='9'){raw=raw*10u+unsigned(*text-'0');++text;}
+        value[0]=negative?0u-raw:raw;value[4]=5;return true;
+    }
+    accepted=false;return true;
+}
+bool multi_row(const MultiCompareBindings& b,unsigned token,void** row) noexcept {
+    unsigned bytes=0;return b.resolve&&b.resolve(b.context,token,row,&bytes)&&*row&&bytes>=0x1c;
+}
+int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activator,const void* variant,unsigned vn,unsigned id,const MultiCompareBindings* b,MultiCompareResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<multicompare_extent||entity_vtable(a)!=multicompare_vtable||!name||!b)return 0;
+    o->handled=1;
+    const bool input=equal_class(name,"InputValue"),compare=equal_class(name,"CompareValues");
+    if(!input&&!compare){o->handled=0;o->completed=1;return 1;}
+    unsigned payload[5]{};
+    if(input){
+        if(!variant||vn<0x14)return 0;
+        std::memcpy(payload,variant,0x14);bool accepted=false;
+        if(!multi_integer(payload,*b,accepted))return 0;
+        if(!accepted){o->rejected=o->completed=1;return 1;}
+        o->converted=1;
+    }
+    // Preflight owner list with bounded token and address uniqueness.
+    unsigned tokens[256]{};void* rows[256]{};
+    unsigned token=read_field<unsigned>(a,0x3cc);
+    while(token){
+        if(o->visited==256)return 0;
+        void* row=nullptr;if(!multi_row(*b,token,&row))return 0;
+        const auto start=reinterpret_cast<std::uintptr_t>(row),actor=reinterpret_cast<std::uintptr_t>(a);
+        if(start>std::uintptr_t(-1)-0x1c||actor>std::uintptr_t(-1)-n||(start<actor+n&&actor<start+0x1c))return 0;
+        for(unsigned i=0;i<o->visited;++i){
+            const auto prior=reinterpret_cast<std::uintptr_t>(rows[i]);
+            if(tokens[i]==token||(start<prior+0x1c&&prior<start+0x1c))return 0;
+        }
+        tokens[o->visited]=token;rows[o->visited++]=row;
+        token=read_field<unsigned>(row,0x18);
+    }
+    if(input){
+        void* found=nullptr;
+        for(unsigned i=0;i<o->visited;++i)if(read_field<unsigned>(rows[i],0x14)==id){found=rows[i];break;}
+        if(found){std::memcpy(found,payload,0x14);o->replaced=1;}
+        else {
+            if(o->visited==256||!b->allocate)return 0;
+            void* row=nullptr;unsigned bytes=0,new_token=0;
+            if(!b->allocate(b->context,&new_token,&row,&bytes)||!new_token||!row||bytes<0x1c)return 0;
+            const auto start=reinterpret_cast<std::uintptr_t>(row),actor=reinterpret_cast<std::uintptr_t>(a);
+            if(start>std::uintptr_t(-1)-0x1c||(start<actor+n&&actor<start+0x1c))return 0;
+            for(unsigned i=0;i<o->visited;++i){
+                const auto prior=reinterpret_cast<std::uintptr_t>(rows[i]);
+                if(tokens[i]==new_token||(start<prior+0x1c&&prior<start+0x1c))return 0;
+            }
+            std::memcpy(row,payload,0x14);write_field(row,0x14,id);write_field(row,0x18,read_field<unsigned>(a,0x3cc));
+            write_field(a,0x3cc,new_token);o->inserted=1;
+        }
+        if(!read_field<unsigned>(a,0x3d0)){
+            if(!b->schedule||!b->schedule(b->context,a,activator,a,"ForceRecompare",0.f,id))return 0;
+            write_field(a,0x3d0,1u);o->scheduled=1;
+        }
+    }else{
+        write_field(a,0x3d0,0u);
+        auto integer=[](void* row){return read_field<unsigned>(row,0x10)==5?read_field<int>(row,0):0;};
+        int reference=read_field<int>(a,0x3c4);
+        if(!read_field<unsigned>(a,0x3c8)&&o->visited)reference=integer(rows[0]);
+        bool equal=true;for(unsigned i=0;i<o->visited;++i)if(integer(rows[i])!=reference){equal=false;break;}
+        o->compared=1;o->equal=equal;o->output_offset=equal?0x394:0x3ac;
+        using namespace sin_port::native_weapon_tables;
+        const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+        ServerEntityVoidOutputResult r{};
+        if(!fire||!b->output||!fire->fire(static_cast<unsigned char*>(a)+o->output_offset,0x18,activator,a,n,0.f,b->output,&r))return 0;
+        o->queued=r.queued;
+    }
+    o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

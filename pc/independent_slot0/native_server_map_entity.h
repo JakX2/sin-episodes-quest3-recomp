@@ -123,6 +123,20 @@ inline constexpr unsigned compare_vtable=0x22422004,compare_extent=0x3fc;
 inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
 // Derived scalar-deleting destructor boundary, distinct from the
 // factory's owner networkable-release boundary.
+inline constexpr unsigned multicompare_vtable=0x22420b84,multicompare_extent=0x3d4;
+struct MultiCompareBindings {
+    void* context;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    int (__cdecl *resolve)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *allocate)(void*,unsigned*,void**,unsigned*) noexcept;
+    int (__cdecl *resolve_text)(void*,unsigned,const char**,unsigned*) noexcept;
+    // Original zero-delay direct void event: target and caller self,
+    // incoming activator and output ID, exact literal ForceRecompare.
+    int (__cdecl *schedule)(void*,void*,void*,void*,const char*,float,unsigned) noexcept;
+};
+struct MultiCompareResult {
+    unsigned completed,handled,converted,rejected,visited,inserted,replaced,scheduled,compared,equal,output_offset,queued;
+};
 inline constexpr unsigned autosave_vtable=0x2241f9e4,autosave_extent=0x398;
 struct AutosaveBindings {
     void* context;
@@ -406,6 +420,7 @@ struct Api {
     int (__cdecl *destroy_autosave)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
     int (__cdecl *autosave_input)(void*,unsigned,const char*,const AutosaveBindings*,AutosaveResult*) noexcept;
     int (__cdecl *autosave_kill)(void*,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const AutosaveBindings*,AutosaveResult*) noexcept;
+    int (__cdecl *multicompare_input)(void*,unsigned,const char*,void*,const void*,unsigned,unsigned,const MultiCompareBindings*,MultiCompareResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
