@@ -2187,4 +2187,30 @@ struct ServerNpcGruntComponentDamageApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,const ServerNpcGruntComponentDamageBindings*,ServerNpcGruntComponentDamageResult*) noexcept;
 };
 using GetServerNpcGruntComponentDamageApi=const ServerNpcGruntComponentDamageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_behavior_life_export[]="SiN_GetServerNpcGruntBehaviorLifeApi";
+struct ServerNpcGruntBehaviorDamageBindings {
+    // Original PE32 identity token for the actor. Embedded pointers and vptr
+    // identities are represented as data, never invoked as addresses.
+    std::uint32_t actor_token;
+    ServerNpcGruntComponentDamageBindings component;
+};
+struct ServerNpcGruntBehaviorDamageResult {
+    ServerNpcGruntComponentDamageResult component;
+    unsigned entered,embedded_offset,identity_valid,parent_native;
+    std::uint32_t active_token,behavior_vtable,bridge_vtable;
+};
+struct ServerNpcGruntBehaviorLifeBindings {
+    ServerNpcGruntRagdollLifeBindings combat;
+    ServerNpcGruntBehaviorDamageBindings behavior;
+};
+struct ServerNpcGruntBehaviorLifeResult {
+    ServerNpcGruntRagdollLifeResult combat;
+    ServerNpcGruntBehaviorDamageResult behavior;
+};
+struct ServerNpcGruntBehaviorLifeApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntBehaviorLifeBindings*,ServerNpcGruntBehaviorLifeResult*) noexcept;
+};
+using GetServerNpcGruntBehaviorLifeApi=const ServerNpcGruntBehaviorLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

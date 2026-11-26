@@ -2344,6 +2344,33 @@ int main(int argc,char** argv){
         static ServerNpcGruntIgnitionAliveResult ir;
         assert(fire->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),19,&ic,&ir)&&ir.alive.chain.detail.damage.completed&&ir.alive.life.completed&&ir.alive.life.reaction_called&&ir.alive.life.health_after==67&&ir.ignition.completed&&ir.ignition.created&&ir.ignition.flag_written&&ir.ignition.event_called&&ir.ignition.output_called&&q.ignite_steps==6);
         assert(fire->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),20,&ic,&ir)&&ir.alive.chain.detail.damage.completed&&ir.alive.chain.detail.damage.rejected_flags&&!ir.alive.life.completed&&!ir.ignition.completed&&TailFixture::rd(q.actor,0x9c)==67&&q.ignite_steps==6);
+        auto gb=reinterpret_cast<GetServerNpcGruntBehaviorLifeApi>(GetProcAddress(s,server_npc_grunt_behavior_life_export));
+        assert(gb&&!GetProcAddress(c,server_npc_grunt_behavior_life_export)&&!gb(0,sizeof(ServerNpcGruntBehaviorLifeApi))&&!gb(1,0));
+        const auto* behavior=gb(1,sizeof(ServerNpcGruntBehaviorLifeApi));assert(behavior);
+        static ServerNpcGruntBehaviorLifeBindings bc;
+        auto& life=bc.combat.life.combat.combat.life;life.combat=ic;
+        // Two previously hosted function-level routes are deliberately absent.
+        life.combat.alive.chain.detail.damage.component_damage=nullptr;
+        bc.behavior.component.parent_damage=nullptr;bc.behavior.actor_token=0x10000;
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.actor);
+        f.put(q.actor,0x94,2);f.put(q.actor,0xe8,0xffffffffu);f.put(q.actor,0x8c,0);
+        f.put(q.actor,0xc14,0x2249aa40u);f.put(q.actor,0xc18,0x10cfcu);
+        f.put(q.actor,0xcfc,0x223f956cu);f.put(q.actor,0xd00,0x10000u);f.put(q.actor,0xd08,0x10c14u);
+        f.put(q.actor,0x9c,80);f.put(q.actor,0x634,0.f);f.put(q.actor,0x994,21.f);
+        f.put(q.damage,0x38,0u);f.put(q.damage,0x2c,0.5f);
+        static ServerNpcGruntBehaviorLifeResult br;
+        assert(behavior->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),21,&bc,&br)&&br.behavior.entered&&br.behavior.identity_valid&&br.behavior.parent_native&&br.behavior.component.completed&&br.behavior.embedded_offset==0xcfc&&br.combat.life.combat.combat.life.completed&&!br.combat.life.combat.combat.life.native_result&&TailFixture::rd(q.actor,0x9c)==80);
+        f.put(q.actor,0x994,22.f);
+        assert(behavior->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),22,&bc,&br)&&br.behavior.component.native_result==1&&br.combat.life.combat.combat.life.native_result==1&&TailFixture::rd(q.actor,0x9c)==79&&br.combat.life.combat.combat.life.alive.alive.chain.detail.damage.component_called&&!br.combat.life.combat.combat.life.alive.alive.chain.detail.damage.base_called);
+        f.put(q.actor,0xd08,0x10c10u);
+        assert(!behavior->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),23,&bc,&br)&&br.behavior.entered&&!br.behavior.identity_valid&&!br.behavior.parent_native&&TailFixture::rd(q.actor,0x9c)==79);
+        f.put(q.actor,0xd08,0x10c14u);f.put(q.actor,0xc18,0x10cfdu);
+        assert(!behavior->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),23,&bc,&br)&&!br.behavior.identity_valid&&!br.behavior.parent_native);
+        f.put(q.actor,0xc18,0x10cfcu);f.put(q.actor,0xc14,0x2249543cu);
+        assert(!behavior->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),23,&bc,&br)&&!br.behavior.identity_valid);
+        f.put(q.actor,0xc14,0x2249aa40u);
+        assert(!behavior->run(q.actor,sizeof(q.actor),0x9002u,q.damage,sizeof(q.damage),23,&bc,&br)&&!br.behavior.entered);
+
 
 
 
