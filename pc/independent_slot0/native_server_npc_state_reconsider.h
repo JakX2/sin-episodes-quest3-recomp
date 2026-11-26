@@ -1559,4 +1559,44 @@ struct ServerNpcGruntDamageOutputsApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageOutputChainBindings*,ServerNpcGruntDamageOutputChainResult*) noexcept;
 };
 using GetServerNpcGruntDamageOutputsApi=const ServerNpcGruntDamageOutputsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_damage_event_export[]="SiN_GetServerNpcGruntDamageEventApi";
+struct ServerNpcGruntDamageTailBindings {
+    ServerNpcEnemyMemoryQueryBindings memory;
+    ServerNpcConditionMapBindings conditions;
+    ServerNpcGruntSentenceBindings entities;
+    void* context;
+    int (__cdecl *accept)(void*,void*,void*,bool*) noexcept; // +300
+    int (__cdecl *visible)(void*,void*,void*,unsigned,bool*) noexcept; // +1f0, 4081, last arg zero
+    int (__cdecl *refresh_origin)(void*,void*) noexcept; // 2213fa60
+    int (__cdecl *report)(void*,void*,void*,const float*,void*) noexcept; // +678
+    int (__cdecl *is_player)(void*,void*,bool*) noexcept;
+    int (__cdecl *notify_attacker)(void*,void*,void*) noexcept; // +380
+    int (__cdecl *final_notice)(void*,void*,const float*,int,int,float,int) noexcept; // 221b8fa0
+    float fallback_vector[3]; // original global 22572bdc
+};
+struct ServerNpcGruntDamageTailResult {
+    ServerNpcEnemyMemoryLookup lookup,touch;
+    ServerNpcConditionResult light,heavy,accumulated;
+    float position[3],amount,total;
+    unsigned completed,enabled,attacker_valid,attacker_flags,reported,report_existing,visible,accumulated_prior,player_stamp,memory_touched,notified,final_notice;
+    int native_result;
+};
+struct ServerNpcGruntDamageEventBindings {
+    ServerNpcGruntDamageOutputChainBindings chain;
+    ServerNpcGruntDamageTailBindings tail;
+};
+struct ServerNpcGruntDamageEventResult {
+    ServerNpcGruntDamageOutputChainResult chain;
+    ServerNpcGruntDamageTailResult tail;
+    int native_result;
+    unsigned completed;
+};
+struct ServerNpcGruntDamageEventApi {
+    std::uint32_t version,size;
+    // Caller attests arrival at 220402ef.
+    int (__cdecl *tail)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageTailBindings*,ServerNpcGruntDamageTailResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageEventBindings*,ServerNpcGruntDamageEventResult*) noexcept;
+};
+using GetServerNpcGruntDamageEventApi=const ServerNpcGruntDamageEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -2161,5 +2161,64 @@ int main(int argc,char** argv){
         f.put(q.actor,0xbc,0x10000000u);q.count=0;
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&cb,&cr)&&cr.prefix.damage.pain.blocked_flags&&cr.outputs.completed&&cr.outputs.tail_required&&q.count==1);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntDamageEventApi>(GetProcAddress(s,server_npc_grunt_damage_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_damage_event_export)&&!g(0,sizeof(ServerNpcGruntDamageEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntDamageEventApi));assert(api);
+        struct TailFixture{
+            alignas(4) unsigned char actor[0xdb2]{},other[0xdb2]{},damage[0x48]{},desc[0x48]{},memory[0x3c]{},nodes[12]{},record[0x38]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            bool accept=true,visible=true;unsigned reports=0,notices=0,notifications=0;void* target=nullptr;
+            static TailFixture& self(void* p){return *static_cast<TailFixture*>(p);}
+            static unsigned rd(void* p,unsigned o){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+o,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.other);
+        ServerNpcGruntDamageTailBindings b{};b.context=&q;b.entities.speech.original_vtable=0x2249aaa4;b.entities.entries=q.entries;b.entities.count=3;
+        b.entities.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xdb2;return 1;};
+        b.conditions.context=&q;b.conditions.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept -> int{*out=TailFixture::self(p).desc;*n=0x48;return 1;};
+        b.memory.context=&q;b.memory.entity_key=[](void* p,void* e,std::uint32_t* k) noexcept -> int{assert(e==TailFixture::self(p).other);*k=66;return 1;};
+        b.memory.storage.context=&q;b.memory.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& q=TailFixture::self(p);if(token==77){*out=q.memory;*n=sizeof(q.memory);}
+            else if(token==78){*out=q.nodes;*n=sizeof(q.nodes);}
+            else if(token==79){*out=q.record;*n=sizeof(q.record);}
+            else return 0;return 1;};
+        b.accept=[](void* p,void*,void*,bool* yes) noexcept -> int{*yes=TailFixture::self(p).accept;return 1;};
+        b.visible=[](void* p,void*,void*,unsigned flags,bool* yes) noexcept -> int{assert(flags==0x4081);*yes=TailFixture::self(p).visible;return 1;};
+        b.is_player=[](void* p,void* e,bool* yes) noexcept -> int{assert(e==TailFixture::self(p).other);*yes=true;return 1;};
+        b.report=[](void* p,void*,void* target,const float* v,void* source) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(!source&&v[0]==65&&v[1]==2&&v[2]==3);++q.reports;q.target=target;return 1;};
+        b.notify_attacker=[](void* p,void* a,void* e) noexcept -> int{auto& q=TailFixture::self(p);assert(a==q.actor&&e==q.other&&q.actor[0x84c]);++q.notifications;return 1;};
+        b.final_notice=[](void* p,void* a,const float* pos,int x,int y,float f,int z) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(a==q.actor&&pos[0]==1&&pos[1]==2&&pos[2]==3&&x==1&&y==0x400&&f==0.5f&&z==4);++q.notices;return 1;};
+        b.fallback_vector[0]=1;
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.actor,0x2bc,1.f);f.put(q.actor,0x2c0,2.f);f.put(q.actor,0x2c4,3.f);
+        f.put(q.actor,0x984,77u);f.put(q.actor,0x98,100);f.put(q.actor,0x994,9.f);
+        f.put(q.memory,0,0x22068d70u);f.put(q.memory,4,78u);f.put(q.memory,8,1u);f.put(q.memory,0x18,0x22068b40u);
+        q.memory[0x10]=0;q.nodes[0]=q.nodes[1]=255;f.put(q.nodes,4,66u);f.put(q.nodes,8,79u);
+        f.put(q.damage,0x28,0x1001u);f.put(q.damage,0x24,0xffffffffu);f.put(q.damage,0x2c,20.f);
+        ServerNpcGruntDamageTailResult o{};
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.native_result&&!o.enabled&&!q.notices);
+        q.actor[0xbd]=0x20;
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.attacker_valid&&!o.attacker_flags&&q.notices==1&&!q.notifications);
+        f.put(q.other,0xbc,0x80u);
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.visible&&o.light.mapped&&!o.heavy.mapped&&!o.accumulated_prior&&o.total==20&&o.player_stamp&&o.memory_touched&&!o.accumulated.mapped&&q.notifications==1&&q.notices==2);
+        f.put(q.damage,0x2c,11.f);q.visible=false;
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10.5f,&b,&o)&&o.reported&&q.target==q.other&&o.accumulated_prior&&o.total==31&&o.accumulated.mapped&&o.memory_touched&&q.reports==1);
+        f.put(q.damage,0x2c,4.f);q.damage[0x3b]=0x40;f.put(q.actor,0x8a0,0xffffffffu);
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11.5f,&b,&o)&&o.heavy.mapped&&!o.accumulated_prior&&o.total==4&&!o.accumulated.mapped);
+        f.put(q.nodes,4,0u);
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),12,&b,&o)&&o.reported&&!q.target&&o.touch.fallback_used&&o.memory_touched);
+        // Complete caller path: accepted/rejected base, equal timestamp, and disabled AI tail.
+        static ServerNpcGruntDamageEventBindings cb;cb.tail=b;cb.chain.prefix.damage.reaction.sentence=b.entities;
+        cb.chain.outputs.entities=b.entities;cb.chain.outputs.conditions=b.conditions;
+        cb.chain.prefix.damage.base_damage=[](void*,void*,void*,int* v) noexcept -> int{*v=0;return 1;};
+        static ServerNpcGruntDamageEventResult cr;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),12,&cb,&cr)&&cr.completed&&!cr.native_result&&!cr.tail.completed);
+        cb.chain.prefix.damage.base_damage=[](void*,void*,void*,int* v) noexcept -> int{*v=1;return 1;};
+        f.put(q.actor,0xbc,0x10000000u);f.put(q.actor,0x994,13.f);f.put(q.actor,0x9c,80);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),13,&cb,&cr)&&cr.completed&&cr.native_result&&cr.chain.outputs.stamp_equal&&cr.tail.completed&&!cr.tail.enabled&&!cr.chain.outputs.tail_required);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

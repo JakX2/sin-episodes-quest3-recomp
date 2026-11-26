@@ -3704,6 +3704,118 @@ int __cdecl grunt_damage_output_chain(void* a,unsigned n,void* damage,unsigned d
     return grunt_damage_outputs(a,n,damage,dn,now,&tail,&out->outputs);
 }
 const ServerNpcGruntDamageOutputsApi damage_outputs_api{1,sizeof(ServerNpcGruntDamageOutputsApi),&grunt_damage_outputs,&grunt_damage_output_chain};
+int __cdecl grunt_damage_tail(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageTailBindings* b,ServerNpcGruntDamageTailResult* out) noexcept{
+    if(!out)return 0;*out={};out->lookup.index=out->touch.index=255;
+    if(!a||n<0xdb2||!damage||dn<0x3c||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->entities;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto attacker=[&](){return registry.Resolve(read<unsigned>(damage,0x28));};
+    auto current=[&](){return registry.Resolve(read<unsigned>(a,0x8a0));};
+    auto origin=[&](void* e,float* p){
+        unsigned extent=n;
+        if(!e||(e!=a&&(!sb.extent||!sb.extent(sb.speech.context,e,&extent)))||extent<0x2c8)return false;
+        if((read<unsigned>(e,0xb8)&0x800u)&&(!b->refresh_origin||!b->refresh_origin(b->context,e)))return false;
+        for(unsigned i=0;i<3;++i)p[i]=read<float>(e,0x2bc+4*i);
+        return std::isfinite(p[0])&&std::isfinite(p[1])&&std::isfinite(p[2]);
+    };
+    auto lookup=[&](bool touch){
+        void* memory=nullptr;unsigned extent=0;std::uint32_t key=0;
+        if(!memory_key(b->memory,attacker(),key)||!memory_storage(&b->memory.storage,read<unsigned>(a,0x984),0x1c,memory,extent))return false;
+        if(touch){
+            const auto* api=SiN_GetServerNpcEnemyMemoryApi(1,sizeof(ServerNpcEnemyMemoryApi));
+            if(!api||!api->touch(memory,extent,key,now,&b->memory.storage,&out->touch))return false;
+            out->memory_touched=out->touch.record!=0;return true;
+        }
+        return memory_lookup(memory,extent,key,false,&b->memory.storage,&out->lookup)!=0;
+    };
+    out->enabled=(read<std::uint8_t>(a,0xbd)&0x20)!=0;
+    if(!out->enabled||!attacker()){out->native_result=out->completed=1;return 1;}
+    out->attacker_valid=1;
+    unsigned an=0;
+    if(!sb.extent||!sb.extent(sb.speech.context,attacker(),&an)||an<0xc0)return 0;
+    out->attacker_flags=(read<unsigned>(attacker(),0xbc)&0x2080u)!=0;
+    if(out->attacker_flags){
+        const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+        bool yes=false;
+        if(!b->accept||!b->accept(b->context,a,attacker(),&yes))return 0;
+        if(yes){
+            if(!b->visible||!b->visible(b->context,a,attacker(),0x4081,&yes))return 0;
+            out->visible=yes;
+        }
+        if(!out->visible){
+            if(void* inflictor=registry.Resolve(read<unsigned>(damage,0x24))){
+                if(!origin(inflictor,out->position))return 0;
+            }else{
+                if(!origin(a,out->position))return 0;
+                for(unsigned i=0;i<3;++i){
+                    const float scaled=static_cast<float>(static_cast<double>(b->fallback_vector[i])*64.0);
+                    out->position[i]=static_cast<float>(static_cast<double>(out->position[i])+scaled);
+                    if(!std::isfinite(out->position[i]))return 0;
+                }
+            }
+            bool existing=false;
+            if(current()){
+                if(!lookup(false))return 0;
+                if(!out->lookup.record){
+                    ServerNpcConditionResult c{};
+                    if(!cond->test(a,n,0xa,NpcConditionCurrent,&b->conditions,&c))return 0;
+                    existing=!c.value;
+                }
+            }
+            void* target=nullptr;void* source=nullptr;
+            if(existing){source=current();target=current();out->report_existing=1;}
+            else{
+                if(!lookup(false))return 0;
+                target=out->lookup.record?attacker():nullptr;
+            }
+            if(!b->report||!b->report(b->context,a,target,out->position,source))return 0;
+            out->reported=1;
+        }
+        out->amount=read<float>(damage,0x2c);if(!std::isfinite(out->amount))return 0;
+        if(out->amount>0.f&&!cond->store(a,n,0x10,NpcConditionCurrent,true,&b->conditions,&out->light))return 0;
+        if(((read<std::uint8_t>(damage,0x3b)&0x40)&&out->amount>=4.f)||out->amount>20.f){
+            if(!cond->store(a,n,0x11,NpcConditionCurrent,true,&b->conditions,&out->heavy))return 0;
+        }
+        write<std::uint8_t>(a,0x84c,1);write(a,0x85c,0u);
+        const float last=read<float>(a,0x994);if(!std::isfinite(last))return 0;
+        out->accumulated_prior=static_cast<double>(now)-last<1.0;
+        if(out->accumulated_prior){
+            const float prior=read<float>(a,0x990);if(!std::isfinite(prior))return 0;
+            out->total=static_cast<float>(static_cast<double>(prior)+out->amount);
+        }else out->total=out->amount;
+        if(!std::isfinite(out->total))return 0;
+        write(a,0x990,out->total);write(a,0x994,now);
+        if(void* target=attacker()){
+            bool player=false;
+            if(!b->is_player||!b->is_player(b->context,target,&player))return 0;
+            if(player){write(a,0x998,now);out->player_stamp=1;}
+        }
+        if(!lookup(true))return 0;
+        if(static_cast<double>(read<int>(a,0x98))*0.3<static_cast<double>(read<float>(a,0x990))&&
+            !cond->store(a,n,0x13,NpcConditionCurrent,true,&b->conditions,&out->accumulated))return 0;
+        if(!b->notify_attacker||!b->notify_attacker(b->context,a,attacker()))return 0;
+        out->notified=1;
+    }
+    float p[3]{};
+    if(!origin(a,p)||!b->final_notice||!b->final_notice(b->context,a,p,1,0x400,0.5f,4))return 0;
+    out->final_notice=1;out->native_result=out->completed=1;return 1;
+}
+int __cdecl grunt_damage_event(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageEventBindings* b,ServerNpcGruntDamageEventResult* out) noexcept{
+    if(!out)return 0;
+    out->completed=0;out->native_result=0;out->tail={};
+    if(!b||!grunt_damage_output_chain(a,n,damage,dn,now,&b->chain,&out->chain))return 0;
+    if(!out->chain.outputs.tail_required){out->completed=1;return 1;}
+    auto tail=b->tail;
+    const auto& source=b->chain.prefix.damage.reaction.sentence;
+    tail.entities.entries=source.entries;tail.entities.count=source.count;
+    tail.entities.speech.original_vtable=source.speech.original_vtable;
+    if(!grunt_damage_tail(a,n,damage,dn,now,&tail,&out->tail))return 0;
+    out->chain.outputs.tail_required=out->chain.prefix.damage.tail_required=0;
+    out->native_result=out->tail.native_result;out->completed=1;return 1;
+}
+const ServerNpcGruntDamageEventApi damage_event_api{1,sizeof(ServerNpcGruntDamageEventApi),&grunt_damage_tail,&grunt_damage_event};
+
 
 
 
@@ -4213,4 +4325,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageOutputsApi=_SiN_GetServerNpcGruntDamageOutputsApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageOutputsApi* __cdecl SiN_GetServerNpcGruntDamageOutputsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageOutputsApi)?&damage_outputs_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageEventApi=_SiN_GetServerNpcGruntDamageEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageEventApi* __cdecl SiN_GetServerNpcGruntDamageEventApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageEventApi)?&damage_event_api:nullptr;
 }
