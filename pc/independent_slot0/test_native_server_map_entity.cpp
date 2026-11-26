@@ -1074,5 +1074,60 @@ int main(int argc,char** argv){
         assert(api->destroy_case(nullptr,0,nullptr,nullptr)&&!api->destroy_case(f.storage,case_extent,f.storage+0x164,&owner)&&!f.released);
         assert(api->destroy_case(f.storage,case_extent,f.storage+0x160,&owner)&&f.released==1);
     }
+    {
+        alignas(4) unsigned char actor[case_extent]{};
+        put(actor,0,case_vtable);put(actor,0x378,0x4001u);
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=case_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            const char* names[]{"sink","Use","override","unmatched"};
+            for(unsigned i=0;i<4;++i)if(!std::strcmp(text,names[i])){*token=201+i;return 1;}return 0;
+        };
+        assert(api->key_value(actor,"OnDefault","sink,Use,,0.25,1",&keys,&kr));
+        assert(api->key_value(actor,"OnDefault","sink,Use,override,0.5,-1",&keys,&kr));
+        put(actor,0x554,0x11111111u);put(actor,0x558,0x22222222u);put(actor,0x55c,0x33333333u);put(actor,0x560,0x44444444u);put(actor,0x564,5u);
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=120.f;
+        struct StoredFixture {ActionPool* pool;ConnectedOutput* queue;void* actor;void* activator;unsigned raw=0,overrides=0,delivered=0;} f{&pool,&co,actor,timer};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<StoredFixture*>(p);for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<StoredFixture*>(p);assert(a==f.activator&&c==f.actor&&action->parameter==203&&action->variant_type==2&&action->delay==.5f);++f.overrides;
+            auto& q=*f.queue;nw::ServerEntityNamedEventQueueResult result{};
+            return q.api->enqueue(q.root,sizeof(q.root),99,q.now,0x3000u,0x4001u,action,&q.queue,&result);
+        };
+        fire.enqueue_variant=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
+            auto& f=*static_cast<StoredFixture*>(p);assert(a==f.activator&&c==f.actor&&!action->parameter&&!action->variant_type&&action->delay==.25f&&bytes==0x14);++f.raw;
+            auto& q=*f.queue;nw::ServerEntityNamedEventQueueResult result{};
+            return q.api->enqueue_variant(q.root,sizeof(q.root),99,q.now,0x3000u,0x4001u,action,variant,bytes,&q.queue,&result);
+        };
+        fire.release=[](void* p,unsigned,void* row) noexcept ->int{auto& f=*static_cast<StoredFixture*>(p);assert(row==f.pool->rows[0]);++f.pool->released;return 1;};
+        CaseBindings behavior{};behavior.context=&f;behavior.output=&fire;
+        behavior.resolve_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{if(token!=204)return 0;*text="unmatched";*bytes=10;return 1;};
+        unsigned incoming[5]{204,0,0,0xffffffffu,2};CaseResult result{};
+        assert(api->case_input(actor,sizeof(actor),"InValue",timer,incoming,sizeof(incoming),&behavior,&result)&&result.defaulted&&result.queued==2&&f.raw==1&&f.overrides==1&&pool.released==1);
+        assert(co.alloc==2&&word(co.root,0x30)==2&&word(co.rows[1],0x30)==1);
+        const unsigned expected[5]{0,0x22222222u,0x33333333u,0x44444444u,0};
+        assert(!std::memcmp(co.rows[1]+0x1c,expected,sizeof(expected))&&word(co.rows[1],0x18)==0xffffffffu);
+        const unsigned override_payload[5]{203,0,0,0xffffffffu,2};
+        assert(!std::memcmp(co.rows[0]+0x1c,override_payload,sizeof(override_payload)));
+        assert(word(actor,0x568)==ptrword(pool.rows[1])&&word(pool.rows[1],0x18)==0);
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(timer);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        nw::ServerEntityEventServiceBindings delivery{};delivery.context=&f;delivery.entities.entries=entries;delivery.entities.count=2;
+        delivery.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<StoredFixture*>(p)->queue;return q.queue.resolve(q.queue.context,token,row,bytes);};
+        delivery.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<StoredFixture*>(p)->queue;assert(q.locked!=enter);q.locked=enter;return 1;};
+        delivery.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** target) noexcept ->int{auto& f=*static_cast<StoredFixture*>(p);assert(f.queue->locked&&name==201&&a==f.activator&&c==f.actor);*target=prev?nullptr:f.queue->target;return 1;};
+        delivery.accept=[](void* p,void* target,unsigned input,void* a,void* c,const void* variant,unsigned) noexcept ->int{
+            auto& f=*static_cast<StoredFixture*>(p);assert(f.queue->locked&&target==f.queue->target&&input==202&&a==f.activator&&c==f.actor);
+            const unsigned first[5]{0,0x22222222u,0x33333333u,0x44444444u,0},second[5]{203,0,0,0xffffffffu,2};
+            assert(f.delivered<2&&!std::memcmp(variant,f.delivered?second:first,0x14));++f.delivered;return 1;
+        };
+        delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<StoredFixture*>(p)->queue;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
+        assert(service_api->service(co.root,sizeof(co.root),99,120.25f,false,&budget,&delivery,&es)&&es.events==1&&es.future_stopped&&f.delivered==1);
+        assert(service_api->service(co.root,sizeof(co.root),99,120.5f,false,&budget,&delivery,&es)&&es.events==1&&f.delivered==2&&co.released==2&&!word(co.root,0x30));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
