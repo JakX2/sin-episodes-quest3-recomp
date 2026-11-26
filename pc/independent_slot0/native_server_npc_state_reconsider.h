@@ -2868,7 +2868,8 @@ struct ServerNpcGruntScheduleAcquireBindings {
     ServerNpcConditionMapBindings owner_schedules;
     std::uint32_t registry_head; // 2254a3c0 +4
     void* context;
-    // The nontrivial jump table arms of the regular Grunt +43c.
+    // Optional compatibility override for the regular Grunt +43c jump-table arms.
+    // Null enables recovered native leaves; unresolved service-dependent paths fail closed.
     int (__cdecl *special_translate)(void*,void*,int,float,int*) noexcept;
     // Original diagnostic at boundary; format VA and numeric ID, component VA or 0.
     int (__cdecl *warning)(void*,void*,std::uint32_t,int,std::uint32_t) noexcept;

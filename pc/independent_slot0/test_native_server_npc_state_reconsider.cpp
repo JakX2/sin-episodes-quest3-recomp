@@ -4595,6 +4595,27 @@ int main(int argc,char** argv){
         q.stamp=7;q.position[0]=256;f.put(q.a,0x850,3);q.a[0xca0]=1;f.put(q.record,0,1000000042);b.special_combat=nullptr;
         assert(sp->choose(q.a,sizeof(q.a),10,&sb2,&request_out,&tail_out,&o,&sr)&&sr.completed&&sr.schedule==42&&o.special_schedule==42&&request_out.acquisition.schedule_token==10);
 
+        // Native translation leaves through the actual acquisition API, no broad override.
+        ac.special_translate=nullptr;ab.extent=b.extent;ab.context=&q;
+        ServerNpcGruntScheduleAcquireResult ar{};static ServerNpcGruntAssaultArbitrationResult translation;
+        auto ag=reinterpret_cast<GetServerNpcGruntScheduleAcquireApi>(GetProcAddress(s,server_npc_grunt_schedule_acquire_export));
+        assert(ag);const auto* acq=ag(1,sizeof(ServerNpcGruntScheduleAcquireApi));assert(acq);
+        auto translate=[&](int incoming,int expected){
+            f.put(q.record,0,1000000000+expected);
+            assert(acq->acquire(q.a,sizeof(q.a),incoming,10,&ac,&ar,&translation)&&ar.completed&&ar.translated==expected&&ar.translated_native&&!ar.translated_special&&ar.schedule_token==10);
+        };
+        translate(18,82);translate(26,94);translate(79,81);
+        f.put(q.enemy,0x8c,0);translate(100,103);
+        f.put(q.enemy,0x8c,1);translate(100,100);
+        f.put(q.enemy,0x8c,0);f.put(q.a,0x8a0,0x9001u);translate(79,79);translate(100,100);translate(80,80);translate(87,87);
+        bits(0);translate(36,100);translate(98,79);f.put(q.a,0x8a0,0x1001u);translate(98,81);
+        f.put(q.a,0x78c,0x9002u);translate(42,92);f.put(q.a,0x78c,0x2002u);
+        assert(!acq->acquire(q.a,sizeof(q.a),42,10,&ac,&ar,&translation)&&!ar.completed);
+        assert(!acq->acquire(q.a,sizeof(q.a),41,10,&ac,&ar,&translation)&&!ar.completed);
+        ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
+        f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
+
+
 
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
