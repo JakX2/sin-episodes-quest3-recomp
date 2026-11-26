@@ -2111,5 +2111,55 @@ int main(int argc,char** argv){
         b.members.speech.original_vtable=0x2248c514;
         assert(api->run(q.actor,sizeof(q.actor),0,&b,&o)&&o.completed&&o.jet_prepared&&o.jet_linked&&o.jet_object_called&&o.jet_handle==0x2002&&o.state_cleared&&!o.output_called&&q.refresh==3);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntDamageOutputsApi>(GetProcAddress(s,server_npc_grunt_damage_outputs_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_damage_outputs_export)&&!g(0,sizeof(ServerNpcGruntDamageOutputsApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntDamageOutputsApi));assert(api);
+        struct OutputFixture{
+            alignas(4) unsigned char actor[0xdb2]{},npc[0xdb2]{},damage[0x48]{},group[0x58]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            char name[2]={'x',0};unsigned outputs[4]{},count=0,casts=0,locals=0;bool player=true,cast=true,reject=false;
+            static OutputFixture& self(void* p){return *static_cast<OutputFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.npc);
+        ServerNpcGruntDamageOutputBindings b{};b.context=&q;b.entities.speech.original_vtable=0x2249aaa4;
+        b.entities.entries=q.entries;b.entities.count=3;b.entities.speech.context=&q;b.player_group_name=77;b.max_clients=1;
+        b.entities.speech.squad_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{assert(token==91);*out=OutputFixture::self(p).group;*n=0x58;return 1;};
+        b.entities.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xdb2;return 1;};
+        b.entities.entity_rejected=[](void* p,void*,bool* yes) noexcept -> int{*yes=OutputFixture::self(p).reject;return 1;};
+        b.names.context=&q;b.names.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{assert(token==77);*out=OutputFixture::self(p).name;*n=2;return 1;};
+        b.conditions.context=&q;b.conditions.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept -> int{*out=OutputFixture::self(p).desc;*n=0x48;return 1;};
+        b.output=[](void* p,void* a,unsigned off) noexcept -> int{auto& q=OutputFixture::self(p);assert(a==q.actor&&q.count<4);q.outputs[q.count++]=off;return 1;};
+        b.is_player=[](void* p,void* a,bool* yes) noexcept -> int{auto& q=OutputFixture::self(p);assert(a==q.npc);*yes=q.player;return 1;};
+        b.cast_npc=[](void* p,void* a,void** out,unsigned* n) noexcept -> int{auto& q=OutputFixture::self(p);assert(a==q.npc);++q.casts;*out=q.cast?q.npc:nullptr;*n=sizeof(q.npc);return 1;};
+        b.local_player=[](void* p,void** out) noexcept -> int{auto& q=OutputFixture::self(p);++q.locals;*out=q.actor;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.actor,0x98,101);f.put(q.actor,0x9c,50);f.put(q.actor,0x994,10.f);
+        f.put(q.damage,0x28,0x1001u);f.put(q.damage,0x2c,5.f);f.put(q.damage,0x38,1u);
+        f.put(q.npc,0x9c4,91u);f.put(q.npc,0x204,1);f.put(q.group,4,77u);
+        ServerNpcGruntDamageOutputResult o{};
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.stamp_equal&&o.condition.mapped&&o.half_output&&q.count==1&&q.outputs[0]==0xa78);
+        q.count=0;
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),9,&b,&o)&&o.generic_output&&o.player_output&&o.qualified_output&&o.half_output&&q.count==4&&q.outputs[0]==0xa48&&q.outputs[1]==0xb68&&q.outputs[2]==0xb80&&q.outputs[3]==0xa78);
+        q.count=0;q.player=false;f.put(q.actor,0x9c,51);f.put(q.damage,0x2c,4.99f);
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&b,&o)&&o.eligible&&o.qualified_output&&!o.player_output&&!o.half_output&&!o.condition.mapped&&q.count==2&&q.casts==1&&q.locals==1);
+        q.count=0;q.reject=true;
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&b,&o)&&!o.eligible&&!o.qualified_output&&q.count==1);
+        q.count=0;q.reject=false;q.name[0]=0;
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&b,&o)&&!o.qualified_output&&q.count==1);
+        q.count=0;q.cast=false;
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&b,&o)&&o.cast_called&&o.local_player_called&&!o.qualified_output);
+        q.count=0;b.max_clients=2;f.put(q.damage,0x38,0x1000001u);f.put(q.damage,0x2c,20.f);
+        assert(api->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&b,&o)&&!o.local_player_called&&!o.condition.mapped);
+        // Accepted base prefix flows into native outputs; rejected base never reaches them.
+        static ServerNpcGruntDamageOutputChainBindings cb;cb.outputs=b;cb.prefix.damage.reaction.sentence=b.entities;
+        cb.prefix.damage.base_damage=[](void*,void*,void*,int* v) noexcept -> int{*v=0;return 1;};
+        static ServerNpcGruntDamageOutputChainResult cr;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&cb,&cr)&&!cr.prefix.damage.tail_required&&!cr.outputs.completed);
+        cb.prefix.damage.base_damage=[](void*,void*,void*,int* v) noexcept -> int{*v=1;return 1;};
+        f.put(q.actor,0xbc,0x10000000u);q.count=0;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&cb,&cr)&&cr.prefix.damage.pain.blocked_flags&&cr.outputs.completed&&cr.outputs.tail_required&&q.count==1);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

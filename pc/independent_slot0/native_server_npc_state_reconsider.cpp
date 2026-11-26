@@ -3627,6 +3627,84 @@ int __cdecl grunt_combat_death(void* a,unsigned n,std::uint32_t handle,void* dam
     return grunt_death_event_impl(a,n,handle,damage,dn,now,&b->death.event,&d.event,&route);
 }
 const ServerNpcGruntCombatReactionsApi combat_reactions_api{1,sizeof(ServerNpcGruntCombatReactionsApi),&grunt_combat_damage,&grunt_combat_death};
+bool damage_group_eligible(void* npc,unsigned n,const ServerNpcGruntDamageOutputBindings& b,bool& yes) noexcept{
+    yes=false;
+    if(!npc||n<0x9c8)return false;
+    const auto token=read<unsigned>(npc,0x9c4);
+    if(!token)return true;
+    void* group=nullptr;if(!speech_squad(b.entities.speech,token,group))return false;
+    auto name=read<unsigned>(group,4);
+    if(name){
+        void* ptr=nullptr;unsigned bytes=0;
+        if(!memory_storage(&b.names,name,1,ptr,bytes))return false;
+        if(!read<std::uint8_t>(ptr,0))name=0;
+    }
+    if(name!=b.player_group_name)return true;
+    return sentence_eligible(npc,b.entities,yes);
+}
+int __cdecl grunt_damage_outputs(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOutputBindings* b,ServerNpcGruntDamageOutputResult* out) noexcept{
+    if(!out)return 0;*out={};out->condition.global=out->condition.bit=-1;
+    if(!a||n<0xdb2||!damage||dn<0x3c||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->entities;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    const auto stamp=read<float>(a,0x994);
+    if(!std::isfinite(stamp))return 0;
+    out->stamp_equal=stamp==now;
+    auto emit=[&](unsigned offset,unsigned& flag){if(!b->output||!b->output(b->context,a,offset))return false;flag=1;return true;};
+    if(!out->stamp_equal){
+        if(!emit(0xa48,out->generic_output))return 0;
+        void* attacker=registry.Resolve(read<unsigned>(damage,0x28));
+        bool player=false;
+        if(!attacker||!b->is_player||!b->is_player(b->context,attacker,&player))return 0;
+        bool qualify=player;
+        if(player){
+            if(!emit(0xb68,out->player_output))return 0;
+        }else{
+            // Original RTTI is called after reloading damage attacker. Local-player lookup
+            // occurs before testing cast result, even for a null cast.
+            void* npc=nullptr;unsigned extent=0;
+            if(!b->cast_npc||!b->cast_npc(b->context,registry.Resolve(read<unsigned>(damage,0x28)),&npc,&extent))return 0;
+            out->cast_called=1;
+            void* local=nullptr;
+            if(b->max_clients<=1){
+                if(!b->local_player||!b->local_player(b->context,&local))return 0;
+                out->local_player_called=1;
+            }
+            if(npc){
+                if(extent<0x9c8)return 0;
+                if(!read<int>(npc,0x8c)&&local&&read<unsigned>(npc,0x9c4)){
+                    if(!damage_group_eligible(npc,extent,*b,qualify))return 0;
+                    out->eligible=qualify;
+                }
+            }
+        }
+        if(qualify&&!emit(0xb80,out->qualified_output))return 0;
+    }
+    const auto flags=read<unsigned>(damage,0x38);
+    if((flags&1u)&&!(flags&0x1000000u)){
+        const auto amount=read<float>(damage,0x2c);
+        if(!std::isfinite(amount))return 0;
+        if(amount>=5.f){
+            const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+            if(!cond||!cond->store(a,n,0x12,NpcConditionCurrent,true,&b->conditions,&out->condition))return 0;
+        }
+    }
+    if(read<int>(a,0x9c)<=read<int>(a,0x98)/2&&!emit(0xa78,out->half_output))return 0;
+    out->tail_required=out->completed=1;return 1;
+}
+int __cdecl grunt_damage_output_chain(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOutputChainBindings* b,ServerNpcGruntDamageOutputChainResult* out) noexcept{
+    if(!out)return 0;out->outputs={};
+    if(!b||!grunt_combat_damage(a,n,damage,dn,now,&b->prefix,&out->prefix))return 0;
+    if(!out->prefix.damage.tail_required)return 1;
+    auto tail=b->outputs;
+    const auto& source=b->prefix.damage.reaction.sentence;
+    tail.entities.entries=source.entries;tail.entities.count=source.count;
+    tail.entities.speech.original_vtable=source.speech.original_vtable;
+    return grunt_damage_outputs(a,n,damage,dn,now,&tail,&out->outputs);
+}
+const ServerNpcGruntDamageOutputsApi damage_outputs_api{1,sizeof(ServerNpcGruntDamageOutputsApi),&grunt_damage_outputs,&grunt_damage_output_chain};
+
 
 
 
@@ -4130,4 +4208,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatReactionsApi=_SiN_GetServerNpcGruntCombatReactionsApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatReactionsApi* __cdecl SiN_GetServerNpcGruntCombatReactionsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatReactionsApi)?&combat_reactions_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageOutputsApi=_SiN_GetServerNpcGruntDamageOutputsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageOutputsApi* __cdecl SiN_GetServerNpcGruntDamageOutputsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageOutputsApi)?&damage_outputs_api:nullptr;
 }
