@@ -1,4 +1,5 @@
 #include "native_server_npc_state_reconsider.h"
+#include "native_server_npc_weapon_range_math.h"
 #include "native_server_npc_cone_distance_math.h"
 #include "native_server_npc_cone_angle_table.h"
 #include "native_server_weapon_script_view.h"
@@ -1688,9 +1689,7 @@ int native_weapon_attack_condition(void* w,unsigned slot,float dot,float distanc
             if(!availability.available){id=4;return 1;}
         }
     }
-    id=distance<read<float>(w,0x4f8)?0x24:
-       distance>read<float>(w,0x500)?0x25:
-       dot<.5f?0x26:0x14;
+    id=sin_port::weapon_range_math::condition(dot,distance,read<float>(w,0x4f8),read<float>(w,0x500));
     return 1;
 }
 int grunt_attack_gather_impl(void* actor,unsigned bytes,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* out,float now=0,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntCombatLineResult* line_results=nullptr,const ServerNpcWeaponAmmoBindings* ammo=nullptr,const ServerNpcWeaponMeleeBindings* melee=nullptr,ServerNpcWeaponMeleeResult* melee_out=nullptr) noexcept{

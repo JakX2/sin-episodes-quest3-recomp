@@ -1,6 +1,7 @@
 // Owner-only direct original ammo comparison with synthetic services.
 // No retail initializer, external PE import, original vtable or original bytes in repo.
 #include "native_server_npc_state_reconsider.h"
+#include "native_server_npc_weapon_range_math.h"
 #include "native_server_weapon_script_view.h"
 #include "../../include/sin_compat/phase100_sha256.hpp"
 #define WIN32_LEAN_AND_MEAN
@@ -11,6 +12,9 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+#include <cmath>
+#include <limits>
+#include <initializer_list>
 using namespace sin_port::native_weapon_tables;
 namespace {
 constexpr sin_compat::phase100::Digest256 expected{{
@@ -23,7 +27,10 @@ constexpr Slice code[]={
     {0x1e6370,0x55}, // real ammo-definition max-carry method
     {0x2aa770,0x37}, // owner count
     {0x2abfd0,0x13},{0x2ac010,0x13}, // primary/secondary uses-clip methods
-    {0x2ad690,0x79},{0x2ad710,0x6c} // primary/secondary availability
+    {0x2ad690,0x79},{0x2ad710,0x6c}, // primary/secondary availability
+    {0x2aaae0,0x76},{0x2ac940,0x0b}, // base primary range, ammo-type gate
+    {0x30b2d0,0x61},{0x315560,8}, // clip-specific and constant-ready range
+    {0x2aafd0,5},{0x2aab60,5},{0x2aab70,5},{0x30b340,5},{0x313870,5},{0x31d040,5}
 };
 struct Original {
     unsigned char* image=nullptr;
@@ -38,23 +45,28 @@ struct Original {
         auto requested=reinterpret_cast<void*>(base);
         image=static_cast<unsigned char*>(VirtualAlloc(requested,0x628000,MEM_RESERVE,PAGE_NOACCESS));
         if(image!=requested)return false;
-        constexpr unsigned pages[]={0x1e6000,0x2aa000,0x2ab000,0x2ac000,0x2ad000,0x2d5000,0x4f5000};
+        constexpr unsigned pages[]={0x1e6000,0x2aa000,0x2ab000,0x2ac000,0x2ad000,0x2d5000,0x30b000,0x313000,0x315000,0x31d000,0x3d8000,0x4f5000};
         for(unsigned page:pages)if(VirtualAlloc(image+page,0x1000,MEM_COMMIT,PAGE_READWRITE)!=image+page)return false;
         for(const auto& s:code)std::memcpy(image+s.offset,bytes.data()+s.offset,s.size);
+        std::memcpy(image+0x3d8f00,bytes.data()+0x3d8f00,8);
         // Replace only lazy singleton accessor 222d54b0: cdecl, no stack pop.
         // Its caller's pushed ammo index is consumed by the genuine 221e6370.
         image[0x2d54b0]=0xb8;put(image,0x2d54b1,reinterpret_cast<std::uintptr_t>(definitions));image[0x2d54b5]=0xc3;
         // Original serial-resolved registry: first entity pointer at global+4.
         put(image,0x4f5620,reinterpret_cast<std::uintptr_t>(registry));
-        for(unsigned i=0;i<7;++i){DWORD old=0;
-            if(!VirtualProtect(image+pages[i],0x1000,i<6?PAGE_EXECUTE_READ:PAGE_READONLY,&old))return false;
-            if(i<6&&!FlushInstructionCache(GetCurrentProcess(),image+pages[i],0x1000))return false;
+        for(unsigned i=0;i<12;++i){DWORD old=0;
+            if(!VirtualProtect(image+pages[i],0x1000,i<10?PAGE_EXECUTE_READ:PAGE_READONLY,&old))return false;
+            if(i<10&&!FlushInstructionCache(GetCurrentProcess(),image+pages[i],0x1000))return false;
         }
         return true;
     }
     bool query(void* w,bool primary) const {
         using Fn=bool (__thiscall *)(void*);
         return reinterpret_cast<Fn>(image+(primary?0x2ad690:0x2ad710))(w);
+    }
+    int attack(void* w,unsigned rva,float dot,float distance) const {
+        using Fn=int (__thiscall *)(void*,float,float);
+        return reinterpret_cast<Fn>(image+rva)(w,dot,distance);
     }
 };
 struct Fixture {
@@ -92,6 +104,7 @@ bool run_matrix(const ServerNpcWeaponAmmoApi& api,Fixture& f,const Original* ori
     f.owner_vt[0xfc/4]=reinterpret_cast<std::uintptr_t>(&owner_cast);
     if(original){
         f.weapon_vt[0x438/4]=base+0x2abfd0;f.weapon_vt[0x43c/4]=base+0x2ac010;
+        f.weapon_vt[0x330/4]=base+0x2ad690;
     }
     put(f.owner,0,reinterpret_cast<std::uintptr_t>(f.owner_vt));put(f.definitions,4,32);
     f.entries[1].serial=7;put(f.registry,24,7u);
@@ -134,6 +147,49 @@ bool run_matrix(const ServerNpcWeaponAmmoApi& api,Fixture& f,const Original* ori
     std::printf("ammo matrix %u/%u passed (%s)\n",cases,cases,original?"native + original PE32":"native only");
     return true;
 }
+bool range_matrix(const ServerNpcWeaponAmmoApi& api,Fixture& f,const Original* original){
+    ServerWeaponScriptView script_view{};script_view.fallback=f.script;script_view.fallback_bytes=sizeof(f.script);
+    ServerNpcWeaponAmmoBindings ammo{};ammo.scripts=&script_view;ammo.context=&f;ammo.combat_owner=combat_owner;ammo.max_carry=max_carry;
+    ServerNpcGruntAssaultAdmissionBindings ab{};ab.context=&f;ab.entries=f.entries;ab.count=2;ab.extent=extent;
+    // No live owner; positive base ammo type uses the same reconstructed
+    // primary predicate as production, while negative type bypasses it.
+    f.primary_max=8;put(f.script,0x160,8);
+    const float nan=std::numeric_limits<float>::quiet_NaN();
+    const float dots[]{0,.49f,std::nextafter(.5f,0.f),.5f,std::nextafter(.5f,1.f),1.f,nan};
+    const float distances[]{0,99.f,std::nextafter(100.f,0.f),100.f,std::nextafter(100.f,200.f),200.f,std::nextafter(300.f,0.f),300.f,std::nextafter(300.f,400.f),301.f,nan};
+    const unsigned zero_leaves[]{0x2aafd0,0x2aab60,0x2aab70,0x30b340,0x313870,0x31d040};
+    unsigned comparisons=0;
+    // Explicit independent boundary witnesses for the production helper.
+    using sin_port::weapon_range_math::condition;
+    if(condition(1.f,99.f,100.f,300.f)!=36||condition(1.f,100.f,100.f,300.f)!=20||
+       condition(1.f,300.f,100.f,300.f)!=20||condition(1.f,301.f,100.f,300.f)!=37||
+       condition(.49f,200.f,100.f,300.f)!=38||condition(.5f,200.f,100.f,300.f)!=20||
+       condition(nan,200.f,100.f,300.f)!=20||condition(1.f,200.f,nan,nan)!=20)return false;
+    for(int type:{-1,1})for(int clip:{-1,0,1})for(int reserve:{0,4})
+    for(float minimum:{100.f,300.f,nan})for(float maximum:{100.f,300.f,nan}){
+        for(auto* w:{f.original_weapon,f.native_weapon}){
+            put(w,0x494,0xffffffffu);put(w,0x4e4,type);put(w,0x4ec,clip);put(w,0x4cc,reserve);
+            put(w,0x4f8,minimum);put(w,0x500,maximum);
+        }
+        ServerNpcWeaponAmmoResult result{};
+        if(!api.query(f.native_weapon,0x330,&ab,&ammo,&result))return false;
+        for(float dot:dots)for(float distance:distances){
+            const int common=condition(dot,distance,minimum,maximum);
+            const int base_result=type>=0&&!result.available?4:common;
+            const int clip_result=clip<=0?4:common;
+            if(original&&(original->attack(f.original_weapon,0x2aaae0,dot,distance)!=base_result||
+                          original->attack(f.original_weapon,0x30b2d0,dot,distance)!=clip_result||
+                          original->attack(f.original_weapon,0x315560,dot,distance)!=20)){
+                std::fprintf(stderr,"range mismatch type=%d clip=%d reserve=%d min=%g max=%g dot=%g dist=%g\n",type,clip,reserve,minimum,maximum,dot,distance);
+                return false;
+            }
+            if(original)for(unsigned offset:zero_leaves)if(original->attack(f.original_weapon,offset,dot,distance)!=0)return false;
+            comparisons+=9;
+        }
+    }
+    std::printf("range matrix %u leaf cases (%s)\n",comparisons,original?"native + original PE32":"native boundary witnesses");
+    return true;
+}
 }
 int main(int argc,char** argv){
     if(argc!=3){std::fputs("Usage: sin_server_npc_weapon_ammo_audit --self-test <native server.dll> OR <native server.dll> <original server.dll>\n",stderr);return 2;}
@@ -143,6 +199,6 @@ int main(int argc,char** argv){
     HMODULE dll=LoadLibraryA(self?argv[2]:argv[1]);if(!dll)return 2;
     auto getter=reinterpret_cast<GetServerNpcWeaponAmmoApi>(GetProcAddress(dll,server_npc_weapon_ammo_export));
     const auto* api=getter?getter(1,sizeof(ServerNpcWeaponAmmoApi)):nullptr;
-    const bool ok=api&&run_matrix(*api,f,self?nullptr:&original);FreeLibrary(dll);
+    const bool ok=api&&run_matrix(*api,f,self?nullptr:&original)&&range_matrix(*api,f,self?nullptr:&original);FreeLibrary(dll);
     return ok?0:1;
 }
