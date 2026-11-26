@@ -829,7 +829,15 @@ bool search_pattern(const char* name,const char* pattern) noexcept {
 bool search_handle(void* entity,const ServerEntitySearchBindings& b,unsigned& handle) noexcept {
     unsigned bytes=0;
     if(!b.extent||!b.extent(b.context,entity,&bytes)||bytes<4)return false;
-    if(input_datamap(rd<unsigned>(entity,0))||rd<unsigned>(entity,0)==sin_port::native_resupply::resupply_vtable){
+    const unsigned vt=rd<unsigned>(entity,0);
+    // Both authenticated SiN trigger primary +8 entries are 22001b00
+    // (lea eax,[ecx+378]; ret). This is only the cursor/handle leaf,
+    // not a claim that their other base virtuals are native.
+    if(campaign_trigger_class(vt)){
+        if(bytes<sin_port::native_map::removal_entity_extent(vt))return false;
+        handle=rd<unsigned>(entity,0x378);return true;
+    }
+    if(input_datamap(vt)||vt==sin_port::native_resupply::resupply_vtable){
         if(bytes<0x37c)return false;handle=rd<unsigned>(entity,0x378);return true;
     }
     return b.foreign_handle&&b.foreign_handle(b.context,entity,&handle)!=0;
