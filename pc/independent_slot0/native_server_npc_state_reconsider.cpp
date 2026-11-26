@@ -1,4 +1,5 @@
 #include "native_server_npc_state_reconsider.h"
+#include "native_server_npc_cone_distance_math.h"
 #include <cstring>
 #include <cmath>
 #include <limits>
@@ -6650,36 +6651,7 @@ bool schedule_weapon_line(void* a,void* w,void* enemy,const float* start,const f
     allowed=relation==1;return true;
 }
 // Original 2226c080 / 2226be40: distance to infinite line, not segment.
-bool cone_line_distance(const float* point,const float* start,const float* end,bool horizontal,float& out) noexcept{
-    float dx=static_cast<float>(static_cast<double>(end[0])-start[0]);
-    const double dy=static_cast<double>(end[1])-start[1],dz=static_cast<double>(end[2])-start[2];
-    const float y=static_cast<float>(dy),z=static_cast<float>(dz);
-    const double py=horizontal?dy:y,pz=horizontal?0.:dz;
-    const double denom=static_cast<double>(dx)*dx+py*py+pz*pz;
-    double k=0;
-    if(denom>=static_cast<double>(.00001f)){
-        // 2226bdab..2226bdd5 / 2226c003..2226c01f: subtract separately
-        // accumulated dot products, rather than pre-subtracting the coordinates.
-        const double point_dot=horizontal?
-            (static_cast<double>(point[1])*py+static_cast<double>(point[0])*dx):
-            ((static_cast<double>(point[1])*py+static_cast<double>(point[2])*pz)+static_cast<double>(point[0])*dx);
-        const double start_dot=horizontal?
-            (static_cast<double>(start[0])*dx+static_cast<double>(start[1])*py):
-            ((static_cast<double>(start[0])*dx+static_cast<double>(start[1])*py)+static_cast<double>(start[2])*pz);
-        const double numerator=point_dot-start_dot;
-        k=numerator/denom;
-    }
-    if(horizontal)k=static_cast<float>(k); // 2226c09e
-    const float xdiff=static_cast<float>(static_cast<double>(point[0])-(start[0]+k*dx));
-    const double ydiff=static_cast<double>(point[1])-(start[1]+k*y);
-    const double zdiff=horizontal?0.:static_cast<double>(point[2])-static_cast<float>(start[2]+k*z);
-    // 3D accumulates Z^2 + Y^2 first; the horizontal helper starts with X^2.
-    const float sum=static_cast<float>(horizontal?
-        static_cast<double>(xdiff)*xdiff+ydiff*ydiff:
-        (zdiff*zdiff+ydiff*ydiff)+static_cast<double>(xdiff)*xdiff);
-    if(!std::isfinite(sum)||sum<0)return false;
-    out=std::sqrt(sum);return true;
-}
+using cone_distance_math::cone_line_distance;
 int __cdecl schedule_cone_predicate(void* candidate,const float* start,const float* end,const float* point,float threshold,float range,const ServerNpcGruntAssaultAdmissionBindings* ab,const ServerNpcGruntScheduleConeServices* c,ServerNpcGruntScheduleConePredicateResult* o) noexcept{
     if(!o)return 0;*o={};
     if(!start||!end||!point||!finite_vec(start)||!finite_vec(end)||!finite_vec(point)||!std::isfinite(threshold)||!std::isfinite(range)||!ab||!c)return 0;
