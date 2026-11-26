@@ -3765,11 +3765,27 @@ int main(int argc,char** argv){
         q.primary[0x3ba]=1;assert(run(100008)&&o.reset_called&&!o.advance_called);
         q.primary[0xb4]=1;assert(run(100008)&&o.advance_called&&q.advances==1);
         f.put(q.a,0xdb8+0x1c,0);f.put(q.a,0xdb8+0x20,0);
-        assert(run(100006)&&o.reset_called&&!o.sequence_called);
-        f.put(q.a,0xdb8+0x1c,3);f.put(q.secondary,0x398,88u);
-        assert(run(100006)&&o.mode_written&&o.sequence_called&&o.sequence_applied&&o.activity_called);
+        assert(run(100006)&&!o.reset_called&&!o.sequence_called);
+        f.put(q.secondary,0x398,88u);
+        assert(run(100006)&&!o.mode_written&&o.sequence_called&&o.sequence_applied&&o.activity_called&&!o.reset_called);
         q.seq=-1;assert(run(100006)&&o.sequence_called&&!o.sequence_applied&&!o.activity_called);
+        f.put(q.a,0xdb8+0x1c,3);assert(run(100006)&&o.mode_written&&o.reset_called&&!o.sequence_called);
+        f.put(q.a,0xdb8+0x1c,1);f.put(q.a,0xdb8+0x20,1);assert(run(100006)&&o.reset_called&&!o.sequence_called);
+        f.put(q.a,0xdb8+0x20,0);assert(run(100006)&&!o.reset_called&&o.sequence_called);
+        f.put(q.a,0xdb8+0x1c,2);f.put(q.a,0x7d0,1u<<19);assert(run(100006)&&o.condition_checked&&o.reset_called&&!o.sequence_called);
+        f.put(q.a,0x7d0,0u);assert(run(100006)&&o.condition_checked&&!o.reset_called&&o.sequence_called);
         f.put(q.secondary,0x398,0u);f.put(q.a,0x8a0,0x1001u);assert(run(100006)&&o.synthetic_called&&q.signals==1&&q.a[0xdc0]);
+        f.put(q.a,0xdb8+0x18,0x9002u);assert(run(100006)&&o.request_called&&o.request_value==0x223f3bf8u&&!o.synthetic_called);
+        f.put(q.a,0xdb8+0x20,4);assert(run(100006)&&o.reset_called&&!o.request_called);
+        f.put(q.a,0xdb8+0x18,0x2002u);
+        // No hosted duration service is needed for Assault's zero-range calls.
+        busy.duration=nullptr;
+        auto deadline=[&](){float v=0;std::memcpy(&v,q.a+0x9dc,4);return v;};
+        f.put(q.primary,0x3b4,0.11f);assert(run(100007)&&o.duration_called&&deadline()==10.2f);
+        f.put(q.primary,0x3b4,0.f);assert(run(100007)&&deadline()==10.f);
+        f.put(q.secondary,0x39c,-0.11f);assert(run(100009)&&deadline()==9.9f);
+        f.put(q.secondary,0x39c,0.3f);assert(run(100009)&&deadline()==10.3f);
+        f.put(q.secondary,0x39c,std::numeric_limits<float>::max());assert(!run(100009)&&!o.duration_called&&deadline()==10.3f);
         assert(run(100010)&&o.completed&&!o.reset_called&&!o.goal_calls);
         assert(run(100011)&&o.deadline_written&&o.deadline==12&&o.reset_called);
     }

@@ -5421,6 +5421,18 @@ int __cdecl assault_task_run(void* a,unsigned n,const void* task,unsigned tn,flo
 }
 const ServerNpcGruntAssaultTaskApi assault_task_api{1,sizeof(ServerNpcGruntAssaultTaskApi),&assault_task_run};
 
+// 220325c0 with second float argument zero: ceil(float(seconds * 10)) * 0.1 + now.
+bool assault_duration_deadline(void* a,unsigned n,float seconds,float now) noexcept{
+    if(!a||n<0x9e0||!std::isfinite(seconds)||!std::isfinite(now))return false;
+    const float scaled=static_cast<float>(static_cast<double>(seconds)*10.0);
+    const double ticks=std::ceil(static_cast<double>(scaled));
+    // x87 FISTP on out-of-range input would store integer indefinite.
+    // Reject such invalid port data rather than manufacturing a large negative deadline.
+    if(!std::isfinite(ticks)||ticks<std::numeric_limits<int>::min()||ticks>std::numeric_limits<int>::max())return false;
+    const float deadline=static_cast<float>(ticks*0.1+static_cast<double>(now));
+    if(!std::isfinite(deadline))return false;
+    write(a,0x9dc,deadline);return true;
+}
 struct AssaultEventRoute {const ServerNpcGruntAssaultEventBindings* bindings;ServerNpcGruntAssaultEventResult* result;const AssaultNodeRoute* node=nullptr;};
 int assault_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const void* ev,float now,const AssaultEventRoute& route,const RappelScheduleRoute* schedule) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& search=b.events;const auto& busy=search.events.events;
@@ -5454,7 +5466,9 @@ int assault_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const 
     auto duration=[&](void* q,unsigned field){
         if(!span(q,field+4))return false;
         o.duration=read<float>(q,field);
-        if(!std::isfinite(o.duration)||!busy.duration||!busy.duration(busy.context,a,o.duration,false))return false;
+        if(!std::isfinite(o.duration))return false;
+        if(busy.duration){if(!busy.duration(busy.context,a,o.duration,false))return false;}
+        else if(!assault_duration_deadline(a,n,o.duration,now))return false;
         o.duration_called=1;return true;
     };
     auto output=[&](unsigned off,unsigned field){
@@ -5530,12 +5544,13 @@ int assault_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const 
         else if(!b.advance_node||!b.advance_node(b.context,p))return 0;o.advance_called=1;
         return reset()?done():0;
     }
-    // 100006: 220cea90 mode predicate and original secondary-node activity path.
+    // StartTask 100006: 220cf684 TEST AL,AL / JZ 220cf69a.
+    // Ready completes the task immediately; NOT ready enters secondary activity.
     bool yes=false;
     if(!assault_mode_decide(p,o.mode,o.submode,o.mode_written,yes,[&](bool& value){
         if(!cond(0x33,false))return false;value=o.condition.value!=0;return true;
     }))return 0;
-    if(!yes)return reset()?done():0;
+    if(yes)return reset()?done():0;
     void* q=link(0x18);if(!q)return missing(0x18)?done():0;
     q=link(0x18);if(!span(q,0x39c))return 0;
     if(read<unsigned>(q,0x398)){
