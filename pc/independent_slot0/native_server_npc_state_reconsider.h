@@ -2860,4 +2860,31 @@ struct ServerNpcGruntAssaultArbitrationApi {
     int (__cdecl *translate)(void*,unsigned,int,float,const ServerNpcGruntAssaultArbitrationBindings*,ServerNpcGruntAssaultArbitrationResult*) noexcept; // 220897a0
 };
 using GetServerNpcGruntAssaultArbitrationApi=const ServerNpcGruntAssaultArbitrationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_schedule_acquire_export[]="SiN_GetServerNpcGruntScheduleAcquireApi";
+struct ServerNpcGruntScheduleAcquireBindings {
+    const ServerNpcGruntAssaultArbitrationBindings* arbitration;
+    ServerNpcScheduleBindings schedule;
+    ServerNpcConditionMapBindings owner_schedules;
+    std::uint32_t registry_head; // 2254a3c0 +4
+    void* context;
+    // The nontrivial jump table arms of the regular Grunt +43c.
+    int (__cdecl *special_translate)(void*,void*,int,float,int*) noexcept;
+    // Original diagnostic at boundary; format VA and numeric ID, component VA or 0.
+    int (__cdecl *warning)(void*,void*,std::uint32_t,int,std::uint32_t) noexcept;
+};
+struct ServerNpcGruntScheduleAcquireResult {
+    int requested,translated,lookup_id,owner_global;
+    std::uint32_t active_token,behavior_vtable,schedule_token;
+    unsigned completed,lookup_calls,records,behavior_lookup,owner_lookup,descriptor_unregistered,
+        unmapped,missing,warning_calls,fallback,translated_native,translated_special,
+        owner_global_written,installed;
+};
+struct ServerNpcGruntScheduleAcquireApi {
+    std::uint32_t version,size;
+    int (__cdecl *get)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,ServerNpcGruntScheduleAcquireResult*) noexcept; // 2216dfe0
+    int (__cdecl *acquire)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,ServerNpcGruntScheduleAcquireResult*,ServerNpcGruntAssaultArbitrationResult*) noexcept; // 2205edf0
+    int (__cdecl *install)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,ServerNpcGruntScheduleAcquireResult*,ServerNpcGruntAssaultArbitrationResult*,ServerNpcScheduleStateResult*) noexcept; // 2204fe40
+};
+using GetServerNpcGruntScheduleAcquireApi=const ServerNpcGruntScheduleAcquireApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
