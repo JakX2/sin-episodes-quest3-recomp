@@ -881,6 +881,44 @@ int main(int argc,char** argv){
         assert(step->run(f.actor,sizeof(f.actor),&reloaded,&step_bind,&step_result)&&!step_result.think_called&&step_result.animation.fixed_resets==1&&step_result.animation.frame.frame.npc_events==1&&step_result.completed);
         int loaded=-1;std::memcpy(&loaded,equipped.weapon+0x4ec,4);assert(loaded==8&&equipped.sounds==3);
         assert(conditions->test(f.actor,sizeof(f.actor),4,NpcConditionCurrent,&sb.conditions,&condition)&&!condition.value);
+        // Use the composed outer entry, and let its real cadence control
+        // subsequent scheduler eligibility. Only the first deadline is seeded.
+        auto get_outer=reinterpret_cast<GetServerNpcOuterUpdateApi>(GetProcAddress(s,server_npc_outer_update_export));
+        assert(get_outer&&!GetProcAddress(c,server_npc_outer_update_export));
+        const auto* outer_api=get_outer(1,sizeof(ServerNpcOuterUpdateApi));assert(outer_api);
+        ServerNpcActivePostAnimationBindings post_bind{};post_bind.context=&equipped;post_bind.resolve=storage;
+        post_bind.navigation_update=[](void*,void*,std::uint32_t token,float dt) noexcept -> int{
+            assert(token==604u&&std::isfinite(dt));return 1;
+        };
+        post_bind.prepare_pose=[](void*,void*) noexcept -> int{return 1;};
+        post_bind.finish_pose=post_bind.prepare_pose;
+        post_bind.motor_finish=[](void*,void*,std::uint32_t token) noexcept -> int{assert(token==88u);return 1;};
+        ServerNpcOuterUpdateBindings outer_bind{};outer_bind.post=&post_bind;outer_bind.context=&equipped;outer_bind.active_scene=true;
+        outer_bind.admission.enabled=true;
+        outer_bind.cadence.notify_think_flags=[](void*,void*) noexcept -> int{return 1;};
+        outer_bind.pvs=[](void*,std::uint32_t,bool* visible) noexcept -> int{*visible=false;return 1;};
+        ServerNpcOuterUpdateResult outer_result{};ServerNpcActivePostAnimationResult tail_result{};
+        prepare_engaged(3,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+        assert(state->install(f.actor,sizeof(f.actor),attack_schedule,75.5f,&sb,&sr));
+        f.put(f.actor,0x79c,global+191);
+        for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+        stamp=0;meta.reloading=false;equipped.shots=equipped.sounds=equipped.prepares=equipped.flashes=0;
+        f.put(f.actor,0x864,75.5f);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1510);
+        for(int i=0;i<3;++i){
+            // Middle frame is strictly before the first AI deadline; final
+            // frame is exactly at the deadline written by the outer update.
+            const float now=i==0?75.5f:i==1?75.55f:75.6f;
+            seed_anim(now);
+            const ServerNpcRunAnimationInput input{now,false,false};
+            assert(outer_api->ground(f.actor,sizeof(f.actor),&input,.05f,&step_bind,&outer_bind,&step_result,&tail_result,&outer_result)&&outer_result.completed&&outer_result.active_called&&tail_result.completed);
+            assert(bool(outer_result.think_called)==(i!=1)&&bool(step_result.think_completed)==(i!=1));
+            assert(step_result.animation.frame.frame.weapon_events==1&&step_result.animation.last.event.parent.weapon.clip_changed);
+            assert(outer_result.finish.deadline==(i==2?static_cast<float>(double(now)+double(.1f)):75.6f)&&outer_result.finish.tick==1512+i);
+            int left=-1;std::memcpy(&left,equipped.weapon+0x4ec,4);assert(left==2-i);
+            if(i==1)assert(!step_result.outer_weapon.primary.completed);
+            else assert(step_result.outer_weapon.primary.clip==3-i&&step_result.outer_line.attack.conditions[0]==20);
+        }
+        assert(equipped.shots==3&&equipped.sounds==3&&equipped.prepares==3&&equipped.flashes==3);
         // Exhausted engaged weapon: native idle state query sees condition10,
         // returns combat state3 and the native selector must choose 48.
         prepare_engaged(0,0);f.put(equipped.weapon,0,0x2247ab9cu);
