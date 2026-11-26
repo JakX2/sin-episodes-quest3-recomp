@@ -5076,6 +5076,21 @@ int main(int argc,char** argv){
         ammo.max_carry=nullptr;f.put(q.weapon,0x4e4,32);assert(!ammo_query()&&!am.completed);
         f.put(q.weapon,0x4e4,1);f.put(script,0x160,-1);f.put(q.weapon,0x4ec,5);f.put(q.a,0x650,0);
         assert(ammo_query()&&!am.uses_clip&&!am.available);
+        // Auxiliary ammo conditions now use the same native query and script data.
+        const auto policy_getter=reinterpret_cast<GetServerNpcWeaponPolicyCycleApi>(GetProcAddress(s,server_npc_weapon_policy_cycle_export));
+        assert(policy_getter&&!GetProcAddress(c,server_npc_weapon_policy_cycle_export)&&!policy_getter(0,sizeof(ServerNpcWeaponPolicyCycleApi))&&!policy_getter(1,0));
+        const auto* weapon_policy=policy_getter(1,sizeof(ServerNpcWeaponPolicyCycleApi));assert(weapon_policy);
+        ServerNpcGruntAuxConditionsBindings aux_ammo{};
+        aux_ammo.visibility.original_vtable=ab.actor_vtable;aux_ammo.visibility.conditions=ab.conditions;
+        aux_ammo.visibility.memory.entries=ab.entries;aux_ammo.visibility.memory.count=ab.count;
+        aux_ammo.visibility.context=ab.context;aux_ammo.visibility.extent=ab.extent;
+        ServerNpcGruntAuxConditionsResult ammo_conditions{};ServerNpcWeaponPolicyResult weapon_diagnostics{};
+        f.put(q.a,0x650,0);f.put(q.a,0x654,0);bits(0);
+        assert(weapon_policy->ammo(q.a,sizeof(q.a),&aux_ammo,&ab,&ammo,&ammo_conditions,&weapon_diagnostics)&&ammo_conditions.primary_empty&&ammo_conditions.secondary_empty&&weapon_diagnostics.primary.completed&&weapon_diagnostics.secondary.completed&&(CombatFixture::rd(q.a,0x7cc)&0x30u)==0x30u);
+        f.put(q.a,0x650,1);f.put(q.weapon,0x4f0,1);bits(0);
+        assert(weapon_policy->ammo(q.a,sizeof(q.a),&aux_ammo,&ab,&ammo,&ammo_conditions,&weapon_diagnostics)&&!ammo_conditions.primary_empty&&!ammo_conditions.secondary_empty&&weapon_diagnostics.primary.available&&weapon_diagnostics.secondary.clip_positive);
+        f.put(q.weapon,0x4e4,-1);f.put(q.weapon,0x4f0,0);f.put(script,0x164,-1);
+        assert(weapon_policy->ammo(q.a,sizeof(q.a),&aux_ammo,&ab,&ammo,&ammo_conditions,&weapon_diagnostics)&&!ammo_conditions.primary_checked&&!ammo_conditions.secondary_uses_ammo&&!ammo_conditions.secondary_empty&&!weapon_diagnostics.primary.completed);
         f.put(q.a,0x650,0);f.put(q.a,0x654,0);
 
         const auto melee_getter=reinterpret_cast<GetServerNpcWeaponMeleeApi>(GetProcAddress(s,server_npc_weapon_melee_export));
