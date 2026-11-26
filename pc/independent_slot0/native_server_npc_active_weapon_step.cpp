@@ -1573,6 +1573,87 @@ int __cdecl resupply_primary_run(void* a,unsigned n,unsigned handle,int tick,flo
     o->native_result=(rd<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
 }
 const ServerResupplyPrimaryThinkApi resupply_primary_api{1,sizeof(ServerResupplyPrimaryThinkApi),&resupply_primary_spawn,&resupply_primary_run};
+struct AntigenPrimaryRoute {
+    const ServerAntigenPrimaryThinkBindings& b;
+    ServerAntigenPrimaryThinkResult& out;
+    void* actor;float interval;
+};
+int __cdecl antigen_primary_schedule(void* p,void* a,float time) noexcept {
+    auto& q=*static_cast<AntigenPrimaryRoute*>(p);
+    if(a!=q.actor||!set_tick(a,time,q.interval,q.b.cadence,q.out.reschedule))return 0;
+    q.out.reschedule.completed=q.out.rescheduled=1;return 1;
+}
+bool antigen_primary_start(void* a,unsigned n,unsigned handle,float interval,const ServerAntigenPrimaryThinkBindings* b,ServerAntigenPrimaryThinkResult* o) noexcept {
+    if(!o)return false;*o={};o->due_tick=o->last_tick=-1;
+    return a&&n>=native_resupply::antigen_extent&&rd<unsigned>(a,0)==native_resupply::antigen_vtable&&b&&
+        std::isfinite(interval)&&interval>0&&b->entities.count<=sin_independent::kEntityHandleCapacity&&
+        (!b->entities.count||b->entities.entries)&&sin_independent::EntityHandleView(b->entities.entries,b->entities.count).Resolve(handle)==a;
+}
+void bind_antigen_control(native_resupply::AntigenBindings& c,AntigenPrimaryRoute& q) noexcept {
+    c.entries=q.b.entities.entries;c.entry_count=q.b.entities.count;
+    c.schedule=&antigen_primary_schedule;c.schedule_context=&q;
+}
+int __cdecl antigen_primary_spawn(void* a,unsigned n,unsigned handle,float interval,const ServerAntigenPrimaryThinkBindings* b,ServerAntigenPrimaryThinkResult* o) noexcept {
+    if(!antigen_primary_start(a,n,handle,interval,b,o)||!b->interaction)return 0;
+    const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return 0;
+    AntigenPrimaryRoute q{*b,*o,a,interval};auto bound=*b->interaction;bind_antigen_control(bound.control,q);
+    if(!api->antigen_spawn(a,n,&bound,&o->interaction))return 0;
+    o->completed=o->native_result=1;return 1;
+}
+int __cdecl antigen_primary_use(void* a,unsigned n,unsigned handle,float interval,void* pl,unsigned bytes,int use,const ServerAntigenPrimaryThinkBindings* b,ServerAntigenPrimaryThinkResult* o) noexcept {
+    if(!antigen_primary_start(a,n,handle,interval,b,o)||!b->interaction)return 0;
+    const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return 0;
+    AntigenPrimaryRoute q{*b,*o,a,interval};auto bound=*b->interaction;bind_antigen_control(bound.control,q);
+    if(!api->antigen_use_event(a,n,pl,bytes,use,&bound,&o->interaction))return 0;
+    o->completed=o->native_result=1;return 1;
+}
+int __cdecl antigen_primary_button(void* a,unsigned n,unsigned handle,float interval,const char* name,int index,const char* command,const ServerAntigenPrimaryThinkBindings* b,ServerAntigenPrimaryThinkResult* o) noexcept {
+    if(!antigen_primary_start(a,n,handle,interval,b,o)||!b->interaction)return 0;
+    const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return 0;
+    AntigenPrimaryRoute q{*b,*o,a,interval};auto bound=*b->interaction;bind_antigen_control(bound.control,q);
+    if(!api->antigen_button_event(a,n,name,index,command,&bound,&o->interaction))return 0;
+    o->completed=o->native_result=1;return 1;
+}
+int __cdecl antigen_primary_run(void* a,unsigned n,unsigned handle,int tick,float interval,const ServerAntigenPrimaryThinkBindings* b,ServerAntigenPrimaryThinkResult* o) noexcept {
+    if(!antigen_primary_start(a,n,handle,interval,b,o))return 0;
+    auto idle=[&](){o->native_result=o->completed=1;return 1;};
+    if(rd<unsigned>(a,0xb8)&0x400000u){o->no_think=1;return idle();}
+    o->due_tick=rd<int>(a,0x74);
+    if(o->due_tick<=0||o->due_tick>tick){o->not_due=1;return idle();}
+    using namespace native_resupply;
+    auto supported=[](unsigned v){return !v||v==antigen_animation_token||v==antigen_think_token||v==antigen_eject_token;};
+    if(!supported(rd<unsigned>(a,8))||!b->clock||!b->record||!b->scope)return 0;
+    float now=0;if(!b->clock(b->context,&now)||!std::isfinite(now))return 0;
+    const double scheduled=double(o->due_tick)*double(interval);
+    o->recorded_time=scheduled>double(now)?now:float(scheduled);
+    if(!std::isfinite(o->recorded_time)||!b->record(b->context,a,tick,o->recorded_time,rd<int>(a,0x74)))return 0;
+    o->recorded=1;
+    if(!set_tick(a,-1.f,interval,b->cadence,o->clear)||!think_flags(a,false,b->cadence,o->clear))return 0;
+    o->clear.completed=1;
+    if(!b->scope(b->context,a,true))return 0;o->entered=1;
+    o->token=rd<unsigned>(a,8);bool ok=supported(o->token);
+    if(ok&&!o->token)o->null_token=1;
+    else if(ok){
+        const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(Api));
+        AntigenPrimaryRoute q{*b,*o,a,interval};
+        if(!api)ok=false;
+        else if(o->token==antigen_eject_token){
+            if(!b->exchange)ok=false;
+            else{auto bound=*b->exchange;bind_antigen_control(bound.control,q);o->invoked=1;ok=api->antigen_eject(a,n,&bound,&o->exchange)!=0;}
+        }else if(!b->interaction)ok=false;
+        else{
+            auto bound=*b->interaction;bind_antigen_control(bound.control,q);o->invoked=1;
+            ok=o->token==antigen_animation_token?api->antigen_animation_think(a,n,&bound,&o->interaction)!=0:
+                api->antigen_think(a,n,&bound.control,&o->healing)!=0;
+        }
+    }
+    const bool closed=b->scope(b->context,a,false)!=0;o->closed=closed;
+    if(!ok||!closed)return 0;
+    if(!b->clock(b->context,&o->last_time)||!think_tick(o->last_time,interval,o->last_tick))return 0;
+    wr<int>(a,0x34,o->last_tick);
+    o->native_result=(rd<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
+}
+const ServerAntigenPrimaryThinkApi antigen_primary_api{1,sizeof(ServerAntigenPrimaryThinkApi),&antigen_primary_spawn,&antigen_primary_use,&antigen_primary_button,&antigen_primary_run};
 struct JetInitialThinkRoute {
     const ServerNpcJetpackDeathBranchBindings* source;
     const ServerNpcJetpackDeathModeBindings* mode_source;
@@ -2325,4 +2406,10 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerResupplyPrimaryThinkApi* __cdecl SiN_GetServerResupplyPrimaryThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerResupplyPrimaryThinkApi)?&resupply_primary_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerAntigenPrimaryThinkApi=_SiN_GetServerAntigenPrimaryThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAntigenPrimaryThinkApi* __cdecl SiN_GetServerAntigenPrimaryThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerAntigenPrimaryThinkApi)?&antigen_primary_api:nullptr;
 }
