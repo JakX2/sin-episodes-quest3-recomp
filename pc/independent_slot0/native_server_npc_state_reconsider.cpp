@@ -4831,6 +4831,77 @@ int __cdecl elite_life(void* a,unsigned n,std::uint32_t handle,const void* damag
     return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->combat.combat.life,&c.life,&jet,&ground);
 }
 const ServerNpcGruntEliteLifeApi elite_life_api{1,sizeof(ServerNpcGruntEliteLifeApi),&elite_post,&elite_life};
+int __cdecl grunt_activity_translate(void* a,unsigned n,int activity,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out) noexcept{
+    if(!out)return 0;*out={};out->requested=out->translated=out->native_result=activity;out->activity_lookup=-1;
+    if(!a||n<0xdc0||!b)return 0;
+    const auto& sb=b->entities;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto done=[&](int v){out->native_result=v;out->completed=1;return 1;};
+    out->jet=jetpack_death_class(sb.speech.original_vtable);
+    if(out->jet){
+        if(n<0x1028)return 0;
+        out->jet_handle=read<unsigned>(a,0x1024);
+        void* linked=registry.Resolve(out->jet_handle);unsigned bytes=0;
+        // The original reads the linked entity's speed even for table-default activities.
+        if(!linked||!sb.extent||!sb.extent(sb.speech.context,linked,&bytes)||bytes<0xc24)return 0;
+        float v[3];for(unsigned i=0;i<3;++i)v[i]=read<float>(linked,0xc18+4*i);
+        if(!finite_vec(v))return 0;
+        out->speed_squared=static_cast<float>(static_cast<double>(v[0])*v[0]+static_cast<double>(v[1])*v[1]+static_cast<double>(v[2])*v[2]);
+        out->speed=static_cast<float>(std::sqrt(static_cast<double>(out->speed_squared)));
+        if(!std::isfinite(out->speed))return 0;
+        if(activity==1||activity==7||activity==16){out->jet_direct=1;return done(out->speed>50.f?0xd5:0xd0);}
+        if(activity==66){out->jet_direct=1;return done(0xda);}
+    }
+    int translated=activity;
+    if(activity==0x10||activity==0x42||activity==1){
+        if(read<std::uint8_t>(a,0xca0))translated=activity==0x10?0xc7:activity==0x42?0xc8:0xc4;
+        else if(!read<std::uint8_t>(a,0xc64))translated=activity==0x10?0x12:activity==0x42?0x43:0x2d;
+        else if(activity==1&&(read<int>(a,0x850)==2||read<int>(a,0x850)==3))translated=0x48;
+    }else if(activity==0x11){
+        bool yes=false;if(!b->has_weapon||!b->has_weapon(b->context,a,"weapon_grenadelauncher",&yes))return 0;
+        out->weapon_checked=1;out->launcher_found=yes;
+        return done(yes?b->launcher_activity:b->other_activity);
+    }else if(activity==6||activity==10){
+        write<std::uint8_t>(a,0xc64,1);out->stance_written=1;
+    }
+    bool special=false;if(!b->special_identity||!b->special_identity(b->context,a,&special))return 0;
+    out->special_checked=1;out->special_identity=special;
+    if(special){
+        if(translated==1)translated=0x48;
+        else if(translated==6)translated=7;
+        else if(translated==10)translated=11;
+    }
+    out->translated=translated;out->component=read<unsigned>(a,0xc18);
+    if(out->component){
+        int v=0;if(!b->component_translate||!b->component_translate(b->context,out->component,translated,&v))return 0;
+        out->component_called=1;return done(v);
+    }
+    out->base_called=1;out->capabilities=read<unsigned>(a,0x8ec);
+    if(void* weapon=registry.Resolve(read<unsigned>(a,0x78c))){
+        unsigned caps=0;if(!b->weapon_caps||!b->weapon_caps(b->context,weapon,&caps))return 0;
+        out->caps_called=1;out->capabilities|=caps;
+    }
+    if(!(out->capabilities&0x8000000u))return done(translated);
+    void* link=registry.Resolve(read<unsigned>(a,0xa18));
+    if(translated==0x42){
+        int v=0;if(!b->linked_activity||!b->linked_activity(b->context,a,link,&v))return 0;
+        out->linked_called=1;return done(v);
+    }
+    if(translated==3||(translated==1&&(read<std::uint8_t>(a,0x988)&2))){
+        int v=3;
+        if(link){
+            unsigned extent=0;if(!sb.extent||!sb.extent(sb.speech.context,link,&extent)||extent<0x3a6)return 0;
+            const auto kind=read<std::int16_t>(link,0x3a4);
+            if(kind==100)v=4;else if(kind==101)v=5;
+        }
+        if(!b->activity_lookup||!b->activity_lookup(b->context,a,v,&out->activity_lookup))return 0;
+        out->lookup_called=1;return done(out->activity_lookup==-1?1:v);
+    }
+    return done(translated);
+}
+const ServerNpcGruntActivityTranslationApi activity_translation_api{1,sizeof(ServerNpcGruntActivityTranslationApi),&grunt_activity_translate};
+
 
 
 
@@ -5439,4 +5510,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEliteLifeApi=_SiN_GetServerNpcGruntEliteLifeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEliteLifeApi* __cdecl SiN_GetServerNpcGruntEliteLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEliteLifeApi)?&elite_life_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntActivityTranslationApi=_SiN_GetServerNpcGruntActivityTranslationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntActivityTranslationApi* __cdecl SiN_GetServerNpcGruntActivityTranslationApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntActivityTranslationApi)?&activity_translation_api:nullptr;
 }

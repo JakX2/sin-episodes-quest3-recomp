@@ -2071,4 +2071,28 @@ struct ServerNpcGruntEliteLifeApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntEliteLifeBindings*,ServerNpcGruntEliteLifeResult*) noexcept;
 };
 using GetServerNpcGruntEliteLifeApi=const ServerNpcGruntEliteLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_activity_translation_export[]="SiN_GetServerNpcGruntActivityTranslationApi";
+struct ServerNpcGruntActivityTranslationBindings {
+    ServerNpcGruntSentenceBindings entities;
+    void* context;
+    int launcher_activity,other_activity; // original globals 2259c4a8,2259c4ac
+    int (__cdecl *has_weapon)(void*,void*,const char*,bool*) noexcept; // 222aa840(name,0)
+    int (__cdecl *special_identity)(void*,void*,bool*) noexcept; // actor+dbc virtual +4a8 equals actor+db8
+    int (__cdecl *component_translate)(void*,std::uint32_t,int,int*) noexcept; // +7c
+    int (__cdecl *weapon_caps)(void*,void*,unsigned*) noexcept; // +4a0
+    int (__cdecl *linked_activity)(void*,void*,void*,int*) noexcept; // +718, 2203da40
+    int (__cdecl *activity_lookup)(void*,void*,int,int*) noexcept;
+};
+struct ServerNpcGruntActivityTranslationResult {
+    int requested,translated,native_result,activity_lookup;
+    float speed_squared,speed;
+    std::uint32_t component,capabilities,jet_handle;
+    unsigned completed,jet,jet_direct,weapon_checked,launcher_found,stance_written,special_checked,special_identity,component_called,base_called,caps_called,linked_called,lookup_called;
+};
+struct ServerNpcGruntActivityTranslationApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,int,const ServerNpcGruntActivityTranslationBindings*,ServerNpcGruntActivityTranslationResult*) noexcept;
+};
+using GetServerNpcGruntActivityTranslationApi=const ServerNpcGruntActivityTranslationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
