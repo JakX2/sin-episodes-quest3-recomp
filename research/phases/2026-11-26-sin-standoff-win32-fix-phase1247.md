@@ -1,0 +1,2 @@
+# Phase 1247: Standoff Win32 SDK macro collision
+Run 45755452421 failed in independent-pe32 at test_native_server_npc_state_reconsider.cpp:3508 with C2059/C2143 and cascading undeclared identifiers. Windows headers define near. Rename the callback and local lambda to near_search in declaration, implementation and loaded fixture. No layout or gameplay change. Existing 1246 audit retained. Independent Windows rerun pending.
