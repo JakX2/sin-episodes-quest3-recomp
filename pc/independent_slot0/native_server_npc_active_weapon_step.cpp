@@ -17,6 +17,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLifeDispatchApi* __cdecl SiN_GetServerNpcGruntLifeDispatchApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGroundLifeApi* __cdecl SiN_GetServerNpcGruntGroundLifeApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEliteLifeApi* __cdecl SiN_GetServerNpcGruntEliteLifeApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathThinkApi* __cdecl SiN_GetServerNpcJetpackDeathThinkApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -190,16 +191,17 @@ int __cdecl outer_script(void* a,unsigned n,float now,std::uint32_t vt,const Ser
     if(rd<std::uint8_t>(a,0xc10)!=value){if(!dirty(a,*b->storage))return 0;wr<std::uint8_t>(a,0xc10,value);out->changed=1;}
     out->completed=1;return 1;
 }
-bool set_tick(void* a,float time,float interval,const ServerNpcOuterCadenceBindings& b,ServerNpcOuterCadenceResult& o) noexcept {
-    int tick=-1;
+bool think_tick(float time,float interval,int& tick) noexcept {
+    tick=-1;
+    if(!std::isfinite(time)||!std::isfinite(interval)||interval<=0)return false;
     if(time!=-1.f){
         const double q=std::trunc(double(time)/double(interval)+.5);
         if(!std::isfinite(q)||q<double(std::numeric_limits<int>::min())||q>double(std::numeric_limits<int>::max()))return false;
         tick=static_cast<int>(q);
     }
-    // All reviewed +c0 targets are 22001740 RET, no callback needed.
-    if(rd<int>(a,0x74)!=tick){wr<int>(a,0x74,tick);o.tick_written=1;}
-    o.tick=tick;o.next_time=time;
+    return true;
+}
+bool think_flags(void* a,bool scheduled,const ServerNpcOuterCadenceBindings& b,ServerNpcOuterCadenceResult& o) noexcept {
     const auto flags=rd<unsigned>(a,0xb8);
     auto changed=[&](unsigned value){
         if(!b.notify_think_flags)return false;
@@ -207,20 +209,27 @@ bool set_tick(void* a,float time,float interval,const ServerNpcOuterCadenceBindi
         return b.notify_think_flags(b.context,a)!=0;
     };
     if(flags&0x400000u){
-        if(tick!=-1&&!changed(flags&~0x400000u))return false;
-    }else if(tick==-1){
-        // 2214bf00 checks strictly positive ticks, including named contexts.
+        if(scheduled&&!changed(flags&~0x400000u))return false;
+    }else if(!scheduled){
+        // 2214bf00 re-reads live default and named ticks, strictly positive.
+        if(rd<int>(a,0x74)>0)return true;
         const int count=rd<int>(a,0x50);
         if(count>4096)return false;
-        bool scheduled=false;
         if(count>0){
             void* rows=nullptr;
             if(!b.storage||!resolve(*b.storage,rd<unsigned>(a,0x44),16u*static_cast<unsigned>(count),&rows))return false;
-            for(int i=0;i<count;++i)if(rd<int>(rows,16u*static_cast<unsigned>(i)+8)>0){scheduled=true;break;}
+            for(int i=0;i<count;++i)if(rd<int>(rows,16u*static_cast<unsigned>(i)+8)>0)return true;
         }
-        if(!scheduled&&!changed(flags|0x400000u))return false;
+        if(!changed(flags|0x400000u))return false;
     }
     return true;
+}
+bool set_tick(void* a,float time,float interval,const ServerNpcOuterCadenceBindings& b,ServerNpcOuterCadenceResult& o) noexcept {
+    int tick=-1;if(!think_tick(time,interval,tick))return false;
+    // All reviewed +c0 targets are 22001740 RET, no callback needed.
+    if(rd<int>(a,0x74)!=tick){wr<int>(a,0x74,tick);o.tick_written=1;}
+    o.tick=tick;o.next_time=time;
+    return think_flags(a,tick!=-1,b,o);
 }
 int __cdecl cadence_set(void* a,unsigned n,float time,float interval,std::uint32_t vt,const ServerNpcOuterCadenceBindings* b,ServerNpcOuterCadenceResult* out) noexcept {
     if(!out)return 0;*out={};
@@ -1359,6 +1368,107 @@ void bind_self_classification(unsigned vt,ServerNpcGruntGroundDeathBindings& b) 
     default:break;
     }
 }
+bool jet_primary_class(unsigned vt) noexcept {
+    return vt==0x2248c514u||vt==0x2248e83cu||vt==0x2249964cu||vt==0x224a4a4cu;
+}
+bool jet_primary_token(unsigned token) noexcept {
+    return !token||token==0x22365760u||token==0x221c0d40u;
+}
+int __cdecl jet_primary_install(void* a,unsigned n,unsigned vt,unsigned token) noexcept {
+    if(!a||n<0x1074u||!jet_primary_class(vt)||rd<unsigned>(a,0)!=vt||!jet_primary_token(token))return 0;
+    // 2214d6f0 null-context branch writes only +8.
+    wr<unsigned>(a,8,token);return 1;
+}
+struct JetPrimaryRoute {
+    const ServerNpcJetpackPrimaryThinkBindings& b;
+    ServerNpcJetpackPrimaryThinkResult& out;
+    void* actor;unsigned extent,vt;float interval;
+};
+bool jet_primary_death(JetPrimaryRoute& route,unsigned handle) noexcept {
+    const auto& b=route.b;auto& o=route.out;
+    if(!b.death||!b.death_result)return false;
+    auto bound=*b.death;
+    auto& identity=bound.ground.base.combat.death.event.prefix.removal.removal.leave.sentence;
+    identity.entries=b.entities.entries;identity.count=b.entities.count;identity.speech.original_vtable=route.vt;
+    // Delayed damage can have a foreign attacker. Only the serial-valid
+    // self record permits constant classification without a host callback.
+    if(sin_independent::EntityHandleView(b.entities.entries,b.entities.count).Resolve(rd<unsigned>(route.actor,0x1054))==route.actor)
+        bind_self_classification(route.vt,bound.ground);
+    bound.context=&route;
+    bound.time=[](void* p,float* time) noexcept -> int{
+        auto& q=*static_cast<JetPrimaryRoute*>(p);return q.b.clock(q.b.context,time);
+    };
+    bound.motion=[](void* p,void* a,void* rag,int mode) noexcept -> int{
+        const auto& s=*static_cast<JetPrimaryRoute*>(p)->b.death;return s.motion&&s.motion(s.context,a,rag,mode);
+    };
+    bound.effect_begin=[](void* p,void* a) noexcept -> int{
+        const auto& s=*static_cast<JetPrimaryRoute*>(p)->b.death;return s.effect_begin&&s.effect_begin(s.context,a);
+    };
+    bound.terminal_effect=[](void* p,void* a,void* e,bool mode4) noexcept -> int{
+        const auto& s=*static_cast<JetPrimaryRoute*>(p)->b.death;return s.terminal_effect&&s.terminal_effect(s.context,a,e,mode4);
+    };
+    bound.effect_end=[](void* p,void* a) noexcept -> int{
+        const auto& s=*static_cast<JetPrimaryRoute*>(p)->b.death;return s.effect_end&&s.effect_end(s.context,a);
+    };
+    bound.remove=[](void* p,void* e) noexcept -> int{
+        const auto& s=*static_cast<JetPrimaryRoute*>(p)->b.death;return s.remove&&s.remove(s.context,e);
+    };
+    bound.install_think=[](void* p,void* a,unsigned token) noexcept -> int{
+        auto& q=*static_cast<JetPrimaryRoute*>(p);
+        if(a!=q.actor||token!=0x221c0d40u||!jet_primary_install(a,q.extent,q.vt,token))return 0;
+        q.out.installed=1;return 1;
+    };
+    bound.schedule=[](void* p,void* a,float time) noexcept -> int{
+        auto& q=*static_cast<JetPrimaryRoute*>(p);
+        if(a!=q.actor||!set_tick(a,time,q.interval,q.b.cadence,q.out.reschedule))return 0;
+        q.out.reschedule.completed=q.out.rescheduled=1;return 1;
+    };
+    const auto* api=SiN_GetServerNpcJetpackDeathThinkApi(1,sizeof(ServerNpcJetpackDeathThinkApi));
+    if(!api||!api->run(route.actor,route.extent,handle,&bound,b.death_result))return false;
+    o.death_called=1;return true;
+}
+int __cdecl jet_primary_run(void* a,unsigned n,unsigned vt,unsigned handle,int tick,float interval,const ServerNpcJetpackPrimaryThinkBindings* b,ServerNpcJetpackPrimaryThinkResult* o) noexcept {
+    if(!o)return 0;*o={};o->due_tick=o->last_tick=-1;
+    if(!a||n<0x1074u||!jet_primary_class(vt)||rd<unsigned>(a,0)!=vt||!b||!std::isfinite(interval)||interval<=0||
+       b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries)||
+       sin_independent::EntityHandleView(b->entities.entries,b->entities.count).Resolve(handle)!=a)return 0;
+    auto idle=[&](){o->native_result=o->completed=1;return 1;};
+    if(rd<unsigned>(a,0xb8)&0x400000u){o->no_think=1;return idle();}
+    o->due_tick=rd<int>(a,0x74);
+    if(o->due_tick<=0||o->due_tick>tick){o->not_due=1;return idle();}
+    // Unsupported executable identities fail closed rather than call PE VAs.
+    if(!jet_primary_token(rd<unsigned>(a,8))||!b->clock||!b->record||!b->scope)return 0;
+    float now=0;if(!b->clock(b->context,&now)||!std::isfinite(now))return 0;
+    const double scheduled=double(o->due_tick)*double(interval);
+    o->recorded_time=scheduled>double(now)?now:static_cast<float>(scheduled);
+    if(!std::isfinite(o->recorded_time)||!b->record(b->context,a,tick,o->recorded_time,rd<int>(a,0x74)))return 0;
+    o->recorded=1;
+    // 22222b90 -> 2214d870(-1,-1), default branch invokes 2214bf30
+    // twice. The second check sees changes made by the first notification.
+    if(!set_tick(a,-1.f,interval,b->cadence,o->clear)||!think_flags(a,false,b->cadence,o->clear))return 0;
+    o->clear.completed=1;
+    if(!b->scope(b->context,a,true))return 0;o->entered=1;
+    // 221658e0 -> +bc -> 22002ca0 reloads +8 after engine scope entry.
+    o->token=rd<unsigned>(a,8);bool ok=jet_primary_token(o->token);
+    if(ok&&o->token==0x22365760u){
+        JetPrimaryRoute route{*b,*o,a,n,vt,interval};ok=jet_primary_death(route,handle);
+    }else if(ok&&o->token==0x221c0d40u){
+        // 221c0d40: +1b4 is RET on all four tables. Clear positive
+        // health before the diagnostic; always request deferred removal.
+        if(rd<int>(a,0x9c)>0){
+            wr<int>(a,0x9c,0);o->health_zeroed=1;
+            if(b->positive_health_warning)ok=b->positive_health_warning(b->context,a)!=0;
+        }
+        if(ok){ok=b->remove&&b->remove(b->context,a);o->removed=ok;}
+    }
+    const bool closed=b->scope(b->context,a,false)!=0;o->closed=closed;
+    if(!ok||!closed)return 0;
+    // 2214bfa0 stores a fresh live clock converted to tick, not due tick.
+    if(!b->clock(b->context,&o->last_time)||!think_tick(o->last_time,interval,o->last_tick))return 0;
+    wr<int>(a,0x34,o->last_tick);
+    o->native_result=(rd<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
+}
+const ServerNpcJetpackPrimaryThinkApi jet_primary_api{1,sizeof(ServerNpcJetpackPrimaryThinkApi),&jet_primary_install,&jet_primary_run};
 bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
     const auto& dispatch=*b.native_health;
     if(n<0xdb2||!b.storage||!std::isfinite(b.now)||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
@@ -1918,4 +2028,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEnt
 #pragma comment(linker,"/EXPORT:SiN_GetServerEntitySearchApi=_SiN_GetServerEntitySearchApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntitySearchApi* __cdecl SiN_GetServerEntitySearchApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntitySearchApi)?&entity_search_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcJetpackPrimaryThinkApi=_SiN_GetServerNpcJetpackPrimaryThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackPrimaryThinkApi* __cdecl SiN_GetServerNpcJetpackPrimaryThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcJetpackPrimaryThinkApi)?&jet_primary_api:nullptr;
 }
