@@ -2275,4 +2275,23 @@ struct ServerNpcGruntBehaviorEventApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntBehaviorEventBindings*,ServerNpcGruntBehaviorEventResult*) noexcept;
 };
 using GetServerNpcGruntBehaviorEventApi=const ServerNpcGruntBehaviorEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_event43_export[]="SiN_GetServerNpcGruntEvent43Api";
+struct ServerNpcGruntEvent43Bindings {
+    ServerNpcGruntBehaviorEventBindings gate;
+    void* context;
+    int (__cdecl *weapon_caps)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *request)(void*,void*,int) noexcept; // 2203d330, virtual +47c
+    int (__cdecl *refresh)(void*,void*) noexcept; // 22041a60, virtual +680
+    int (__cdecl *clear_activity)(void*,void*,int) noexcept; // 22049c20 after native +878 clear
+};
+struct ServerNpcGruntEvent43Result {
+    ServerNpcGruntBehaviorEventResult gate;
+    unsigned capabilities,weapon_queries,capability_route,timer_active,timer_pending,requested,refreshed,cleared,activity_called,completed;
+    int activity;
+};
+struct ServerNpcGruntEvent43Api {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntEvent43Bindings*,ServerNpcGruntEvent43Result*) noexcept;
+};
+using GetServerNpcGruntEvent43Api=const ServerNpcGruntEvent43Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

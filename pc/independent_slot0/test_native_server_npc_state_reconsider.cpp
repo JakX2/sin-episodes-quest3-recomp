@@ -3242,5 +3242,43 @@ int main(int argc,char** argv){
         f.put(q.actor,0xc18,0u);assert(run(0x54,-2.9f)&&o.speech_native&&o.argument==-2&&o.speech.ignored&&!o.marker_set);
         assert(run(0x54,std::numeric_limits<float>::infinity())&&o.argument==std::numeric_limits<int>::min()&&o.speech.ignored);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntEvent43Api>(GetProcAddress(s,server_npc_grunt_event43_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_event43_export)&&!g(0,sizeof(ServerNpcGruntEvent43Api))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntEvent43Api));assert(api);
+        struct Event43Fixture{
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},weapon[4]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            unsigned step=0,caps=0;
+            static Event43Fixture& self(void* p){return *static_cast<Event43Fixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.weapon);
+        ServerNpcGruntEvent43Bindings b{};b.context=&q;b.gate.context=&q;b.gate.actor_token=0x10000u;
+        auto& sb=b.gate.speech.speech.sentence;sb.entries=q.entries;sb.count=2;sb.speech.original_vtable=0x2249aaa4;
+        b.weapon_caps=[](void* p,void* w,unsigned* caps) noexcept -> int{auto& q=Event43Fixture::self(p);assert(w==q.weapon);*caps=q.caps;return 1;};
+        b.gate.shared=[](void* p,void* a,const void* ev,unsigned n) noexcept -> int{auto& q=Event43Fixture::self(p);assert(a==q.a&&ev==q.raw&&n==8&&!q.step);++q.step;return 1;};
+        b.request=[](void* p,void* a,int activity) noexcept -> int{auto& q=Event43Fixture::self(p);assert(a==q.a&&activity==10&&!q.step);++q.step;return 1;};
+        b.refresh=[](void* p,void* a) noexcept -> int{auto& q=Event43Fixture::self(p);assert(a==q.a&&!q.step);++q.step;return 1;};
+        b.clear_activity=[](void* p,void* a,int activity) noexcept -> int{auto& q=Event43Fixture::self(p);assert(a==q.a&&((activity==16&&q.step==1)||(activity==72&&!q.step)));++q.step;return 1;};
+        f.put(q.raw,0,0x43);f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10cfcu);
+        f.put(q.a,0xcfc,0x223f956cu);f.put(q.a,0xd00,0x10000u);f.put(q.a,0xd08,0x10c14u);
+        f.put(q.a,0x78c,0x1001u);
+        ServerNpcGruntEvent43Result o{};
+        auto run=[&](){q.step=0;return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        assert(run()&&!o.capability_route&&o.weapon_queries==2&&o.gate.marker_cleared&&o.gate.parent_called&&q.step==1);
+        q.caps=0x1000000u;q.a[0x9ac]=1;f.put(q.a,0x9a8,11.f);
+        assert(run()&&o.capability_route&&o.requested&&o.activity==10&&o.timer_active&&q.step==1&&!o.gate.marker_set);
+        f.put(q.a,0x9a8,10.f);f.put(q.a,0x878,16);
+        assert(run()&&o.timer_pending&&!o.timer_active&&o.refreshed&&o.cleared&&o.activity==16&&q.step==2);
+        q.a[0x9ac]=0;f.put(q.a,0x9a8,11.f);f.put(q.a,0x878,72);
+        assert(run()&&!o.timer_pending&&!o.refreshed&&o.cleared&&o.activity==72&&q.step==1);
+        q.a[0x9ac]=1;f.put(q.a,0x9a8,std::numeric_limits<float>::quiet_NaN());
+        assert(run()&&o.timer_active&&o.requested);
+        q.a[0x9ac]=0;assert(run()&&!o.timer_pending&&o.activity==72);
+        q.caps=0;f.put(q.a,0x78c,0x9001u);f.put(q.a,0x8ec,0x1000000u);f.put(q.a,0x9a8,9.f);
+        assert(run()&&o.weapon_queries==1&&o.refreshed&&o.activity==16);
+        f.put(q.a,0x8ec,0u);assert(run()&&!o.capability_route&&o.gate.parent_called);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
