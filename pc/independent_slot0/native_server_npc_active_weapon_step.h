@@ -320,7 +320,6 @@ struct ServerNpcBreakEffectRequest {
     std::uint32_t model,physics,collision_group,skin;
     float origin[3],angles[3],velocity[3],angular_velocity[3],scale;
     void* actor;
-    void* activator;
     int limit;
     bool ignore_limit;
 };
