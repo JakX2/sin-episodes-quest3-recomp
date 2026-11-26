@@ -1112,4 +1112,26 @@
         assert(cancel(f.seq,sizeof(f.seq),&cb,&cr)&&cr.cleared&&cr.restored_flags&&f.restores==1&&word(f.npc,0x78)==7&&word(f.npc,0x970)==0xffffffffu&&word(f.seq,0x3d0)==0xffffffffu);
         put(f.seq,0x3d0,0x4001u);put(f.npc,0x970,0x5002u);put(f.other,0x3c8,0x1234u);put(f.npc,0x850,4);
         assert(cancel(f.seq,sizeof(f.seq),&cb,&cr)&&cr.scripted_state&&cr.cleanup&&!cr.cleared&&f.cleanup==1&&f.schedule==1);
+        // Actual native AcceptInput datamap traversal, no hosted possession,
+        // cancel group or handler callbacks. Exact external input names.
+        const auto accept=reinterpret_cast<nw::AcceptScriptedSequenceInput>(GetProcAddress(server,nw::accept_scripted_sequence_export));
+        assert(accept&&!GetProcAddress(client,nw::accept_scripted_sequence_export));
+        c.cancel_warning=[](void*,unsigned) noexcept ->int{return 1;};
+        ScriptedSequenceNativeControlBindings route{&c,&pos,&cb};
+        nw::ServerNpcActivePostAnimationBindings storage{};
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&storage;input.entities.entries=f.entries;input.entities.count=3;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==71?"mOvEtOpOsItIoN":token==72?"BeginSequence":token==73?"CancelSequence":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nw::ServerEntityAcceptInputResult ar{};ScriptedSequenceControlResult sr{};
+        unsigned value[5]{42,0,0,0,5};
+        auto send=[&](unsigned token){return accept(f.seq,sizeof(f.seq),scripted_sequence_vtable,token,f.npc,nullptr,value,sizeof(value),99,&input,&ar,&route,&sr);};
+        put(f.seq,0xc0,0u);put(f.seq,0x3d0,0x4001u);put(f.npc,0x970,0xffffffffu);
+        put(f.npc,0x850,0u);put(f.npc,0x96c,0u);f.seq[0x1f0]=1;
+        assert(send(71)&&ar.completed&&ar.accepted&&ar.native_handler&&ar.dirty&&ar.map==0x22504fc0u&&ar.handler==0x221b0430u&&ar.expected_type==0&&ar.actual_type==5&&ar.converted&&sr.possessed&&f.seq[0x3c0]&&f.seq[0x200]);
+        assert(send(73)&&ar.native_handler&&ar.handler==0x221af970u&&sr.cancelled&&word(f.seq,0x3d0)==0xffffffffu&&f.restores==2);
+        assert(send(72)&&ar.native_handler&&ar.handler==0x221b0500u&&sr.think_installed&&sr.tick_scheduled&&!f.seq[0x3c0]);
+        f.seq[0x3d9]=1;
+        assert(send(73)&&ar.accepted&&sr.suppressed&&!sr.cancelled);
     }

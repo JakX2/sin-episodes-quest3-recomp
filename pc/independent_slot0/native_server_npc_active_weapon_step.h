@@ -2,7 +2,7 @@
 #include "native_server_npc_schedule_image.h"
 #include "native_server_npc_weapon_runtime.h"
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_map { struct RelayBindings; struct TimerBindings; struct BranchBindings; struct CaseBindings; struct CompareBindings; struct CounterBindings; struct NavigationBindings; struct AutosaveBindings; struct MultiCompareBindings; struct RemapBindings; struct ColorBlendBindings; struct EntityKillBindings; struct TriggerControlBindings; struct CampaignFilterInputBindings; struct CampaignFilterInputResult; }
+namespace sin_port::native_map { struct RelayBindings; struct TimerBindings; struct BranchBindings; struct CaseBindings; struct CompareBindings; struct CounterBindings; struct NavigationBindings; struct AutosaveBindings; struct MultiCompareBindings; struct RemapBindings; struct ColorBlendBindings; struct EntityKillBindings; struct TriggerControlBindings; struct CampaignFilterInputBindings; struct CampaignFilterInputResult; struct ScriptedSequenceNativeControlBindings; struct ScriptedSequenceControlResult; }
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_active_weapon_step_export[]="SiN_GetServerNpcActiveWeaponStepApi";
 // Original active-update segment 220433d7..2204342a after 22040ce0 accepted.
@@ -642,6 +642,10 @@ using GetServerEntityAcceptInputApi=const ServerEntityAcceptInputApi* (__cdecl *
 inline constexpr char accept_campaign_filter_export[]="SiN_AcceptCampaignFilterInput";
 using AcceptCampaignFilterInput=int (__cdecl *)(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,
     const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*,const native_map::CampaignFilterInputBindings*,native_map::CampaignFilterInputResult*) noexcept;
+
+inline constexpr char accept_scripted_sequence_export[]="SiN_AcceptScriptedSequenceInput";
+using AcceptScriptedSequenceInput=int (__cdecl *)(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,
+    const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*,const native_map::ScriptedSequenceNativeControlBindings*,native_map::ScriptedSequenceControlResult*) noexcept;
 
 // Original 221619e0/22161100 active registry searches and 22161900
 // contextual names. The independently owned registry supplies its live head.
