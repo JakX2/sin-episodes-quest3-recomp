@@ -224,7 +224,8 @@ int main(int argc,char** argv){
     struct Map {
         alignas(4) unsigned char actor[nm::dynamic_trigger_extent]{};
         alignas(4) unsigned char player[0x37c]{};
-        unsigned removed=0;
+        alignas(4) unsigned char named_filter[0x3cc]{};
+        unsigned removed=0,base_activations=0;
     } m;
     const unsigned player_vt=0x224aec3cu,handle=0x5002u;const int hp=43;
     std::memcpy(m.player,&player_vt,4);std::memcpy(m.player+0x378,&handle,4);std::memcpy(m.player+0x9c,&hp,4);
@@ -413,7 +414,41 @@ int main(int argc,char** argv){
     // Original map writer ignores ordinary FireEvent false. Health
     // remains published and activation continues; no double free.
     started.events.fire_ok=false;
-    assert(activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&lr.completed&&lr.map_event&&lr.health_event&&started.events.creates==5&&started.events.fires==5&&!started.events.frees);
+    // Actual slot3 activation resolves a named filter before inherited
+    // activation and performs ordinary map/health event publication.
+    const auto activate_filters=reinterpret_cast<nl::InvokeActivateWithCampaignFilters>(GetProcAddress(server,nl::campaign_filters_activate_export));
+    assert(activate_filters&&!GetProcAddress(client,nl::campaign_filters_activate_export));
+    auto af=lb;
+    af.next_entity=[](void* p,void* prev,void** next) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);
+        *next=!prev?static_cast<void*>(m.actor):prev==m.actor?static_cast<void*>(m.named_filter):nullptr;return 1;
+    };
+    af.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);
+        *bytes=actor==m.actor?sizeof(m.actor):actor==m.named_filter?sizeof(m.named_filter):actor==m.player?sizeof(m.player):0;return *bytes!=0;
+    };
+    const unsigned named_vt=nm::name_filter_vtable,named_name=31,named_handle=0x7000;
+    std::memcpy(m.named_filter,&named_vt,4);std::memcpy(m.named_filter+0xc0,&named_name,4);std::memcpy(m.named_filter+0x378,&named_handle,4);
+    put(0x40c,named_name);put(0x410,0xffffffffu);
+    sin_independent::EntityHandleEntry named_entry{};
+    named_entry.entity=reinterpret_cast<CBaseEntity*>(m.named_filter);named_entry.serial=7;
+    nw::ServerEntitySearchBindings search{};search.context=&m;search.head=&named_entry;search.entities.entries=&named_entry;search.entities.count=1;search.extent=af.extent;
+    search.string_text=[](void*,unsigned token,const char** value,unsigned* bytes) noexcept ->int{
+        if(token!=31)return 0;*value="named_filter";*bytes=13;return 1;
+    };
+    nm::CampaignFilterActivationBindings fab{};fab.context=&m;fab.search=&search;
+    fab.base_activate=[](void* p,void* actor) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);
+        if(actor==m.actor){
+            unsigned handle=0;std::memcpy(&handle,m.actor+0x410,4);
+            assert(handle==0x7000&&!m.base_activations);
+        }else assert(actor==m.named_filter&&m.base_activations==1);
+        ++m.base_activations;return 1;
+    };
+    nl::CampaignFilterActivationSummary fas{};
+    assert(activate_filters(&ls,nullptr,0,1,&af,&lr,&session,&fab,&fas)&&lr.completed&&lr.map_event&&lr.health_event&&
+        lr.activated==2&&fas.attempted==2&&fas.completed==2&&fas.lookups==1&&fas.resolved==1&&m.base_activations==2&&
+        started.events.creates==5&&started.events.fires==5&&!started.events.frees);
     assert(network.calls==3&&edict_queries==8);
     assert(!activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&started.events.creates==5&&edict_queries==8);
     // Dynamic owner resolution occurs only after successful creation;

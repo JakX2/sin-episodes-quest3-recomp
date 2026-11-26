@@ -111,6 +111,13 @@ inline constexpr char engine_events_level_export[]="SiN_InvokeServerLevelInitWit
 inline constexpr char engine_events_touch_export[]="SiN_TouchStartedCampaignTrigger";
 inline constexpr char engine_events_activate_export[]="SiN_InvokeServerActivateWithEngineEvents";
 using InvokeActivateWithEvents=int (__cdecl *)(State*,void*,int,int,const Bindings*,Result*,const native_server_startup::EngineEventSession*) noexcept;
+struct CampaignFilterActivationSummary {
+    unsigned attempted,completed,lookups,resolved,missing,wrong_class,preserved,written;
+    native_map::CampaignFilterActivationResult last;
+};
+inline constexpr char campaign_filters_activate_export[]="SiN_InvokeServerActivateWithCampaignFilters";
+using InvokeActivateWithCampaignFilters=int (__cdecl *)(State*,void*,int,int,const Bindings*,Result*,
+    const native_server_startup::EngineEventSession*,const native_map::CampaignFilterActivationBindings*,CampaignFilterActivationSummary*) noexcept;
 using InvokeLevelWithEvents=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*,const native_server_startup::EngineEventSession*) noexcept;
 using TouchStartedTrigger=int (__cdecl *)(const native_server_startup::EngineEventSession*,void*,unsigned,void*,
     const native_map::CampaignTriggerBindings*,native_map::CampaignTriggerResult*,int*) noexcept;

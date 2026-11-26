@@ -1,4 +1,5 @@
 #include "native_server_level.h"
+extern "C" int __cdecl SiN_ActivateCampaignFilter(void*,unsigned,const sin_port::native_map::CampaignFilterActivationBindings*,sin_port::native_map::CampaignFilterActivationResult*) noexcept;
 #include "server_fixed_difficulty_service.h"
 #include <cstring>
 #include <cstdio>
@@ -145,7 +146,10 @@ int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void
 int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) noexcept {
     return level_init_impl(s,a,b,o,nullptr);
 }
-int server_activate_impl(State* s,const Bindings* b,Result* o,void* event_manager) noexcept {
+int server_activate_impl(State* s,const Bindings* b,Result* o,void* event_manager,
+    const native_map::CampaignFilterActivationBindings* filters=nullptr,CampaignFilterActivationSummary* filter_summary=nullptr) noexcept {
+    if(filter_summary)*filter_summary={};
+    if(filters&&!filter_summary)return 0;
     if(!o)return 0;*o={};
     if(!ready(s,b,o)||!s->level_ready||s->activation_attempted)return 0;
     // Original transition guard returns before any callbacks.
@@ -167,6 +171,15 @@ int server_activate_impl(State* s,const Bindings* b,Result* o,void* event_manage
         if(read<unsigned>(current,0)==native_resupply::resupply_vtable&&b->resupply&&n>=0x3b0){
             const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));
             ok=api&&api->activate(current,n,b->resupply,&o->resupply);if(ok)++o->resupply_activated;
+        }else if(filters&&(read<unsigned>(current,0)==native_map::dynamic_trigger_vtable||
+            read<unsigned>(current,0)==native_map::secret_trigger_vtable||native_map::campaign_filter_class(read<unsigned>(current,0)))){
+            ++filter_summary->attempted;
+            auto& last=filter_summary->last;
+            ok=SiN_ActivateCampaignFilter(current,n,filters,&last)!=0;
+            filter_summary->completed+=last.completed;
+            filter_summary->lookups+=last.lookups;filter_summary->resolved+=last.resolved;
+            filter_summary->missing+=last.missing;filter_summary->wrong_class+=last.wrong_class;
+            filter_summary->preserved+=last.preserved;filter_summary->written+=last.written;
         }else ok=b->activate&&b->activate(b->context,current);
         const bool closed=b->entity_scope(b->context,false)!=0;if(closed)++o->entity_closes;
         if(!ok||!closed)return finish(false);++o->activated;
@@ -217,4 +230,10 @@ int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State* s,cons
 int __cdecl SinServerActivateWithEventsInternal(sin_port::native_level::State* s,const sin_port::native_level::Bindings* b,
     sin_port::native_level::Result* o,void* manager) noexcept {
     return manager&&sin_port::native_level::server_activate_impl(s,b,o,manager);
+}
+
+int __cdecl SinServerActivateWithCampaignFiltersInternal(sin_port::native_level::State* s,const sin_port::native_level::Bindings* b,
+    sin_port::native_level::Result* o,void* manager,const sin_port::native_map::CampaignFilterActivationBindings* filters,
+    sin_port::native_level::CampaignFilterActivationSummary* summary) noexcept {
+    return manager&&filters&&summary&&sin_port::native_level::server_activate_impl(s,b,o,manager,filters,summary);
 }
