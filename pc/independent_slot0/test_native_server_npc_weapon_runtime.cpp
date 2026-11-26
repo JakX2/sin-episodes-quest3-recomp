@@ -1,4 +1,5 @@
 #include "native_server_npc_weapon_runtime.h"
+#include "native_server_npc_active_weapon_step.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -12,7 +13,7 @@
 #include <initializer_list>
 using namespace sin_port::native_weapon_tables;
 struct F {
-    alignas(4) unsigned char actor[0xfcc]{},weapon[0x598]{},component[0x28]{},path[0x48]{};
+    alignas(4) unsigned char actor[0xfd8]{},weapon[0x598]{},component[0x28]{},path[0x48]{};
     alignas(4) unsigned char npc_desc[2][0x40]{},weapon_desc[2][0x40]{};
     ServerActivityDescriptor nr[2]{},wr[2]{};
     std::uint32_t ng=3,wg=3;
@@ -208,6 +209,35 @@ int main(int argc,char** argv){
     assert(f.get<int>(f.actor,0xfc8)==2&&f.get<unsigned>(f.actor,0x7d0)==(0xffffffffu&~(7u<<18)));
     assert((f.trace==std::vector<int>{10,11,70,70,70}));
     f.put(f.actor,0x78c,0x7001u);
+    // Original 220433fb future-deadline path still advances both animations.
+    auto get_step=reinterpret_cast<GetServerNpcActiveWeaponStepApi>(GetProcAddress(server,server_npc_active_weapon_step_export));
+    assert(get_step&&!GetProcAddress(client,server_npc_active_weapon_step_export)&&!get_step(0,sizeof(ServerNpcActiveWeaponStepApi))&&!get_step(1,0));
+    const auto* step=get_step(1,sizeof(ServerNpcActiveWeaponStepApi));assert(step);
+    ServerNpcScheduleServicesBindings schedule{};
+    schedule.scheduler.original_vtable=0x2249aaa4u;schedule.scheduler.grunt.registration=&ids;
+    schedule.scheduler.maintenance.selection.state.entities=b.inherited.weapons;
+    schedule.scheduler.maintenance.selection.grunt.schedule.conditions=sb.conditions;
+    ServerNpcWeaponAmmoBindings ammo{};ammo.scripts=&sb.scripts;
+    ServerNpcWeaponMeleeBindings melee{};ServerNpcWeaponPolicyBindings policy{&ammo,&melee};
+    ServerNpcActiveWeaponStepBindings step_bind{};step_bind.schedule=&schedule;step_bind.policy=&policy;step_bind.frame=&sb;step_bind.context=&f;
+    step_bind.reset_movement=[](void* p,void* a) noexcept -> int{auto& f=F::self(p);assert(a==f.actor);f.trace.push_back(90);return 1;};
+    step_bind.motor_activity=[](void* p,std::uint32_t token,int id) noexcept -> int{assert(token==0x5678u&&id==-1);F::self(p).trace.push_back(91);return 1;};
+    auto authoritative=sb;
+    // Deliberately omit duplicate animation-side registry/scripts/map.
+    authoritative.frame.frame.runtime.inherited.weapons={};authoritative.scripts={};authoritative.conditions={};
+    step_bind.frame=&authoritative;
+    static ServerNpcActiveWeaponStepResult step_out;
+    f.put(f.actor,0x864,20.f);f.actor[0x7b8]=f.actor[0x7b9]=1;
+    f.put(f.weapon,0x4ec,0);f.put(f.weapon,0x4f0,-1);f.put(f.actor,0x7d0,0xffffffffu);f.put(f.weapon,0x580,0.f);
+    seed_frame();
+    assert(step->run(f.actor,sizeof(f.actor),&in,&step_bind,&step_out)&&step_out.completed&&!step_out.think_called&&step_out.reset_called&&step_out.motor_called&&step_out.animation_called);
+    assert(step_out.animation.fixed_resets==1&&step_out.animation.frame.frame.handled==2&&f.get<int>(f.weapon,0x4ec)==31);
+    assert((f.trace==std::vector<int>{90,91,10,11,109,80,80,70,70,70,12,1,102,102,2,3}));
+    seed_frame();f.put(f.actor,0x864,in.now); // equality requires scheduler; missing chain rejects.
+    assert(!step->run(f.actor,sizeof(f.actor),&in,&step_bind,&step_out)&&!step_out.animation_called&&f.trace.empty());
+    f.put(f.actor,0x864,20.f);step_bind.motor_activity=nullptr;
+    assert(!step->run(f.actor,sizeof(f.actor),&in,&step_bind,&step_out)&&step_out.reset_called&&step_out.motor_called&&!step_out.animation_called&&(f.trace==std::vector<int>{90}));
+    f.actor[0x7b8]=f.actor[0x7b9]=0;
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
