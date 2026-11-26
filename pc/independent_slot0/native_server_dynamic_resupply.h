@@ -42,6 +42,18 @@ struct FallbackResult {
     int selected;
     const char* classname;
 };
+struct NearbyBindings {
+    void* context;
+    // Original PVS iterator 222895e0; nullptr previous starts a new pass.
+    int (__cdecl *next_visible)(void*,void* actor,void* previous,void**) noexcept;
+    int (__cdecl *center)(void*,void* entity,float*) noexcept;
+    int (__cdecl *classname)(void*,void* entity,const char**) noexcept;
+    // Optional debug mode 2 line: actor center -> candidate center.
+    int (__cdecl *debug_line)(void*,const float*,const float*,int,int,int,bool,float) noexcept;
+    // Optional per-row summary in any nonzero debug mode.
+    int (__cdecl *debug_count)(void*,const char*,int) noexcept;
+};
+struct NearbyResult {unsigned visited,within,matched,center_reads,class_reads,lines,reports,completed;};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -52,6 +64,8 @@ struct Api {
     int (__cdecl *greatest_deficit)(const AmmoRow*,unsigned,int*) noexcept;
     // 222f87a0: fallback selection, before original spawn helper.
     int (__cdecl *fallback)(unsigned,const float*,unsigned,const FallbackBindings*,FallbackResult*) noexcept;
+    // 222f8930: independent health or six-ammo pass; other fields untouched.
+    int (__cdecl *nearby)(void*,bool,int,AmmoRow*,unsigned,const NearbyBindings*,NearbyResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
