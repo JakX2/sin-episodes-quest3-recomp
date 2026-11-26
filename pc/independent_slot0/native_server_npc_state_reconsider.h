@@ -2164,4 +2164,27 @@ struct ServerNpcGruntRagdollLifeApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntRagdollLifeBindings*,ServerNpcGruntRagdollLifeResult*) noexcept;
 };
 using GetServerNpcGruntRagdollLifeApi=const ServerNpcGruntRagdollLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_component_damage_export[]="SiN_GetServerNpcGruntComponentDamageApi";
+struct ServerNpcGruntComponentDamageBindings {
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    std::uint32_t original_behavior_vtable;
+    void* context;
+    int (__cdecl *parent_damage)(void*,std::uint32_t,const void*,int*) noexcept; // component+0c, parent virtual +2c
+    int (__cdecl *source_predicate)(void*,void*,bool*) noexcept; // source virtual +120
+    int (__cdecl *tank_predicate)(void*,void*,void*,bool*) noexcept; // 222ea510(tank,source)
+    int (__cdecl *condition_map)(void*,void*,int,int*) noexcept; // behavior +2c, 22073700
+    int (__cdecl *condition_set)(void*,std::uint32_t,int) noexcept; // owner+04, 22039760
+};
+struct ServerNpcGruntComponentDamageResult {
+    int native_result,mapped_condition;
+    std::uint32_t parent,owner,source_handle,tank_handle;
+    unsigned completed,tank,delegated,source_valid,tank_valid,source_checked,source_admitted,tank_checked,tank_predicate_value,mapped,condition_set;
+};
+struct ServerNpcGruntComponentDamageApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,const ServerNpcGruntComponentDamageBindings*,ServerNpcGruntComponentDamageResult*) noexcept;
+};
+using GetServerNpcGruntComponentDamageApi=const ServerNpcGruntComponentDamageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

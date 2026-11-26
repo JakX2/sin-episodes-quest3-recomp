@@ -3043,5 +3043,42 @@ int main(int argc,char** argv){
         q.second=true;f.put(q.a,0xa18,0x9001u);assert(run()&&o.translation.native_result==0x42&&!o.linked.link_valid&&q.step==0);
         f.put(q.a,0x8ec,0u);assert(run()&&!o.translation.linked_called&&!o.linked.completed);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntComponentDamageApi>(GetProcAddress(s,server_npc_grunt_component_damage_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_component_damage_export)&&!g(0,sizeof(ServerNpcGruntComponentDamageApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntComponentDamageApi));assert(api);
+        struct ComponentDamageFixture{
+            alignas(4) unsigned char component[0x24]{},damage[0x48]{},source[4]{},tank[4]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            int native=7,mapped=123;unsigned step=0;bool source_yes=true,tank_yes=false,mutate=false;
+            static ComponentDamageFixture& self(void* p){return *static_cast<ComponentDamageFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.source);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.tank);
+        ServerNpcGruntComponentDamageBindings b{};b.entries=q.entries;b.count=3;b.context=&q;
+        b.parent_damage=[](void* p,std::uint32_t token,const void* d,int* v) noexcept -> int{auto& q=ComponentDamageFixture::self(p);assert(token==77&&d==q.damage&&q.step==0);++q.step;*v=q.native;return 1;};
+        b.source_predicate=[](void* p,void* e,bool* yes) noexcept -> int{auto& q=ComponentDamageFixture::self(p);assert(e==q.source&&q.step==1);++q.step;*yes=q.source_yes;if(q.mutate)q.entries[2].serial=9;return 1;};
+        b.tank_predicate=[](void* p,void* tank,void* source,bool* yes) noexcept -> int{auto& q=ComponentDamageFixture::self(p);assert(tank==q.tank&&source==q.source&&q.step==2);++q.step;*yes=q.tank_yes;return 1;};
+        b.condition_map=[](void* p,void* c,int id,int* v) noexcept -> int{auto& q=ComponentDamageFixture::self(p);assert(c==q.component&&id==100000&&q.step==3);++q.step;*v=q.mapped;return 1;};
+        b.condition_set=[](void* p,std::uint32_t owner,int id) noexcept -> int{auto& q=ComponentDamageFixture::self(p);assert(owner==88&&id==q.mapped&&q.step==4);++q.step;return 1;};
+        f.put(q.component,4,88u);f.put(q.component,0xc,77u);f.put(q.component,0x14,0x2002u);f.put(q.damage,0x28,0x1001u);
+        ServerNpcGruntComponentDamageResult o{};
+        auto run=[&](){q.step=0;return api->run(q.component,sizeof(q.component),q.damage,sizeof(q.damage),&b,&o);};
+        for(unsigned vt:{0x223f956cu,0x224ae624u,0x224ab88cu,0x224ab494u,0x223f5544u,0x22495344u,0x223f6b7cu}){
+            b.original_behavior_vtable=vt;assert(run()&&o.completed&&!o.tank&&o.delegated&&o.native_result==7&&q.step==1);
+        }
+        b.original_behavior_vtable=0x224abec4u;q.native=0;assert(run()&&o.tank&&o.native_result==0&&!o.source_valid&&q.step==1);
+        q.native=-3;assert(run()&&o.native_result==-3&&o.condition_set&&o.mapped_condition==123&&q.step==5);
+        q.mapped=-1;assert(run()&&o.condition_set&&o.mapped_condition==-1);
+        q.tank_yes=true;assert(run()&&o.tank_checked&&o.tank_predicate_value&&!o.mapped&&q.step==3);
+        q.tank_yes=false;q.source_yes=false;assert(run()&&o.source_checked&&!o.source_admitted&&!o.tank_checked&&q.step==2);
+        q.source_yes=true;f.put(q.damage,0x28,0x9001u);assert(run()&&!o.source_valid&&o.tank_valid&&q.step==1);
+        f.put(q.damage,0x28,0x1001u);f.put(q.component,0x14,0x9002u);assert(run()&&o.source_valid&&!o.tank_valid&&q.step==1);
+        f.put(q.component,0x14,0x2002u);q.mutate=true;assert(!run()&&o.source_admitted&&!o.tank_checked&&!o.completed);
+        q.mutate=false;q.entries[2].serial=2;
+        assert(!api->run(q.component,0x10,q.damage,sizeof(q.damage),&b,&o));
+        b.original_behavior_vtable=0;assert(!run());
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
