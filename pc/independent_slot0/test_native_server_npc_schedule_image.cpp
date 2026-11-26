@@ -1,5 +1,6 @@
 #include "native_server_npc_schedule_image.h"
 #include "native_server_weapon_script_view.h"
+#include "native_server_npc_reload_services.h"
 #include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -568,7 +569,7 @@ int main(int argc,char** argv){
     // Active, equipped NPC with no enemy: native ammo must run at both +420
     // call sites. Deliberately stop after the second gather at ideal-state query.
     {
-        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{};unsigned queries=0,traces=0;} equipped{&f};
+        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;} equipped{&f};
         sin_independent::EntityHandleEntry equipped_entries[3]{};
         equipped_entries[0].serial=3;equipped_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
         equipped_entries[1].serial=7;equipped_entries[1].entity=reinterpret_cast<CBaseEntity*>(equipped.weapon);
@@ -716,6 +717,66 @@ int main(int argc,char** argv){
         verify_tick(70.5f);assert(stamp==70.f);
         verify_tick(71.f);assert(stamp==0.f);
         verify_tick(72.f);assert(req_run.requests.scheduler.maintenance.state.index==5&&equipped.traces==4);
+        // The animation dispatcher already supplies these original events.
+        // Replay them here between actual scheduler ticks on the same actor/weapon.
+        auto get_parent=reinterpret_cast<GetServerNpcParentWeaponEventApi>(GetProcAddress(s,server_npc_parent_weapon_event_export));
+        auto get_reload=reinterpret_cast<GetServerNpcReloadServicesApi>(GetProcAddress(s,server_npc_reload_services_export));
+        auto get_cond=reinterpret_cast<GetServerNpcConditionApi>(GetProcAddress(s,server_npc_condition_export));
+        assert(get_parent&&get_reload&&get_cond);
+        const auto* parent=get_parent(1,sizeof(ServerNpcParentWeaponEventApi));
+        const auto* reload=get_reload(1,sizeof(ServerNpcReloadServicesApi));
+        const auto* conditions=get_cond(1,sizeof(ServerNpcConditionApi));
+        assert(parent&&reload&&conditions);
+        ServerNpcReloadServicesBindings event_bind{};
+        event_bind.scripts=scripts;event_bind.conditions=sb.conditions;
+        auto& event_weapon=event_bind.original.weapon;event_weapon.context=&equipped;
+        event_weapon.extent=extent;event_weapon.weapons=selection.state.entities;
+        event_weapon.sound.context=&equipped;
+        event_weapon.sound.emit=[](void* p,void* w,int id,float) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(w==q.weapon&&(id==2||id==9));++q.sounds;return 1;
+        };
+        event_weapon.prepare=[](void* p,void* w,void* a,unsigned kind,const ServerAnimationEvent* e) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(w==q.weapon&&a==q.f->actor&&kind==WeaponActivitySmg&&e->event==3002);++q.prepares;return 1;
+        };
+        event_weapon.primary_effect=[](void* p,void* w,void* a,unsigned kind,const ServerAnimationEvent*) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(w==q.weapon&&a==q.f->actor&&kind==WeaponActivitySmg&&q.prepares==q.shots+1&&q.sounds==q.shots+1);++q.shots;return 1;
+        };
+        event_weapon.flash=[](void* p,void* a) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(a==q.f->actor&&q.shots==q.flashes+1);++q.flashes;return 1;
+        };
+        prepare_engaged(4,0);f.put(equipped.weapon,0,0x2247ab9cu);
+        f.put(f.actor,0x6cc,0x7001u);f.actor[0x3e0]=1;f.put(f.actor,0x3ec,7);f.put(f.actor,0x884,7);
+        assert(state->install(f.actor,sizeof(f.actor),attack_schedule,73.f,&sb,&sr));
+        f.put(f.actor,0x79c,global+191);
+        for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+        stamp=0;equipped.weapon[0x1f0]=1;
+        ServerNpcReloadSession event_session{};
+        assert(reload->prepare(f.actor,sizeof(f.actor),&event_bind,&event_session));
+        for(int i=0;i<4;++i){
+            const float now=73.f+i*.1f;
+            verify_tick(now);
+            ServerAnimationEvent shot{3002,"",0.f,now,0,equipped.weapon};
+            ServerNpcParentWeaponEventResult er{};
+            assert(parent->handle(f.actor,sizeof(f.actor),&shot,now,&event_session.bound,&er)==1&&er.forwarded&&er.weapon.primary_called&&er.weapon.clip_changed&&er.weapon.flash_called);
+            int remaining=-1;std::memcpy(&remaining,equipped.weapon+0x4ec,4);
+            assert(remaining==3-i&&equipped.shots==static_cast<unsigned>(i+1)&&equipped.weapon[0x200]);
+        }
+        assert(equipped.prepares==4&&equipped.sounds==4&&equipped.flashes==4);
+        // No clip or owner reserve remains: next real gather publishes no-ammo.
+        // Stop at the deliberately unavailable state query during reselection.
+        assert(!run_engaged(73.5f)&&cycle.outer_gather.gather.completed&&outer_line.attack.conditions[0]==4&&!outer_weapon.primary.available);
+        ServerNpcConditionResult condition{};
+        assert(conditions->test(f.actor,sizeof(f.actor),4,NpcConditionCurrent,&sb.conditions,&condition)&&condition.value);
+        ServerNpcReloadResult reset{};
+        assert(reload->fixed_reset(&event_session,&reset)&&reset.live&&reset.primary==8&&reset.secondary==1&&reset.primary_changed&&reset.conditions_cleared==3);
+        assert(conditions->test(f.actor,sizeof(f.actor),4,NpcConditionCurrent,&sb.conditions,&condition)&&!condition.value);
+        assert(equipped.sounds==5&&event_session.script_lookups==2);
+        // Reinstall the attack descriptor (selection itself is tested separately).
+        assert(state->install(f.actor,sizeof(f.actor),attack_schedule,74.f,&sb,&sr));
+        f.put(f.actor,0x79c,global+191);f.actor[0x3e0]=1;
+        for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+        stamp=0;equipped.queries=0;verify_tick(74.f);
+        assert(outer_weapon.primary.clip==8);
         stamp=prior_stamp;
         selection.state.entities=previous_entities;selection.state.state_query=previous_query;selection.state.context=previous_context;
         req_schedule.admission=previous_admission;
