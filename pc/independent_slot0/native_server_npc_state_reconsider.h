@@ -1526,4 +1526,37 @@ struct ServerNpcGruntCombatReactionsApi {
     int (__cdecl *death)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntCombatDeathBindings*,ServerNpcGruntCombatDeathResult*) noexcept;
 };
 using GetServerNpcGruntCombatReactionsApi=const ServerNpcGruntCombatReactionsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_damage_outputs_export[]="SiN_GetServerNpcGruntDamageOutputsApi";
+struct ServerNpcGruntDamageOutputBindings {
+    ServerNpcGruntSentenceBindings entities;
+    ServerNpcEnemyMemoryBindings names; // group+4 name pointer token
+    ServerNpcConditionMapBindings conditions;
+    std::uint32_t player_group_name; // original global 22546d58
+    int max_clients;
+    void* context;
+    int (__cdecl *output)(void*,void*,unsigned) noexcept; // 22156900, actor both entities, delay 0
+    int (__cdecl *is_player)(void*,void*,bool*) noexcept; // attacker +120
+    int (__cdecl *cast_npc)(void*,void*,void**,unsigned*) noexcept; // original RTTI cast, may return null
+    int (__cdecl *local_player)(void*,void**) noexcept; // 22288a40
+};
+struct ServerNpcGruntDamageOutputResult {
+    ServerNpcConditionResult condition;
+    unsigned completed,stamp_equal,generic_output,player_output,qualified_output,half_output,cast_called,local_player_called,eligible,tail_required;
+};
+struct ServerNpcGruntDamageOutputChainBindings {
+    ServerNpcGruntCombatDamageBindings prefix;
+    ServerNpcGruntDamageOutputBindings outputs;
+};
+struct ServerNpcGruntDamageOutputChainResult {
+    ServerNpcGruntCombatDamageResult prefix;
+    ServerNpcGruntDamageOutputResult outputs;
+};
+struct ServerNpcGruntDamageOutputsApi {
+    std::uint32_t version,size;
+    // Caller attests arrival at 220401d4 after accepted base damage.
+    int (__cdecl *tail)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageOutputBindings*,ServerNpcGruntDamageOutputResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageOutputChainBindings*,ServerNpcGruntDamageOutputChainResult*) noexcept;
+};
+using GetServerNpcGruntDamageOutputsApi=const ServerNpcGruntDamageOutputsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
