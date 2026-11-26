@@ -1823,6 +1823,60 @@ int main(int argc,char** argv){
     assert(wto.thrust.created==2&&wto.thrust.configured==2&&!wto.thrust.writes&&f.get<int>(path_actor,0x868)==0&&f.get<int>(wt.member,0x868)==0);
     assert((fresh_f.order==std::vector<unsigned>{1,2,10,20,30,11,21,31}));
     f.trace.clear();
+    // Native squad join reports each live leader memory in tree order.
+    // Leader and recipient own separate indexed trees and record pools.
+    struct SquadMemoryFixture {
+        F* f;void* leader;
+        alignas(4) unsigned char owners[2][0x40]{},nodes[2][8*12]{},source[4][0x38]{},dest[4][0x38]{};
+        unsigned allocated{},released{};
+    } sqm{&f,wt.member};
+    ServerNpcGruntMemoryReportBindings squad_report{};
+    squad_report.mutation.context=&sqm;squad_report.mutation.storage.context=&sqm;
+    squad_report.mutation.storage.storage=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SquadMemoryFixture*>(p);
+        if(token>=0xa100u&&token<0xa102u){*out=q.owners[token-0xa100u];*bytes=0x40;return 1;}
+        if(token>=0xa200u&&token<0xa202u){*out=q.nodes[token-0xa200u];*bytes=sizeof(q.nodes[0]);return 1;}
+        if(token>=0xa300u&&token<0xa304u){*out=q.source[token-0xa300u];*bytes=0x38;return 1;}
+        if(token>=0xa400u&&token<0xa400u+q.allocated){*out=q.dest[token-0xa400u];*bytes=0x38;return 1;}
+        return 0;
+    };
+    squad_report.mutation.allocate=[](void* p,unsigned need,unsigned* token,void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SquadMemoryFixture*>(p);assert(need==0x38&&q.allocated<4);
+        *token=0xa400u+q.allocated;*data=q.dest[q.allocated++];*bytes=0x38;return 1;
+    };
+    squad_report.mutation.release=[](void* p,unsigned) noexcept -> int{++static_cast<SquadMemoryFixture*>(p)->released;return 1;};
+    squad_report.mutation.entity_key=[](void* p,void* e,unsigned* key) noexcept -> int{
+        auto& q=*static_cast<SquadMemoryFixture*>(p);if(e==q.f->weapon)*key=0x8100u;else if(e==q.f->actor)*key=0x8400u;else return 0;return 1;
+    };
+    squad_report.mutation.entity_handle=[](void* p,void* e,unsigned* handle) noexcept -> int{
+        auto& q=*static_cast<SquadMemoryFixture*>(p);if(e==q.f->weapon)*handle=0x6000u;else if(e==q.f->actor)*handle=0x8002u;else return 0;return 1;
+    };
+    for(unsigned i=0;i<2;++i)assert(forget_control->initialize(sqm.owners[i],0x40,0xa200u+i,8,initial_memory,&squad_report.mutation.storage));
+    const unsigned source_keys[]{0x8400u,0x8200u,0x8100u,0x8300u};
+    const unsigned source_handles[]{0x8002u,0x9000u,0x6000u,0xffffffffu};
+    for(unsigned i=0;i<4;++i){
+        f.put(sqm.source[i],0,source_handles[i]);f.put(sqm.source[i],4,float(10+i));f.put(sqm.source[i],8,2.f);f.put(sqm.source[i],12,3.f);
+        assert(forget_tree->insert(sqm.owners[0],0x40,source_keys[i],0xa300u+i,&squad_report.mutation.storage,&forget_result));
+    }
+    sq.head=group_a;f.put(sq.groups[0],0,0u);f.put(sq.groups[0],0x48,1);f.put(sq.groups[0],8,0x7001u);
+    f.put(f.actor,0x378,0x8002u);f.put(f.actor,0x9c4,0u);f.put(f.actor,0x9c8,0u);
+    f.put(f.actor,0x8c,0);f.put(f.actor,0x8ec,0x4000000u);f.put(f.actor,0x78c,0xffffffffu);
+    f.put(f.actor,0x984,0xa101u);f.put(wt.member,0x984,0xa100u);f.put(wt.member,0,ground_vt);
+    f.put(f.actor,0x850,1);f.put(f.actor,0x85c,123u);f.put(f.actor,0x864,456u);f.actor[0xb6]&=~1u;
+    sq_services.copy_leader_memory=nullptr;sq_services.native_memory=&squad_report;
+    sq_services.leader_extent=[](void* p,void* leader,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);assert(leader==q.peer);*bytes=0xfd8u;return 1;
+    };
+    squad_b.now=80.f;
+    assert(set_squad(701u)&&catalog_o.native_handler&&catalog_o.squad_added&&catalog_o.squad_memory);
+    assert(catalog_o.squad_memory_visited==4&&catalog_o.squad_memory_stale==2&&catalog_o.squad_memory_reported==2&&catalog_o.squad_memory_created==2&&!catalog_o.squad_memory_updated);
+    assert(sqm.allocated==2&&!sqm.released&&f.get<unsigned>(sqm.dest[0],0)==0x6000u&&f.get<float>(sqm.dest[0],4)==12.f);
+    assert(f.get<unsigned>(sqm.dest[1],0)==0x8002u&&f.get<float>(sqm.dest[1],4)==10.f);
+    assert(f.get<float>(sqm.dest[0],0x30)==-std::numeric_limits<float>::max()&&!f.get<unsigned>(f.actor,0x85c)&&!f.get<unsigned>(f.actor,0x864));
+    assert(forget_tree->validate(sqm.owners[1],0x40,&squad_report.mutation.storage,&forget_result)&&forget_result.count==2);
+    assert(forget_tree->validate(sqm.owners[0],0x40,&squad_report.mutation.storage,&forget_result)&&forget_result.count==4);
+    assert(set_squad(701u)&&!catalog_o.squad_added&&!catalog_o.squad_memory_reported&&sqm.allocated==2);
+    f.put(f.actor,0x9c4,0u);f.put(f.actor,0x9c8,0u);f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

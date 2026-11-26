@@ -11,6 +11,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScriptWeaponEventFrameApi* __cdecl SiN_GetServerNpcScriptWeaponEventFrameApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyStateApi* __cdecl SiN_GetServerNpcEnemyStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryMutationApi* __cdecl SiN_GetServerNpcEnemyMemoryMutationApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryTreeApi* __cdecl SiN_GetServerNpcEnemyMemoryTreeApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntMemoryReportApi* __cdecl SiN_GetServerNpcGruntMemoryReportApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -770,7 +772,54 @@ constexpr NativeInputMap npc_input_maps[]{
 // 22032000 SetSquad, 220a8050 manager lookup, and fixed-array
 // membership edits from 220aa0d0/220aa1b0. The allocator contract supplies
 // original-address-shaped tokens (group+8 is its embedded vector token).
-int native_set_squad(void* a,unsigned n,const ServerEntityInputData& d,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+bool copy_native_squad_memory(void* a,unsigned n,unsigned vt,void* leader,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    const auto& s=*b.squad;
+    unsigned extent=0;
+    if(leader==a||!s.leader_extent||!s.leader_extent(s.context,leader,&extent)||extent<0x988||!input_datamap(rd<unsigned>(leader,0)))return false;
+    auto report=*s.native_memory;report.original_vtable=vt;
+    report.mutation.entries=b.entities.entries;report.mutation.count=b.entities.count;
+    const auto& store=report.mutation.storage;
+    auto resolve_memory=[&](unsigned token,unsigned need,void** p,unsigned* bytes){
+        *p=nullptr;*bytes=0;
+        return token&&store.storage&&store.storage(store.context,token,p,bytes)&&*p&&*bytes>=need;
+    };
+    void* memory=nullptr;unsigned bytes=0;
+    if(!resolve_memory(rd<unsigned>(leader,0x984),0x40,&memory,&bytes))return false;
+    const auto* tree=SiN_GetServerNpcEnemyMemoryTreeApi(1,sizeof(ServerNpcEnemyMemoryTreeApi));
+    const auto* report_api=SiN_GetServerNpcGruntMemoryReportApi(1,sizeof(ServerNpcGruntMemoryReportApi));
+    ServerNpcEnemyMemoryTreeResult validated{};
+    if(!tree||!report_api||!tree->validate(memory,bytes,&store,&validated))return false;
+    if(!validated.count)return true;
+    void* nodes=nullptr;unsigned node_bytes=0;
+    if(!resolve_memory(rd<unsigned>(memory,4),12,&nodes,&node_bytes))return false;
+    // Match 2206b7b0/2206b130: in-order indexed tree, skip records
+    // whose EHANDLE no longer resolves. Do not copy raw memory records.
+    unsigned order[255]{},stack[255]{},depth=0,count=0,i=rd<std::uint8_t>(memory,0x10);
+    bool seen[255]{};
+    auto node=[&](unsigned idx){return static_cast<unsigned char*>(nodes)+12*idx;};
+    while(i!=255||depth){
+        while(i!=255){
+            if(i>=255||seen[i]||node_bytes<12*(i+1)||depth>=255)return false;
+            seen[i]=true;stack[depth++]=i;i=rd<std::uint8_t>(node(i),0);
+        }
+        i=stack[--depth];order[count++]=i;i=rd<std::uint8_t>(node(i),1);
+    }
+    if(count!=validated.count)return false;
+    const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+    for(unsigned k=0;k<count;++k){
+        void* record=nullptr;unsigned record_bytes=0;
+        if(!resolve_memory(rd<unsigned>(node(order[k]),8),16,&record,&record_bytes))return false;
+        ++o.squad_memory_visited;
+        void* target=registry.Resolve(rd<unsigned>(record,0));
+        if(!target){++o.squad_memory_stale;continue;}
+        float position[3];std::memcpy(position,static_cast<unsigned char*>(record)+4,12);
+        ServerNpcGruntMemoryReportResult result{};
+        if(!report_api->report(a,n,target,position,leader,b.now,&report,&result))return false;
+        ++o.squad_memory_reported;o.squad_memory_created+=result.mutation.created;o.squad_memory_updated+=result.mutation.updated;
+    }
+    return true;
+}
+int native_set_squad(void* a,unsigned n,unsigned vt,const ServerEntityInputData& d,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
     if(!b.squad)return -1;
     const auto& s=*b.squad;
     if(n<0x9cc||!s.head||!b.storage||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
@@ -851,7 +900,10 @@ int native_set_squad(void* a,unsigned n,const ServerEntityInputData& d,const Ser
     wr<unsigned>(a,0x9c4,token);wr<unsigned>(a,0x9c8,rd<unsigned>(group,4));++o.squad_added;
     if(count>0){
         void* leader=registry.Resolve(rd<unsigned>(group,8));
-        if(!leader||!s.copy_leader_memory||!s.copy_leader_memory(s.context,a,leader))return 0;++o.squad_memory;
+        if(!leader)return 0;
+        if(s.native_memory){if(!copy_native_squad_memory(a,n,vt,leader,b,o))return 0;}
+        else if(!s.copy_leader_memory||!s.copy_leader_memory(s.context,a,leader))return 0;
+        ++o.squad_memory;
     }
     return 1;
 }
@@ -1233,7 +1285,7 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
         if(!b.health_damage(b.context,a,info,sizeof(info)))return 0;
         ++o.health_damage;return 1;
     }
-    case 0x22032000u:return native_set_squad(a,n,d,b,o);
+    case 0x22032000u:return native_set_squad(a,n,vt,d,b,o);
     case 0x22031fe0u:return native_rappel_input(a,n,true,b,o);
     case 0x22031ff0u:return native_rappel_input(a,n,false,b,o);
     case 0x2202e7d0u:return byte(0x968,1); // StartScripting

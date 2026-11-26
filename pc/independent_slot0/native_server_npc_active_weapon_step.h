@@ -273,6 +273,9 @@ struct ServerNpcInputSquadBindings {
     int (__cdecl *removed_notice)(void*,void* peer,void* removed) noexcept;
     int (__cdecl *copy_leader_memory)(void*,void* joining,void* leader) noexcept;
     int (__cdecl *warning)(void*,void*,std::uint32_t) noexcept;
+    // Optional native leader traversal and Grunt memory-report route.
+    const ServerNpcGruntMemoryReportBindings* native_memory;
+    int (__cdecl *leader_extent)(void*,void*,unsigned*) noexcept;
 };
 // Original Jetpack input leaves; navigation reset, entity removal and
 // fresh thrust-pair initialization remain explicit engine boundaries.
@@ -388,6 +391,7 @@ struct ServerEntityAcceptInputBindings {
 struct ServerEntityAcceptInputResult {
     unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed,rappel_mapped,rappel_condition,rappel_detached,rappel_snapshot,health_healed,health_damage,health_blocked,relationship_specs,relationship_entities,relationship_classes,relationship_updated,relationship_added,relationship_warnings,forget_found,forget_cleared,forget_removed,forget_warning,assault_candidates,assault_reserved,assault_selected,assault_linked,assault_reset,assault_missing,break_damage_disabled,break_non_solid,break_physics_snapshot,break_effect,break_removed;
     ServerNpcJetThrustResult thrust;
+    unsigned squad_memory_visited,squad_memory_stale,squad_memory_reported,squad_memory_created,squad_memory_updated;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
