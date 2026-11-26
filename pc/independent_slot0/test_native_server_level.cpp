@@ -128,5 +128,25 @@ int main(int argc,char** argv){
     assert(service->service(qf.root,sizeof(qf.root),10,10.99f,false,&steps,&sb,&sr)&&sr.future_stopped&&!qf.delivered);
     assert(service->service(qf.root,sizeof(qf.root),10,11.f,false,&steps,&sb,&sr)&&sr.direct==1&&qf.delivered==1&&qf.released==1&&sr.future_stopped&&!qf.locks);
     assert(service->service(qf.root,sizeof(qf.root),10,11.1f,false,&steps,&sb,&sr)&&sr.completed&&sr.direct==1&&qf.delivered==2&&qf.released==2&&!word(qf.root,0x30)&&!qf.locks);
+    // Native map pipeline is reachable from actual LevelInit slot2,
+    // with no hosted parse_entities callback.
+    namespace nm=sin_port::native_map;
+    Fixture pipeline_level;auto lb=pipeline_level.bind();lb.parse_entities=nullptr;
+    nm::Bindings mp{};mp.context=&pipeline_level;
+    mp.create=[](void* p,const char* cls,void** a) noexcept ->int{auto& f=*static_cast<Fixture*>(p);assert(!std::strcmp(cls,"item_dynamic_resupply"));*a=f.actor;return 1;};
+    mp.clear_factory_global=[](void*) noexcept ->int{return 1;};
+    mp.key_value=[](void*,void*,const char*,const char*) noexcept ->int{return 1;};
+    nm::SpawnBindings ms{};ms.context=&pipeline_level;ms.extent=lb.extent;
+    ms.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="item_dynamic_resupply";return 1;};
+    ms.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    ms.debug_enabled=[](void*,bool* yes) noexcept ->int{*yes=false;return 1;};
+    ms.spawn=[](void* p,void* a,int* code) noexcept ->int{auto& f=*static_cast<Fixture*>(p);assert(a==f.actor);f.seq+='N';*code=0;return 1;};
+    nm::PipelineBindings pipeline{};pipeline.context=&pipeline_level;pipeline.parse=&mp;pipeline.spawn=&ms;
+    pipeline.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    pipeline.classify=[](void*,void*,nm::Category* category) noexcept ->int{*category=nm::Category::Ordinary;return 1;};
+    const char lump[]="{ classname item_dynamic_resupply }";
+    lb.native_map_pipeline=&pipeline;lb.entity_text_bytes=sizeof(lump);
+    a={pipeline_level.map,lump,nullptr,nullptr,false,false};
+    assert(level(&pipeline_level.state,&a,&lb,&o)&&o.completed&&o.parsed&&o.map_pipeline.completed&&o.map_pipeline.parse.created==1&&o.map_pipeline.spawn.spawned==1&&!o.map_pipeline.spawn.activated&&pipeline_level.seq=="[PCENTMD]");
     FreeLibrary(server);FreeLibrary(client);
 }

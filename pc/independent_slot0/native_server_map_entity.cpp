@@ -204,9 +204,10 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     }
     o->handled=1;return done();
 }
-int __cdecl parse(const char* s,unsigned n,const Bindings* b,Result* o) noexcept {
+using Collector=int (__cdecl *)(void*,void*,const char*,unsigned,const EntitySlice*) noexcept;
+int parse_impl(const char* s,unsigned n,const Bindings* b,Result* o,Collector collect,void* context) noexcept {
     if(!o)return 0;*o={};
-    if(!s||!b||(!b->create&&!b->native_factory)||(!b->key_value&&!b->native_keys)||!b->accept_entity)return 0;
+    if(!s||!b||(!b->create&&!b->native_factory)||(!b->key_value&&!b->native_keys)||(!collect&&!b->accept_entity))return 0;
     unsigned cursor=0;
     for(;;){
         Token top{};if(!token(s,n,cursor,&top))return 0;
@@ -246,9 +247,12 @@ int __cdecl parse(const char* s,unsigned n,const Bindings* b,Result* o) noexcept
                 // Original base map parser ignores the bool KeyValue return.
             }
         }
-        if(actor&&!b->accept_entity(b->context,actor,s,n,&e))return 0;
+        if(actor){if(b->accept_entity&&!b->accept_entity(b->context,actor,s,n,&e))return 0;if(collect&&!collect(context,actor,s,n,&e))return 0;}
         cursor=e.end;
     }
+}
+int __cdecl parse(const char* s,unsigned n,const Bindings* b,Result* o) noexcept {
+    return parse_impl(s,n,b,o,nullptr,nullptr);
 }
 template<class T>T read_field(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
 int priority(const char* name) noexcept {
@@ -433,7 +437,89 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value};
+struct Pipeline {
+    const PipelineBindings& b;PipelineResult& o;
+    SpawnRow rows[4096]{};
+    EntitySlice slices[4096]{};
+    void* templates[4096]{};
+    unsigned ordinary=0,template_count=0;
+};
+bool pipeline_scope(Pipeline& p,const char* name,bool enter) noexcept {
+    if(!p.b.scope||!p.b.scope(p.b.context,name,enter))return false;
+    if(enter)++p.o.scopes;else ++p.o.closes;return true;
+}
+bool pipeline_cleanup(Pipeline& p,void* a,bool remove) noexcept {
+    if(remove){if(!p.b.remove||!p.b.remove(p.b.context,a))return false;++p.o.removed;}
+    if(!p.b.cleanup||!p.b.cleanup(p.b.context))return false;++p.o.cleanups;return true;
+}
+bool pipeline_spawn(Pipeline& p,void* a,int& code) noexcept {
+    SpawnResult result{};
+    if(!spawn_actor(*p.b.spawn,result,a,code))return false;
+    ++p.o.immediate_spawns;if(code<0)++p.o.immediate_failures;return true;
+}
+int __cdecl collect_entity(void* q,void* actor,const char* s,unsigned n,const EntitySlice* e) noexcept {
+    auto& p=*static_cast<Pipeline*>(q);const auto& b=p.b;auto& o=p.o;
+    Category category=Category::Ordinary;
+    if(!b.classify||!b.classify(b.context,actor,&category))return 0;
+    if(category==Category::TemplateEntity){
+        ++o.template_entities;
+        return b.capture_template&&b.capture_template(b.context,actor,s,n,e)&&b.precache&&b.precache(b.context,actor)&&pipeline_cleanup(p,actor,true);
+    }
+    if(category==Category::PointTemplate){
+        if(p.template_count==4096)return 0;p.templates[p.template_count++]=actor;++o.point_templates;return 1;
+    }
+    if(category==Category::Ordinary){
+        if(p.ordinary==4096)return 0;
+        p.rows[p.ordinary].actor=actor;p.slices[p.ordinary++]=*e;++o.ordinary;return 1;
+    }
+    const bool world=category==Category::World;
+    if(!world&&category!=Category::Node&&category!=Category::Light)return 0;
+    const char* scope=world?"MapEntity_ParseAllEntities_SpawnWorld":"MapEntity_ParseAllEntities_SpawnTransients";
+    if(!pipeline_scope(p,scope,true))return 0;
+    bool ok=true;int code=0;
+    if(world){
+        ++o.worlds;unsigned bytes=0;ok=extent_ok(*b.spawn,actor,0x18,bytes);
+        if(ok){write_field(actor,0x14,0u);ok=pipeline_spawn(p,actor,code);}
+        // Original world branch ignores the DispatchSpawn return.
+    }else if(category==Category::Node){
+        ++o.nodes;ok=b.spawn_node&&b.spawn_node(b.context,actor,s,n,e,&code);
+        if(ok){++o.immediate_spawns;if(code<0)++o.immediate_failures;}
+    }else{++o.lights;ok=pipeline_spawn(p,actor,code);}
+    if(ok&&!world&&code<0)ok=pipeline_cleanup(p,actor,false);
+    const bool closed=pipeline_scope(p,scope,false);return ok&&closed;
+}
+int __cdecl parse_all(const char* s,unsigned n,bool activate,const PipelineBindings* b,PipelineResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!s||!b||!b->parse||!b->spawn||!b->classify||!b->scope)return 0;
+    Pipeline p{*b,*o};constexpr char outer[]="MapEntity_ParseAllEntities",templates[]="MapEntity_ParseAllEntities_SpawnTemplates";
+    if(!pipeline_scope(p,outer,true))return 0;
+    bool ok=parse_impl(s,n,b->parse,&o->parse,&collect_entity,&p)!=0;
+    for(unsigned i=0;i<p.template_count&&ok;++i){
+        if(!pipeline_scope(p,templates,true)){ok=false;break;}
+        void* a=p.templates[i];int code=0;
+        ok=pipeline_spawn(p,a,code);
+        if(ok&&code<0)ok=pipeline_cleanup(p,a,true);
+        else if(ok){
+            int count=0;ok=b->template_prepare&&b->template_prepare(b->context,a,&count)&&count<=4096;
+            for(int j=0;j<count&&ok;++j){
+                void* member=nullptr;ok=b->template_member&&b->template_member(b->context,a,j,&member);
+                if(!ok)break;++o->template_members;
+                if(!member)continue;
+                for(unsigned k=0;k<p.ordinary;++k)if(p.rows[k].actor==member){
+                    bool remove=false;
+                    ok=b->template_capture_member&&b->template_capture_member(b->context,a,member,s,n,&p.slices[k],&remove);
+                    if(ok){++o->captured;if(remove){ok=pipeline_cleanup(p,member,true);if(ok)p.rows[k].actor=nullptr;}}
+                    break;
+                }
+            }
+            if(ok)ok=b->template_finish&&b->template_finish(b->context,a);
+        }
+        const bool closed=pipeline_scope(p,templates,false);ok=ok&&closed;
+    }
+    if(ok)ok=spawn_ordinary(p.rows,p.ordinary,activate,b->spawn,&o->spawn)!=0;
+    const bool closed=pipeline_scope(p,outer,false);o->completed=ok&&closed;return int(o->completed);
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

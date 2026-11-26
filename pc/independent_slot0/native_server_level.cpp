@@ -4,6 +4,7 @@
 #include <cstdlib>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_level {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -92,7 +93,15 @@ int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) 
     char filename[260]{};
     if(!b->filename||!b->filename(b->context,filename,sizeof(filename))||!std::memchr(filename,0,sizeof(filename))||
        !b->map_event||!b->map_event(b->context,o->descriptor,*s->current_map?*s->current_map:"",filename))return finish(false);o->map_event=1;
-    auto parse=[&](){if(!b->parse_entities||!b->parse_entities(b->context,a->entities,nullptr,false))return false;o->parsed=1;return true;};
+    auto parse=[&](){
+        if(b->parse_entities){if(!b->parse_entities(b->context,a->entities,nullptr,false))return false;}
+        else{
+            if(!a->entities||!b->native_map_pipeline||!b->entity_text_bytes)return false;
+            const auto* api=SiN_GetServerMapEntityApi(1,sizeof(native_map::Api));
+            if(!api||!api->parse_all(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline))return false;
+        }
+        o->parsed=1;return true;
+    };
     if(a->load_game){
         if(!transition_reset(*s,*b,*o))return finish(false);
         bool loaded=false;

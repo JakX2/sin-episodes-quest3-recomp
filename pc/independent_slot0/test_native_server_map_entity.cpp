@@ -180,5 +180,41 @@ int main(int argc,char** argv){
     assert(api->parse(gameplay,sizeof(gameplay),&nb,&r)&&r.completed&&r.native_creates==3&&parsed.alloc==3&&parsed.accept==3);
     assert(word(parsed.storage[0],0x49c)==0x42040000&&word(parsed.storage[1],0x628)==0x429a0000&&word(parsed.storage[1],0x62c)==9&&word(parsed.storage[2],0xb4)==3&&word(parsed.storage[2],0x10)!=0);
     assert(kf.output==parsed.storage[0]+0x4b8);
+    // Full outer map parser: immediate special branches, delayed point
+    // template pass, captured ordinary row removal, then ordinary spawn.
+    struct PipelineFixture {
+        alignas(4) unsigned char actors[7][0x170]{};
+        unsigned next=0,scopes=0,closes=0;std::string order;
+        unsigned index(void* a)const noexcept {for(unsigned i=0;i<7;++i)if(a==actors[i])return i;assert(false);return 99;}
+    } pf;
+    const char outer_map[]="{ classname worldspawn } { classname node } { classname light } { classname template_entity } { classname ordinary } { classname point_template } { classname ordinary2 }";
+    put(pf.actors[0],0x14,99);
+    sin_port::native_map::Bindings pb{};pb.context=&pf;
+    pb.create=[](void* p,const char*,void** a) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);assert(f.next<7);*a=f.actors[f.next++];return 1;};
+    pb.clear_factory_global=[](void*) noexcept ->int{return 1;};
+    pb.key_value=[](void*,void*,const char*,const char*) noexcept ->int{return 1;};
+    SpawnBindings ps{};ps.context=&pf;
+    ps.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=0x170;return 1;};
+    ps.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="logic_relay";return 1;};
+    ps.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    ps.debug_enabled=[](void*,bool* value) noexcept ->int{*value=false;return 1;};
+    ps.spawn=[](void* p,void* a,int* code) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);f.order+=char('0'+f.index(a));*code=0;return 1;};
+    ps.engine_scope=[](void*,bool) noexcept ->int{return 1;};
+    ps.activate=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);f.order+=char('A'+f.index(a));return 1;};
+    PipelineBindings pipe{};pipe.context=&pf;pipe.parse=&pb;pipe.spawn=&ps;
+    pipe.scope=[](void* p,const char*,bool enter) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);if(enter)++f.scopes;else ++f.closes;return 1;};
+    pipe.classify=[](void* p,void* a,Category* cat) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);constexpr Category cats[]{Category::World,Category::Node,Category::Light,Category::TemplateEntity,Category::Ordinary,Category::PointTemplate,Category::Ordinary};*cat=cats[f.index(a)];return 1;};
+    pipe.spawn_node=[](void* p,void* a,const char*,unsigned,const EntitySlice*,int* code) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);assert(a==f.actors[1]);f.order+='N';*code=0;return 1;};
+    pipe.capture_template=[](void* p,void* a,const char* s,unsigned n,const EntitySlice* e) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);assert(a==f.actors[3]&&e->end<=n&&s[e->begin]=='{');f.order+='T';return 1;};
+    pipe.precache=[](void* p,void*) noexcept ->int{static_cast<PipelineFixture*>(p)->order+='P';return 1;};
+    pipe.remove=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);f.order+=char('a'+f.index(a));return 1;};
+    pipe.cleanup=[](void* p) noexcept ->int{static_cast<PipelineFixture*>(p)->order+='C';return 1;};
+    pipe.template_prepare=[](void* p,void* a,int* count) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);assert(a==f.actors[5]&&f.next==7);f.order+='Q';*count=1;return 1;};
+    pipe.template_member=[](void* p,void*,int i,void** a) noexcept ->int{assert(!i);*a=static_cast<PipelineFixture*>(p)->actors[4];return 1;};
+    pipe.template_capture_member=[](void* p,void*,void* member,const char* s,unsigned,const EntitySlice* e,bool* remove) noexcept ->int{auto& f=*static_cast<PipelineFixture*>(p);assert(member==f.actors[4]&&!std::strncmp(s+e->begin,"{ classname ordinary }",22));f.order+='R';*remove=true;return 1;};
+    pipe.template_finish=[](void* p,void*) noexcept ->int{static_cast<PipelineFixture*>(p)->order+='F';return 1;};
+    PipelineResult pr{};
+    assert(api->parse_all(outer_map,sizeof(outer_map),true,&pipe,&pr)&&pr.completed&&pr.parse.created==7&&pr.worlds==1&&pr.nodes==1&&pr.lights==1&&pr.template_entities==1&&pr.point_templates==1&&pr.template_members==1&&pr.captured==1&&pr.ordinary==2&&pr.spawn.spawned==1&&pr.spawn.activated==1&&pr.removed==2&&pr.cleanups==2&&pr.scopes==pr.closes);
+    assert(word(pf.actors[0],0x14)==0&&pf.order=="0N2TPdC5QReCF6G");
     FreeLibrary(server);FreeLibrary(client);
 }

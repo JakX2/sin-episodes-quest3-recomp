@@ -95,6 +95,31 @@ struct SpawnResult {
         scopes,closes,engine_scopes,engine_closes,native_spawns,native_activations;
     unsigned native_dispatches;DispatchResult dispatch;
 };
+// Ordered classification mirrors original virtual +128 then RTTI
+// CWorld, CNodeEnt, CLight, CPointTemplate, finally ordinary.
+enum class Category:unsigned {Ordinary,TemplateEntity,World,Node,Light,PointTemplate};
+struct PipelineBindings {
+    void* context;
+    const Bindings* parse;
+    const SpawnBindings* spawn;
+    int (__cdecl *scope)(void*,const char*,bool) noexcept;
+    int (__cdecl *classify)(void*,void*,Category*) noexcept;
+    int (__cdecl *capture_template)(void*,void*,const char*,unsigned,const EntitySlice*) noexcept;
+    int (__cdecl *precache)(void*,void*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+    int (__cdecl *cleanup)(void*) noexcept;
+    int (__cdecl *spawn_node)(void*,void*,const char*,unsigned,const EntitySlice*,int*) noexcept;
+    int (__cdecl *template_prepare)(void*,void*,int*) noexcept;
+    int (__cdecl *template_member)(void*,void*,int,void**) noexcept;
+    int (__cdecl *template_capture_member)(void*,void*,void*,const char*,unsigned,const EntitySlice*,bool*) noexcept;
+    int (__cdecl *template_finish)(void*,void*) noexcept;
+};
+struct PipelineResult {
+    unsigned completed,scopes,closes,template_entities,worlds,nodes,lights,point_templates,
+        template_members,captured,removed,cleanups,ordinary,immediate_spawns,immediate_failures;
+    Result parse;
+    SpawnResult spawn;
+};
 struct Api {
     std::uint32_t version,size;
     int (__cdecl *token)(const char*,unsigned,unsigned,Token*) noexcept;
@@ -107,6 +132,7 @@ struct Api {
     int (__cdecl *spawn_ordinary)(SpawnRow*,unsigned,bool,const SpawnBindings*,SpawnResult*) noexcept;
     int (__cdecl *dispatch_spawn)(void*,const SpawnBindings*,DispatchResult*) noexcept;
     int (__cdecl *key_value)(void*,const char*,const char*,const KeyBindings*,KeyResult*) noexcept;
+    int (__cdecl *parse_all)(const char*,unsigned,bool,const PipelineBindings*,PipelineResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
