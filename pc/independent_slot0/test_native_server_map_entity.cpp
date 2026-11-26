@@ -721,5 +721,39 @@ int main(int argc,char** argv){
     unsigned void_variant[5]{0,0,0,0xffffffffu,0};
     assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x3000,0x223edd00,0x3000,0x3000,void_variant,sizeof(void_variant),0.f,0,&co.queue,&cancel_qr));
     assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&tes,&es)&&es.native_inputs==1&&es.direct==1&&tf.next==56.5f&&co.released==1);
+    // Native recurring timer: schedule, due admission, default clear,
+    // reschedule, input mutations and serial rejection.
+    put(timer,0x378,0x3000u);put(timer,0x74,-1);put(timer,0xb8,0x400000u);
+    put(timer,0x3dc,0);put(timer,0x3e8,0);put(timer,0x3e0,0x3e800000u); // .25
+    put(timer,0xb4,1);timer[0x3e4]=0;put(timer,8,0xdeadbeefu);
+    tf.now=60.f;tf.order.clear();
+    struct TimerPrimaryFixture {void* actor;unsigned notifications=0,records=0,enters=0,leaves=0;float at=0;int tick=0,due=0;} tpf{timer};
+    nw::ServerNpcOuterCadenceBindings tcad{};tcad.context=&tpf;
+    tcad.notify_think_flags=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<TimerPrimaryFixture*>(p);assert(a==f.actor);++f.notifications;return 1;};
+    float tick_interval=.125f;
+    tb.cadence=&tcad;tb.entries=&te;tb.entry_count=1;tb.tick_interval=&tick_interval;
+    TimerPrimaryBindings tpb{};tpb.behavior=&tb;tpb.context=&tpf;
+    tpb.record=[](void* p,void* a,int tick,float time,int due) noexcept ->int{auto& f=*static_cast<TimerPrimaryFixture*>(p);assert(a==f.actor);++f.records;f.at=time;f.tick=tick;f.due=due;return 1;};
+    tpb.scope=[](void* p,void* a,bool enter) noexcept ->int{auto& f=*static_cast<TimerPrimaryFixture*>(p);assert(a==f.actor);if(enter)++f.enters;else ++f.leaves;return 1;};
+    TimerPrimaryResult tpr{};
+    const auto hosted_count=tf.schedules;
+    assert(api->timer_spawn(timer,sizeof(timer),&tb,&tr)&&tr.scheduled&&word(timer,0x74)==482&&tpf.notifications==1&&tf.schedules==hosted_count);
+    assert(api->timer_primary_run(timer,sizeof(timer),481,&tpb,&tpr)&&tpr.not_due&&tpr.next_tick==482&&!tpf.records);
+    tf.now=60.25f;
+    assert(api->timer_primary_run(timer,sizeof(timer),482,&tpb,&tpr)&&tpr.invoked&&tpr.behavior.fired&&tpr.behavior.output_offset==0x3c4&&tpr.next_tick==484&&tpr.last_tick==482&&tf.order=="2"&&tpf.notifications==3&&tpf.records==1&&tpf.at==60.25f);
+    assert(api->timer_primary_run(timer,sizeof(timer),482,&tpb,&tpr)&&tpr.not_due&&tf.order=="2");
+    tf.now=60.5f;
+    assert(api->timer_primary_run(timer,sizeof(timer),484,&tpb,&tpr)&&tpr.invoked&&tpr.next_tick==486&&tf.order=="21"&&tpf.records==2&&tpf.enters==2&&tpf.leaves==2);
+    assert(timer_ai(0x22420090,1,0x3f800000)&&tair.native_handler&&word(timer,0x74)==492);
+    assert(timer_ai(0x223edce8,0,0)&&word(timer,0x74)==0xffffffffu);
+    assert(api->timer_primary_run(timer,sizeof(timer),492,&tpb,&tpr)&&tpr.no_think&&tpf.records==2);
+    // Event queue owns registry and live clock; the timer native cadence
+    // must use both rather than the old hosted schedule callback.
+    co.now=70.f;
+    assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x3000,0x223edd00,0x3000,0x3000,void_variant,sizeof(void_variant),0.f,0,&co.queue,&cancel_qr));
+    assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&tes,&es)&&es.native_inputs==1&&word(timer,0x74)==568&&tf.schedules==hosted_count);
+    te.serial=4;
+    assert(!api->timer_primary_run(timer,sizeof(timer),568,&tpb,&tpr)&&!tpr.completed);
+    assert(!timer_ai(0x22420030,5,1)&&!word(timer,0x3e8));
     FreeLibrary(server);FreeLibrary(client);
 }

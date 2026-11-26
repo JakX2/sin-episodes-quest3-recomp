@@ -238,7 +238,7 @@ bool set_tick(void* a,float time,float interval,const ServerNpcOuterCadenceBindi
 }
 int __cdecl cadence_set(void* a,unsigned n,float time,float interval,std::uint32_t vt,const ServerNpcOuterCadenceBindings* b,ServerNpcOuterCadenceResult* out) noexcept {
     if(!out)return 0;*out={};
-    if(!a||!b||(!outer_class(vt,n)&&!(vt==sin_port::native_map::auto_vtable&&n>=sin_port::native_map::auto_extent&&rd<unsigned>(a,0)==vt))||!std::isfinite(time)||!std::isfinite(interval)||interval<=0)return 0;
+    if(!a||!b||(!outer_class(vt,n)&&!(((vt==sin_port::native_map::auto_vtable&&n>=sin_port::native_map::auto_extent)||(vt==sin_port::native_map::timer_vtable&&n>=sin_port::native_map::timer_extent))&&rd<unsigned>(a,0)==vt))||!std::isfinite(time)||!std::isfinite(interval)||interval<=0)return 0;
     if(!set_tick(a,time,interval,*b,*out))return 0;out->completed=1;return 1;
 }
 int __cdecl cadence_finish(void* a,unsigned n,float now,float interval,std::uint32_t vt,bool pvs,bool think_called,const ServerNpcOuterCadenceBindings* b,ServerNpcOuterCadenceResult* out) noexcept {
@@ -558,7 +558,9 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                 }
                 sin_port::native_map::TimerBindings timer{};
                 if(vt==sin_port::native_map::timer_vtable&&bound.timer){
-                    timer=*bound.timer;timer.now=b->live_now?b->live_now:&bound.now;bound.timer=&timer;
+                    timer=*bound.timer;timer.now=b->live_now?b->live_now:&bound.now;
+                    if(timer.cadence){timer.entries=b->entities.entries;timer.entry_count=b->entities.count;}
+                    bound.timer=&timer;
                 }
                 ServerEntityAcceptInputResult result{};
                 if(!accept_input(entity,bytes,vt,input,activator,caller,variant,0x14,id,&bound,&result)||!result.completed)return false;
@@ -2222,6 +2224,11 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
     if(vt==sin_port::native_map::relay_vtable&&n<sin_port::native_map::relay_extent)return 0;
     if(vt==sin_port::native_map::timer_vtable&&(!a||n<sin_port::native_map::timer_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||(!b->name_equal&&!b->string_text))return 0;
+    if(vt==sin_port::native_map::timer_vtable&&b->timer&&b->timer->cadence){
+        const auto& t=*b->timer;
+        if(t.entry_count>sin_independent::kEntityHandleCapacity||(!t.entries&&t.entry_count)||
+           sin_independent::EntityHandleView(t.entries,t.entry_count).Resolve(rd<unsigned>(a,0x378))!=a)return 0;
+    }
     ServerEntityInputData data{};data.activator=activator;data.caller=caller;data.output_id=id;
     std::memcpy(data.variant,variant,0x14);
     auto rejected=[&](unsigned reason){
