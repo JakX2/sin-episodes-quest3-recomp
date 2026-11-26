@@ -830,3 +830,62 @@
             assert(api->cleanup_deferred(&deferred,&rr)&&rr.released==1&&!queue.count&&f.base==1&&f.freed==1&&f.releases==3);
         }
     }
+
+// Retail scripted_sequence factory, external datamap names and
+// numbered script event output. No NPC schedule or animation claim.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct SequenceFixture {
+            alignas(4) unsigned char actor[scripted_sequence_extent]{};
+            unsigned rows[8][7]{},calls=0,last=0,base=0,initialized=0;
+        } f;
+        const auto make=reinterpret_cast<CreateScriptedSequence>(GetProcAddress(server,scripted_sequence_factory_export));
+        const auto emit=reinterpret_cast<FireScriptedSequenceEvent>(GetProcAddress(server,scripted_sequence_event_export));
+        assert(make&&emit&&!GetProcAddress(client,scripted_sequence_factory_export)&&!GetProcAddress(client,scripted_sequence_event_export));
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<SequenceFixture*>(p);assert(n==sizeof(f.actor));*actor=f.actor;*bytes=n;return 1;
+        };
+        owner.base_construct=[](void* p,void* actor,int arg) noexcept ->int{
+            auto& f=*static_cast<SequenceFixture*>(p);assert(actor==f.actor&&arg==0);++f.base;return 1;
+        };
+        owner.initialize=[](void* p,void* actor,const char* cls) noexcept ->int{
+            auto& f=*static_cast<SequenceFixture*>(p);assert(actor==f.actor&&f.base==1&&!std::strcmp(cls,"scripted_sequence"));++f.initialized;return 1;
+        };
+        FactoryResult fr{};assert(make(&owner,&fr)&&fr.completed&&fr.matched&&fr.actor==f.actor&&fr.networkable==f.actor+0x160&&fr.spec->original_object==0x22505008&&f.initialized==1);
+        assert(word(f.actor,0)==scripted_sequence_vtable&&word(f.actor,0x3d0)==0xffffffffu&&word(f.actor,0x3d4)==0xffffffffu&&word(f.actor,0x3dc)==0xffffffffu);
+        for(unsigned i=0;i<10;++i)assert(word(f.actor,0x3e0+i*0x18+0xc)==0xffffffffu&&!word(f.actor,0x3e0+i*0x18+0x14));
+        KeyBindings keys{};keys.context=&f;
+        keys.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{auto& f=*static_cast<SequenceFixture*>(p);if(actor!=f.actor)return 0;*bytes=sizeof(f.actor);return 1;};
+        keys.intern=[](void*,const char* value,unsigned* token) noexcept ->int{*token=!std::strcmp(value,"idle")?10:!std::strcmp(value,"walk")?11:12;return 1;};
+        keys.output=[](void* p,void* actor,void* out,const char* value) noexcept ->int{
+            auto& f=*static_cast<SequenceFixture*>(p);assert(actor==f.actor&&!std::strcmp(value,"action"));
+            const auto offset=static_cast<unsigned>(static_cast<unsigned char*>(out)-f.actor);
+            assert(offset>=0x410&&offset<=0x4b8&&!((offset-0x410)%0x18));
+            const unsigned i=(offset-0x410)/0x18,token=101+i;
+            std::memcpy(static_cast<unsigned char*>(out)+0x14,&token,4);
+            f.rows[i][0]=201+i;f.rows[i][1]=220;f.rows[i][4]=0xffffffffu;return 1;
+        };
+        KeyResult key{};
+        assert(api->key_value(f.actor,"m_iszIdle","idle",&keys,&key)&&key.offset==0x394&&word(f.actor,0x394)==10);
+        assert(!api->key_value(f.actor,"m_iszPreIdle","idle",&keys,&key));
+        assert(api->key_value(f.actor,"m_iszPlay","walk",&keys,&key)&&word(f.actor,0x398)==11);
+        assert(api->key_value(f.actor,"m_fMoveTo","2",&keys,&key)&&word(f.actor,0x3ac)==2);
+        assert(api->key_value(f.actor,"m_flRadius","128",&keys,&key)&&word(f.actor,0x3b0)==0x43000000u);
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<SequenceFixture*>(p);if(token<101||token>108)return 0;*row=f.rows[token-101];*bytes=0x1c;return 1;
+        };
+        fire.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<SequenceFixture*>(p);assert(activator==f.actor&&caller==f.actor&&action->delay==0.f);++f.calls;f.last=action->target;return 1;
+        };
+        ScriptedSequenceEventBindings b{&fire,nullptr};ScriptedSequenceEventResult result{};
+        for(int i=1;i<=8;++i){
+            char name[]="OnScriptEvent00";name[14]=char('0'+i);
+            assert(api->key_value(f.actor,name,"action",&keys,&key)&&key.offset==0x3f8u+0x18u*i);
+            assert(emit(f.actor,sizeof(f.actor),i,&b,&result)&&result.output_called&&result.queued==1&&f.last==200u+i&&f.calls==static_cast<unsigned>(i));
+        }
+        assert(emit(f.actor,sizeof(f.actor),0,nullptr,&result)&&result.completed&&!result.output_called&&f.calls==8);
+        assert(emit(f.actor,sizeof(f.actor),9,nullptr,&result)&&result.completed&&!result.output_called&&f.calls==8);
+        assert(!emit(f.actor,sizeof(f.actor)-1,1,&b,&result)&&f.calls==8);
+    }

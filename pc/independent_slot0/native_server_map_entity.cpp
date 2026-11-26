@@ -563,8 +563,28 @@ int create_filter_factory(const char* name,const CampaignFilterFactoryBindings* 
     if(!owner->initialize(owner->context,a,name))return 0;
     o->networkable=a+0x160;o->completed=1;return 1;
 }
+constexpr FactorySpec scripted_sequence_spec{"scripted_sequence",Family::ScriptedSequence,0x22505008u,0x2242ee70u,scripted_sequence_extent};
+int create_scripted_sequence(const RelayFactoryBindings* owner,FactoryResult* o) noexcept {
+    if(!o)return 0;*o={};o->spec=&scripted_sequence_spec;o->matched=1;
+    if(!owner||!owner->allocate||!owner->base_construct||!owner->initialize||
+       !owner->allocate(owner->context,scripted_sequence_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<scripted_sequence_extent||
+       !SinCampaignStorageReadableInternal(o->actor,scripted_sequence_extent))return 0;
+    auto* a=static_cast<unsigned char*>(o->actor);
+    // 221b01f0 calls CBaseEntity(0), unlike the earlier logic factories.
+    if(!owner->base_construct(owner->context,a,0))return 0;
+    // Fresh original allocation zeroes the entire derived extension.
+    for(unsigned off=0x394;off<scripted_sequence_extent;++off)if(a[off])return 0;
+    write_field(a,0,scripted_sequence_vtable);
+    for(unsigned off:{0x3d0u,0x3d4u,0x3dcu})write_field(a,off,0xffffffffu);
+    for(unsigned i=0;i<10;++i){
+        const unsigned off=0x3e0+0x18*i;
+        write_field(a,off,0u);write_field(a,off+0xc,0xffffffffu);write_field(a,off+0x10,0u);
+    }
+    if(!owner->initialize(owner->context,a,scripted_sequence_spec.name))return 0;
+    o->networkable=a+0x160;o->completed=1;return 1;
+}
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable||campaign_filter_class(vt))return true;
+    if(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable||campaign_filter_class(vt)||vt==scripted_sequence_vtable)return true;
     if(vt==colorblend_vtable||vt==remap_vtable||vt==multicompare_vtable||vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
@@ -694,6 +714,13 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     // take priority. Remaining brush/base keys stay owner supplied.
     constexpr Spec trigger_keys[]{{"filtername",0x40c,2},{"StartDisabled",0x408,6},
         {"OnStartTouch",0x414,11},{"OnEndTouch",0x42c,11},{"OnEndTouchAll",0x444,11}};
+    // 22505794 static rows 0..8: m_iszPreIdle is the MEMBER,
+    // the external key is m_iszIdle. Runtime initializer 221b05d0
+    // writes the ten output descriptors, not present in the disk image.
+    constexpr Spec sequence_keys[]{{"m_iszIdle",0x394,2},{"m_iszPlay",0x398,2},{"m_iszPostIdle",0x39c,2},
+        {"m_iszCustomMove",0x3a0,2},{"m_iszNextScript",0x3a4,2},{"m_iszEntity",0x3a8,2},
+        {"m_fMoveTo",0x3ac,5},{"m_flRadius",0x3b0,1},{"m_flRepeat",0x3b4,1},
+        {"OnBeginSequence",0x3e0,11},{"OnEndSequence",0x3f8,11}};
     constexpr Spec filter_base_keys[]{{"Negated",0x394,6},{"OnPass",0x398,11},{"OnFail",0x3b0,11}};
     constexpr Spec filter_multi_keys[]{{"FilterType",0x3c8,5},{"Filter01",0x3cc,2},{"Filter02",0x3d0,2},
         {"Filter03",0x3d4,2},{"Filter04",0x3d8,2},{"Filter05",0x3dc,2}};
@@ -713,6 +740,14 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
     if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);else if(vt==autosave_vtable)match(autosave_keys);else if(vt==multicompare_vtable)match(multicompare_keys);else if(vt==remap_vtable)match(remap_keys);else if(vt==colorblend_vtable)match(colorblend_keys);
     else if(vt==dynamic_trigger_vtable)match(dynamic_keys);
+    else if(vt==scripted_sequence_vtable){
+        if(bytes<scripted_sequence_extent)return 0;
+        match(sequence_keys);
+        if(!spec)for(unsigned i=1;i<=8;++i){
+            char output[]="OnScriptEvent00";output[14]=char('0'+i);
+            if(equal_class(name,output)){numbered={nullptr,0x3f8+0x18*i,11};spec=&numbered;break;}
+        }
+    }
     else if(vt==multi_filter_vtable)match(filter_multi_keys);
     else if(vt==name_filter_vtable)match(filter_name_keys);
     else if(vt==class_filter_vtable)match(filter_class_keys);
@@ -3006,6 +3041,29 @@ int campaign_filter_entity(void* filter,void* other,const CampaignCustomFilterBi
     if(!evaluate(evaluate,filter,0,accepted))return 0;
     o->accepted=accepted;o->completed=1;return 1;
 }
+// 221adec0: index 1..8 only, caller and activator are both self.
+int scripted_sequence_event(void* actor,unsigned bytes,int index,const ScriptedSequenceEventBindings* b,ScriptedSequenceEventResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned vt=0;
+    if(bytes<scripted_sequence_extent||!SinReadCampaignTouchMarkerInternal(actor,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(actor,scripted_sequence_extent))return 0;
+    if(index<1||index>8){o->completed=1;return 1;}
+    if(!b||!b->output)return 0;
+    const unsigned off=0x3f8+0x18*static_cast<unsigned>(index);o->offset=off;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    using namespace sin_port::native_weapon_tables;
+    if(b->native_queue){
+        if(!native_named_output(actor,bytes,actor,off,false,b->output,b->native_queue,o->queued))return 0;
+        o->native_queued=o->queued;
+    }else{
+        const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+        ServerEntityVoidOutputResult r{};
+        if(!fire||!fire->fire(static_cast<unsigned char*>(actor)+off,0x18,actor,actor,bytes,0.f,b->output,&r))return 0;
+        o->queued=r.queued;
+    }
+    o->output_called=o->completed=1;return 1;
+}
 // 2216b300 InputTestActivator: predicate (including inherited negation),
 // exactly one output, original activator and self caller, zero extra delay.
 int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
@@ -3366,4 +3424,14 @@ int __cdecl SinParseMapWithFiltersInternal(const char* text,unsigned bytes,bool 
     const sin_port::native_map::PipelineBindings* b,sin_port::native_map::PipelineResult* o,void* manager,
     const sin_port::native_map::CampaignFilterFactoryBindings* filters) noexcept {
     return manager&&filters&&sin_port::native_map::parse_all_impl(text,bytes,activate,b,o,manager,filters);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_CreateScriptedSequence=_SiN_CreateScriptedSequence")
+extern "C" int __cdecl SiN_CreateScriptedSequence(const sin_port::native_map::RelayFactoryBindings* owner,sin_port::native_map::FactoryResult* o) noexcept {
+    return sin_port::native_map::create_scripted_sequence(owner,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_FireScriptedSequenceEvent=_SiN_FireScriptedSequenceEvent")
+extern "C" int __cdecl SiN_FireScriptedSequenceEvent(void* a,unsigned n,int index,const sin_port::native_map::ScriptedSequenceEventBindings* b,
+    sin_port::native_map::ScriptedSequenceEventResult* o) noexcept {
+    return sin_port::native_map::scripted_sequence_event(a,n,index,b,o);
 }

@@ -66,6 +66,12 @@ ORIGINAL_METHODS={
   "trigger_npc_query":(0x22139F60,19,"d5ea9253030765bcd70227e7860e4620758e52644047e564b5756b5d78eaef44"),
   "trigger_vehicle_query":(0x22035100,56,"53a6bdb618de249bc00c327d2326511c8dd944c26a2f4692f3e366f8fd756c6a"),
   "trigger_custom_filter":(0x2216B2A0,46,"e3cf0c2990ba6e8464a74f92378827c0e2d2123b27cab476a05fcdbc5acf2324"),
+  "sequence_factory_create":(0x221b0190,23,"6eecf5ca8aa241b73c4f1557c98667941ac865d58014926bdfdd055381792de9"),
+  "sequence_allocate":(0x221b01b0,61,"2a497e9523f4165248e97c3a94423401660ed92787096e16811ef89cf9211858"),
+  "sequence_construct":(0x221b01f0,186,"63ea7f6a0b665f294a7b5afd05fdf73de0bf9015a12e3df6744bcedd3e0f0685"),
+  "sequence_datamap_getter":(0x221ade90,6,"4725fcea4951ab15a4c353095f4b9ac3df933d1460d1130074dbf1e2fcb3fe31"),
+  "sequence_datamap_init":(0x221b05d0,1542,"f9b3f1f7e67490ca4f1cff22736397fe552b4973a16a39a75dcbe7f0de1653bb"),
+  "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
   "multi_filter_destructor":(0x2216BD00,54,"a2236c56ca198071b36f73169ff97317f1bbb54db4140a0973688fd09640ae2a"),
@@ -283,6 +289,37 @@ def verify_filter_factory_keys(read_u32,read_text):
 
 FILTER_DESTRUCTORS={0x224149a4:0x2216bc40,0x22414c3c:0x2216bd00,0x22414ed4:0x2216be40,0x2241516c:0x2216bf20}
 FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x224,0x2214a060),(0x268,0x220019f0))
+SEQUENCE_WORDS={
+    0x223bd498:0x2242ee1c,0x223bd49d:0x22505008,0x22505008:0x2242ee70,0x2242ee70:0x221b0190,
+    0x2242f668:0x224c1b4c,0x224c1b4c:0,0x224c1b50:0,0x224c1b58:0x22505014,
+    0x2242f66c+8:0x22001b00,0x2242f66c+0x34:0x221ade90,0x2242f66c+0x90:0x22141400,
+}
+SEQUENCE_KEYS=(
+    (2,0x394,0x2242fc74,"m_iszIdle"),(2,0x398,0x2242fc68,"m_iszPlay"),
+    (2,0x39c,0x2242fc58,"m_iszPostIdle"),(2,0x3a0,0x2242fc48,"m_iszCustomMove"),
+    (2,0x3a4,0x2242fc38,"m_iszNextScript"),(2,0x3a8,0x2242f52c,"m_iszEntity"),
+    (5,0x3ac,0x2242fc2c,"m_fMoveTo"),(1,0x3b0,0x223ec258,"m_flRadius"),
+    (1,0x3b4,0x2242f5d0,"m_flRepeat"),
+)
+SEQUENCE_TEXT={0x2242ee1c:"scripted_sequence",0x2250501c:".?AVCAI_ScriptedSequence@@",
+    0x2242fdd0:"OnBeginSequence",0x2242fdb0:"OnEndSequence",
+    **{0x2242fd8c-(i-1)*0x24:f"OnScriptEvent{i:02d}" for i in range(1,9)}}
+def verify_sequence_words():
+    words=dict(SEQUENCE_WORDS);texts=dict(SEQUENCE_TEXT)
+    for i,(typ,offset,external,name) in enumerate(SEQUENCE_KEYS):
+        row=0x22505794+i*0x34
+        words.update({row:typ,row+8:offset,row+16:0x60001,row+20:external})
+        texts[external]=name
+    return words,texts
+
+def verify_scripted_sequence(read_u32,read_text):
+    words,texts=verify_sequence_words()
+    if any(read_u32(va)!=value for va,value in words.items()):
+        raise EvidenceRefused("scripted sequence RTTI, factory or key row changed")
+    if any(not read_text(va,value) for va,value in texts.items()):
+        raise EvidenceRefused("scripted sequence key or output literal changed")
+    return len(SEQUENCE_KEYS)
+
 def verify_custom_filter_slots(read_u32,read_text):
     for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
         if (read_u32(table-4),read_u32(col),read_u32(col+4),read_u32(col+12),
@@ -352,6 +389,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
     player_rows=verify_player_predicates(pe.u32,pe.text)
     custom_rows=verify_custom_filter_slots(pe.u32,pe.text)
     filter_factories,filter_keys=verify_filter_factory_keys(pe.u32,pe.text)
+    sequence_keys=verify_scripted_sequence(pe.u32,pe.text)
     if not pe.text(0x22423278,"func_pushable"):
         raise EvidenceRefused("original trigger pushable literal changed")
     contact_slots=verify_contact_slots(pe.u32)
@@ -393,6 +431,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "custom_filter_primary_rows":custom_rows,
         "filter_factory_rows":filter_factories,
         "filter_static_key_rows":filter_keys,
+        "scripted_sequence_static_keys":sequence_keys,
         "campaign_contact_dispatch_slots":contact_slots,
         "base_toggle_rows_without_inputs":15,
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
@@ -516,6 +555,18 @@ def self_test()->None:
         try:verify_filter_factory_keys(bad.get,lambda va,s:factory_text.get(va)==s)
         except EvidenceRefused:pass
         else:raise AssertionError("mutated filter factory or key accepted")
+    seq_words,seq_text=verify_sequence_words()
+    assert verify_scripted_sequence(seq_words.get,lambda va,s:seq_text.get(va)==s)==9
+    for key in seq_words:
+        bad=dict(seq_words);bad[key]^=1
+        try:verify_scripted_sequence(bad.get,lambda va,s:seq_text.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated sequence word accepted")
+    for key in seq_text:
+        bad=dict(seq_text);bad[key]="invalid"
+        try:verify_scripted_sequence(seq_words.get,lambda va,s:bad.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated sequence literal accepted")
     filter_words={}
     filter_text={0x223d994c:"!player"}
     for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:

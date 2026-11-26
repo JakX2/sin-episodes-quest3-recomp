@@ -861,7 +861,7 @@ bool search_handle(void* entity,const ServerEntitySearchBindings& b,unsigned& ha
     // Search continuation must read the same full serial handle, not
     // delegate the second FindEntityByName call to a foreign callback.
     if(input_datamap(vt)||vt==sin_port::native_resupply::resupply_vtable||
-       sin_port::native_map::campaign_player_marker(vt)!=sin_port::native_map::PlayerPredicate::Unknown||sin_port::native_map::campaign_filter_class(vt)){
+       sin_port::native_map::campaign_player_marker(vt)!=sin_port::native_map::PlayerPredicate::Unknown||sin_port::native_map::campaign_filter_class(vt)||vt==sin_port::native_map::scripted_sequence_vtable){
         if(bytes<0x37c)return false;handle=rd<unsigned>(entity,0x378);return true;
     }
     return b.foreign_handle&&b.foreign_handle(b.context,entity,&handle)!=0;
