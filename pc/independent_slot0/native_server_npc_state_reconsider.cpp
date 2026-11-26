@@ -3276,6 +3276,42 @@ int __cdecl grunt_event_speech(void* a,unsigned n,unsigned event,float now,const
 }
 const ServerNpcGruntEventSpeechApi event_speech_api{1,sizeof(ServerNpcGruntEventSpeechApi),&grunt_event_speech};
 const ServerNpcGruntReactionSpeechApi reaction_speech_api{1,sizeof(ServerNpcGruntReactionSpeechApi),&grunt_pain_speech,&grunt_death_speech};
+
+int __cdecl grunt_damage_pain_prefix(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamagePainPrefixBindings* b,ServerNpcGruntDamagePainPrefixResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0xdb2||!damage||dn<0x48||!b||!std::isfinite(now)||!b->base_damage)return 0;
+    const auto& sb=b->reaction.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    write(a,0x988,read<unsigned>(a,0x988)&~2u);
+    if(read<unsigned>(a,0x874)){write(damage,0x2c,0u);out->damage_zeroed=1;}
+    if(!b->base_damage(b->context,a,damage,&out->base_result))return 0;
+    out->base_called=1;
+    if(!out->base_result){out->completed=1;return 1;}
+    if(read<int>(a,0x868)==1){
+        if(!b->state_signal||!b->state_signal(b->context,a,1))return 0;
+        out->signal_called=1;
+    }
+    // Reload group and serial-checked attacker after both preceding calls.
+    if(const auto group=read<unsigned>(a,0x9c4)){
+        void* attacker=sin_independent::EntityHandleView(sb.entries,sb.count).Resolve(read<unsigned>(damage,0x28));
+        // Original cast helper dereferences its argument. Null/stale is outside the supported domain.
+        if(!attacker||!b->as_npc)return 0;
+        bool npc=false;unsigned extent=0;
+        if(!b->as_npc(b->context,attacker,&npc,&extent))return 0;
+        out->attacker_checked=1;
+        if(npc){
+            if(extent<0x9c8)return 0;
+            out->same_squad=read<unsigned>(attacker,0x9c4)==group;
+        }
+    }
+    if(!out->same_squad){
+        out->pain_called=1;
+        if(!grunt_pain_speech(a,n,now,&b->reaction,&out->pain))return 0;
+    }
+    out->tail_required=1;out->completed=1;return 1;
+}
+const ServerNpcGruntDamagePainPrefixApi damage_pain_prefix_api{1,sizeof(ServerNpcGruntDamagePainPrefixApi),&grunt_damage_pain_prefix};
+
 int __cdecl grunt_behavior_removal(void* a,unsigned n,std::uint32_t handle,void* attacker,bool event,float now,const ServerNpcGruntBehaviorRemovalBindings* b,ServerNpcGruntBehaviorRemovalResult* out) noexcept{
     if(!out)return 0;*out={};out->active_release.index=out->active_release.selected=-1;
     // Preflight the complete composed cleanup extent before component side effects.
@@ -3774,4 +3810,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorRemovalApi=_SiN_GetServerNpcGruntBehaviorRemovalApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorRemovalApi* __cdecl SiN_GetServerNpcGruntBehaviorRemovalApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorRemovalApi)?&behavior_removal_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamagePainPrefixApi=_SiN_GetServerNpcGruntDamagePainPrefixApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamagePainPrefixApi* __cdecl SiN_GetServerNpcGruntDamagePainPrefixApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamagePainPrefixApi)?&damage_pain_prefix_api:nullptr;
 }

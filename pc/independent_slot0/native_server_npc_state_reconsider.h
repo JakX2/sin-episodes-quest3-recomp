@@ -1364,4 +1364,24 @@ struct ServerNpcGruntBehaviorRemovalApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,bool,float,const ServerNpcGruntBehaviorRemovalBindings*,ServerNpcGruntBehaviorRemovalResult*) noexcept;
 };
 using GetServerNpcGruntBehaviorRemovalApi=const ServerNpcGruntBehaviorRemovalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_damage_pain_prefix_export[]="SiN_GetServerNpcGruntDamagePainPrefixApi";
+struct ServerNpcGruntDamagePainPrefixBindings {
+    ServerNpcGruntReactionSpeechBindings reaction;
+    void* context;
+    int (__cdecl *base_damage)(void*,void*,void*,int*) noexcept; // 222a7b20, mutable damage info and native result
+    int (__cdecl *state_signal)(void*,void*,int) noexcept; // actor +4d8
+    int (__cdecl *as_npc)(void*,void*,bool*,unsigned*) noexcept; // +f4 and readable extent
+};
+struct ServerNpcGruntDamagePainPrefixResult {
+    ServerNpcGruntReactionSpeechResult pain;
+    int base_result;
+    unsigned completed,damage_zeroed,base_called,signal_called,attacker_checked,same_squad,pain_called,tail_required;
+};
+struct ServerNpcGruntDamagePainPrefixApi {
+    std::uint32_t version,size;
+    // Original 22040140..220401d4 prefix only. Caller attests entry via the proper base route.
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamagePainPrefixBindings*,ServerNpcGruntDamagePainPrefixResult*) noexcept;
+};
+using GetServerNpcGruntDamagePainPrefixApi=const ServerNpcGruntDamagePainPrefixApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

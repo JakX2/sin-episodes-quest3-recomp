@@ -1838,5 +1838,46 @@ int main(int argc,char** argv){
         q.metric=241;q.expected="GRUNT_FLANK";
         assert(api->event(q.actor,sizeof(q.actor),1,15,&b,&er)&&er.completed&&er.request.group_called&&er.sentence.cooldown.squad_written&&q.calls==2);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntDamagePainPrefixApi>(GetProcAddress(s,server_npc_grunt_damage_pain_prefix_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_damage_pain_prefix_export)&&!g(0,sizeof(ServerNpcGruntDamagePainPrefixApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntDamagePainPrefixApi));assert(api);
+        struct DamageFixture{
+            alignas(4) unsigned char actor[0xdb2]{},other[0xdb2]{},damage[0x48]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            unsigned calls=0,signal=0,cast=0,speech=0;int base=0;bool npc=true;
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.other);
+        ServerNpcGruntDamagePainPrefixBindings b{};b.context=&q;b.reaction.sentence.entries=q.entries;b.reaction.sentence.count=3;
+        b.reaction.sentence.speech.original_vtable=0x2249aaa4;
+        b.reaction.sentence.speech.volume=1;b.reaction.sentence.speech.level=75;
+        b.reaction.request.context=&q;b.reaction.request.manager_ready=true;
+        b.reaction.request.group_index=[](void* p,const char* cue,int* out) noexcept -> int{
+            auto& q=*static_cast<DamageFixture*>(p);assert(!std::strcmp(cue,"GRUNT_PAIN")&&q.signal==1);++q.speech;*out=-1;return 1;};
+        b.base_damage=[](void* p,void* a,void* d,int* result) noexcept -> int{
+            auto& q=*static_cast<DamageFixture*>(p);assert(a==q.actor&&d==q.damage&&!(DamageFixture::rd(a,0x988)&2)&&!DamageFixture::rd(d,0x2c));
+            ++q.calls;*result=q.base;return 1;};
+        b.state_signal=[](void* p,void* a,int value) noexcept -> int{
+            auto& q=*static_cast<DamageFixture*>(p);assert(a==q.actor&&value==1);++q.signal;return 1;};
+        b.as_npc=[](void* p,void* a,bool* yes,unsigned* n) noexcept -> int{
+            auto& q=*static_cast<DamageFixture*>(p);assert(a==q.other);++q.cast;*yes=q.npc;*n=sizeof(q.other);return 1;};
+        f.put(q.actor,0x988,3u);f.put(q.actor,0x874,1u);f.put(q.actor,0x868,1);
+        f.put(q.actor,0x98,100);f.put(q.actor,0x9c,50);f.put(q.actor,0xccc,17);
+        f.put(q.actor,0x9c4,91u);f.put(q.other,0x9c4,91u);
+        f.put(q.damage,0x28,0x1001u);f.put(q.damage,0x2c,10.f);
+        ServerNpcGruntDamagePainPrefixResult o{};
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.completed&&o.damage_zeroed&&o.base_called&&!o.base_result&&!o.tail_required&&!q.signal&&!q.cast);
+        q.base=1;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.tail_required&&o.same_squad&&!o.pain_called&&q.signal==1&&q.cast==1);
+        f.put(q.other,0x9c4,92u);f.put(q.actor,0xbc,0x10000000u);f.put(q.actor,0x868,0);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.tail_required&&!o.same_squad&&o.pain_called&&o.pain.blocked_flags&&q.cast==2);
+        q.npc=false;assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.pain_called&&!o.same_squad&&q.cast==3);
+        f.put(q.damage,0x28,0x9001u);
+        assert(!api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&!o.tail_required&&q.cast==3);
+        f.put(q.actor,0x9c4,0u);f.put(q.actor,0xbc,0u);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.tail_required&&o.pain_called&&o.pain.deadline_written&&q.speech==1&&q.cast==3);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
