@@ -190,4 +190,24 @@ struct ServerNpcThinkCatalogApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcThinkCatalogBindings*,ServerNpcThinkCatalogResult*) noexcept;
 };
 using GetServerNpcThinkCatalogApi=const ServerNpcThinkCatalogApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_native_preschedule_think_export[]="SiN_GetServerNpcNativePrescheduleThinkApi";
+struct ServerNpcNativePrescheduleThinkBindings {
+    ServerNpcThinkCatalogBindings think;
+    ServerNpcGruntPrescheduleBindings preschedule;
+    void* jet_context;
+    // Jetpack 223634e0 attachment vtable +10 and +8, not the geometry implementation.
+    int (__cdecl *jet_ready)(void*,std::uint32_t,bool*) noexcept;
+    int (__cdecl *jet_tick)(void*,std::uint32_t) noexcept;
+};
+struct ServerNpcNativePrescheduleThinkResult {
+    ServerNpcThinkCatalogResult think;
+    ServerNpcGruntPrescheduleResult preschedule;
+    ServerEliteTaskResult elite;
+    unsigned elite_called,jet_queried,jet_called;
+};
+struct ServerNpcNativePrescheduleThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativePrescheduleThinkBindings*,ServerNpcNativePrescheduleThinkResult*) noexcept;
+};
+using GetServerNpcNativePrescheduleThinkApi=const ServerNpcNativePrescheduleThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

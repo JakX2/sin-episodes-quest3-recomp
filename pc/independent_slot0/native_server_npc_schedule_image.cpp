@@ -8,6 +8,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerAct
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleServicesApi* __cdecl SiN_GetServerNpcScheduleServicesApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSubclassSchedulerApi* __cdecl SiN_GetServerNpcSubclassSchedulerApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherNativeApi* __cdecl SiN_GetServerNpcGruntGatherNativeApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPrescheduleApi* __cdecl SiN_GetServerNpcGruntPrescheduleApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEliteTaskApi* __cdecl SiN_GetServerEliteTaskApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 bool private_activity(const ServerGruntRegistration* r,int index,float& value) noexcept{
@@ -88,10 +90,41 @@ int __cdecl storage(const ServerScheduleImage* image,std::uint32_t token,const v
     return 1;
 }
 template<class T>T think_read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
+struct PrescheduleRoute {
+    const ServerNpcNativePrescheduleThinkBindings* bindings;
+    ServerNpcNativePrescheduleThinkResult* result;
+};
 struct ThinkRoute {
     const ServerNpcThinkCatalogBindings* bindings;
     ServerNpcThinkCatalogResult* result;
+    const PrescheduleRoute* native_pre=nullptr;
 };
+bool native_preschedule(void* actor,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings& scheduler,const PrescheduleRoute& route) noexcept{
+    const auto& b=*route.bindings;auto& out=*route.result;
+    const auto& selection=scheduler.maintenance.selection;const auto& reg=selection.state.entities;
+    const auto* classify=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
+    const auto* api=SiN_GetServerNpcGruntPrescheduleApi(1,sizeof(ServerNpcGruntPrescheduleApi));
+    unsigned family=0;
+    if(!classify||!api||!classify->classify(scheduler.original_vtable,&family)||reg.count>sin_independent::kEntityHandleCapacity||(reg.count&&!reg.entries))return false;
+    const auto registry=sin_independent::EntityHandleView(reg.entries,reg.count);
+    if(family==NpcSubclassElite){
+        void* linked=registry.Resolve(think_read<unsigned>(actor,0xfdc));
+        if(linked){
+            auto eb=scheduler.elite;eb.grunt.entities=reg;
+            const auto& wb=eb.reload.original.weapon;unsigned n=0;
+            const auto* elite=SiN_GetServerEliteTaskApi(1,sizeof(ServerEliteTaskApi));
+            out.elite_called=1;
+            if(!elite||!wb.extent||!wb.extent(wb.context,linked,&n)||!elite->spin_update(linked,n,now,&eb,&out.elite))return false;
+        }
+    }else if(family==NpcSubclassJetpack){
+        const auto attachment=think_read<unsigned>(actor,0x218);bool ready=false;
+        out.jet_queried=1;
+        if(!attachment||!b.jet_ready||!b.jet_ready(b.jet_context,attachment,&ready))return false;
+        if(ready){out.jet_called=1;if(!b.jet_tick||!b.jet_tick(b.jet_context,attachment))return false;}
+    }
+    auto bound=b.preschedule;bound.entries=reg.entries;bound.count=reg.count;bound.original_vtable=scheduler.original_vtable;bound.conditions=selection.grunt.schedule.conditions;
+    return api->run(actor,bytes,now,&bound,&out.preschedule)!=0;
+}
 bool think_before(void* actor,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings& scheduler,const ThinkRoute& route) noexcept{
     const auto& b=*route.bindings;auto& out=*route.result;
     const auto& selection=scheduler.maintenance.selection;
@@ -101,7 +134,7 @@ bool think_before(void* actor,unsigned bytes,float now,const ServerNpcSubclassSc
     gather.gather.base.perception.enemy_switch.best.memory.entries=selection.state.entities.entries;
     gather.gather.base.perception.enemy_switch.best.memory.count=selection.state.entities.count;
     const auto* api=SiN_GetServerNpcGruntGatherNativeApi(1,sizeof(ServerNpcGruntGatherNativeApi));
-    if(!api||!b.preschedule||!std::isfinite(now))return false;
+    if(!api||(!route.native_pre&&!b.preschedule)||!std::isfinite(now))return false;
     auto* a=static_cast<unsigned char*>(actor);
     // 2204147c: reset both per-think bytes before virtual +420.
     a[0x84d]=a[0x84e]=0;
@@ -130,7 +163,7 @@ bool think_before(void* actor,unsigned bytes,float now,const ServerNpcSubclassSc
         }
     }
     out.preschedule_called=1;
-    return b.preschedule(b.context,actor,scheduler.original_vtable,now)!=0;
+    return route.native_pre?native_preschedule(actor,bytes,now,scheduler,*route.native_pre):b.preschedule(b.context,actor,scheduler.original_vtable,now)!=0;
 }
 bool think_after(void* actor,unsigned bytes,const ServerNpcConditionMapBindings& map,ServerNpcThinkCatalogResult& out) noexcept{
     // +428 points to 22044230 (ret) for all eight authenticated classes.
@@ -275,7 +308,7 @@ int __cdecl run_native_gather_catalog(void* a,unsigned bytes,float now,const Ser
     auto& o=out->sound_cover.observation;auto& sh=o.cue.movement.animation.facing.attack.shared;
     return run_catalog_impl(a,bytes,now,image,b,&sh.full.combat.catalog,&full->injury.combat,&sh.full.combat.combat,full,&sh.full.full,&attack->shared,&sh.shared,attack,&o.cue.movement.animation.facing.attack.attack,facing,&o.cue.movement.animation.facing.facing,target,&o.cue.movement.animation.target_animation,movement,&o.cue.movement.movement,cue,&o.cue.cue,observe,&o.observation,sound_cover,&out->sound_cover.sound_cover,tactical,&out->tactical,&route);
 }
-int __cdecl run_think_catalog(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcThinkCatalogBindings* think,ServerNpcThinkCatalogResult* result) noexcept{
+int run_think_impl(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcThinkCatalogBindings* think,ServerNpcThinkCatalogResult* result,const PrescheduleRoute* native_pre) noexcept{
     if(!result)return 0;
     result->outer_gather={};result->outer_gather.object.selected_handle=0xffffffffu;
     result->outer_called=result->player_called=result->housekeeping_called=result->preschedule_called=result->maintenance_called=result->conditions_cleared=result->completed=0;
@@ -285,10 +318,22 @@ int __cdecl run_think_catalog(void* a,unsigned bytes,float now,const ServerSched
     out->sound_cover={};out->tactical={};
     if(!full||!attack||!facing||!target||!movement||!cue||!observe||!sound_cover||!tactical||!think)return 0;
     const ServerNpcNativeGatherRoute route{&think->gather,&inner.gather,&inner.gather_calls};
-    const ThinkRoute outer{think,result};
+    const ThinkRoute outer{think,result,native_pre};
     auto& o=out->sound_cover.observation;auto& sh=o.cue.movement.animation.facing.attack.shared;
     return run_catalog_impl(a,bytes,now,image,b,&sh.full.combat.catalog,&full->injury.combat,&sh.full.combat.combat,full,&sh.full.full,&attack->shared,&sh.shared,attack,&o.cue.movement.animation.facing.attack.attack,facing,&o.cue.movement.animation.facing.facing,target,&o.cue.movement.animation.target_animation,movement,&o.cue.movement.movement,cue,&o.cue.cue,observe,&o.observation,sound_cover,&out->sound_cover.sound_cover,tactical,&out->tactical,&route,&outer);
 }
+int __cdecl run_think_catalog(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcThinkCatalogBindings* think,ServerNpcThinkCatalogResult* result) noexcept{
+    return run_think_impl(a,bytes,now,image,b,full,attack,facing,target,movement,cue,observe,sound_cover,tactical,think,result,nullptr);
+}
+int __cdecl run_native_preschedule_think(void* a,unsigned bytes,float now,const ServerScheduleImage* image,const ServerNpcScheduleServicesBindings* b,const ServerGruntHelperTaskBindings* full,const ServerNpcSharedAttackBindings* attack,const ServerNpcSharedFacingBindings* facing,const ServerNpcSharedTargetAnimationBindings* target,const ServerNpcSharedMovementBindings* movement,const ServerNpcSharedCueBindings* cue,const ServerNpcSharedObservationBindings* observe,const ServerNpcSharedSoundCoverBindings* sound_cover,const ServerNpcSharedTacticalCoverBindings* tactical,const ServerNpcNativePrescheduleThinkBindings* bindings,ServerNpcNativePrescheduleThinkResult* result) noexcept{
+    if(!result)return 0;
+    result->preschedule={};result->preschedule.target_handle=0xffffffffu;result->elite={};
+    result->elite_called=result->jet_queried=result->jet_called=0;
+    if(!bindings)return 0;
+    const PrescheduleRoute route{bindings,result};
+    return run_think_impl(a,bytes,now,image,b,full,attack,facing,target,movement,cue,observe,sound_cover,tactical,&bindings->think,&result->think,&route);
+}
+const ServerNpcNativePrescheduleThinkApi native_preschedule_think_api{1,sizeof(ServerNpcNativePrescheduleThinkApi),&run_native_preschedule_think};
 const ServerNpcThinkCatalogApi think_catalog_api{1,sizeof(ServerNpcThinkCatalogApi),&run_think_catalog};
 const ServerNpcNativeGatherCatalogSchedulerApi native_gather_catalog_api{1,sizeof(ServerNpcNativeGatherCatalogSchedulerApi),&run_native_gather_catalog};
 const ServerNpcTacticalCoverCatalogSchedulerApi tactical_cover_catalog_api{1,sizeof(ServerNpcTacticalCoverCatalogSchedulerApi),&run_tactical_cover};
@@ -379,4 +424,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcThinkCatalogApi=_SiN_GetServerNpcThinkCatalogApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcThinkCatalogApi* __cdecl SiN_GetServerNpcThinkCatalogApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcThinkCatalogApi)?&think_catalog_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativePrescheduleThinkApi=_SiN_GetServerNpcNativePrescheduleThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativePrescheduleThinkApi* __cdecl SiN_GetServerNpcNativePrescheduleThinkApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcNativePrescheduleThinkApi)?&native_preschedule_think_api:nullptr;
 }
