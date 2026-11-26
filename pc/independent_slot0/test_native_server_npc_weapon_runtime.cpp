@@ -1877,6 +1877,42 @@ int main(int argc,char** argv){
     assert(forget_tree->validate(sqm.owners[0],0x40,&squad_report.mutation.storage,&forget_result)&&forget_result.count==4);
     assert(set_squad(701u)&&!catalog_o.squad_added&&!catalog_o.squad_memory_reported&&sqm.allocated==2);
     f.put(f.actor,0x9c4,0u);f.put(f.actor,0x9c8,0u);f.put(f.actor,0x378,saved_handle);
+    // SetSquad now calls the same native removal and survivor route used
+    // by the independent death path. No hosted removed_notice is needed.
+    ServerNpcGruntSquadLeaveBindings leave_native{};
+    leave_native.context=&sq;leave_native.sentence.speech.context=&sq;
+    leave_native.sentence.speech.squad_storage=sq_storage.resolve;
+    leave_native.sentence.speech.random_float=[](void*,float lo,float hi,float* result) noexcept -> int{
+        assert(lo==1.5f&&hi==2.f);*result=1.75f;return 1;
+    };
+    leave_native.sentence.extent=[](void* p,void* entity,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);
+        if(entity==q.peer){*bytes=0xfd8u;return 1;}if(entity==q.f->actor){*bytes=sizeof(q.f->actor);return 1;}return 0;
+    };
+    leave_native.sentence.entity_rejected=[](void*,void*,bool* rejected) noexcept -> int{*rejected=false;return 1;};
+    leave_native.member_class=[](void* p,void* member,unsigned* vtable,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);assert(member==q.peer);*vtable=0x2249aaa4u;*bytes=0xfd8u;return 1;
+    };
+    sq_services.native_leave=&leave_native;sq_services.removed_notice=nullptr;
+    auto seed_leave=[&](int health,unsigned flags){
+        f.put(f.actor,0x378,0x8002u);f.put(f.actor,0x9c4,group_a);f.put(f.actor,0x9c8,701u);f.put(f.actor,0x9c,health);
+        f.put(wt.member,0x9c4,group_a);f.put(wt.member,0x204,1u);f.put(wt.member,0xbf,std::uint8_t(flags));
+        f.put(wt.member,0x850,1);f.put(wt.member,0xb4,2u);
+        f.put(wt.member,0xc04,0.f);f.put(wt.member,0xc08,-1);
+        f.put(sq.groups[0],0x48,3);f.put(sq.groups[0],8,0x7001u);f.put(sq.groups[0],12,0x8002u);f.put(sq.groups[0],16,0x9001u);
+        f.put(sq.groups[0],0x50,0.f);f.put(sq.groups[0],0x54,-1);
+    };
+    seed_leave(20,0);
+    assert(set_squad(0u,0u)&&catalog_o.squad_removed==1&&catalog_o.squad_native_notices==1&&catalog_o.squad_stale_notices==1&&catalog_o.squad_leave.last.survivor.removed_positive);
+    assert(!f.get<unsigned>(f.actor,0x9c4)&&!f.get<unsigned>(f.actor,0x9c8)&&f.get<int>(sq.groups[0],0x48)==2&&f.get<unsigned>(sq.groups[0],12)==0x9001u);
+    assert(!f.get<float>(wt.member,0xc04));
+    seed_leave(0,8);
+    assert(set_squad(0u,0u)&&catalog_o.squad_native_notices==1&&catalog_o.squad_leave.last.survivor.flag_blocked&&!f.get<float>(wt.member,0xc04));
+    seed_leave(0,0);
+    assert(set_squad(0u,0u)&&catalog_o.squad_native_notices==1&&catalog_o.squad_leave.last.survivor.last_member);
+    assert(!catalog_o.squad_leave.last.survivor.sentence.mode_allowed&&catalog_o.squad_leave.last.survivor.final_mark.owner_written&&catalog_o.squad_leave.last.survivor.final_mark.squad_written);
+    assert(f.get<float>(wt.member,0xc04)==81.75f&&f.get<float>(sq.groups[0],0x50)==81.75f);
+    f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
