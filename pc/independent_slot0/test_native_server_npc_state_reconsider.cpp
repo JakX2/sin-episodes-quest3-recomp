@@ -2551,9 +2551,11 @@ int main(int argc,char** argv){
         q.actor[0xbf]=0;
         assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&o.completed&&o.created&&o.flag_written&&o.attached&&o.event_called&&o.output_called&&q.events==1&&q.outputs==1);
         q.step=0;
-        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&o.created&&!o.flag_written&&o.output_called&&q.outputs==2);
+        // Original 220f2213 checks byte +bf bit3, i.e. on-fire dword +bc bit27.
+        // Attribution still updates in 223595a0 before this rejection.
+        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&o.completed&&o.flag_blocked&&o.attribution_written&&!o.created&&!o.flag_written&&!o.output_called&&q.outputs==1&&q.events==1&&!q.step);
         q.step=0;q.create=false;q.player=false;q.name[0]=0;f.put(q.actor,0xbc,0u);
-        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&!o.created&&!o.flag_written&&!o.inflictor_name&&!o.event_called&&o.output_called&&q.events==2&&q.outputs==3);
+        assert(api->react(q.actor,sizeof(q.actor),q.attacker,q.inflictor,&b,&o)&&!o.created&&!o.flag_written&&!o.inflictor_name&&!o.event_called&&o.output_called&&q.events==1&&q.outputs==2);
         q.actor[0xbf]=8;
         assert(api->react(q.actor,sizeof(q.actor),nullptr,nullptr,&b,&o)&&o.flag_blocked&&o.attacker_handle==0xffffffffu&&!o.inflictor_name);
     }
