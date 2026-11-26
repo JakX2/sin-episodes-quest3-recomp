@@ -477,6 +477,33 @@ int main(int argc,char** argv){
     f.trace.clear();f.put(f.actor,0x868,1);f.put(f.actor,0x1024,0x8001u);
     assert(!transition_wake->run(f.actor,sizeof(f.actor),vt,true,&wtb,&wto)&&wto.jet_prepared==1&&!wto.transitions&&f.get<int>(f.actor,0x868)==1);
     assert((f.trace==std::vector<int>{224}));
+    auto gow=reinterpret_cast<GetServerNpcOuterWakeUpdateApi>(GetProcAddress(server,server_npc_outer_wake_update_export));
+    assert(gow&&!GetProcAddress(client,server_npc_outer_wake_update_export)&&!gow(1,0));
+    const auto* outer_wake=gow(1,sizeof(ServerNpcOuterWakeUpdateApi));assert(outer_wake);
+    ServerNpcOuterWakeUpdateBindings owb{};owb.outer=outer;owb.policy=wb;owb.transition=wtb;
+    owb.outer.wake=nullptr;owb.policy.wake=nullptr; // no legacy hosted wake decision or transition
+    owb.transition.storage=nullptr;owb.transition.entities={};owb.policy.conditions={};
+    owb.outer.admission.global_flags=0;owb.outer.active_scene=false;
+    schedule.scheduler.original_vtable=ground_vt;
+    f.put(f.actor,0x868,2);f.put(f.actor,0x85c,0);f.put(f.actor,0x86c,0.f);f.put(f.actor,0x78,0x20u);f.actor[0x870]=0;
+    f.actor[0x1f0]=0;pf.dirty=0;f.put(f.actor,0x8c,0);
+    ServerNpcOuterWakeUpdateResult owr{};
+    f.trace.clear();
+    assert(outer_wake->ground(f.actor,sizeof(f.actor),&in,.05f,&step_bind,&owb,&step_out,&po,&owr)&&owr.outer.completed&&owr.outer.wake_called&&!owr.outer.sleep_bypassed&&owr.outer.scene_bypassed);
+    assert(owr.policy.reason==NpcWakePvs&&owr.transition.transitions==1&&owr.transition.outputs==1&&owr.transition.flags_changed==1&&pf.dirty==1);
+    assert(f.get<int>(f.actor,0x868)==0&&f.get<unsigned>(f.actor,0x78)==0&&owr.outer.finish.mode==0);
+    assert((f.trace==std::vector<int>{214,215,70,220,222,214}));
+    // Next outer tick does not repeat the wake output.
+    f.trace.clear();assert(outer_wake->ground(f.actor,sizeof(f.actor),&in,.05f,&step_bind,&owb,&step_out,&po,&owr)&&!owr.outer.wake_called&&!owr.transition.transitions&&(f.trace==std::vector<int>{214,215,70,214}));
+    // Jetpack path resolves linked Grunt from authoritative schedule registry.
+    schedule.scheduler.original_vtable=vt;
+    const auto saved_registry=schedule.scheduler.maintenance.selection.state.entities;
+    schedule.scheduler.maintenance.selection.state.entities=wtb.entities;
+    f.put(f.actor,0x868,2);f.put(f.actor,0x1024,0x7001u);f.put(f.actor,0x218,123u);f.put(wt.member,0x868,2);
+    f.trace.clear();
+    assert(outer_wake->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&owb,&jet_out,&po,&owr)&&owr.outer.completed&&owr.outer.scene_bypassed&&owr.transition.transitions==2&&owr.transition.jet_linked&&owr.transition.jet_attachment);
+    assert((f.trace==std::vector<int>{214,215,70,224,221,223,225,220,222,214}));
+    schedule.scheduler.maintenance.selection.state.entities=saved_registry;
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

@@ -243,8 +243,13 @@ int __cdecl cadence_finish(void* a,unsigned n,float now,float interval,std::uint
     }
     out->completed=1;return 1;
 }
+struct OuterWakeRoute {
+    const ServerNpcOuterWakeUpdateBindings& bindings;
+    ServerNpcOuterWakeUpdateResult& result;
+};
+bool native_outer_wake(void*,unsigned,std::uint32_t,bool,const ServerNpcActiveWeaponStepBindings&,const OuterWakeRoute&) noexcept;
 template<class Binding,class Step,class Execute>
-int outer_run(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const Binding* b,const ServerNpcActiveWeaponStepBindings* base,const ServerNpcOuterUpdateBindings* outer,Step* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out,bool jet,Execute execute) noexcept {
+int outer_run(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const Binding* b,const ServerNpcActiveWeaponStepBindings* base,const ServerNpcOuterUpdateBindings* outer,Step* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out,bool jet,Execute execute,const OuterWakeRoute* wake_route=nullptr) noexcept {
     if(!out||!step||!tail)return 0;
     *out={};*tail={};std::memset(step,0,sizeof(*step));step->animation.frame.frame.failed_event=-1;
     if(!a||!in||!std::isfinite(in->now)||!std::isfinite(interval)||interval<=0||!b||!base||!base->schedule||!outer||!outer->post)return 0;
@@ -267,7 +272,10 @@ int outer_run(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float inte
     if(!condition->store(a,n,1,NpcConditionCurrent,pvs,&base->schedule->scheduler.maintenance.selection.grunt.schedule.conditions,&mapped))return 0;
     out->condition_mapped=mapped.mapped;
     if(rd<int>(a,0x868)>0){
-        out->wake_called=1;if(!outer->wake||!outer->wake(outer->context,a,pvs))return 0;
+        out->wake_called=1;
+        if(wake_route){
+            if(!native_outer_wake(a,n,vt,pvs,*base,*wake_route))return 0;
+        }else if(!outer->wake||!outer->wake(outer->context,a,pvs))return 0;
     }
     if(rd<int>(a,0x85c)>=4||rd<int>(a,0x868)!=0)out->sleep_bypassed=1;
     else if(!outer->active_scene)out->scene_bypassed=1;
@@ -288,13 +296,16 @@ int __cdecl outer_ground(void* a,unsigned n,const ServerNpcRunAnimationInput* in
 int __cdecl outer_jet(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveJetWeaponStepBindings* b,const ServerNpcOuterUpdateBindings* outer,ServerNpcActiveJetWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out) noexcept {
     return outer_run(a,n,in,interval,b,b&&!b->base.think?&b->base:nullptr,outer,step,tail,out,true,&jet_post);
 }
-int __cdecl wake_policy(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNpcWakePolicyBindings* b,ServerNpcWakePolicyResult* out) noexcept {
+bool wake_transition_impl(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings&,ServerNpcWakeTransitionResult&,unsigned) noexcept;
+struct WakeTransitionRoute {const ServerNpcWakeTransitionBindings& bindings;ServerNpcWakeTransitionResult& result;};
+int wake_policy_impl(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNpcWakePolicyBindings* b,ServerNpcWakePolicyResult* out,const WakeTransitionRoute* route) noexcept {
     if(!out)return 0;*out={};
     if(!a||!b||!outer_class(vt,n)||b->max_clients<0||b->max_clients>128)return 0;
     auto done=[&](){out->completed=1;return 1;};
     auto wake=[&](unsigned reason){
-        if(!b->wake)return false;
-        ++out->wake_calls;out->reason=reason;return b->wake(b->context,a,true)!=0;
+        ++out->wake_calls;out->reason=reason;
+        if(route)return wake_transition_impl(a,n,vt,true,route->bindings,route->result,0);
+        return b->wake&&b->wake(b->context,a,true)!=0;
     };
     if(rd<int>(a,0x868)<=0)return done();
     if(b->max_clients>1)return wake(NpcWakeMultiplayer)?done():0;
@@ -426,6 +437,30 @@ bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const 
 int __cdecl wake_transition(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings* b,ServerNpcWakeTransitionResult* o) noexcept {
     if(!o)return 0;*o={};if(!b||!wake_transition_impl(a,n,vt,output,*b,*o,0))return 0;o->completed=1;return 1;
 }
+int __cdecl wake_policy(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNpcWakePolicyBindings* b,ServerNpcWakePolicyResult* out) noexcept {
+    return wake_policy_impl(a,n,vt,pvs,b,out,nullptr);
+}
+bool native_outer_wake(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNpcActiveWeaponStepBindings& base,const OuterWakeRoute& route) noexcept {
+    auto policy=route.bindings.policy;
+    auto transition=route.bindings.transition;
+    const auto& selection=base.schedule->scheduler.maintenance.selection;
+    policy.conditions=selection.grunt.schedule.conditions;
+    transition.entities=selection.state.entities;
+    transition.storage=route.bindings.outer.post;
+    const WakeTransitionRoute bound{transition,route.result.transition};
+    if(!wake_policy_impl(a,n,vt,pvs,&policy,&route.result.policy,&bound))return false;
+    route.result.transition.completed=1;
+    return true;
+}
+int __cdecl outer_ground_wake(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveWeaponStepBindings* b,const ServerNpcOuterWakeUpdateBindings* outer,ServerNpcActiveWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterWakeUpdateResult* out) noexcept {
+    if(!out)return 0;*out={};if(!outer)return 0;const OuterWakeRoute route{*outer,*out};
+    return outer_run(a,n,in,interval,b,b,&outer->outer,step,tail,&out->outer,false,&ground_post,&route);
+}
+int __cdecl outer_jet_wake(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveJetWeaponStepBindings* b,const ServerNpcOuterWakeUpdateBindings* outer,ServerNpcActiveJetWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterWakeUpdateResult* out) noexcept {
+    if(!out)return 0;*out={};if(!outer)return 0;const OuterWakeRoute route{*outer,*out};
+    return outer_run(a,n,in,interval,b,b&&!b->base.think?&b->base:nullptr,&outer->outer,step,tail,&out->outer,true,&jet_post,&route);
+}
+const ServerNpcOuterWakeUpdateApi outer_wake_api{1,sizeof(ServerNpcOuterWakeUpdateApi),&outer_ground_wake,&outer_jet_wake};
 const ServerNpcWakeTransitionApi wake_transition_api{1,sizeof(ServerNpcWakeTransitionApi),&wake_transition};
 const ServerNpcWakePolicyApi wake_api{1,sizeof(ServerNpcWakePolicyApi),&wake_policy};
 const ServerNpcOuterUpdateApi outer_api{1,sizeof(ServerNpcOuterUpdateApi),&outer_ground,&outer_jet};
@@ -474,4 +509,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcWakeTransitionApi=_SiN_GetServerNpcWakeTransitionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWakeTransitionApi* __cdecl SiN_GetServerNpcWakeTransitionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcWakeTransitionApi)?&wake_transition_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterWakeUpdateApi=_SiN_GetServerNpcOuterWakeUpdateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcOuterWakeUpdateApi* __cdecl SiN_GetServerNpcOuterWakeUpdateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcOuterWakeUpdateApi)?&outer_wake_api:nullptr;
 }

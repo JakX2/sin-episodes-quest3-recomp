@@ -207,4 +207,25 @@ struct ServerNpcWakeTransitionApi {
 };
 using GetServerNpcWakeTransitionApi=const ServerNpcWakeTransitionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char server_npc_outer_wake_update_export[]="SiN_GetServerNpcOuterWakeUpdateApi";
+struct ServerNpcOuterWakeUpdateBindings {
+    ServerNpcOuterUpdateBindings outer;
+    ServerNpcWakePolicyBindings policy;
+    ServerNpcWakeTransitionBindings transition;
+};
+struct ServerNpcOuterWakeUpdateResult {
+    ServerNpcOuterUpdateResult outer;
+    ServerNpcWakePolicyResult policy;
+    ServerNpcWakeTransitionResult transition;
+};
+struct ServerNpcOuterWakeUpdateApi {
+    std::uint32_t version,size;
+    // Authoritative condition namespace, entity registry and dirty storage
+    // are taken from the existing schedule/outer bindings. Legacy wake callbacks
+    // are not invoked by this opt-in API.
+    int (__cdecl *ground)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveWeaponStepBindings*,const ServerNpcOuterWakeUpdateBindings*,ServerNpcActiveWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterWakeUpdateResult*) noexcept;
+    int (__cdecl *jet)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveJetWeaponStepBindings*,const ServerNpcOuterWakeUpdateBindings*,ServerNpcActiveJetWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterWakeUpdateResult*) noexcept;
+};
+using GetServerNpcOuterWakeUpdateApi=const ServerNpcOuterWakeUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
