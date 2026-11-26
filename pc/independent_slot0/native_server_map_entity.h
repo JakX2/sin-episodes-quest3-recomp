@@ -101,6 +101,7 @@ struct DispatchResult {
     int native_result,global_index,global_state;
 };
 inline constexpr unsigned auto_vtable=0x2241f0d4,auto_extent=0x440;
+struct RelayQueueBindings;
 struct AutoBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -112,12 +113,14 @@ struct AutoBindings {
     int (__cdecl *schedule)(void*,void*,float) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
     void* schedule_context; // optional native tick scheduler
+    const RelayQueueBindings* native_queue;
 };
 struct AutoResult {
     unsigned completed,base_called,scheduled,global_checked,blocked,outputs,queued,removed;
     unsigned load_output,violence_output;
     int global_state,load_type;
     float next_think;
+    unsigned native_output_queued;
 };
 inline constexpr unsigned timer_vtable=0x22420e14,timer_extent=0x3f4;
 inline constexpr unsigned branch_vtable=0x22422294,branch_extent=0x3c8;
@@ -127,7 +130,6 @@ inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
 // Derived scalar-deleting destructor boundary, distinct from the
 // factory's owner networkable-release boundary.
 inline constexpr unsigned multicompare_vtable=0x22420b84,multicompare_extent=0x3d4;
-struct RelayQueueBindings;
 // Shared CBaseEntity::InputKill owner effects. Removal is deferred.
 struct EntityKillBindings {
     void* context;
@@ -199,9 +201,10 @@ struct MenuBindings {
     int (__cdecl *base_restore)(void*,void*) noexcept;
     // Return transport success, not the original manager's bool result.
     int (__cdecl *subscribe)(void*,void*,const char*,bool) noexcept;
+    const RelayQueueBindings* native_queue;
 };
 struct MenuResult {
-    unsigned completed,base_called,subscribed,name_reads,button_reads,selected,highlighted,outputs,queued,first_offset,last_offset;
+    unsigned completed,base_called,subscribed,name_reads,button_reads,selected,highlighted,outputs,queued,first_offset,last_offset,native_output_queued;
 };
 struct LogicDestroyBindings {
     void* context;

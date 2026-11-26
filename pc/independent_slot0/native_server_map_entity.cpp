@@ -864,6 +864,7 @@ int __cdecl auto_activate(void* actor,unsigned bytes,const AutoBindings* b,AutoR
     o->scheduled=o->completed=1;return 1;
 }
 // CLogicAuto Think original 22178460, virtual +bc.
+bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
 int __cdecl auto_think(void* actor,unsigned bytes,const AutoBindings* b,AutoResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!actor||bytes<auto_extent||entity_vtable(actor)!=auto_vtable||!b)return 0;
@@ -884,9 +885,16 @@ int __cdecl auto_think(void* actor,unsigned bytes,const AutoBindings* b,AutoResu
     using namespace sin_port::native_weapon_tables;
     const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));if(!fire)return 0;
     auto emit=[&](unsigned off){
-        ServerEntityVoidOutputResult r{};
-        if(!fire->fire(static_cast<unsigned char*>(actor)+off,0x18,nullptr,actor,bytes,0.f,b->output,&r))return false;
-        ++o->outputs;o->queued+=r.queued;return true;
+        unsigned queued=0;
+        if(b->native_queue){
+            if(!native_named_output(actor,bytes,nullptr,off,false,b->output,b->native_queue,queued))return false;
+            o->native_output_queued+=queued;
+        }else{
+            ServerEntityVoidOutputResult r{};
+            if(!fire->fire(static_cast<unsigned char*>(actor)+off,0x18,nullptr,actor,bytes,0.f,b->output,&r))return false;
+            queued=r.queued;
+        }
+        ++o->outputs;o->queued+=queued;return true;
     };
     o->load_type=*b->load_type;
     switch(o->load_type){
@@ -1270,7 +1278,6 @@ int __cdecl timer_spawn(void* a,unsigned n,const TimerBindings* b,TimerResult* o
     if(!(enabled?timer_enable(a,*b,*o):timer_disable(a,*b,*o)))return 0;
     o->handled=o->completed=1;return 1;
 }
-bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
 bool timer_fire(void* a,unsigned n,const TimerBindings& b,TimerResult& o) noexcept {
     if(read_field<int>(a,0x3dc)){o.suppressed=1;return true;}
     const bool oscillate=(read_field<unsigned>(a,0xb4)&1u)!=0;
@@ -1861,10 +1868,17 @@ int __cdecl menu_event(void* a,unsigned n,void* event,const MenuBindings* b,Menu
         if(!b->event_string(b->context,event,"buttonname","",&text,&bytes)||!menu_text(text,bytes))return 0;
         if(std::strcmp(text,buttons[i]))continue;
         const unsigned off=offsets[i]+(o->highlighted?0xc0:0);
-        ServerEntityVoidOutputResult r{};
-        if(!fire->fire(static_cast<unsigned char*>(a)+off,0x18,a,a,n,0.f,b->output,&r))return 0;
+        unsigned queued=0;
+        if(b->native_queue){
+            if(!native_named_output(a,n,a,off,false,b->output,b->native_queue,queued))return 0;
+            o->native_output_queued+=queued;
+        }else{
+            ServerEntityVoidOutputResult r{};
+            if(!fire->fire(static_cast<unsigned char*>(a)+off,0x18,a,a,n,0.f,b->output,&r))return 0;
+            queued=r.queued;
+        }
         if(!o->outputs)o->first_offset=off;
-        ++o->outputs;o->last_offset=off;o->queued+=r.queued;
+        ++o->outputs;o->last_offset=off;o->queued+=queued;
         if(i)break;
     }
     o->completed=1;return 1;

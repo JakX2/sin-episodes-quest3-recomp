@@ -2619,5 +2619,6 @@ int main(int argc,char** argv){
         assert(word(co.rows[1],0x14)==43&&!word(co.rows[1],0x2c));
     }
 #include "test_native_logic_trigger_chain.inc"
+#include "test_native_logic_startup_chain.inc"
     FreeLibrary(server);FreeLibrary(client);
 }
