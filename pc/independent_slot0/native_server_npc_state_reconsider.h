@@ -2,6 +2,7 @@
 #include "native_server_npc_schedule_state.h"
 #include "native_server_weapon_activity.h"
 namespace sin_port::native_weapon_tables {
+struct ServerWeaponScriptView; // Opaque script-view dependency of Elite reward bindings.
 inline constexpr char server_npc_state_reconsider_export[]="SiN_GetServerNpcStateReconsiderApi";
 struct ServerNpcStateBindings {
     ServerNpcScheduleBindings schedule;
