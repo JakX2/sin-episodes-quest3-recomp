@@ -3809,7 +3809,24 @@ int main(int argc,char** argv){
         auto run=[&](){f.put(q.a,0xdb8+0x14,0x1001u);f.put(q.a,0xdb8+0x1c,3);q.a[0xdb8+0x25]=1;return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
         assert(run()&&o.entered&&o.completed&&o.next_valid&&o.handle_written&&o.flag_cleared&&o.next_handle==0x2002u&&o.events.reset_called);
         q.next=0x9002u;assert(run()&&o.find_called&&!o.next_valid&&o.warning_called&&o.mode_cleared&&o.class_called&&o.end_called&&q.ends==1);
-        q.monk=true;f.put(q.a,0x850,4);assert(run()&&o.monk_exception&&!o.end_called&&q.ends==1);
+        // Exercise the authenticated leaf without a host callback. Condition 33
+        // prevents the subsequent schedule reset from rewriting +7a4 to 4.
+        b.end_assault=nullptr;
+        auto read32=[&](unsigned off){std::uint32_t v=0;std::memcpy(&v,q.a+off,4);return v;};
+        for(unsigned off=0x798;off<0x7c0;off+=4)f.put(q.a,off,0x12345678u);
+        for(unsigned off=0x828;off<0x850;off+=4)f.put(q.a,off,0x87654321u);
+        f.put(q.a,0x7d0,2u);
+        assert(run()&&o.end_called&&o.events.reset_called&&q.ends==1);
+        for(const unsigned off:{0x7a8u,0x7acu,0x7a4u,0x79cu,0x798u,0x7a0u,0x7b4u})assert(read32(off)==0);
+        assert(read32(0x7b8)==0x12340000u&&read32(0x7b0)==0x12345678u&&read32(0x7bc)==0x12345678u);
+        for(unsigned off=0x82c;off<0x84c;off+=4)assert(read32(off)==0xffffffffu);
+        assert(read32(0x828)==0x87654321u&&read32(0x84c)==0x87654321u);
+        assert(read32(0x7d0)==2u);
+        // Verify the later reset still writes state 4 when condition 33 is clear.
+        f.put(q.a,0x7d0,0u);f.put(q.a,0x7a4,77u);
+        assert(run()&&o.end_called&&o.events.reset_called&&read32(0x7a4)==4u);
+        q.monk=true;f.put(q.a,0x850,4);f.put(q.a,0x798,0x12345678u);
+        assert(run()&&o.monk_exception&&!o.end_called&&q.ends==1&&read32(0x798)==0x12345678u);
         f.put(q.a,0xc,0x223f3a78u);assert(run()&&o.monk_exception&&!o.class_called);
         f.put(q.primary,0x398,0u);f.put(q.primary,0x394,88u);
         f.put(q.secondary,0x3bc,0x3003u);assert(run()&&o.mode_cleared&&o.secondary_checked&&o.secondary_cleared&&o.script_called&&o.output_called&&q.outputs==1);
