@@ -1509,6 +1509,41 @@ int main(int argc,char** argv){
         assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x22420330,0x3000,0x3000,incoming,sizeof(incoming),0.f,19,&co.queue,&cancel_qr));
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==2&&es.foreign_inputs==1&&f.fired==2&&f.delivered==1&&pool.released==2);
         assert(word(counter,0x3a0)==0x40a00000u&&word(comparison,0x394)==0x40a00000u&&comparison[0x200]&&co.released==3&&!word(co.root,0x30));
+        // Rebuild both consumed actions. The native route uses the same
+        // typed event sequence without either entity's enqueue callback.
+        assert(api->key_value(counter,"OutValue","comparison,SetValueCompare,,0,-1",&keys,&kr));
+        assert(api->key_value(comparison,"OnEqualTo","sink,Use,,0,-1",&keys,&kr));
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);for(unsigned i=0;i<f.pool->used;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue_variant=nullptr;fire.enqueue=nullptr;
+        RelayQueueBindings route{};route.context=&f;route.root=co.root;route.root_token=98;route.queue=&co.queue;
+        route.handle=[](void* p,void* a,unsigned* handle) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);if(a==f.counter)*handle=0x4001u;else if(a==f.comparison)*handle=0x5002u;else if(a==f.activator)*handle=0x3000u;else return 0;return 1;
+        };
+        count_behavior.native_queue=&route;compare_behavior.native_queue=&route;
+        delivery.accept=[](void* p,void* target,unsigned input,void* a,void* c,const void* variant,unsigned id) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);assert(f.queue->locked&&target==f.queue->target&&input==203&&a==f.activator&&c==f.comparison&&id==44);
+            unsigned v[5]{};std::memcpy(v,variant,0x14);assert(v[0]==0x40a00000u&&v[4]==1);++f.delivered;return 1;
+        };
+        put(counter,0x3a0,0x40400000u);
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x22420330,0x3000,0x3000,incoming,sizeof(incoming),0.f,20,&co.queue,&cancel_qr));
+        assert(!service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&!co.locked&&co.alloc==1&&!co.released&&word(counter,0x3a0)==0x40400000u);
+        route.root_token=99;
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==2&&es.foreign_inputs==1&&f.fired==2&&f.delivered==2&&pool.released==2);
+        assert(word(counter,0x3a0)==0x40a00000u&&word(comparison,0x394)==0x40a00000u&&co.released==3&&!word(co.root,0x30));
+        assert(word(co.rows[1],0x14)==43&&word(co.rows[1],0x1c)==0x40a00000u&&word(co.rows[1],0x2c)==1&&word(co.rows[1],0x10)==0x4001u);
+        assert(word(co.rows[2],0x14)==44&&word(co.rows[2],0x1c)==0x40a00000u&&word(co.rows[2],0x2c)==1&&word(co.rows[2],0x10)==0x5002u);
+        // Original counter emits boundary void output BEFORE clamping and
+        // sending typed OutValue; retain both routes and insertion order.
+        assert(api->key_value(counter,"OnHitMax","comparison,SetValueCompare,,0,-1",&keys,&kr));
+        put(counter,0x394,0);put(counter,0x398,0x40a00000u);put(counter,0x3a0,0x40400000u);
+        // Use the leaf directly to inspect queued events without delivery.
+        route.root_bytes=sizeof(co.root);route.entries=entries;route.entry_count=3;route.now=&co.now;
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;
+        CounterResult cr{};assert(api->counter_input(counter,sizeof(counter),"Add",timer,1,3.f,&count_behavior,&cr)&&cr.hit_max&&cr.clamped&&cr.value==5.f&&cr.outputs==2&&cr.native_output_queued==2);
+        assert(co.alloc==2&&word(co.rows[0],0x14)==45&&!word(co.rows[0],0x2c)&&word(co.rows[1],0x14)==43&&word(co.rows[1],0x1c)==0x40a00000u&&word(co.rows[1],0x2c)==1);
     }
     {
         // Seven authenticated derived destructors, all with two pool
