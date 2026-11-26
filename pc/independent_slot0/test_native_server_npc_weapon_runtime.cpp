@@ -917,10 +917,16 @@ int main(int argc,char** argv){
     // Scripted source OnWake -> named event -> real inherited Wake input.
     // The CAI_BaseNPC row count/index and tokens are original; other entries
     // are zeroed in this deliberately sparse single-input fixture.
+    auto get_search=reinterpret_cast<GetServerEntitySearchApi>(GetProcAddress(server,server_entity_search_export));
+    assert(get_search&&!GetProcAddress(client,server_entity_search_export)&&!get_search(0,sizeof(ServerEntitySearchApi))&&!get_search(1,0));
+    const auto* entity_search=get_search(1,sizeof(ServerEntitySearchApi));assert(entity_search);
     struct ScriptWakeFixture {
         F* f;OutputFixture* output;void* target;
         const ServerEntityAcceptInputApi* accept;
         const ServerEntityEventServiceBindings* previous_service;
+        const ServerEntitySearchApi* search_api;
+        ServerEntitySearchBindings search{};
+        ServerEntitySearchResult search_result{};
         alignas(4) unsigned char grunt_map[0x10]{},base_map[0x10]{},grunt_rows[39*0x34]{},base_rows[139*0x34]{};
         ServerNpcActivePostAnimationBindings storage{};
         ServerEntityAcceptInputBindings input{};
@@ -928,7 +934,7 @@ int main(int argc,char** argv){
         ServerNpcWakeTransitionBindings wake{};
         ServerNpcWakeTransitionResult wake_result{};
     };
-    static ScriptWakeFixture scripted{};scripted.f=&f;scripted.output=&outf;scripted.target=wt.member;scripted.accept=accept;scripted.previous_service=&service_bind;
+    static ScriptWakeFixture scripted{};scripted.f=&f;scripted.output=&outf;scripted.target=wt.member;scripted.accept=accept;scripted.previous_service=&service_bind;scripted.search_api=entity_search;
     f.put(scripted.grunt_map,0,0x22534e8cu);f.put(scripted.grunt_map,4,39);f.put(scripted.grunt_map,0xc,0x224dbd9cu);
     f.put(scripted.base_map,0,0x224dc27cu);f.put(scripted.base_map,4,139);
     auto* wake_row=scripted.base_rows+126*0x34;
@@ -947,6 +953,27 @@ int main(int argc,char** argv){
     sin_independent::EntityHandleEntry script_slots[3]{};
     script_slots[1].serial=7;script_slots[1].entity=reinterpret_cast<CBaseEntity*>(wt.member);
     script_slots[2].serial=8;script_slots[2].entity=reinterpret_cast<CBaseEntity*>(f.actor);
+    script_slots[2].next=&script_slots[0];script_slots[0].next=&script_slots[1];
+    f.put(f.actor,0xc0,501u);f.put(wt.member,0xc0,500u);f.put(wt.member,0x378,0x7001u);
+    f.put(f.actor,0,ground_vt);f.put(wt.member,0,ground_vt);
+    scripted.search.context=&scripted;scripted.search.entities.entries=script_slots;scripted.search.entities.count=3;scripted.search.head=&script_slots[2];
+    scripted.search.extent=[](void* p,void* entity,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);
+        if(entity==q.f->actor)*n=sizeof(q.f->actor);else if(entity==q.target)*n=0xfd8;else return 0;return 1;
+    };
+    scripted.search.string_text=[](void*,unsigned token,const char** text,unsigned* n) noexcept -> int{
+        switch(token){
+        case 500u:*text="Recipient";break;case 501u:*text="Source";break;
+        case 502u:*text="rECIPIENT";break;case 503u:*text="npc_grunt";break;
+        case 504u:*text="NPC_GR*unused";break;case 505u:*text="*suffix";break;
+        case 506u:*text="missing";break;case 507u:*text="!self";break;
+        case 508u:*text="!AcTiVaToR";break;case 509u:*text="!player";break;
+        case 510u:*text="!pvsplayer";break;case 511u:*text="!picker";break;
+        case 512u:*text="!caller";break;
+        default:return 0;
+        }
+        *n=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
     scripted.input.storage=&scripted.storage;scripted.input.context=&scripted;
     scripted.input.entities.entries=script_slots;scripted.input.entities.count=3;
     scripted.input.name_equal=inp.bindings.name_equal;
@@ -966,7 +993,8 @@ int main(int argc,char** argv){
     };
     script_service.find_named=[](void* p,void* previous,unsigned name,void* activator,void* caller,void** entity) noexcept -> int{
         auto& q=*static_cast<ScriptWakeFixture*>(p);assert(name==500u&&activator==q.f->actor&&caller==q.f->actor);
-        *entity=previous?nullptr:q.target;return 1;
+        if(!q.search_api->named(previous,name,activator,caller,&q.search,&q.search_result))return 0;
+        *entity=q.search_result.entity;return 1;
     };
     script_service.find_class=nullptr;script_service.missing=nullptr;
     script_service.accept=[](void* p,void* target,unsigned input,void* activator,void* caller,const void* variant,unsigned id) noexcept -> int{
@@ -1022,6 +1050,43 @@ int main(int argc,char** argv){
     assert(run_input(2999u,0u,0u)&&inp.result.completed&&!inp.result.accepted&&inp.result.reason==EntityInputUnknown);
     assert(!run_input(1600u,2u,3000u)&&!inp.result.completed&&!f.actor[0x200]);
     assert(!run_input(3000u,0u,0u)&&!inp.result.completed&&!f.actor[0x200]);
+    // Original linked list order, not sorted slot indices, including the
+    // null slot between source and recipient. Search aliases by actual text.
+    f.put(f.actor,0x378,0x8002u);f.put(wt.member,0x378,0x7001u);
+    f.put(f.actor,0xc,0u);f.put(wt.member,0xc,503u);
+    auto& search_result=scripted.search_result;auto& search_bind=scripted.search;
+    auto named=[&](void* previous,unsigned token,void* activator=nullptr,void* caller=nullptr){
+        return entity_search->named(previous,token,activator,caller,&search_bind,&search_result);
+    };
+    auto by_class=[&](void* previous,unsigned token){return entity_search->classname(previous,token,&search_bind,&search_result);};
+    assert(named(nullptr,502u)&&search_result.entity==wt.member&&search_result.visited==3&&search_result.empty_slots==1);
+    assert(named(nullptr,505u)&&search_result.entity==f.actor&&search_result.visited==1);
+    assert(named(f.actor,505u)&&search_result.entity==wt.member&&search_result.visited==2&&search_result.empty_slots==1);
+    assert(named(wt.member,505u)&&!search_result.entity&&!search_result.visited);
+    assert(named(nullptr,0u)&&!search_result.entity&&!search_result.visited);
+    assert(by_class(nullptr,504u)&&search_result.entity==wt.member&&search_result.visited==3);
+    assert(by_class(nullptr,505u)&&search_result.entity==f.actor); // null classname matches star
+    assert(named(nullptr,507u,f.actor,wt.member)&&search_result.contextual&&search_result.entity==wt.member&&!search_result.visited);
+    assert(named(nullptr,508u,f.actor,wt.member)&&search_result.entity==f.actor);
+    assert(named(f.actor,508u,f.actor,wt.member)&&!search_result.entity&&!search_result.visited);
+    search_bind.player_one=[](void* p,void** e) noexcept -> int{*e=static_cast<ScriptWakeFixture*>(p)->target;return 1;};
+    search_bind.pvs_player=[](void* p,unsigned token,void** e) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);assert(token==123u||token==456u);*e=token==123u?q.target:q.f->actor;return 1;
+    };
+    search_bind.picker=[](void* p,void* player,void** e) noexcept -> int{
+        auto& q=*static_cast<ScriptWakeFixture*>(p);assert(player==q.target);*e=q.f->actor;return 1;
+    };
+    assert(named(nullptr,509u)&&search_result.entity==wt.member);
+    assert(named(nullptr,510u)&&search_result.entity==wt.member);
+    f.put(f.actor,0x16c,123u);f.put(wt.member,0x16c,456u);
+    assert(named(nullptr,510u,f.actor,wt.member)&&search_result.entity==f.actor);
+    assert(named(nullptr,510u,f.actor)&&search_result.entity==wt.member);
+    assert(named(nullptr,511u)&&search_result.entity==f.actor);
+    assert(named(nullptr,512u)&&search_result.contextual&&!search_result.entity);
+    assert(named(nullptr,506u)&&search_result.completed&&!search_result.entity);
+    script_slots[1].next=&script_slots[2];assert(!named(nullptr,506u)&&!search_result.completed&&search_result.visited==3);script_slots[1].next=nullptr;
+    f.put(wt.member,0x378,0x9001u);assert(!named(wt.member,505u)&&!search_result.completed);f.put(wt.member,0x378,0x7001u);
+    f.put(f.actor,0x16c,0u);f.put(wt.member,0x16c,0u);f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
