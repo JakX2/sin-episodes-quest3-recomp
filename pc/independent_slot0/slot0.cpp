@@ -1212,6 +1212,8 @@ struct StartupInvocation {
     sin_port::native_server_startup::BoundaryResult* result;
 };
 static thread_local StartupInvocation* g_startup_invocation=nullptr;
+struct GameInitInvocation {sin_port::native_server_startup::State* state;const sin_port::native_server_startup::GameInitBindings* bindings;sin_port::native_server_startup::GameInitResult* result;bool entered=false;};
+static thread_local GameInitInvocation* g_gameinit_invocation=nullptr;
 #endif
 class Boundary final {
 public:
@@ -1235,11 +1237,12 @@ public:
         // uses the THIRD factory argument; the surrounding 15 use the
         // engine factory. Stop at the first unavailable pointer, never
         // dereference or retain it, and NEVER report successful Init.
+        void* engineServer=nullptr;
         void* sound=nullptr;
         void* events=nullptr;
         void* cvar=nullptr;
         void* filesystem=nullptr;
-        if (!require(engineFactory, kFirstEngineVersion) ||
+        if (!require(engineFactory, kFirstEngineVersion, &engineServer) ||
             !require(engineFactory, kSecondEngineVersion) ||
             !require(engineFactory, kThirdEngineVersion, &cvar) ||
             !require(engineFactory, kFourthEngineVersion) ||
@@ -1266,7 +1269,7 @@ public:
             // Trust the actual acquired interface pointers, not the
             // optional copies in the owner's binding.
             bound.globals=globals;bound.engine=engineFactory;bound.physics=physicsFactory;
-            bound.filesystem=fileSystemFactory;bound.event_manager=events;bound.cvar_interface=cvar;
+            bound.filesystem=fileSystemFactory;bound.event_manager=events;bound.cvar_interface=cvar;bound.engine_server=engineServer;
             return api->post_connect(invocation->state,&bound,&out.tail)!=0;
         }
 #endif
@@ -1287,6 +1290,13 @@ public:
         return false;
     }
     virtual bool __thiscall GameInit() noexcept {
+#if defined(SIN_NATIVE_GAME_FRAME)
+        if(auto* invocation=g_gameinit_invocation){
+            if(invocation->entered)return false;invocation->entered=true;
+            const auto* api=SiN_GetServerStartupApi(1,sizeof(sin_port::native_server_startup::Api));
+            return api&&api->game_init(invocation->state,invocation->bindings,invocation->result);
+        }
+#endif
         diagnostic("gameinit-rejected", nullptr);
         return false;
     }
@@ -1446,9 +1456,19 @@ Boundary instance;
 } // namespace
 
 #if defined(SIN_ROLE_server) && defined(SIN_NATIVE_GAME_FRAME)
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerGameInitBoundary=_SiN_InvokeServerGameInitBoundary")
+extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameInitBoundary(sin_port::native_server_startup::State* state,const sin_port::native_server_startup::GameInitBindings* bindings,sin_port::native_server_startup::GameInitResult* out) noexcept {
+    if(!out||g_gameinit_invocation||g_startup_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!bindings||!state->complete||state->game_init_attempted||state->busy)return 0;
+    GameInitInvocation invocation{state,bindings,out};g_gameinit_invocation=&invocation;
+    using Slot=bool (__thiscall *)(void*) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    const bool success=reinterpret_cast<Slot>(table[1])(&instance);
+    g_gameinit_invocation=nullptr;return invocation.entered&&success;
+}
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerDllInitBoundary=_SiN_InvokeServerDllInitBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerDllInitBoundary(sin_port::native_server_startup::State* state,const sin_port::native_server_startup::Bindings* bindings,sin_port::native_server_startup::BoundaryResult* out) noexcept {
-    if(!out||g_startup_invocation||g_frame_invocation)return 0;*out={};
+    if(!out||g_startup_invocation||g_frame_invocation||g_gameinit_invocation)return 0;*out={};
     if(!state||!bindings||state->attempted||state->busy)return 0;
     StartupInvocation invocation{state,bindings,out};g_startup_invocation=&invocation;
     using Slot=bool (__thiscall *)(void*,Factory,Factory,Factory,CGlobalVars*) noexcept;
@@ -1458,7 +1478,7 @@ extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerDllInitBoundary(sin
 }
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameBoundary=_SiN_InvokeServerGameFrameBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(bool simulating,const sin_port::native_game_frame::State* state,const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result) noexcept {
-    if(!result||g_frame_invocation||g_startup_invocation)return 0;*result={};
+    if(!result||g_frame_invocation||g_startup_invocation||g_gameinit_invocation)return 0;*result={};
     if(!state||!bindings)return 0;
     FrameInvocation invocation{state,bindings,result};
     g_frame_invocation=&invocation;
