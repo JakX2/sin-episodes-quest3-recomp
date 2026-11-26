@@ -2899,14 +2899,14 @@ int campaign_filter_activate(void* a,unsigned n,const CampaignFilterActivationBi
 // owner records; retail assumes valid acyclic map filters.
 int campaign_filter_entity(void* filter,void* other,const CampaignCustomFilterBindings* b,CampaignCustomFilterResult* o) noexcept {
     if(!o)return 0;*o={};
-    if(!b||!b->extent||!other||b->entry_count>sin_independent::kEntityHandleCapacity||
+    if(!b||!b->extent||b->entry_count>sin_independent::kEntityHandleCapacity||
        (!b->entries&&b->entry_count))return 0;
     static thread_local bool active=false;if(active)return 0;
     struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
     const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
     unsigned other_bytes=0,other_vt=0;
-    if(!b->extent(b->context,other,&other_bytes)||other_bytes<4||!SinReadCampaignTouchMarkerInternal(other,&other_vt))return 0;
-    auto read_other=[&](unsigned need){return other_bytes>=need&&SinCampaignStorageReadableInternal(other,need);};
+    if(other&&(!b->extent(b->context,other,&other_bytes)||other_bytes<4||!SinReadCampaignTouchMarkerInternal(other,&other_vt)))return 0;
+    auto read_other=[&](unsigned need){return other&&other_bytes>=need&&SinCampaignStorageReadableInternal(other,need);};
     auto text=[&](unsigned token,const char*& s){
         s="";
         if(!token)return true;
@@ -2959,6 +2959,9 @@ int campaign_filter_entity(void* filter,void* other,const CampaignCustomFilterBi
                 if(pass==any){raw=any;++o->short_circuits;break;}
             }
         }else{
+            // The original name/class predicates dereference activator;
+            // refuse null here, but base and empty multi are null-safe.
+            if(!other)return false;
             const unsigned token=read_field<unsigned>(node,0x3c8);
             const char* pattern=nullptr;
             // Name filter checks !player before pointer/token equality.
@@ -2996,6 +2999,31 @@ int campaign_filter_entity(void* filter,void* other,const CampaignCustomFilterBi
     bool accepted=false;
     if(!evaluate(evaluate,filter,0,accepted))return 0;
     o->accepted=accepted;o->completed=1;return 1;
+}
+// 2216b300 InputTestActivator: predicate (including inherited negation),
+// exactly one output, original activator and self caller, zero extra delay.
+int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned marker=0;
+    if(!b||!b->predicate||!b->output||n<4||!SinReadCampaignTouchMarkerInternal(a,&marker)||!campaign_filter_class(marker))return 0;
+    const unsigned extent=marker==base_filter_vtable?0x3c8u:marker==multi_filter_vtable?0x3f4u:0x3ccu;
+    if(n<extent||!SinCampaignStorageReadableInternal(a,extent))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    if(!campaign_filter_entity(a,activator,b->predicate,&o->predicate))return 0;
+    const unsigned off=o->predicate.accepted?0x398:0x3b0;
+    using namespace sin_port::native_weapon_tables;
+    if(b->native_queue){
+        if(!native_named_output(a,n,activator,off,false,b->output,b->native_queue,o->queued))return 0;
+        o->native_queued=o->queued;
+    }else{
+        const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+        ServerEntityVoidOutputResult fired{};
+        if(!fire||!fire->fire(static_cast<unsigned char*>(a)+off,0x18,activator,a,n,0.f,b->output,&fired))return 0;
+        o->queued=fired.queued;
+    }
+    if(o->predicate.accepted)o->pass_output=1;else o->fail_output=1;
+    o->completed=1;return 1;
 }
 // 221ce520: broad eligibility OR, followed by ordered restrictive
 // conditions and the optional full-serial custom filter lookup.
@@ -3306,4 +3334,10 @@ extern "C" int __cdecl SiN_CreateCampaignFilterForMap(void* context,const char* 
     if(!sin_port::native_map::create_filter_factory(name,b,&r))return 0;
     if(r.matched){*actor=r.actor;return 1;}
     return b->fallback_create&&b->fallback_create(b->fallback_context,name,actor);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_CampaignFilterTestActivator=_SiN_CampaignFilterTestActivator")
+extern "C" int __cdecl SiN_CampaignFilterTestActivator(void* actor,unsigned bytes,void* activator,
+    const sin_port::native_map::CampaignFilterInputBindings* b,sin_port::native_map::CampaignFilterInputResult* o) noexcept {
+    return sin_port::native_map::campaign_filter_test_activator(actor,bytes,activator,b,o);
 }

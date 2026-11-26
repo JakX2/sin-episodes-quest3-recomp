@@ -491,6 +491,17 @@ inline constexpr char custom_filter_export[]="SiN_TestCampaignFilterEntity";
 inline constexpr char custom_filter_callback_export[]="SiN_CampaignFilterEntityCallback";
 using TestCampaignFilterEntity=int (__cdecl *)(void*,void*,const CampaignCustomFilterBindings*,CampaignCustomFilterResult*) noexcept;
 using CampaignFilterEntityCallback=int (__cdecl *)(void*,void*,void*,bool*) noexcept;
+struct CampaignFilterInputBindings {
+    const CampaignCustomFilterBindings* predicate;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const RelayQueueBindings* native_queue;
+};
+struct CampaignFilterInputResult {
+    unsigned completed,pass_output,fail_output,queued,native_queued;
+    CampaignCustomFilterResult predicate;
+};
+inline constexpr char filter_test_activator_export[]="SiN_CampaignFilterTestActivator";
+using CampaignFilterTestActivator=int (__cdecl *)(void*,unsigned,void*,const CampaignFilterInputBindings*,CampaignFilterInputResult*) noexcept;
 struct CampaignFilterBindings {
     void* context;
     const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
