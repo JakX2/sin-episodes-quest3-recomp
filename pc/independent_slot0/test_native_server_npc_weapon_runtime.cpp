@@ -1498,6 +1498,69 @@ int main(int argc,char** argv){
         assert(set_health(20,cls)&&catalog_o.health_damage==1&&f.get<int>(f.actor,0x9c)==100&&(f.trace==std::vector<int>{880}));
     }
     f.put(f.actor,0x16c,0u);f.put(f.actor,0x378,saved_handle);f.trace.clear();
+    // Native relationship parser and original 16-byte vector rows.
+    struct RelFixture {
+        F* f;
+        alignas(4) unsigned char rows[8*16]{};
+        unsigned grows{},warnings{},last_warning{},classes{};
+    } rel{&f};
+    ServerNpcActivePostAnimationBindings rel_storage{};rel_storage.context=&rel;
+    rel_storage.resolve=[](void* p,unsigned token,void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<RelFixture*>(p);if(token!=0x4444u)return 0;
+        *data=q.rows;*bytes=sizeof(q.rows);return 1;
+    };
+    ServerNpcInputRelationshipBindings rel_services{};rel_services.context=&rel;
+    rel_services.grow=[](void* p,void* actor,unsigned need) noexcept -> int{
+        auto& q=*static_cast<RelFixture*>(p);assert(actor==q.f->actor&&need<=8);
+        ++q.grows;q.f->put(actor,0x638,0x4444u);q.f->put(actor,0x63c,8);return 1;
+    };
+    rel_services.classify=[](void* p,const char* name,unsigned* cls,bool* known) noexcept -> int{
+        auto& q=*static_cast<RelFixture*>(p);++q.classes;*known=std::strcmp(name,"npc_other")==0;*cls=*known?19u:0u;return 1;
+    };
+    rel_services.warning=[](void* p,void* actor,unsigned token,const char*) noexcept -> int{
+        auto& q=*static_cast<RelFixture*>(p);assert(actor==q.f->actor);++q.warnings;q.last_warning=token;return 1;
+    };
+    auto rel_b=leaves;rel_b.relationship=&rel_services;rel_b.storage=&rel_storage;rel_b.search=&search_bind;
+    rel_b.entities=scripted.input.entities;
+    rel_b.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept -> int{
+        switch(token){
+        case 800u:*text="Recipient D_HT 7";break;
+        case 801u:*text="rECIPIENT d_li";break;
+        case 802u:*text="player D_FR 3 npc_other D_NU -2";break;
+        case 803u:*text="npc_other D_HT";break;
+        case 804u:*text="Unknown D_NU 0";break;
+        case 805u:*text="Recipient bad 1";break;
+        case 806u:*text="Recipient";break;
+        case 807u:*text="* D_FR 9";break;
+        case 808u:*text="Recipient D_NU 2";break;
+        default:return 0;
+        }*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    f.put(f.actor,0x378,0x8002u);f.put(wt.member,0x378,0x7001u);
+    f.put(f.actor,0xc0,501u);f.put(wt.member,0xc0,500u);
+    f.put(f.actor,0x638,0u);f.put(f.actor,0x63c,0);f.put(f.actor,0x644,0);f.put(f.actor,0x648,0u);
+    auto relationship_input=[&](unsigned token,unsigned type=2u){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,token);f.put(inp.variant,0x10,type);
+        return accept->run(f.actor,sizeof(f.actor),ground_vt,0x223db450u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&rel_b,&catalog_o);
+    };
+    assert(relationship_input(800u)&&catalog_o.native_handler&&catalog_o.relationship_added==1&&catalog_o.relationship_entities==1&&rel.grows==1);
+    assert(f.get<unsigned>(rel.rows,0)==0x7001u&&f.get<unsigned>(rel.rows,4)==0&&f.get<unsigned>(rel.rows,8)==1&&f.get<int>(rel.rows,12)==7);
+    assert(relationship_input(801u)&&catalog_o.relationship_updated==1&&!catalog_o.relationship_added&&f.get<unsigned>(rel.rows,8)==3&&f.get<int>(rel.rows,12)==7);
+    assert(relationship_input(802u)&&catalog_o.relationship_specs==2&&catalog_o.relationship_classes==2&&catalog_o.relationship_added==2);
+    assert(f.get<unsigned>(rel.rows+16,0)==0xffffffffu&&f.get<unsigned>(rel.rows+16,4)==1&&f.get<unsigned>(rel.rows+16,8)==2&&f.get<int>(rel.rows+16,12)==3);
+    assert(f.get<unsigned>(rel.rows+32,4)==19&&f.get<unsigned>(rel.rows+32,8)==4&&f.get<int>(rel.rows+32,12)==-2);
+    assert(relationship_input(803u)&&catalog_o.relationship_updated==1&&f.get<unsigned>(rel.rows+32,8)==1&&f.get<int>(rel.rows+32,12)==-2);
+    assert(relationship_input(804u)&&catalog_o.relationship_warnings==1&&rel.last_warning==0x223d9910u);
+    assert(relationship_input(805u)&&catalog_o.relationship_warnings==1&&rel.last_warning==0x223d98d0u);
+    assert(relationship_input(806u)&&catalog_o.relationship_warnings==1&&rel.last_warning==0x223d98a8u);
+    assert(relationship_input(807u)&&catalog_o.relationship_entities==2&&catalog_o.relationship_added==1&&catalog_o.relationship_updated==1);
+    assert(f.get<unsigned>(rel.rows+48,0)==0x8002u&&f.get<unsigned>(rel.rows+48,8)==2&&f.get<int>(rel.rows+48,12)==9);
+    assert(f.get<int>(rel.rows,12)==9&&f.get<int>(f.actor,0x644)==4&&f.get<unsigned>(f.actor,0x648)==0x4444u);
+    // A stale entry does not alias the newly live target with same slot.
+    f.put(rel.rows,0,0x9001u);
+    assert(relationship_input(808u)&&catalog_o.relationship_added==1&&f.get<int>(f.actor,0x644)==5&&f.get<unsigned>(rel.rows+64,0)==0x7001u);
+    assert(relationship_input(0u,0u)&&catalog_o.native_handler&&!catalog_o.relationship_specs);
+    f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
