@@ -1098,6 +1098,48 @@ int native_assault(void* a,unsigned n,const ServerEntityInputData& d,const Serve
     }
     reset();return 1;
 }
+// 220424a0 extracts activator and tail-dispatches 220422d0.
+// Shared Grunt +1ac is RET; +18 reads model token at +38.
+// Engine physics/collision and break-model generation are not rebuilt.
+int native_break_input(void* a,unsigned n,const ServerEntityInputData& d,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    if(!b.break_input)return -1;
+    if(n<0x630)return 0;
+    const auto& svc=*b.break_input;
+    if(!svc.non_solid||!svc.effect||!svc.defer_remove)return 0;
+    const unsigned physics=rd<unsigned>(a,0x218);
+    if(physics&&!svc.physics_snapshot)return 0;
+    auto refresh=[&](unsigned mask,unsigned original){
+        return !(rd<unsigned>(a,0xb8)&mask)||(svc.refresh_transform&&svc.refresh_transform(svc.context,a,original));
+    };
+    if(rd<int>(a,0x94)){wr<int>(a,0x94,0);++o.break_damage_disabled;}
+    if(!svc.non_solid(svc.context,a,rd<std::uint16_t>(a,0x120)|4u))return 0;
+    ++o.break_non_solid;
+    ServerNpcBreakEffectRequest req{};
+    req.actor=a;req.activator=d.activator;req.physics=physics;
+    if(physics){
+        if(!svc.physics_snapshot(svc.context,physics,req.velocity,req.angular_velocity,req.origin,req.angles))return 0;
+        ++o.break_physics_snapshot;
+    }else{
+        if(!refresh(0x1000u,0x2213d750u))return 0;
+        std::memcpy(req.velocity,static_cast<unsigned char*>(a)+0x250,12);
+        std::memcpy(req.angular_velocity,static_cast<unsigned char*>(a)+0x25c,12);
+        if(!refresh(0x800u,0x2213fa60u))return 0;
+        std::memcpy(req.origin,static_cast<unsigned char*>(a)+0x2bc,12);
+        if(!refresh(0x800u,0x2213fa60u))return 0;
+        std::memcpy(req.angles,static_cast<unsigned char*>(a)+0x354,12);
+    }
+    // The original request points at the actor's current origin/angles
+    // even on the physics branch, after these two final refresh checks.
+    if(!refresh(0x800u,0x2213fa60u)||!refresh(0x800u,0x2213fa60u))return 0;
+    std::memcpy(req.origin,static_cast<unsigned char*>(a)+0x2bc,12);
+    std::memcpy(req.angles,static_cast<unsigned char*>(a)+0x354,12);
+    req.model=rd<unsigned>(a,0x38);req.skin=rd<unsigned>(a,0x62c);
+    req.collision_group=rd<unsigned>(a,0x214);if(!req.collision_group)req.collision_group=4;
+    req.scale=100.f;req.limit=-1;req.ignore_limit=false;
+    if(!svc.effect(svc.context,&req))return 0;++o.break_effect;
+    if(!svc.defer_remove(svc.context,a))return 0;++o.break_removed;
+    return 1;
+}
 // Original concrete handlers, independent from the descriptor projection.
 // Return -1 for a handler not implemented here, 0 for malformed storage,
 // and 1 for a successfully executed native leaf.
@@ -1117,6 +1159,7 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
         return 1;
     };
     switch(handler){
+    case 0x220424a0u:return native_break_input(a,n,d,b,o);
     case 0x22357e50u:return native_assault(a,n,d,b,o);
     case 0x22031f90u:return native_relationship(a,n,d,b,o);
     case 0x2203f1f0u:return native_forget(a,n,vt,d,b,o);
