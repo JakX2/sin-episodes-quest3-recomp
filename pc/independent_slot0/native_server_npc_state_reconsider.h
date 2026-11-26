@@ -2121,4 +2121,31 @@ struct ServerNpcGruntRagdollRouteApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,const float*,const ServerNpcGruntRagdollRouteBindings*,ServerNpcGruntRagdollRouteResult*) noexcept;
 };
 using GetServerNpcGruntRagdollRouteApi=const ServerNpcGruntRagdollRouteApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_linked_activity_export[]="SiN_GetServerNpcGruntLinkedActivityApi";
+struct ServerNpcGruntLinkedActivityBindings {
+    void* context;
+    int (__cdecl *query)(void*,void*,void**) noexcept; // actor +154, called twice on admitted route
+    int (__cdecl *lookup)(void*,void*,int,int*) noexcept; // 220eebd0
+    int (__cdecl *prepare)(void*,void*,int,float*) noexcept; // +630, 220092d0, 2200deb0
+    int (__cdecl *trace)(void*,void*,void*,const float*,float*) noexcept; // second query +1c4, 220385c0
+};
+struct ServerNpcGruntLinkedActivityResult {
+    int native_result,subtype,lookup;
+    float point[3],fraction;
+    unsigned completed,link_valid,queries,query_admitted,subtype_admitted,lookup_called,prepared,traced;
+};
+struct ServerNpcGruntActivityFullBindings {
+    ServerNpcGruntActivityTranslationBindings translation;
+    ServerNpcGruntLinkedActivityBindings linked;
+};
+struct ServerNpcGruntActivityFullResult {
+    ServerNpcGruntActivityTranslationResult translation;
+    ServerNpcGruntLinkedActivityResult linked;
+};
+struct ServerNpcGruntLinkedActivityApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,int,const ServerNpcGruntActivityFullBindings*,ServerNpcGruntActivityFullResult*) noexcept;
+};
+using GetServerNpcGruntLinkedActivityApi=const ServerNpcGruntLinkedActivityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

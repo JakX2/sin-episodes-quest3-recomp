@@ -4831,7 +4831,39 @@ int __cdecl elite_life(void* a,unsigned n,std::uint32_t handle,const void* damag
     return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->combat.combat.life,&c.life,&jet,&ground);
 }
 const ServerNpcGruntEliteLifeApi elite_life_api{1,sizeof(ServerNpcGruntEliteLifeApi),&elite_post,&elite_life};
-int __cdecl grunt_activity_translate(void* a,unsigned n,int activity,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out) noexcept{
+
+int linked_activity_route(void* a,void* link,const ServerNpcGruntSentenceBindings& entities,const ServerNpcGruntLinkedActivityBindings& b,ServerNpcGruntLinkedActivityResult& out) noexcept{
+    out={};out.native_result=0x42;out.lookup=-1;
+    auto done=[&](){out.completed=1;return 1;};
+    if(!link)return done();
+    out.link_valid=1;
+    void* subject=nullptr;
+    if(!b.query||!b.query(b.context,a,&subject))return 0;
+    ++out.queries;
+    if(!subject)return done();
+    out.query_admitted=1;
+    unsigned extent=0;
+    if(!entities.extent||!entities.extent(entities.speech.context,link,&extent)||extent<0x3a6)return 0;
+    out.subtype=read<std::int16_t>(link,0x3a4);
+    if(out.subtype!=100&&out.subtype!=101)return done();
+    out.subtype_admitted=1;
+    if(!b.lookup||!b.lookup(b.context,a,0x43,&out.lookup))return 0;
+    out.lookup_called=1;
+    if(out.lookup==-1)return done();
+    if(!b.prepare||!b.prepare(b.context,a,0x43,out.point))return 0;
+    out.prepared=1;
+    subject=nullptr;
+    if(!b.query(b.context,a,&subject))return 0;
+    ++out.queries;
+    // Retail dereferences the second query result; the adapter rejects null.
+    if(!subject||!b.trace||!b.trace(b.context,a,subject,out.point,&out.fraction))return 0;
+    out.traced=1;
+    // Original FUCOMPP followed by TEST AH,44h / JP selects 43h for
+    // both ordered inequality and unordered (NaN), not for equality.
+    if(out.fraction!=1.f)out.native_result=0x43;
+    return done();
+}
+int grunt_activity_translate_impl(void* a,unsigned n,int activity,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out,const ServerNpcGruntLinkedActivityBindings* linked=nullptr,ServerNpcGruntLinkedActivityResult* linked_out=nullptr) noexcept{
     if(!out)return 0;*out={};out->requested=out->translated=out->native_result=activity;out->activity_lookup=-1;
     if(!a||n<0xdc0||!b)return 0;
     const auto& sb=b->entities;
@@ -4885,7 +4917,11 @@ int __cdecl grunt_activity_translate(void* a,unsigned n,int activity,const Serve
     if(!(out->capabilities&0x8000000u))return done(translated);
     void* link=registry.Resolve(read<unsigned>(a,0xa18));
     if(translated==0x42){
-        int v=0;if(!b->linked_activity||!b->linked_activity(b->context,a,link,&v))return 0;
+        int v=0;
+        if(linked){
+            if(!linked_out||!linked_activity_route(a,link,sb,*linked,*linked_out))return 0;
+            v=linked_out->native_result;
+        }else if(!b->linked_activity||!b->linked_activity(b->context,a,link,&v))return 0;
         out->linked_called=1;return done(v);
     }
     if(translated==3||(translated==1&&(read<std::uint8_t>(a,0x988)&2))){
@@ -4900,7 +4936,16 @@ int __cdecl grunt_activity_translate(void* a,unsigned n,int activity,const Serve
     }
     return done(translated);
 }
+int __cdecl grunt_activity_translate(void* a,unsigned n,int activity,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out) noexcept{
+    return grunt_activity_translate_impl(a,n,activity,b,out);
+}
 const ServerNpcGruntActivityTranslationApi activity_translation_api{1,sizeof(ServerNpcGruntActivityTranslationApi),&grunt_activity_translate};
+int __cdecl grunt_activity_full(void* a,unsigned n,int activity,const ServerNpcGruntActivityFullBindings* b,ServerNpcGruntActivityFullResult* out) noexcept{
+    if(!out)return 0;*out={};out->linked.native_result=0x42;out->linked.lookup=-1;
+    if(!b)return 0;
+    return grunt_activity_translate_impl(a,n,activity,&b->translation,&out->translation,&b->linked,&out->linked);
+}
+const ServerNpcGruntLinkedActivityApi linked_activity_api{1,sizeof(ServerNpcGruntLinkedActivityApi),&grunt_activity_full};
 
 int __cdecl grunt_ragdoll_route(void* a,unsigned n,const void* damage,unsigned dn,const float* force,const ServerNpcGruntRagdollRouteBindings* b,ServerNpcGruntRagdollRouteResult* out) noexcept{
     if(!out)return 0;*out={};out->sample=-1;out->mode=out->source_handle=out->ragdoll_handle=0xffffffffu;
@@ -5584,4 +5629,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRagdollRouteApi=_SiN_GetServerNpcGruntRagdollRouteApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRagdollRouteApi* __cdecl SiN_GetServerNpcGruntRagdollRouteApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRagdollRouteApi)?&ragdoll_route_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntLinkedActivityApi=_SiN_GetServerNpcGruntLinkedActivityApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLinkedActivityApi* __cdecl SiN_GetServerNpcGruntLinkedActivityApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntLinkedActivityApi)?&linked_activity_api:nullptr;
 }
