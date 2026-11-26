@@ -479,7 +479,7 @@ int __cdecl destroy_remap(void* actor,unsigned bytes,void* networkable,const Rel
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==remap_vtable||vt==multicompare_vtable||vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==colorblend_vtable||vt==remap_vtable||vt==multicompare_vtable||vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -599,6 +599,8 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"OnLessThan",0x39c,11},{"OnEqualTo",0x3b4,11},
         {"OnNotEqualTo",0x3cc,11},{"OnGreaterThan",0x3e4,11}
     };
+    // COLOR32 key text remains at the owner parser until authenticated.
+    constexpr Spec colorblend_keys[]{{"inmin",0x394,1},{"inmax",0x398,1},{"OutColor",0x3a4,11}};
     constexpr Spec remap_keys[]{{"in1",0x394,1},{"in2",0x398,1},{"out1",0x39c,1},{"out2",0x3a0,1},{"OutValue",0x3a4,11}};
     constexpr Spec multicompare_keys[]{{"OnEqual",0x394,11},{"OnNotEqual",0x3ac,11},{"IntegerValue",0x3c4,5},{"ShouldComparetoValue",0x3c8,5}};
     constexpr Spec autosave_keys[]{{"NewLevelUnit",0x394,6}};
@@ -614,7 +616,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     Spec numbered{};
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);else if(vt==autosave_vtable)match(autosave_keys);else if(vt==multicompare_vtable)match(multicompare_keys);else if(vt==remap_vtable)match(remap_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);else if(vt==autosave_vtable)match(autosave_keys);else if(vt==multicompare_vtable)match(multicompare_keys);else if(vt==remap_vtable)match(remap_keys);else if(vt==colorblend_vtable)match(colorblend_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -1517,6 +1519,58 @@ int __cdecl remap_input(void* a,unsigned n,const char* name,void* activator,unsi
     }
     o->completed=1;return 1;
 }
+// Original 22178c00 normalizes equal endpoints and then swaps reversed
+// input bounds. The endpoint colors are NOT swapped.
+int __cdecl colorblend_spawn(void* a,unsigned n,ColorBlendResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<colorblend_extent||entity_vtable(a)!=colorblend_vtable)return 0;
+    float lo=read_field<float>(a,0x394),hi=read_field<float>(a,0x398);
+    if(lo==hi){lo=0.f;hi=1.f;write_field(a,0x394,lo);write_field(a,0x398,hi);o->reset_bounds=1;}
+    if(lo>hi){write_field(a,0x394,hi);write_field(a,0x398,lo);o->swapped=1;}
+    o->handled=o->completed=1;return 1;
+}
+// Original 2217a740: high-first clamp, flag1 suppression and four
+// independent unsigned-byte channels, including alpha. No final clamp.
+// CRT 223a63bc truncates to integer; the handler stores AL only.
+int __cdecl colorblend_input(void* a,unsigned n,const char* name,void* activator,unsigned type,float value,const ColorBlendBindings* b,ColorBlendResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<colorblend_extent||entity_vtable(a)!=colorblend_vtable||!name||!b)return 0;
+    if(!equal_class(name,"InValue")){o->completed=1;return 1;}
+    o->handled=1;o->input=type==1?value:0.f;
+    const float lo=read_field<float>(a,0x394),hi=read_field<float>(a,0x398);
+    const float v=o->input>hi?hi:o->input<lo?lo:o->input;
+    o->clamped_input=v;o->clamped=v!=o->input;
+    if(o->clamped&&(read_field<unsigned>(a,0xb4)&1u)){o->suppressed=o->completed=1;return 1;}
+    // Double intermediates follow x87 instruction order. Exact extended
+    // precision and exotic control-word parity remain unverified.
+    const double numerator=double(v)-lo,denominator=double(hi)-lo;
+    unsigned rgba=0;
+    for(unsigned i=0;i<4;++i){
+        const int from=read_field<unsigned char>(a,0x39c+i),to=read_field<unsigned char>(a,0x3a0+i);
+        const double channel=double(to-from)*numerator/denominator+from;
+        // Indefinite signed64 conversion has low byte zero. Avoid undefined
+        // host float-to-integer conversions and preserve low-byte wrapping.
+        const auto truncated=std::trunc(channel);
+        const auto converted=std::isfinite(truncated)&&truncated>=-9223372036854775808.0&&truncated<9223372036854775808.0?static_cast<std::int64_t>(truncated):std::numeric_limits<std::int64_t>::min();
+        rgba|=(static_cast<unsigned>(converted)&255u)<<(8*i);
+    }
+    o->rgba=rgba;
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    if(!fire||!b->output||(!b->native_queue&&!b->output->enqueue_variant))return 0;
+    auto* out=static_cast<unsigned char*>(a)+0x3a4;
+    // Original COutputColor::Set 2217a3b0 -> 22154e40 type9.
+    write_field(out,0,rgba);write_field(out,0x10,9u);o->stored=1;
+    if(b->native_queue){
+        if(!native_named_output(a,n,activator,0x3a4,true,b->output,b->native_queue,o->queued))return 0;
+        o->native_output_queued=o->queued;
+    }else{
+        ServerEntityVoidOutputResult r{};
+        if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b->output,&r))return 0;
+        o->queued=r.queued;
+    }
+    o->completed=1;return 1;
+}
 bool counter_valid(void* a,unsigned n,CounterResult* o) noexcept {
     if(!o)return false;*o={};
     return a&&n>=counter_extent&&entity_vtable(a)==counter_vtable;
@@ -2048,7 +2102,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
