@@ -5,6 +5,7 @@
 #include "native_server_npc_cone_angle_table.h"
 #include "native_server_weapon_script_view.h"
 #include "original_ammo_definitions.h"
+extern "C" __declspec(dllexport) const sin_port::original_ammo::Api* __cdecl SiN_GetOriginalAmmoDefinitionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWeaponScriptViewApi* __cdecl SiN_GetServerWeaponScriptViewApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
 #include <cmath>
@@ -8618,9 +8619,19 @@ bool elite_ammo_reward(void* player,const ServerNpcEliteAmmoRewardBindings& b,vo
     unsigned extent=0;
     if(!b.extent||!b.extent(b.context,player,&extent)||extent<0x78cu||
        (read<unsigned>(player,0)!=0x2245222cu&&read<unsigned>(player,0)!=0x224aec3cu)||
-       b.count>sin_independent::kEntityHandleCapacity||(b.count&&!b.entries)||!b.scripts||!b.ammo_index||!b.max_carry||!b.create)return false;
+       b.count>sin_independent::kEntityHandleCapacity||(b.count&&!b.entries)||!b.scripts||!b.create)return false;
     const auto registry=sin_independent::EntityHandleView(b.entries,b.count);
     const auto* api=SiN_GetServerWeaponScriptViewApi(1,sizeof(ServerWeaponScriptViewApi));if(!api)return false;
+    const auto* ammo=SiN_GetOriginalAmmoDefinitionApi(sin_port::original_ammo::version,sizeof(sin_port::original_ammo::Api));
+    if((!b.ammo_index||!b.max_carry)&&!ammo)return false;
+    auto index_for=[&](const char* name,int& index){
+        if(b.ammo_index)return b.ammo_index(b.context,name,&index)!=0;
+        index=ammo->index(name);++o.reward_native_indices;return true;
+    };
+    auto max_for=[&](int index,int& maximum){
+        if(b.max_carry)return b.max_carry(b.context,index,&maximum)!=0;
+        maximum=ammo->max_carry(index);++o.reward_native_maxima;return true;
+    };
     constexpr const char* names[]{"MAG","AR","BUCK","ARNADE","FLAK","DUAG"};
     constexpr const char* classes[]{"item_ammo_magnum","item_ammo_ar","item_ammo_buckshot","item_ammo_ar_grenade","item_ammo_flak","item_ammo_duag"};
     auto equal=[](const char* a,const char* c){
@@ -8641,9 +8652,9 @@ bool elite_ammo_reward(void* player,const ServerNpcEliteAmmoRewardBindings& b,vo
             if(!*name)break;
             unsigned k=0;while(k<6&&!equal(name,names[k]))++k;if(k==6)break;
             int index=-1,maximum=0,reserve=0;
-            if(!b.ammo_index(b.context,name,&index)||!b.max_carry(b.context,index,&maximum))return false;
+            if(!index_for(name,index)||!max_for(index,maximum))return false;
             if(index!=-1){
-                int live_maximum=0;if(!b.max_carry(b.context,index,&live_maximum))return false;
+                int live_maximum=0;if(!max_for(index,live_maximum))return false;
                 if(live_maximum==-2)reserve=999;
                 else{
                     if(index<0||index>=32)return false;
@@ -8660,7 +8671,11 @@ bool elite_ammo_reward(void* player,const ServerNpcEliteAmmoRewardBindings& b,vo
     }
     // This counter is equality with the *running*, rounded minimum, not
     // the number of full ammo types. Preserve the retail oddity.
-    if(o.reward_candidates==o.reward_equal_minimum||o.reward_minimum==1.f||!o.reward_classname)return true;
+    if(o.reward_candidates==o.reward_equal_minimum||o.reward_minimum==1.f)return true;
+    // Retail can reach the factory with a null classname if every mapped
+    // quotient is unordered or above FLT_MAX. The independent boundary
+    // deliberately avoids that unsafe engine call, with a visible witness.
+    if(!o.reward_classname){o.reward_missing_class=1;return true;}
     if(!b.create(b.context,o.reward_classname,-1,&target))return false;
     o.reward_factory=1;return true;
 }

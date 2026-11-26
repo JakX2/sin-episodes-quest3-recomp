@@ -2063,7 +2063,8 @@ struct ServerNpcEliteLocalPlayerBindings {
     int (__cdecl *base_entity)(void*,std::uint32_t,void**) noexcept;
 };
 // Player +45c (222457d0): authenticated weapon inventory and ammo
-// reward selection. Live ammo definitions and factory remain services.
+// reward selection. Optional live ammo metadata overrides the native
+// registered definitions; the entity factory remains an engine service.
 struct ServerNpcEliteAmmoRewardBindings {
     void* context;
     const sin_independent::EntityHandleEntry* entries;
@@ -2105,6 +2106,7 @@ struct ServerNpcGruntEliteDeathResult {
     unsigned player_lookup_native,player_slot_checked,player_edict_found,player_edict_free,player_unknown_called;
     int player_max_clients;
     unsigned reward_native,reward_slots,reward_weapons,reward_candidates,reward_equal_minimum,reward_factory;
+    unsigned reward_native_indices,reward_native_maxima,reward_missing_class;
     int reward_ammo_index;
     float reward_minimum;
     const char* reward_classname;
