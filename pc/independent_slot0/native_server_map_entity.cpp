@@ -9,6 +9,7 @@ extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalS
 #include <climits>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_map {
 namespace {
 bool delim(char c) noexcept {return c=='{'||c=='}'||c=='('||c==')'||c=='\'';}
@@ -563,6 +564,58 @@ int __cdecl parse_all(const char* s,unsigned n,bool activate,const PipelineBindi
     if(ok)ok=spawn_ordinary(p.rows,p.ordinary,activate,b->spawn,&o->spawn)!=0;
     const bool closed=pipeline_scope(p,outer,false);o->completed=ok&&closed;return int(o->completed);
 }
+template<class T>T read_map_field(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
+bool valid_relay_queue(const RelayQueueBindings& b) noexcept {
+    return b.root&&b.root_bytes>=0x38&&b.root_token&&b.queue&&
+        b.entry_count<=sin_independent::kEntityHandleCapacity&&(!b.entry_count||b.entries);
+}
+// Original 221559f0 removes all rows whose resolved caller is the same
+// entity. The following name/class compares read the same actor twice;
+// stable independent owner storage makes those comparisons reflexive.
+// Preflight topology and active-node conflicts before modifying any links.
+bool cancel_relay_events(void* actor,const RelayQueueBindings& b,RelayResult& o) noexcept {
+    if(!valid_relay_queue(b)||!b.release||!b.queue->resolve)return false;
+    const sin_independent::EntityHandleView registry(b.entries,b.entry_count);
+    struct Row {unsigned token;void* pointer;bool remove;};
+    Row rows[512]{};
+    unsigned token=read_map_field<unsigned>(b.root,0x30),prev=b.root_token;
+    while(token){
+        if(token==b.root_token||o.cancel_visited==512)return false;
+        for(unsigned i=0;i<o.cancel_visited;++i)if(rows[i].token==token)return false;
+        void* row=nullptr;unsigned bytes=0;
+        if(!b.queue->resolve(b.queue->context,token,&row,&bytes)||!row||row==b.root||bytes<0x38||read_map_field<unsigned>(row,0x34)!=prev)return false;
+        for(unsigned i=0;i<o.cancel_visited;++i)if(rows[i].pointer==row)return false;
+        const bool remove=registry.Resolve(read_map_field<unsigned>(row,0x10))==actor;
+        if(remove&&b.protected_node&&token==*b.protected_node){o.protected_match=1;return false;}
+        rows[o.cancel_visited++]={token,row,remove};
+        prev=token;token=read_map_field<unsigned>(row,0x30);
+    }
+    void* previous=b.root;prev=b.root_token;
+    for(unsigned i=0;i<o.cancel_visited;++i){
+        auto& row=rows[i];
+        if(!row.remove){previous=row.pointer;prev=row.token;continue;}
+        const unsigned next=i+1<o.cancel_visited?rows[i+1].token:0;
+        write_field(previous,0x30,next);
+        if(next)write_field(rows[i+1].pointer,0x34,prev);
+        if(!b.release(b.context,row.token,row.pointer))return false;
+        ++o.cancel_removed;
+    }
+    o.native_cancel=1;return true;
+}
+bool schedule_relay_refire(void* actor,float delay,const RelayQueueBindings& b,RelayResult& o) noexcept {
+    if(!valid_relay_queue(b)||!b.now||!b.handle||!b.intern)return false;
+    unsigned handle=0xffffffffu,input=0;
+    const sin_independent::EntityHandleView registry(b.entries,b.entry_count);
+    if(!b.handle(b.context,actor,&handle)||registry.Resolve(handle)!=actor||
+       !b.intern(b.context,"EnableRefire",&input)||!input)return false;
+    const float now=*b.now;if(!std::isfinite(now))return false;
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerEntityNamedEventQueueApi(1,sizeof(ServerEntityNamedEventQueueApi));
+    unsigned variant[5]{0,0,0,0xffffffffu,0};
+    ServerEntityNamedEventQueueResult q{};
+    if(!api||!api->enqueue_direct(b.root,b.root_bytes,b.root_token,now,handle,input,handle,handle,variant,sizeof(variant),delay,0,b.queue,&q))return false;
+    o.native_refire=1;return true;
+}
 // 2217ded0..2217dfca: six original CLogicRelay input leaves.
 int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activator,const RelayBindings* b,RelayResult* o) noexcept {
     if(!o)return 0;*o={};
@@ -575,7 +628,8 @@ int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activa
     if(equal_class(name,"Toggle")){a[0x3ac]=!a[0x3ac];return done();}
     if(equal_class(name,"EnableRefire")){a[0x3ad]=0;return done();}
     if(equal_class(name,"CancelPending")){
-        if(!b->cancel||!b->cancel(b->context,actor))return 0;
+        if(b->native_queue){if(!cancel_relay_events(actor,*b->native_queue,*o))return 0;}
+        else if(!b->cancel||!b->cancel(b->context,actor))return 0;
         a[0x3ad]=0;o->canceled=1;return done();
     }
     if(!equal_class(name,"Trigger")){o->handled=0;return done();}
@@ -604,7 +658,8 @@ int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activa
         std::memcpy(&token,static_cast<unsigned char*>(row)+0x18,4);
     }
     o->refire_delay=static_cast<float>(double(o->maximum_delay)+0.001);
-    if(!b->refire||!b->refire(b->context,actor,o->refire_delay))return 0;
+    if(b->native_queue){if(!schedule_relay_refire(actor,o->refire_delay,*b->native_queue,*o))return 0;}
+    else if(!b->refire||!b->refire(b->context,actor,o->refire_delay))return 0;
     o->refire=1;return done();
 }
 const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input};

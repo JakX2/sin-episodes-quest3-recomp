@@ -329,6 +329,34 @@ int main(int argc,char** argv){
     put(relay,0xb4,2);assert(input("Trigger")&&rr.fired&&!rr.refire&&!relay[0x3ad]&&rf.queued==3);
     put(relay,0xb4,3);assert(input("Trigger")&&rr.removed&&rf.removed==1&&rf.queued==4&&rf.refires==1);
     assert(input("Enable")&&!relay[0x3ac]);assert(input("Unknown")&&!rr.handled);
+    // Native direct refire scheduling and original caller cancellation.
+    // Reuse actual named/direct queue API with an independent fresh root.
+    std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=30.f;co.actor=relay;
+    co.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=201&&token<=205;return 1;};
+    sin_independent::EntityHandleEntry relay_entries[2]{};
+    relay_entries[0].entity=reinterpret_cast<CBaseEntity*>(relay);relay_entries[0].serial=3;
+    relay_entries[1].entity=reinterpret_cast<CBaseEntity*>(rf.activator);relay_entries[1].serial=7;
+    RelayQueueBindings rq{};rq.context=&co;rq.root=co.root;rq.root_bytes=sizeof(co.root);rq.root_token=99;rq.queue=&co.queue;
+    rq.entries=relay_entries;rq.entry_count=2;rq.now=&co.now;
+    rq.handle=[](void* p,void* a,unsigned* h) noexcept ->int{assert(a==static_cast<ConnectedOutput*>(p)->actor);*h=0x3000u;return 1;};
+    rq.intern=[](void*,const char* text,unsigned* token) noexcept ->int{assert(!std::strcmp(text,"EnableRefire"));*token=205;return 1;};
+    rq.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& f=*static_cast<ConnectedOutput*>(p);assert(token&&token<=f.alloc&&row==f.rows[token-1]);++f.released;std::memset(row,0xcc,0x38);return 1;};
+    rb.native_queue=&rq;
+    put(relay,0xb4,0);relay[0x3ad]=0;
+    assert(input("Trigger")&&rr.native_refire&&rr.refire&&relay[0x3ad]&&co.alloc==1&&rf.refires==1);
+    assert(word(co.rows[0],4)==0&&word(co.rows[0],8)==205&&word(co.rows[0],0xc)==0x3000&&word(co.rows[0],0x10)==0x3000&&word(co.rows[0],0x14)==0&&word(co.rows[0],0x18)==0x3000&&word(co.rows[0],0x28)==0xffffffffu&&word(co.rows[0],0x2c)==0);
+    float deadline=0;std::memcpy(&deadline,co.rows[0],4);assert(deadline==static_cast<float>(30.0+rr.refire_delay));
+    nw::ServerEntityVoidOutputAction cancel_action{201,202,0,0,123,1.f};
+    nw::ServerEntityNamedEventQueueResult cancel_qr{};
+    auto queue_caller=[&](unsigned caller){return queue_api->enqueue(co.root,sizeof(co.root),99,co.now,0x3000,caller,&cancel_action,&co.queue,&cancel_qr);};
+    assert(queue_caller(0x7001)&&queue_caller(0x2000)&&queue_caller(0x3000));
+    // Queue order: other caller, stale caller, matching named caller, refire.
+    assert(word(co.root,0x30)==2&&word(co.rows[1],0x30)==3&&word(co.rows[2],0x30)==4&&word(co.rows[3],0x30)==1);
+    unsigned protected_node=4;rq.protected_node=&protected_node;
+    assert(!input("CancelPending")&&rr.protected_match&&!rr.cancel_removed&&relay[0x3ad]&&co.released==0);
+    protected_node=0;
+    assert(input("CancelPending")&&rr.native_cancel&&rr.cancel_visited==4&&rr.cancel_removed==2&&!relay[0x3ad]&&co.released==2);
+    assert(word(co.root,0x30)==2&&word(co.rows[1],0x30)==3&&word(co.rows[2],0x34)==2&&!word(co.rows[2],0x30)&&rf.canceled==1);
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
     struct PipelineFixture {

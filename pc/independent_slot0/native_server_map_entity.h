@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; }
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; }
 namespace sin_port::native_map {
 inline constexpr char export_name[]="SiN_GetServerMapEntityApi";
 inline constexpr unsigned token_capacity=2048;
@@ -131,6 +131,19 @@ struct PipelineResult {
     SpawnResult spawn;
 };
 inline constexpr unsigned relay_vtable=0x224228cc,relay_extent=0x3b0,relay_output=0x394;
+// Owner supplies the existing live queue, stable registry and pool storage.
+// A nonzero protected node is currently being dispatched and cannot be freed.
+struct RelayQueueBindings {
+    void* context;
+    void* root;unsigned root_bytes,root_token;
+    const native_weapon_tables::ServerEntityNamedEventQueueBindings* queue;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    const float* now;
+    const unsigned* protected_node;
+    int (__cdecl *handle)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *intern)(void*,const char*,unsigned*) noexcept;
+    int (__cdecl *release)(void*,unsigned,void*) noexcept;
+};
 struct RelayBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -139,10 +152,12 @@ struct RelayBindings {
     // Original direct void queue route: target, activator, caller = relay;
     // input EnableRefire, action ID zero. Owner resolves handles and clock.
     int (__cdecl *refire)(void*,void*,float) noexcept;
+    const RelayQueueBindings* native_queue;
 };
 struct RelayResult {
     unsigned completed,handled,suppressed,fired,queued,removed,canceled,refire,actions;
     float maximum_delay,refire_delay;
+    unsigned native_refire,native_cancel,cancel_visited,cancel_removed,protected_match;
 };
 struct Api {
     std::uint32_t version,size;
