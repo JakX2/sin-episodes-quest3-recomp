@@ -8,7 +8,12 @@
         put(save,0,autosave_vtable);put(save,0x378,0x6003u);put(save,0x160,0x22454f00u);put(save,0x168,ptrword(save));put(save,0x20c,0xffffffffu);
         ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
         auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=relay_extent;return 1;};
-        assert(api->key_value(source,"OnTrigger","relay,Use,,0,1",&keys,&kr));
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            if(!std::strcmp(text,"relay"))*token=201;
+            else if(!std::strcmp(text,"Disable"))*token=0x223edce8u;
+            else return 0;return 1;
+        };
+        assert(api->key_value(source,"OnTrigger","relay,Disable,,0,1",&keys,&kr));
         sin_independent::EntityHandleEntry entries[4]{};
         void* actors[]{source,target,activator,save};
         for(unsigned i=0;i<4;++i){entries[i].serial=3+i;entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);}
@@ -43,7 +48,7 @@
         AutosaveBindings autosave{};autosave.deferred=&deferred;
         nw::ServerEntityAcceptInputBindings input{};input.storage=&tstorage;input.relay=&relay;input.logic_autosave=&autosave;
         input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
-            if(token==0x22422b7cu)*text="Trigger";else if(token==203)*text="Disable";else if(token==0x2240b624u)*text="Kill";else return 0;
+            if(token==0x22422b7cu)*text="Trigger";else if(token==0x223edce8u)*text="Disable";else if(token==0x2240b624u)*text="Kill";else return 0;
             *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
         };
         nw::ServerEntitySearchBindings search{};search.context=&f;
@@ -56,7 +61,7 @@
         };
         delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<Chain*>(p)->co;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
         std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=240.f;
-        co.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token==201||token==203||token==0x22422b7cu||token==0x2240b624u;return 1;};
+        co.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token==201||token==0x223edce8u||token==0x22422b7cu||token==0x2240b624u;return 1;};
         unsigned empty[5]{0,0,0,0xffffffffu,0};
         assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x3000u,0x22422b7cu,0x5002u,0x5002u,empty,sizeof(empty),0.f,51,&co.queue,&cancel_qr));
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==2&&es.native_inputs==2&&!es.foreign_inputs&&!es.rejected_inputs&&co.released==2);
