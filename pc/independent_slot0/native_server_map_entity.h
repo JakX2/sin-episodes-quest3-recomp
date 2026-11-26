@@ -447,6 +447,20 @@ struct DeferredRemovalQueue {
     unsigned capacity,count,reserved;
     bool cleanup_active,handle_access_disabled,chained_update;
 };
+struct DeletionListenerBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    void** slots;unsigned* count;unsigned capacity;
+    // Owner retains live slot storage across callbacks.
+    int (__cdecl *deleted)(void*,void* listener,void* entity) noexcept;
+};
+struct DeletionListenerResult {unsigned completed,stale,notified,unregistered;};
+struct NativeRemovalUpdateBindings {
+    const DeletionListenerBindings* listeners;
+    void* context;
+    // The remainder of CBaseEntity::UpdateOnRemove starting at 2214471f.
+    int (__cdecl *tail)(void*,void*) noexcept;
+};
 struct DeferredRemovalBindings {
     void* context;
     DeferredRemovalQueue* queue;
@@ -458,10 +472,12 @@ struct DeferredRemovalBindings {
     // Networkable +18: owner releases the object and invalidates its registry.
     // False means this networkable is still live and may be retried.
     int (__cdecl *release)(void*,void*) noexcept;
+    const NativeRemovalUpdateBindings* native_update;
 };
 struct DeferredRemovalResult {
     unsigned completed,already_marked,marked,updated,name_cleared,invalid_handle,queued,
         entered,pre_called,released,closed,remaining,discarded;
+    unsigned native_update,notified,unregistered,stale_notification;
 };
 // Original CBaseEntityList active and non-networked free chains.
 struct RegistryChain {sin_independent::EntityHandleEntry* head;sin_independent::EntityHandleEntry* tail;};
@@ -552,6 +568,7 @@ struct Api {
     int (__cdecl *cleanup_deferred)(const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
     int (__cdecl *discard_deferred)(DeferredRemovalQueue*,DeferredRemovalResult*) noexcept;
     int (__cdecl *registry_unlink_logic)(void*,unsigned,unsigned,const RegistryRemovalBindings*,RegistryRemovalResult*) noexcept;
+    int (__cdecl *notify_deleting)(unsigned,const DeletionListenerBindings*,DeletionListenerResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
