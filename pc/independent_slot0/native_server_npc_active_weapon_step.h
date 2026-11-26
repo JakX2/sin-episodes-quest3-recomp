@@ -274,6 +274,14 @@ struct ServerNpcInputSquadBindings {
     int (__cdecl *copy_leader_memory)(void*,void* joining,void* leader) noexcept;
     int (__cdecl *warning)(void*,void*,std::uint32_t) noexcept;
 };
+// Original Jetpack input leaves; navigation reset, entity removal and
+// fresh thrust-pair initialization remain explicit engine boundaries.
+struct ServerNpcInputJetBindings {
+    void* context;
+    int (__cdecl *reset_navigation)(void*,void*,std::uint32_t) noexcept;
+    int (__cdecl *remove_thrust)(void*,void*) noexcept;
+    int (__cdecl *prepare_thrust)(void*,void*) noexcept;
+};
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
     void* context;
@@ -301,9 +309,10 @@ struct ServerEntityAcceptInputBindings {
     // Optional diagnostic for original Jetpack path-control warning token.
     int (__cdecl *path_warning)(void*,void*,std::uint32_t) noexcept;
     const ServerNpcInputSquadBindings* squad;
+    const ServerNpcInputJetBindings* jet;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {

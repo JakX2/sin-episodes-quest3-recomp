@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <initializer_list>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWeaponActivityApi* __cdecl SiN_GetServerWeaponActivityApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSubclassSchedulerApi* __cdecl SiN_GetServerNpcSubclassSchedulerApi(std::uint32_t,std::uint32_t) noexcept;
@@ -901,6 +902,55 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
             if(!*text)token=0;
         }
         wr<unsigned>(a,0x8e8,token);return 1;
+    }
+    case 0x22365fe0u:{ // ChangePathTrack
+        if(!b.search||!b.jet)return -1;
+        if(input_datamap(vt)!=0x22535b28u||n<0x1094)return 0;
+        const unsigned type=rd<unsigned>(d.variant,0x10);
+        if(type!=0u&&type!=2u)return -1;
+        if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
+        auto search=*b.search;search.entities=b.entities;
+        const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+        ServerEntitySearchResult found{};
+        const unsigned name=type==2u?rd<unsigned>(d.variant,0):0u;
+        if(!search_named(nullptr,name,nullptr,nullptr,&search,&found))return 0;
+        unsigned handle=0xffffffffu;
+        if(found.entity&&!search_handle(found.entity,search,handle))return 0;
+        wr<unsigned>(a,0xff4,handle);
+        void* path=registry.Resolve(handle);
+        // The original fetches the path's handle again for each cached field.
+        for(unsigned off:{0x1088u,0x108cu}){
+            unsigned cached=0xffffffffu;
+            if(path&&!search_handle(path,search,cached))return 0;
+            wr<unsigned>(a,off,cached);
+        }
+        wr<unsigned>(a,0x1090,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(path)));
+        wr<std::uint8_t>(a,0xff8,0);++o.path_changed;
+        if(!registry.Resolve(rd<unsigned>(a,0xff4))){
+            ++o.path_missing;return !b.path_warning||b.path_warning(b.context,a,0x224984f8u);
+        }
+        if(!b.jet->reset_navigation||!b.jet->reset_navigation(b.jet->context,a,rd<unsigned>(a,0x8f8)))return 0;
+        ++o.path_reset;return 1;
+    }
+    case 0x22367470u:{ // ActivateJets -> 22366a20
+        if(input_datamap(vt)!=0x22535b28u||n<0xfec)return 0;
+        if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
+        const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+        if(registry.Resolve(rd<unsigned>(a,0xfe4))||registry.Resolve(rd<unsigned>(a,0xfe8))){++o.thrust_reused;return 1;}
+        if(!b.jet||!b.jet->prepare_thrust)return -1;
+        if(!b.jet->prepare_thrust(b.jet->context,a))return 0;
+        ++o.thrust_prepared;return 1;
+    }
+    case 0x22366110u:{ // DeactivateJets -> 22363f30; right before left
+        if(input_datamap(vt)!=0x22535b28u||n<0xfec)return 0;
+        if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
+        const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+        for(unsigned off:{0xfe8u,0xfe4u}){
+            void* thrust=registry.Resolve(rd<unsigned>(a,off));if(!thrust)continue;
+            if(!b.jet||!b.jet->remove_thrust||!b.jet->remove_thrust(b.jet->context,thrust))return 0;
+            wr<unsigned>(a,off,0xffffffffu);++o.thrust_removed;
+        }
+        return 1;
     }
     case 0x22363580u: // DisableRelativePathnode does not validate path
         if(input_datamap(vt)!=0x22535b28u)return 0;
