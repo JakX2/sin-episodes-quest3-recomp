@@ -4845,7 +4845,50 @@ int follow_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const v
     return 0; // 100001 / 100005 remain explicit original-body fallback.
 }
 
-struct AssaultEventRoute {const ServerNpcGruntAssaultEventBindings* bindings;ServerNpcGruntAssaultEventResult* result;};
+
+struct AssaultNodeRoute {const ServerNpcGruntAssaultNodeBindings* bindings;ServerNpcGruntAssaultNodeResult* result;};
+int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const AssaultNodeRoute& route) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;const auto& ab=b.events;
+    const auto& follow=ab.events.events;const auto& busy=follow.events;const auto& standoff=busy.events;const auto& cover=standoff.events;const auto& tank=cover.events;const auto& timer=tank.events;const auto& sched=timer.events;const auto& sb=sched.events.events.gate.speech.speech.sentence;
+    if(n<0xc1c||extent<0x26)return 0;
+    o.entered=1;o.previous_handle=read<unsigned>(p,0x14);o.next_handle=0xffffffffu;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto done=[&](){o.completed=1;return 1;};
+    auto resolve=[&](unsigned offset){return static_cast<void*>(registry.Resolve(read<unsigned>(p,offset)));};
+    auto span=[&](void* q,unsigned bytes){unsigned size=0;return q&&ab.extent&&ab.extent(ab.context,q,&size)&&size>=bytes;};
+    void* primary=resolve(0x14);if(!span(primary,0x39c))return 0;
+    if(read<unsigned>(primary,0x398)){
+        primary=resolve(0x14);if(!span(primary,0x39c))return 0;
+        o.name_token=read<unsigned>(primary,0x398);if(!o.name_token)o.name_token=0x223d47a8u;
+        if(!b.find_next||!b.find_next(b.context,o.name_token,&o.next_handle))return 0;o.find_called=1;
+        if(registry.Resolve(o.next_handle)){
+            o.next_valid=1;write(p,0x14,o.next_handle);o.handle_written=1;
+            write<std::uint8_t>(p,0x25,0);o.flag_cleared=1;return done();
+        }
+        primary=resolve(0x14);if(!span(primary,0x39c))return 0;
+        if(!b.missing_next||!b.missing_next(b.context,read<unsigned>(primary,0x398)))return 0;o.warning_called=1;
+        write(p,0x1c,0);o.mode_cleared=1;
+        bool monk=read<unsigned>(a,0xc)==0x223f3a78u;
+        if(!monk){
+            if(!b.class_matches||!b.class_matches(b.context,a,0x223f3a78u,&monk))return 0;o.class_called=1;
+        }
+        if(monk&&read<int>(a,0x850)==4){o.monk_exception=1;return done();}
+        if(!b.end_assault||!b.end_assault(b.context,a))return 0;o.end_called=1;return done();
+    }
+    write(p,0x1c,0);o.mode_cleared=1;
+    void* secondary=resolve(0x18);if(!span(secondary,0x3c0))return 0;
+    o.secondary_checked=1;o.reservation=read<unsigned>(secondary,0x3bc);
+    if(!registry.Resolve(o.reservation)||registry.Resolve(read<unsigned>(secondary,0x3bc))==a){
+        write(secondary,0x3bc,0xffffffffu);o.secondary_cleared=1;
+    }
+    primary=resolve(0x14);if(!span(primary,0x398))return 0;
+    if(read<unsigned>(primary,0x394)){
+        if(!ab.script||!ab.script(ab.context,a,0))return 0;o.script_called=1;
+    }
+    primary=resolve(0x14);if(!span(primary,0x3a0)||!ab.output||!ab.output(ab.context,primary,0x39c,a))return 0;
+    o.output_called=1;return done();
+}
+struct AssaultEventRoute {const ServerNpcGruntAssaultEventBindings* bindings;ServerNpcGruntAssaultEventResult* result;const AssaultNodeRoute* node=nullptr;};
 int assault_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const void* ev,float now,const AssaultEventRoute& route,const RappelScheduleRoute* schedule) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& search=b.events;const auto& busy=search.events.events;
     const auto& tank=busy.events.events.events;const auto& rb=tank.events.events;const auto& re=rb.events;const auto& event=re.events;
@@ -4950,7 +4993,8 @@ int assault_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const 
                 }
             }
         }
-        if(!b.advance_node||!b.advance_node(b.context,p))return 0;o.advance_called=1;
+        if(route.node){if(!assault_node_advance(a,n,p,extent,*route.node))return 0;}
+        else if(!b.advance_node||!b.advance_node(b.context,p))return 0;o.advance_called=1;
         return reset()?done():0;
     }
     // 100006: 220cea90 mode predicate and original secondary-node activity path.
@@ -5381,14 +5425,22 @@ int __cdecl grunt_follow_search(void* a,unsigned n,const void* ev,unsigned en,fl
     return grunt_follow_event_impl(a,n,ev,en,now,&b->events,&out->events,&search);
 }
 const ServerNpcGruntFollowSearchApi follow_search_api{1,sizeof(ServerNpcGruntFollowSearchApi),&grunt_follow_search};
-int __cdecl grunt_assault_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntAssaultEventBindings* b,ServerNpcGruntAssaultEventResult* out) noexcept{
+int grunt_assault_event_impl(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntAssaultEventBindings* b,ServerNpcGruntAssaultEventResult* out,const AssaultNodeRoute* node=nullptr) noexcept{
     if(!out)return 0;*out={};out->condition.global=out->condition.bit=out->sequence=-1;
     if(!b)return 0;
-    const AssaultEventRoute assault{b,out};const FollowSearchRoute search{&b->events,&out->events};
+    const AssaultEventRoute assault{b,out,node};const FollowSearchRoute search{&b->events,&out->events};
     out->events.roll=out->events.peer_count=out->events.peer_index=-1;
     return grunt_follow_event_impl(a,n,ev,en,now,&b->events.events,&out->events.events,&search,&assault);
 }
+int __cdecl grunt_assault_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntAssaultEventBindings* b,ServerNpcGruntAssaultEventResult* out) noexcept{return grunt_assault_event_impl(a,n,ev,en,now,b,out);}
 const ServerNpcGruntAssaultEventApi assault_event_api{1,sizeof(ServerNpcGruntAssaultEventApi),&grunt_assault_event};
+int __cdecl grunt_assault_node(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntAssaultNodeBindings* b,ServerNpcGruntAssaultNodeResult* out) noexcept{
+    if(!out)return 0;*out={};out->previous_handle=out->next_handle=0xffffffffu;
+    if(!b)return 0;
+    const AssaultNodeRoute node{b,out};
+    return grunt_assault_event_impl(a,n,ev,en,now,&b->events,&out->events,&node);
+}
+const ServerNpcGruntAssaultNodeApi assault_node_api{1,sizeof(ServerNpcGruntAssaultNodeApi),&grunt_assault_node};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -7245,4 +7297,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultEventApi=_SiN_GetServerNpcGruntAssaultEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultEventApi* __cdecl SiN_GetServerNpcGruntAssaultEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultEventApi)?&assault_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultNodeApi=_SiN_GetServerNpcGruntAssaultNodeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultNodeApi* __cdecl SiN_GetServerNpcGruntAssaultNodeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultNodeApi)?&assault_node_api:nullptr;
 }

@@ -2572,4 +2572,24 @@ struct ServerNpcGruntAssaultEventApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntAssaultEventBindings*,ServerNpcGruntAssaultEventResult*) noexcept;
 };
 using GetServerNpcGruntAssaultEventApi=const ServerNpcGruntAssaultEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_assault_node_export[]="SiN_GetServerNpcGruntAssaultNodeApi";
+struct ServerNpcGruntAssaultNodeBindings {
+    ServerNpcGruntAssaultEventBindings events;
+    void* context;
+    // 221619e0 + RTTI cast: return only the handle of a typed assault node or invalid sentinel.
+    int (__cdecl *find_next)(void*,std::uint32_t,std::uint32_t*) noexcept;
+    int (__cdecl *missing_next)(void*,std::uint32_t) noexcept;
+    int (__cdecl *class_matches)(void*,void*,std::uint32_t,bool*) noexcept; // 221387f0
+    int (__cdecl *end_assault)(void*,void*) noexcept; // 2204f2d0
+};
+struct ServerNpcGruntAssaultNodeResult {
+    ServerNpcGruntAssaultEventResult events;
+    std::uint32_t previous_handle,next_handle,name_token,reservation;
+    unsigned entered,completed,find_called,next_valid,handle_written,flag_cleared,warning_called,mode_cleared,class_called,monk_exception,end_called,secondary_checked,secondary_cleared,script_called,output_called;
+};
+struct ServerNpcGruntAssaultNodeApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntAssaultNodeBindings*,ServerNpcGruntAssaultNodeResult*) noexcept;
+};
+using GetServerNpcGruntAssaultNodeApi=const ServerNpcGruntAssaultNodeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
