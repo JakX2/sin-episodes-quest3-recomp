@@ -191,7 +191,7 @@ struct ServerNpcWakeTransitionBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
     int (__cdecl *refresh_entity)(void*,void*) noexcept; // optional +58 override; native authenticated 2213c980 when null
-    int (__cdecl *output)(void*,void*,unsigned) noexcept; // 22156900, +bc8
+    int (__cdecl *output)(void*,void*,unsigned) noexcept; // 22156900, +bc8; optional only for unconnected output
     // Optional filtered squad iterator override 220a9300/220a93c0. Cursor starts at -1; native Grunt path when null.
     int (__cdecl *squad_next)(void*,std::uint32_t,int*,void**) noexcept;
     int (__cdecl *external_wake)(void*,void*,bool) noexcept;

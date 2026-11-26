@@ -463,7 +463,13 @@ bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const 
         wr<unsigned>(a,0x78,flags&~0x20u);++o.flags_changed;
     }
     if(!(b.refresh_entity?b.refresh_entity(b.context,a):wake_refresh_entity(a,b)))return false;++o.refreshed;
-    if(output){if(!b.output||!b.output(b.context,a,0xbc8u))return false;++o.outputs;}
+    if(output){
+        // 22156900 wraps a void variant and 22156680 returns immediately
+        // when the output action-list head (+14) is null.
+        if(b.output){if(!b.output(b.context,a,0xbc8u))return false;}
+        else if(rd<unsigned>(a,0xbdc))return false;
+        ++o.outputs;
+    }
     if(!rd<std::uint8_t>(a,0x870)||!rd<unsigned>(a,0x9c4))return true;
     int cursor=-1;
     for(unsigned i=0;i<17;++i){
