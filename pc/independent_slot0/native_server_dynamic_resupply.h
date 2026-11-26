@@ -358,7 +358,43 @@ struct AntigenResult {
     double distance_squared;
     PlayerHealthResult health;
 };
-inline constexpr unsigned antigen_canister_vtable=0x2246f094u;
+inline constexpr unsigned antigen_canister_vtable=0x2246f094u,antigen_canister_extent=0x6a0u,
+    antigen_canister_idle=0x222ff740u;
+struct CanisterBindings {
+    void* context;
+    int (__cdecl *base_construct)(void*,void*) noexcept; // CPhysicsProp base, 221944b0
+    int (__cdecl *spawn_setup)(void*,void*) noexcept; // generic CPropContainer spawn
+    int (__cdecl *pose)(void*,void*,const char*,float) noexcept;
+    int (__cdecl *advance)(void*,void*) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+};
+struct CanisterResult {
+    unsigned constructed,base_spawn,amount_written,pose_called,think_installed,advanced,random_called,clock_read,scheduled,completed;
+    float amount,fraction,random,next_time;
+};
+struct AntigenFactorySpec {const char* classname;unsigned object,vtable,create,extent;};
+inline constexpr AntigenFactorySpec antigen_factories[]{
+    {"item_antigen_dispenser",0x225285dcu,0x2246ad50u,0x222f6f80u,antigen_extent},
+    {"prop_antigen_explosive_barrel",0x2252a0c0u,0x2246ec50u,0x223007d0u,antigen_canister_extent},
+    {"prop_antigen_canister",0x2252a0c4u,0x2246ec50u,0x223007d0u,antigen_canister_extent}
+};
+struct AntigenFactoryBindings {
+    void* context;
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *initialize)(void*,void*,const char*) noexcept;
+    int (__cdecl *release_networkable)(void*,void*) noexcept;
+    const AntigenBindings* dispenser;
+    const CanisterBindings* canister;
+};
+struct AntigenFactoryResult {
+    void* actor;
+    void* networkable;
+    unsigned type,bytes,allocation_called,allocated,constructed,initialized,released,completed;
+    AntigenResult dispenser;
+    CanisterResult canister;
+};
 struct AntigenExchangeBindings {
     AntigenBindings control;
     void* context;
@@ -376,6 +412,8 @@ struct AntigenExchangeBindings {
     int (__cdecl *container_pose)(void*,void*,const char*,float) noexcept;
     int (__cdecl *entity_message)(void*,void*,int) noexcept;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const AntigenFactoryBindings* native_factory;
+    const CanisterBindings* native_canister;
 };
 struct AntigenExchangeResult {
     void* container;
@@ -384,6 +422,8 @@ struct AntigenExchangeResult {
         output_called,output_actions,completed;
     float amount,reject_time,container_fraction;
     AntigenResult control;
+    AntigenFactoryResult factory;
+    CanisterResult canister_spawn,canister_amount;
 };
 inline constexpr unsigned antigen_animation_token=0x222f6aa0u,antigen_eject_token=0x222f7330u;
 struct AntigenInteractionBindings {
@@ -455,6 +495,12 @@ struct Api {
     int (__cdecl *antigen_spawn)(void*,unsigned,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
     int (__cdecl *antigen_animation_think)(void*,unsigned,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
     int (__cdecl *antigen_button_event)(void*,unsigned,const char*,int,const char*,const AntigenInteractionBindings*,AntigenInteractionResult*) noexcept;
+    int (__cdecl *canister_construct)(void*,unsigned,const CanisterBindings*,CanisterResult*) noexcept;
+    int (__cdecl *canister_set_amount)(void*,unsigned,float,const CanisterBindings*,CanisterResult*) noexcept;
+    int (__cdecl *canister_spawn)(void*,unsigned,const CanisterBindings*,CanisterResult*) noexcept;
+    int (__cdecl *canister_idle)(void*,unsigned,const CanisterBindings*,CanisterResult*) noexcept;
+    int (__cdecl *antigen_factory_create)(const char*,const AntigenFactoryBindings*,AntigenFactoryResult*) noexcept;
+    int (__cdecl *antigen_factory_destroy)(void*,unsigned,void*,const AntigenFactoryBindings*,AntigenFactoryResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

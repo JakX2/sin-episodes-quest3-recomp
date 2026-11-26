@@ -1018,5 +1018,63 @@ int main(int argc,char** argv){
     assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,244,.125f,&afb,&afr)&&afr.completed&&afr.token==antigen_eject_token&&afr.exchange.created&&afr.exchange.think_cleared&&!afr.rescheduled&&afr.closed);
     assert(!antigen_frame->run(af.actor,sizeof(af.actor),0xe003,244,.125f,&afb,&afr));
     assert(aff.records==5&&aff.enters==5&&aff.leaves==5);
+    // Factory aliases and canister-specific constructor/amount/idle paths.
+    struct AntigenFactoryFixture {
+        ExchangeFixture* ex;
+        alignas(4) unsigned char dispenser[antigen_extent]{};
+        unsigned allocations=0,initializes=0,constructs=0,releases=0,spawns=0,poses=0,advances=0,schedules=0;
+        bool short_allocation=false;
+        float fraction=0,next=0;
+    } affactory{&ex};
+    CanisterBindings canister_bind{};
+    canister_bind.context=&affactory;
+    canister_bind.base_construct=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AntigenFactoryFixture*>(p);assert(a==q.ex->canister);++q.constructs;return 1;};
+    canister_bind.spawn_setup=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AntigenFactoryFixture*>(p);assert(a==q.ex->canister);++q.spawns;return 1;};
+    canister_bind.pose=[](void* p,void* a,const char* name,float fraction) noexcept ->int{auto& q=*static_cast<AntigenFactoryFixture*>(p);assert(a==q.ex->canister&&!std::strcmp(name,"percentFull"));++q.poses;q.fraction=fraction;return 1;};
+    canister_bind.advance=[](void* p,void*) noexcept ->int{++static_cast<AntigenFactoryFixture*>(p)->advances;return 1;};
+    canister_bind.clock=[](void* p,float* time) noexcept ->int{*time=static_cast<AntigenFactoryFixture*>(p)->ex->a->now;return 1;};
+    canister_bind.random_float=[](void*,float lo,float hi,float* draw) noexcept ->int{assert(lo==.5f&&hi==1.5f);*draw=.75f;return 1;};
+    canister_bind.schedule=[](void* p,void* a,float time) noexcept ->int{auto& q=*static_cast<AntigenFactoryFixture*>(p);assert(a==q.ex->canister);++q.schedules;q.next=time;return 1;};
+    AntigenFactoryBindings antigen_factory{};
+    antigen_factory.context=&affactory;antigen_factory.dispenser=&ab;antigen_factory.canister=&canister_bind;
+    antigen_factory.allocate=[](void* p,unsigned extent,void** a,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<AntigenFactoryFixture*>(p);++q.allocations;assert(extent==antigen_extent||extent==antigen_canister_extent);
+        *a=extent==antigen_extent?q.dispenser:q.ex->canister;std::memset(*a,0,extent);*bytes=q.short_allocation?extent-1:extent;return 1;
+    };
+    antigen_factory.initialize=[](void* p,void* a,const char* name) noexcept ->int{
+        auto& q=*static_cast<AntigenFactoryFixture*>(p);++q.initializes;
+        if(a==q.dispenser){assert(!std::strcmp(name,"item_antigen_dispenser")&&EvalFixture::rd(a,0)==antigen_vtable);}
+        else{assert(a==q.ex->canister&&(!std::strcmp(name,"prop_antigen_canister")||!std::strcmp(name,"prop_antigen_explosive_barrel"))&&EvalFixture::rd(a,0)==antigen_canister_vtable);}
+        return 1;
+    };
+    antigen_factory.release_networkable=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AntigenFactoryFixture*>(p);assert(a==q.dispenser+0x160||a==q.ex->canister+0x160);++q.releases;return 1;};
+    AntigenFactoryResult afres{};
+    assert(!api->antigen_factory_create("prop_dynamic",&antigen_factory,&afres)&&!afres.allocation_called);
+    affactory.short_allocation=true;
+    assert(!api->antigen_factory_create("prop_antigen_canister",&antigen_factory,&afres)&&afres.allocated&&!afres.constructed);
+    affactory.short_allocation=false;
+    assert(api->antigen_factory_create("item_antigen_dispenser",&antigen_factory,&afres)&&afres.completed&&afres.type==0&&afres.dispenser.constructed&&afres.networkable==affactory.dispenser+0x160);
+    assert(api->antigen_factory_destroy(affactory.dispenser,sizeof(affactory.dispenser),afres.networkable,&antigen_factory,&afres)&&afres.released);
+    for(unsigned alias=1;alias<=2;++alias){
+        assert(api->antigen_factory_create(antigen_factories[alias].classname,&antigen_factory,&afres)&&afres.completed&&afres.type==alias&&afres.canister.constructed);
+        assert(EvalFixture::rd(ex.canister,0x62c)==9&&EvalFixture::rd(ex.canister,0x630)==0x2246a8f4&&EvalFixture::rd(ex.canister,0x678)==0xffffffffu&&EvalFixture::rd(ex.canister,0x69c)==0xffffffffu);
+        assert(EvalFixture::rd(ex.canister,0x494)==0x2246f01c&&EvalFixture::rd(ex.canister,0x498)==0x2246eff4);
+        assert(api->antigen_factory_destroy(ex.canister,sizeof(ex.canister),ex.canister+0x160,&antigen_factory,&afres)&&afres.released);
+    }
+    CanisterResult canres{};af.now=40.f;
+    assert(api->canister_set_amount(ex.canister,sizeof(ex.canister),150.f,&canister_bind,&canres)&&canres.amount_written&&canres.fraction>1.f);
+    assert(api->canister_spawn(ex.canister,sizeof(ex.canister),&canister_bind,&canres)&&canres.completed&&canres.base_spawn&&canres.think_installed&&canres.next_time==40.25f);
+    af.now=40.25f;
+    assert(api->canister_idle(ex.canister,sizeof(ex.canister),&canister_bind,&canres)&&canres.advanced&&canres.random_called&&canres.next_time==42.f);
+    // Ejection now uses real factory and native canister spawn/amount,
+    // with no hosted create, spawn, or amount-pose adapter.
+    auto actual_exchange=xb;actual_exchange.create=nullptr;actual_exchange.spawn=nullptr;actual_exchange.container_pose=nullptr;
+    actual_exchange.native_factory=&antigen_factory;actual_exchange.native_canister=&canister_bind;
+    assert(api->antigen_construct(af.actor,sizeof(af.actor),&ab,&agr));
+    EvalFixture::f(af.actor,0x49c,42.f);af.now=50.f;
+    assert(api->antigen_eject(af.actor,sizeof(af.actor),&actual_exchange,&xr)&&xr.completed&&xr.factory.initialized&&xr.factory.type==1&&xr.canister_spawn.think_installed&&xr.canister_amount.amount_written&&xr.amount==42.f);
+    assert(EvalFixture::rd(ex.canister,8)==antigen_canister_idle&&std::abs(affactory.fraction-.42f)<.00001f&&affactory.next==50.25f);
+    af.now=51.f;
+    assert(api->antigen_insert(af.actor,sizeof(af.actor),ex.canister,sizeof(ex.canister),&actual_exchange,&xr)&&xr.completed&&xr.cast_native&&xr.transferred&&xr.amount==42.f);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
