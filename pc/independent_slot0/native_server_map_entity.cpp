@@ -2046,7 +2046,7 @@ int destroy_entity_members(void* a,unsigned n,unsigned flags,const LogicDestroyB
         case multicompare_vtable:first=0x394;count=2;extent=multicompare_extent;break;
         case remap_vtable:first=0x3a4;count=1;extent=remap_extent;break;
         case colorblend_vtable:first=0x3a4;count=1;extent=colorblend_extent;break;
-        default:return 0;
+        default:extent=campaign_filter_extent(vt);if(!extent)return 0;first=0x398;count=2;break;
     }
     if(n<extent||(menu&&(!b->unregister_menu||read_field<unsigned>(a,0x394)!=menu_listener_vtable))||
        (vt==navigation_vtable&&read_field<unsigned>(a,0x394)!=navigation_listener_vtable))return 0;
@@ -3340,4 +3340,18 @@ extern "C" int __cdecl SiN_CreateCampaignFilterForMap(void* context,const char* 
 extern "C" int __cdecl SiN_CampaignFilterTestActivator(void* actor,unsigned bytes,void* activator,
     const sin_port::native_map::CampaignFilterInputBindings* b,sin_port::native_map::CampaignFilterInputResult* o) noexcept {
     return sin_port::native_map::campaign_filter_test_activator(actor,bytes,activator,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_DestroyCampaignFilterEntity=_SiN_DestroyCampaignFilterEntity")
+extern "C" int __cdecl SiN_DestroyCampaignFilterEntity(void* actor,unsigned bytes,void* networkable,
+    const sin_port::native_map::RelayFactoryBindings* owner) noexcept {
+    using namespace sin_port::native_map;
+    if(!networkable)return 1;
+    unsigned marker=0;
+    if(!owner||!owner->release_networkable||bytes<4||!SinReadCampaignTouchMarkerInternal(actor,&marker))return 0;
+    const unsigned extent=campaign_filter_extent(marker);
+    if(!extent||bytes<extent||!SinCampaignStorageReadableInternal(actor,extent)||
+        networkable!=static_cast<unsigned char*>(actor)+0x160)return 0;
+    // Factory Destroy calls networkable +18; no actor read afterwards.
+    return owner->release_networkable(owner->context,networkable);
 }
