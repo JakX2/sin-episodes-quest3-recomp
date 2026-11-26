@@ -62,6 +62,8 @@ extern "C" int __cdecl SiN_StartCampaignTriggerOutputWithFilter(void*,unsigned,v
     sin_port::native_map::CampaignStartTouchResult*,const sin_port::native_map::CampaignFilterBindings*,sin_port::native_map::CampaignFilterResult*) noexcept;
 int __cdecl SinServerActivateWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::Bindings*,
     sin_port::native_level::Result*,void*) noexcept;
+int __cdecl SinServerActivateWithCampaignFiltersInternal(sin_port::native_level::State*,const sin_port::native_level::Bindings*,
+    sin_port::native_level::Result*,void*,const sin_port::native_map::CampaignFilterActivationBindings*,sin_port::native_level::CampaignFilterActivationSummary*) noexcept;
 int __cdecl SinTouchCampaignTriggerFromStartupInternal(void*,unsigned,void*,const sin_port::native_map::CampaignTriggerBindings*,
     void*,sin_port::native_map::CampaignTriggerResult*,int*,void*,void*) noexcept;
 extern "C" const sin_port::native_server_startup::Api* __cdecl SiN_GetServerStartupApi(std::uint32_t,std::uint32_t) noexcept;
@@ -1235,6 +1237,8 @@ struct LevelInvocation {
     sin_port::native_level::Result* result;
     bool activating,entered=false;int success=0;
     void* event_manager=nullptr;
+    const sin_port::native_map::CampaignFilterActivationBindings* filters=nullptr;
+    sin_port::native_level::CampaignFilterActivationSummary* filter_summary=nullptr;
 };
 static thread_local LevelInvocation* g_level_invocation=nullptr;
 #endif
@@ -1348,7 +1352,9 @@ public:
             if(!invocation->entered&&invocation->activating){
                 invocation->entered=true;
                 const auto* api=SiN_GetServerLevelApi(1,sizeof(sin_port::native_level::Api));
-                if(invocation->event_manager)
+                if(invocation->event_manager&&invocation->filters)
+                    invocation->success=SinServerActivateWithCampaignFiltersInternal(invocation->state,invocation->bindings,invocation->result,invocation->event_manager,invocation->filters,invocation->filter_summary);
+                else if(invocation->event_manager)
                     invocation->success=SinServerActivateWithEventsInternal(invocation->state,invocation->bindings,invocation->result,invocation->event_manager);
                 else if(api)invocation->success=api->server_activate(invocation->state,invocation->bindings,invocation->result);
                 return;
@@ -1601,6 +1607,22 @@ extern "C" int __cdecl SiN_InvokeServerActivateWithEngineEvents(
     if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
     if(!state||!bindings||!eventSessionReady(session)||state->startup!=session->startup)return 0;
     LevelInvocation invocation{state,bindings,out,true};invocation.event_manager=session->manager;g_level_invocation=&invocation;
+    using Slot=void (__thiscall *)(void*,edict_t*,int,int) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    reinterpret_cast<Slot>(table[3])(&instance,static_cast<edict_t*>(edicts),count,clients);
+    g_level_invocation=nullptr;return invocation.entered&&invocation.success;
+}
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerActivateWithCampaignFilters=_SiN_InvokeServerActivateWithCampaignFilters")
+extern "C" int __cdecl SiN_InvokeServerActivateWithCampaignFilters(
+    sin_port::native_level::State* state,void* edicts,int count,int clients,
+    const sin_port::native_level::Bindings* bindings,sin_port::native_level::Result* out,
+    const sin_port::native_server_startup::EngineEventSession* session,
+    const sin_port::native_map::CampaignFilterActivationBindings* filters,sin_port::native_level::CampaignFilterActivationSummary* summary) noexcept {
+    if(summary)*summary={};
+    if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!bindings||!filters||!summary||!eventSessionReady(session)||state->startup!=session->startup)return 0;
+    LevelInvocation invocation{state,bindings,out,true};invocation.event_manager=session->manager;
+    invocation.filters=filters;invocation.filter_summary=summary;g_level_invocation=&invocation;
     using Slot=void (__thiscall *)(void*,edict_t*,int,int) noexcept;
     auto** table=*reinterpret_cast<void***>(&instance);
     reinterpret_cast<Slot>(table[3])(&instance,static_cast<edict_t*>(edicts),count,clients);
