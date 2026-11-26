@@ -2148,4 +2148,20 @@ struct ServerNpcGruntLinkedActivityApi {
     int (__cdecl *run)(void*,unsigned,int,const ServerNpcGruntActivityFullBindings*,ServerNpcGruntActivityFullResult*) noexcept;
 };
 using GetServerNpcGruntLinkedActivityApi=const ServerNpcGruntLinkedActivityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_ragdoll_life_export[]="SiN_GetServerNpcGruntRagdollLifeApi";
+struct ServerNpcGruntRagdollLifeBindings {
+    ServerNpcGruntEliteLifeBindings life;
+    ServerNpcGruntRagdollRouteBindings ragdoll;
+};
+struct ServerNpcGruntRagdollLifeResult {
+    ServerNpcGruntEliteLifeResult life;
+    ServerNpcGruntRagdollRouteResult ragdoll;
+    unsigned ragdoll_entered;
+};
+struct ServerNpcGruntRagdollLifeApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntRagdollLifeBindings*,ServerNpcGruntRagdollLifeResult*) noexcept;
+};
+using GetServerNpcGruntRagdollLifeApi=const ServerNpcGruntRagdollLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

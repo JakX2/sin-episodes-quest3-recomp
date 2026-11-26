@@ -4440,7 +4440,9 @@ int __cdecl jetpack_death_mode(void* a,unsigned n,void* damage,unsigned dn,const
     out->tail_required=out->branch!=0x223669fb;
     out->completed=1;return 1;
 }
-struct JetpackBranchRoute {const ServerNpcJetpackDeathBranchBindings* bindings;ServerNpcJetpackDeathBranchResult* result;};
+int __cdecl grunt_ragdoll_route(void*,unsigned,const void*,unsigned,const float*,const ServerNpcGruntRagdollRouteBindings*,ServerNpcGruntRagdollRouteResult*) noexcept;
+struct RagdollLifeRoute {const ServerNpcGruntRagdollRouteBindings* bindings;ServerNpcGruntRagdollRouteResult* result;unsigned* entered;};
+struct JetpackBranchRoute {const ServerNpcJetpackDeathBranchBindings* bindings;ServerNpcJetpackDeathBranchResult* result;const RagdollLifeRoute* ragdoll=nullptr;};
 struct JetpackDeathRoute {const ServerNpcJetpackDeathModeBindings* bindings;ServerNpcJetpackDeathModeResult* result;const JetpackBranchRoute* branch=nullptr;};
 int __cdecl grunt_ground_death(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntGroundDeathBindings*,ServerNpcGruntGroundDeathResult*) noexcept;
 struct EliteDeathRoute {const ServerNpcGruntEliteDeathBindings* bindings;ServerNpcGruntEliteDeathResult* result;};
@@ -4485,7 +4487,15 @@ int jetpack_branch(void* a,unsigned n,void* damage,unsigned dn,float now,unsigne
             write(a,0x8c,1);out.life_changed=1;
         }
         for(unsigned i=0;i<3;++i)out.force[i]=read<float>(damage,4*i);
-        if(!finite_vec(out.force)||!b.ragdoll||!b.ragdoll(b.context,a,damage,out.force))return 0;
+        if(!finite_vec(out.force))return 0;
+        if(branch.ragdoll){
+            auto bound=*branch.ragdoll->bindings;
+            bound.entities.entries=sb.entries;bound.entities.count=sb.count;bound.entities.speech.original_vtable=sb.speech.original_vtable;
+            *branch.ragdoll->entered=1;
+            if(!grunt_ragdoll_route(a,n,damage,dn,out.force,&bound,branch.ragdoll->result))return 0;
+            // Original call at 223668ac ignores AL; a completed false native result
+            // still proceeds to timer and think installation.
+        }else if(!b.ragdoll||!b.ragdoll(b.context,a,damage,out.force))return 0;
         out.ragdoll=1;
         if(!b.time||!b.time(b.context,&out.stamp)||!std::isfinite(out.stamp))return 0;
         write(a,0xffc,out.stamp);
@@ -4816,7 +4826,7 @@ int __cdecl jetpack_death_think(void* a,unsigned n,std::uint32_t handle,const Se
     out->scheduled_called=out->completed=1;return 1;
 }
 const ServerNpcJetpackDeathThinkApi jetpack_death_think_api{1,sizeof(ServerNpcJetpackDeathThinkApi),&jetpack_death_think};
-int __cdecl elite_life(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntEliteLifeBindings* b,ServerNpcGruntEliteLifeResult* out) noexcept{
+int elite_life_impl(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntEliteLifeBindings* b,ServerNpcGruntEliteLifeResult* out,const RagdollLifeRoute* ragdoll=nullptr) noexcept{
     if(!out)return 0;out->elite={};out->combat.branch={};
     auto& c=out->combat.combat;
     c.ground.completed=c.ground.base_called=0;c.ground_called=0;c.jet={};c.jet.sample=c.jet.initial_mode=c.jet.final_mode=-1;
@@ -4825,12 +4835,22 @@ int __cdecl elite_life(void* a,unsigned n,std::uint32_t handle,const void* damag
     if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries)||
         sin_independent::EntityHandleView(sb.entries,sb.count).Resolve(handle)!=a)return 0;
     const EliteDeathRoute elite{&b->elite,&out->elite};
-    const JetpackBranchRoute branch{&b->combat.branch,&out->combat.branch};
+    const JetpackBranchRoute branch{&b->combat.branch,&out->combat.branch,ragdoll};
     const JetpackDeathRoute jet{&b->combat.combat.jet,&c.jet,&branch};
     const GroundDeathRoute ground{&b->combat.combat.ground,&c.ground,handle,&c.ground_called,&elite};
     return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->combat.combat.life,&c.life,&jet,&ground);
 }
+int __cdecl elite_life(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntEliteLifeBindings* b,ServerNpcGruntEliteLifeResult* out) noexcept{
+    return elite_life_impl(a,n,handle,damage,dn,now,b,out);
+}
 const ServerNpcGruntEliteLifeApi elite_life_api{1,sizeof(ServerNpcGruntEliteLifeApi),&elite_post,&elite_life};
+int __cdecl ragdoll_life(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntRagdollLifeBindings* b,ServerNpcGruntRagdollLifeResult* out) noexcept{
+    if(!out)return 0;out->ragdoll={};out->ragdoll_entered=0;
+    if(!b)return 0;
+    const RagdollLifeRoute route{&b->ragdoll,&out->ragdoll,&out->ragdoll_entered};
+    return elite_life_impl(a,n,handle,damage,dn,now,&b->life,&out->life,&route);
+}
+const ServerNpcGruntRagdollLifeApi ragdoll_life_api{1,sizeof(ServerNpcGruntRagdollLifeApi),&ragdoll_life};
 
 int linked_activity_route(void* a,void* link,const ServerNpcGruntSentenceBindings& entities,const ServerNpcGruntLinkedActivityBindings& b,ServerNpcGruntLinkedActivityResult& out) noexcept{
     out={};out.native_result=0x42;out.lookup=-1;
@@ -5634,4 +5654,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntLinkedActivityApi=_SiN_GetServerNpcGruntLinkedActivityApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLinkedActivityApi* __cdecl SiN_GetServerNpcGruntLinkedActivityApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntLinkedActivityApi)?&linked_activity_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRagdollLifeApi=_SiN_GetServerNpcGruntRagdollLifeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRagdollLifeApi* __cdecl SiN_GetServerNpcGruntRagdollLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRagdollLifeApi)?&ragdoll_life_api:nullptr;
 }

@@ -2796,6 +2796,25 @@ int main(int argc,char** argv){
         q.a[0x1f0]=1;f.put(q.damage,0x38,0x400000u);f.put(q.damage,0x28,0xffffffffu);f.put(q.damage,0,3.f);
         static ServerNpcJetpackDeathBranchesResult o;
         assert(api->run(q.a,sizeof(q.a),0x1001u,q.damage,sizeof(q.damage),40,&b,&o)&&o.combat.life.completed&&o.combat.jet.final_mode==4&&o.combat.jet.tail_called&&o.branch.completed&&o.branch.cleanup&&o.branch.removed==1&&o.branch.cleared==1&&o.branch.life_changed&&o.branch.local_dirty==1&&o.branch.installed&&o.branch.scheduled_called&&q.step==6&&q.clocks==2&&JetTailFixture::rd(q.a,0xfe8)==0xffffffffu&&JetTailFixture::rd(q.a,0xfe4)==0x9002u);
+
+        auto full_get=reinterpret_cast<GetServerNpcGruntRagdollLifeApi>(GetProcAddress(s,server_npc_grunt_ragdoll_life_export));
+        assert(full_get&&!GetProcAddress(c,server_npc_grunt_ragdoll_life_export)&&!full_get(0,sizeof(ServerNpcGruntRagdollLifeApi))&&!full_get(1,0));
+        const auto* full_api=full_get(1,sizeof(ServerNpcGruntRagdollLifeApi));assert(full_api);
+        static ServerNpcGruntRagdollLifeBindings full;
+        full.life.combat=b;full.life.combat.branch.ragdoll=nullptr; // no whole-function fallback
+        full.ragdoll.context=&q;
+        full.ragdoll.entities.speech.original_vtable=0; // must use accepted life identity
+        full.ragdoll.base=[](void* p,void* a,const void* damage,const float* force,bool* value) noexcept -> int{
+            auto& q=JetTailFixture::self(p);assert(a==q.a&&damage!=q.damage&&force[0]==3&&JetTailFixture::rd(a,0x8c)==1&&q.step==3);
+            ++q.step;*value=false;return 1;
+        };
+        std::memset(q.a,0,sizeof(q.a));std::memset(q.shared,0,sizeof(q.shared));
+        q.step=q.removed=q.clocks=0;
+        f.put(q.a,0x94,2);f.put(q.a,0x9c,0);f.put(q.a,0xe8,0xffffffffu);f.put(q.a,0xfe8,0x2002u);f.put(q.a,0xfe4,0x9002u);q.a[0x1f0]=1;
+        static ServerNpcGruntRagdollLifeResult full_out;
+        assert(full_api->run(q.a,sizeof(q.a),0x1001u,q.damage,sizeof(q.damage),40,&full,&full_out)&&full_out.ragdoll_entered&&full_out.ragdoll.completed&&full_out.ragdoll.jet&&!full_out.ragdoll.source_valid&&full_out.ragdoll.base_called&&!full_out.ragdoll.native_result&&full_out.life.combat.branch.completed&&full_out.life.combat.branch.ragdoll&&full_out.life.combat.branch.scheduled_called&&q.step==6&&q.clocks==2);
+        // Admission failure must not call the native or legacy ragdoll path.
+        assert(!full_api->run(q.a,sizeof(q.a),0x9001u,q.damage,sizeof(q.damage),40,&full,&full_out)&&!full_out.ragdoll_entered);
         // Immediate mode 5 invokes common death after the effect scope; no hosted branch callback.
         q.sample=100;q.step=0;q.removed=0;q.a[0xbf]=8;q.a[0xc44]=1;f.put(q.a,0x8c,0);f.put(q.a,0x1028,0x9002u);
         j.effect_begin=[](void* p,void* a) noexcept -> int{auto& q=JetTailFixture::self(p);assert(a==q.a&&q.step==0&&q.removed==1&&JetTailFixture::rd(a,0x1028)==0xffffffffu);++q.step;return 1;};
