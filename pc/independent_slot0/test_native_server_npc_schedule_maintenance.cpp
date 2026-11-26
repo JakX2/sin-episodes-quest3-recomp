@@ -176,5 +176,45 @@ int main(int argc,char** argv){
         setup();f.condition(0x3f);
         assert(gsched->run(f.actor,sizeof(f.actor),10,&combined,&gout2)&&!gout2.gather_calls);
     }
+    {
+        const auto ng=reinterpret_cast<GetServerNpcNativeRequestSchedulerApi>(GetProcAddress(s,server_npc_native_request_scheduler_export));
+        assert(ng&&!GetProcAddress(c,server_npc_native_request_scheduler_export)&&!ng(0,sizeof(ServerNpcNativeRequestSchedulerApi))&&!ng(1,0));
+        const auto* native=ng(1,sizeof(ServerNpcNativeRequestSchedulerApi));assert(native);
+        ServerNpcGruntAssaultScheduleBindings schedule{};
+        schedule.admission.actor_token=0x10000u;
+        ServerNpcGruntAssaultActivationBindings activation{};activation.schedule=&schedule;
+        ServerNpcGruntAssaultArbitrationBindings arbitration{};arbitration.activation=&activation;
+        arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=18;return 1;};
+        arbitration.shared_translate=[](void*,void*,int id,int* result) noexcept -> int{*result=id;return 1;};
+        ServerNpcGruntScheduleAcquireBindings ac{};ac.arbitration=&arbitration;
+        ServerNpcGruntScheduleRequestBindings request{};request.acquisition=&ac;
+        ServerNpcGruntSelectorTailBindings tail{};tail.request=&request;
+        ServerNpcGruntCombatSelectorBindings combat{};combat.tail=&tail;
+        ServerNpcGruntSpecialCombatBindings special{};special.combat=&combat;
+        ServerNpcGruntScheduleSceneServices scene{};
+        ServerNpcGruntScheduleLineServices line{};line.scene=&scene;
+        ServerNpcNativeRequestSchedulerBindings nb{};nb.scheduler=cb;nb.scheduler.original_vtable=0x2249aaa4;nb.selector=&special;nb.line=&line;
+        nb.scheduler.maintenance.selection.head=1;nb.scheduler.maintenance.selection.translate=nullptr;nb.scheduler.maintenance.selection.fail_select=nullptr;
+        nb.scheduler.maintenance.selection.special_select=nullptr;nb.scheduler.maintenance.selection.grunt.parent=nullptr;
+        static ServerNpcNativeRequestSchedulerResult nr{};
+        f.put(f.rows[0],0,global+82);f.put(f.rows[0],4,3u);f.put(f.rows[0],8,2);
+        f.put(f.rows[1],0,global+94);f.put(f.rows[1],4,4u);f.put(f.rows[1],8,1);
+        f.put(f.tasks[0],0,147);f.put(f.tasks[0],8,158);f.put(f.tasks[1],0,158);
+        reset();f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.actor[0xca0]=1;f.yield=true;
+        assert(native->run(f.actor,sizeof(f.actor),10,&nb,&nr,nullptr,nullptr));
+        assert(nr.requests==1&&!nr.failure_requests&&nr.request.completed&&nr.request.requested==18&&nr.request.acquisition.translated==82&&nr.request.acquisition.translated_native);
+        assert(nr.scheduler.maintenance.selection.token==1&&nr.scheduler.maintenance.state.schedule==1&&nr.scheduler.maintenance.started==1&&nr.scheduler.maintenance.runs==1&&nr.scheduler.grunt.lifecycle.completed&&!f.actor[0xca0]);
+        assert(f.get<int>(0x79c)==global+18&&f.get<int>(0x7a4)==4);
+        f.trace.clear();assert(native->run(f.actor,sizeof(f.actor),10,&nb,&nr,nullptr,nullptr)&&nr.requests==0&&nr.scheduler.maintenance.advanced==1&&nr.scheduler.grunt.lifecycle.completed&&nr.scheduler.maintenance.state.index==1);
+        // Original failure path uses +7bc and native translation, not the old fail_select callback.
+        reset();f.put(f.actor,0x798,1u);f.put(f.actor,0x7a4,1);f.put(f.actor,0x7b0,7);f.put(f.actor,0x7bc,26);f.condition(33);f.yield=true;
+        assert(native->run(f.actor,sizeof(f.actor),10,&nb,&nr,nullptr,nullptr)&&nr.requests==1&&nr.failure_requests==1&&nr.request.current_schedule==82&&nr.request.current_task==147&&nr.request.failure_reason==7);
+        assert(nr.request.requested==26&&nr.request.acquisition.translated==94&&nr.scheduler.maintenance.state.schedule==2&&f.get<int>(0x79c)==global+94&&nr.scheduler.grunt.lifecycle.completed);
+        // Condition63 keeps the original forced71 path and bypasses shared selection.
+        reset();f.condition(63);f.yield=true;f.put(f.rows[0],0,global+71);f.put(f.tasks[0],0,158);
+        arbitration.shared_select=nullptr;
+        assert(native->run(f.actor,sizeof(f.actor),10,&nb,&nr,nullptr,nullptr)&&nr.request.forced_schedule&&nr.request.requested==71&&nr.scheduler.maintenance.state.schedule==1&&nr.scheduler.grunt.lifecycle.completed);
+        nb.scheduler.original_vtable=0x2249964c;assert(!native->run(f.actor,sizeof(f.actor),10,&nb,&nr,nullptr,nullptr));
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native maintenance loop task lifecycle, failure schedule and bounded iterations");
 }

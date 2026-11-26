@@ -3136,4 +3136,5 @@ struct ServerNpcGruntScheduleLineApi {
     int (__cdecl *choose_normal)(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*) noexcept;
 };
 using GetServerNpcGruntScheduleLineApi=const ServerNpcGruntScheduleLineApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+int grunt_schedule_line_failure_internal(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*) noexcept;
 }
