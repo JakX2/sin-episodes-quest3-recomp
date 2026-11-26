@@ -2104,6 +2104,68 @@ int __cdecl discard_deferred(DeferredRemovalQueue* q,DeferredRemovalResult* o) n
     if(!deferred_valid(q)||q->cleanup_active||q->reserved||q->handle_access_disabled)return 0;
     o->discarded=q->count;q->count=0;o->completed=1;return 1;
 }
+// Validate both owner chains without dereferencing foreign link pointers.
+// Detached retail rows link to themselves. A bounded independent view
+// need not contain the original full 4096 slots.
+bool registry_chain(const RemovalRegistry& r,const RegistryChain& chain,bool free_chain,bool (&seen)[sin_independent::kEntityHandleCapacity]) noexcept {
+    auto index=[&](const sin_independent::EntityHandleEntry* p,unsigned& i){
+        const auto first=reinterpret_cast<std::uintptr_t>(r.entries),at=reinterpret_cast<std::uintptr_t>(p);
+        if(at<first)return false;const auto delta=at-first;
+        if(delta%sizeof(*p)||delta/sizeof(*p)>=r.count)return false;
+        i=static_cast<unsigned>(delta/sizeof(*p));return true;
+    };
+    const sin_independent::EntityHandleEntry* prev=nullptr;
+    auto* row=chain.head;
+    while(row){
+        unsigned i=0;if(!index(row,i)||seen[i]||row->previous!=prev)return false;
+        if(free_chain?(i<2048||row->entity!=nullptr):row->entity==nullptr)return false;
+        seen[i]=true;prev=row;row=row->next;
+    }
+    return prev==chain.tail;
+}
+void registry_detach(sin_independent::EntityHandleEntry& e,RegistryChain& chain) noexcept {
+    if(e.previous==&e)return;
+    if(e.previous)e.previous->next=e.next;else chain.head=e.next;
+    if(e.next)e.next->previous=e.previous;else chain.tail=e.previous;
+    e.previous=e.next=&e;
+}
+void registry_append(sin_independent::EntityHandleEntry& e,RegistryChain& chain) noexcept {
+    e.previous=chain.tail;e.next=nullptr;
+    if(chain.tail)chain.tail->next=&e;else chain.head=&e;
+    chain.tail=&e;
+}
+// 22164360 / global list callback 22162280. Deliberately separate from
+// UpdateOnRemove listener notification (22162d10); this occurs later.
+int __cdecl registry_unlink_logic(void* a,unsigned n,unsigned handle,const RegistryRemovalBindings* b,RegistryRemovalResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<0x37c||!b||!b->registry||handle==0xffffffffu)return 0;
+    auto& r=*b->registry;const unsigned vt=entity_vtable(a),extent=logic_kill_extent(vt);
+    // Base destructor installs its own table before calling 22164520.
+    if((!extent&&vt!=0x2240ac2cu)||(extent&&n<extent)||!r.entries||r.count>sin_independent::kEntityHandleCapacity||r.unlink_active)return 0;
+    const unsigned i=handle&0xfffu;o->index=i;
+    if(i>=r.count)return 0;
+    auto& e=r.entries[i];
+    if(!e.entity){o->empty=o->completed=1;return 1;}
+    // Retail wrapper masks the index only. Independent owner refuses a
+    // stale handle instead of accidentally unlinking its replacement.
+    if(e.entity!=a||e.serial!=(handle>>12)||read_field<unsigned>(a,0x378)!=handle)return 0;
+    bool seen[sin_independent::kEntityHandleCapacity]{};
+    if(!registry_chain(r,r.active,false,seen)||!seen[i]||!registry_chain(r,r.free_nonnetworked,true,seen)||!r.entity_count)return 0;
+    const unsigned token=read_field<unsigned>(a,0x16c);
+    void* edict=nullptr;unsigned bytes=0;
+    if(token&&(!r.edict_count||!b->edict||!b->edict(b->context,token,&edict,&bytes)||!edict||bytes<8))return 0;
+    r.unlink_active=true;
+    o->old_serial=e.serial;o->old_handle=handle;
+    // SetRefEHandle 2213dfc0 writes the invalid handle first, and
+    // mirrors its low ten serial bits to the edict at +4.
+    write_field(a,0x378,0xffffffffu);o->handle_cleared=1;
+    if(edict){write_field(edict,4,0x3ffu);o->edict_cleared=1;--r.edict_count;}
+    --r.entity_count;o->counts_changed=1;
+    e.entity=nullptr;e.serial=(e.serial+1u)&0x7fffu;o->new_serial=e.serial;
+    registry_detach(e,r.active);o->unlinked=1;
+    if(i>=2048){registry_append(e,r.free_nonnetworked);o->returned_to_free=1;}
+    r.unlink_active=false;o->completed=1;return 1;
+}
 // Original variant_t::Convert(5), 22155e60. FIELD_INTEGER,
  // FLOAT (x87 truncating conversion), STRING (atoi); other types reject.
 bool multi_integer(unsigned (&value)[5],const MultiCompareBindings& b,bool& accepted) noexcept {
@@ -2265,7 +2327,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
