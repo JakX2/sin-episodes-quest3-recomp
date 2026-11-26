@@ -94,7 +94,55 @@ int __cdecl fallback(unsigned flags,const float* desired,unsigned n,const Fallba
     }
     return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback};
+bool class_equal(const char* a,const char* b) noexcept {
+    if(!a||!b)return false;
+    auto lower=[](unsigned char c){return c>='A'&&c<='Z'?c+32:c;};
+    while(*a&&lower(*a)==lower(*b)){++a;++b;}
+    return lower(*a)==lower(*b);
+}
+int __cdecl nearby(void* actor,bool health_only,int debug,AmmoRow* rows,unsigned n,const NearbyBindings* b,NearbyResult* out) noexcept {
+    if(!out)return 0;*out={};
+    const unsigned limit=health_only?1:count;
+    if(!actor||!rows||n<limit||!b||!b->next_visible||!b->center||!b->classname)return 0;
+    auto name=[&](unsigned i){return health_only?health_classname:ammo_types[i].classname;};
+    for(unsigned i=0;i<limit;++i)rows[i].nearby=0;
+    void* previous=nullptr;
+    for(;;){
+        void* entity=nullptr;
+        if(!b->next_visible(b->context,actor,previous,&entity))return 0;
+        if(!entity)break;
+        // Independent boundary guard: retail iterator itself guarantees progress.
+        if(entity==previous||out->visited>=8192)return 0;
+        ++out->visited;previous=entity;
+        float a[3]{},e[3]{};
+        if(!b->center(b->context,actor,a))return 0;++out->center_reads;
+        if(!b->center(b->context,entity,e))return 0;++out->center_reads;
+        const double x=double(e[0])-a[0],y=double(e[1])-a[1],z=double(e[2])-a[2];
+        // FCOMP accepts <= radius squared, including unordered as in retail.
+        if((z*z+y*y)+x*x>1048576.)continue;
+        ++out->within;
+        const char* cls=nullptr;if(!b->classname(b->context,entity,&cls))return 0;++out->class_reads;
+        for(unsigned i=0;i<limit;++i){
+            if(!class_equal(cls,name(i)))continue;
+            if(debug==2){
+                // Original refreshes candidate center before actor center for debug.
+                if(!b->center(b->context,entity,e))return 0;++out->center_reads;
+                if(!b->center(b->context,actor,a))return 0;++out->center_reads;
+                if(!b->debug_line||!b->debug_line(b->context,a,e,0,255,0,true,20.f))return 0;
+                ++out->lines;
+            }
+            ++rows[i].nearby;++out->matched;break;
+        }
+    }
+    if(debug){
+        for(unsigned i=0;i<limit;++i){
+            if(!b->debug_count||!b->debug_count(b->context,name(i),rows[i].nearby))return 0;
+            ++out->reports;
+        }
+    }
+    out->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

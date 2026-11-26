@@ -83,5 +83,52 @@ int main(int argc,char** argv){
     // Negative and unordered desired ratios are not exactly zero.
     wants[2]=std::numeric_limits<float>::quiet_NaN();wants[4]=-1.f;ff.draw=1.f;
     assert(api->fallback(4,wants,count,&fb,&fr)&&fr.eligible==3&&fr.total==1.5f&&fr.selected==2);
+    // Visible entity enumeration is hosted, counting and debug order are native.
+    struct NearbyFixture {
+        struct Item{float center[3];const char* name;};
+        Item actor{{0,0,0},"item_dynamic_resupply"};
+        Item items[7]{
+            {{1024,0,0},"ITEM_AMMO_MAGNUM"}, // inclusive boundary
+            {{1025,0,0},"item_ammo_ar"},     // excluded by distance
+            {{0,5,0},"item_ammo_ar"},
+            {{0,0,10},"item_healthvial"},
+            {{0,0,0},"item_ammo_flak_extra"}, // no prefix match
+            {{0,0,0},nullptr},
+            {{0,0,0},"item_ammo_duag"}
+        };
+        unsigned visits=0,centers=0,classes=0,lines=0,reports=0;
+        bool stuck=false;
+    } nf;
+    NearbyBindings nb{};nb.context=&nf;
+    nb.next_visible=[](void* p,void* a,void* prev,void** e) noexcept ->int{
+        auto& q=*static_cast<NearbyFixture*>(p);assert(a==&q.actor);++q.visits;
+        if(q.stuck&&prev){*e=prev;return 1;}
+        unsigned i=0;if(prev){while(i<7&&prev!=&q.items[i])++i;assert(i<7);++i;}
+        *e=i<7?&q.items[i]:nullptr;return 1;
+    };
+    nb.center=[](void* p,void* e,float* v) noexcept ->int{
+        auto& q=*static_cast<NearbyFixture*>(p);++q.centers;
+        std::memcpy(v,static_cast<NearbyFixture::Item*>(e)->center,12);return 1;
+    };
+    nb.classname=[](void* p,void* e,const char** n) noexcept ->int{
+        auto& q=*static_cast<NearbyFixture*>(p);++q.classes;*n=static_cast<NearbyFixture::Item*>(e)->name;return 1;
+    };
+    nb.debug_line=[](void* p,const float* a,const float*,int r,int g,int b,bool no_depth,float t) noexcept ->int{
+        auto& q=*static_cast<NearbyFixture*>(p);assert(a[0]==0&&a[1]==0&&a[2]==0&&r==0&&g==255&&b==0&&no_depth&&t==20.f);++q.lines;return 1;
+    };
+    nb.debug_count=[](void* p,const char* n,int value) noexcept ->int{
+        auto& q=*static_cast<NearbyFixture*>(p);assert(n&&value>=0);++q.reports;return 1;
+    };
+    NearbyResult nr{};for(auto& row:rows)row={.25f,.5f,.75f,99};
+    assert(api->nearby(&nf.actor,false,2,rows,count,&nb,&nr)&&nr.completed&&nr.visited==7&&nr.within==6&&nr.matched==3&&nr.center_reads==20&&nr.class_reads==6&&nr.lines==3&&nr.reports==6);
+    assert(nf.visits==8&&nf.centers==20&&nf.classes==6&&nf.lines==3&&nf.reports==6);
+    for(unsigned i=0;i<count;++i)assert(rows[i].desired==.25f&&rows[i].current==.5f&&rows[i].delta==.75f&&rows[i].nearby==((i==0||i==1||i==5)?1:0));
+    health_row.nearby=99;
+    assert(api->nearby(&nf.actor,true,1,&health_row,1,&nb,&nr)&&nr.completed&&nr.matched==1&&nr.reports==1&&!nr.lines&&health_row.nearby==1);
+    // Unordered distance passes original FCOMP gate.
+    nf.items[1].center[0]=std::numeric_limits<float>::quiet_NaN();
+    assert(api->nearby(&nf.actor,false,0,rows,count,&nb,&nr)&&nr.within==7&&nr.matched==4&&rows[1].nearby==2&&!nr.lines&&!nr.reports);
+    assert(!api->nearby(&nf.actor,false,0,rows,count-1,&nb,&nr)&&!nr.visited);
+    nf.stuck=true;assert(!api->nearby(&nf.actor,false,0,rows,count,&nb,&nr)&&nr.visited==1&&!nr.completed);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
