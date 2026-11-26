@@ -81,6 +81,26 @@ int main(int argc,char** argv){
         assert(found==1);
     }
 
+    auto greload_image=reinterpret_cast<GetServerNpcReloadScheduleImageApi>(GetProcAddress(s,server_npc_reload_schedule_image_export));
+    assert(greload_image&&!GetProcAddress(c,server_npc_reload_schedule_image_export)&&!greload_image(0,sizeof(ServerNpcScheduleImageApi))&&!greload_image(1,0));
+    const auto* reload_image=greload_image(1,sizeof(ServerNpcScheduleImageApi));assert(reload_image);
+    {
+        ServerScheduleImage ext{};ServerScheduleImageResult er{};
+        for(unsigned family:{NpcSubclassGround,NpcSubclassElite,NpcSubclassJetpack}){
+            assert(reload_image->build(f.actor,family,7000,99,&b,&ext,&er));
+            assert(er.rows==(family==NpcSubclassGround?39u:family==NpcSubclassElite?41u:46u));
+            assert(er.tasks==(family==NpcSubclassGround?230u:family==NpcSubclassElite?242u:268u));
+            assert(ext.rows[0].descriptor[0]==static_cast<unsigned>(global+148)&&ext.rows[1].descriptor[0]==static_cast<unsigned>(global+149));
+            assert(ext.rows[0].descriptor[12]==99&&ext.rows[1].descriptor[12]==7000&&ext.rows[2].descriptor[12]==7003);
+            assert(reload_image->storage(&ext,7002,&p,&n)&&!std::strcmp(static_cast<const char*>(p),"SCHED_HIDE_AND_RELOAD"));
+            assert(reload_image->storage(&ext,7005,&p,&n)&&!std::strcmp(static_cast<const char*>(p),"SCHED_RELOAD"));
+            assert(reload_image->storage(&ext,7004,&p,&n)&&n==2*sizeof(ServerNpcScheduleTask));
+            const auto* tasks=static_cast<const ServerNpcScheduleTask*>(p);
+            assert(tasks[0].id==116&&tasks[1].id==71&&tasks[0].parameter==0&&tasks[1].parameter==0);
+            assert(ext.rows[0].descriptor[3+(48+20)/32]==(1u<<((48+20)%32))&&ext.rows[1].descriptor[3+(48+20)/32]==(1u<<((48+20)%32)));
+        }
+        assert(!reload_image->build(f.actor,NpcSubclassJetpack,7000,7001,&b,&ext,&er)&&ext.row_count==46&&ext.task_count==268);
+    }
     auto gc=reinterpret_cast<GetServerNpcCatalogSchedulerApi>(GetProcAddress(s,server_npc_catalog_scheduler_export));
     assert(gc&&!GetProcAddress(c,server_npc_catalog_scheduler_export)&&!gc(0,sizeof(ServerNpcCatalogSchedulerApi))&&!gc(1,0));
     const auto* catalog=gc(1,sizeof(ServerNpcCatalogSchedulerApi));assert(catalog);
