@@ -504,6 +504,26 @@ int main(int argc,char** argv){
     assert(outer_wake->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&owb,&jet_out,&po,&owr)&&owr.outer.completed&&owr.outer.scene_bypassed&&owr.transition.transitions==2&&owr.transition.jet_linked&&owr.transition.jet_attachment);
     assert((f.trace==std::vector<int>{214,215,70,224,221,223,225,220,222,214}));
     schedule.scheduler.maintenance.selection.state.entities=saved_registry;
+    // Native +58 refresh without a hosted callback, including all field-read
+    // branches and both direct network dirty paths. Preserve unrelated bits.
+    wtb.refresh_entity=nullptr;f.actor[0x870]=0;
+    f.put(f.actor,0x16c,0x3333u);f.actor[0x1f0]=0;
+    constexpr unsigned prior_word=0x81234538u;
+    unsigned refresh_cases=0;
+    for(unsigned kind:{0u,1u,2u})for(unsigned link:{0u,1u})for(unsigned flags:{0u,0x80u,0x20000u,0x20080u}){
+        f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);f.put(f.actor,0x38,kind);f.put(f.actor,0x240,link);f.put(f.actor,0xb8,flags);
+        pf.dirty=prior_word;f.trace.clear();
+        assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&wtb,&wto)&&wto.completed&&wto.transitions==1&&wto.refreshed==1&&wto.flags_changed==1&&!wto.outputs&&f.trace.empty());
+        const unsigned expected=(!(flags&0x80u)&&(!kind||!link))?0x10u:(kind==1||(flags&0x20000u))?8u:0x20u;
+        assert(pf.dirty==((prior_word&~0x38u)|expected|1u));
+        ++refresh_cases;
+    }
+    assert(refresh_cases==24);
+    f.put(f.actor,0x868,2);f.put(f.actor,0x78,0u);f.put(f.actor,0x16c,0u);
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&wtb,&wto)&&wto.refreshed&&!wto.flags_changed);
+    f.put(f.actor,0x868,2);f.put(f.actor,0x16c,0x9999u);
+    assert(!transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&wtb,&wto)&&wto.transitions==1&&!wto.refreshed&&!wto.completed);
+    f.put(f.actor,0x16c,0x3333u);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

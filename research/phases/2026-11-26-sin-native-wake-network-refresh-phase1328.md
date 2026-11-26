@@ -1,0 +1,3 @@
+# Phase 1328: Native wake entity network refresh
+
+Original +58 for all eight Grunt vtables is 2213c980; +18 = 22001bc0 (read actor+38), +1c = 22001af0 (copy actor+240). When refresh override absent, implement exact word masks at +16c: if bit5 of +78 or !(+b8&80) and (+38 zero or +240 zero), (word&~0x28)|0x10; else if +38==1 or +b8&20000, (word&~0x30)|8; else (word&~0x18)|0x20. Wake clears bit5 before this call. Missing token is no-op; malformed token fails bounded. Explicit callback kept for ABI compatibility. Regression 24 branch combinations with unrelated bits and original network dirty bit preserved, null/bad token. This is entity state only, no model/physics/prop work. CI pending.
