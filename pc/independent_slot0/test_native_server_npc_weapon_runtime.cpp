@@ -1303,6 +1303,7 @@ int main(int argc,char** argv){
     squad_b.entities.entries=sq_slots;squad_b.entities.count=3;
     squad_b.string_text=[](void*,unsigned token,const char** text,unsigned* n) noexcept -> int{
         switch(token){
+        case 0x223db3d8u:*text="SetSquad";break;
         case 701u:*text="Alpha";break;case 702u:*text="aLPHA";break;
         case 703u:*text="Beta";break;case 704u:*text="BETA";break;
         case 705u:*text="Gamma";break;case 706u:*text="Gamma";break;
