@@ -16,6 +16,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadLeaveApi* __cdecl SiN_GetServerNpcGruntSquadLeaveApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLifeDispatchApi* __cdecl SiN_GetServerNpcGruntLifeDispatchApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGroundLifeApi* __cdecl SiN_GetServerNpcGruntGroundLifeApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEliteLifeApi* __cdecl SiN_GetServerNpcGruntEliteLifeApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -1366,7 +1367,11 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
         ++o.health_deferred;return true;
     }
     const bool ground=dispatch.ground_death&&(vt==0x224954a4u||vt==0x2249aaa4u||vt==0x224a416cu);
-    if(!dispatch.life||(ground?!dispatch.ground_result:!dispatch.life_result))return false;
+    const bool elite=dispatch.subclass_death&&vt==0x2248df04u;
+    const bool jet=dispatch.subclass_death&&(vt==0x2248c514u||vt==0x2248e83cu||vt==0x2249964cu||vt==0x224a4a4cu);
+    if(!dispatch.life||(ground?!dispatch.ground_result:(elite||jet)?!dispatch.subclass_result:!dispatch.life_result))return false;
+    // Reject undersized subclass storage before mutating the damage record.
+    if((elite&&n<0xfe0u)||(jet&&n<0x1074u))return false;
     if(!self_damage_scale(a,*b.storage,false,o.health_outgoing_scale,o.health_multiplier_rows))return false;
     wr<float>(info,0x2c,static_cast<float>(double(rd<float>(info,0x2c))*o.health_outgoing_scale));
     if(!self_damage_scale(a,*b.storage,true,o.health_incoming_scale,o.health_multiplier_rows))return false;
@@ -1420,6 +1425,18 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
         if(!api||!api->run(a,n,rd<unsigned>(a,0x378),info,0x48,b.now,&bound,dispatch.ground_result))return false;
         ++o.health_ground_route;o.health_ground_death=dispatch.ground_result->ground_called;
         if(dispatch.life_result&&dispatch.life_result!=&dispatch.ground_result->life)*dispatch.life_result=dispatch.ground_result->life;
+    }else if(elite||jet){
+        // Phase 1228's class-aware dispatcher owns the Elite wrapper and
+        // Jetpack branch orchestration. Do not route either through the
+        // plain ground death entry, or use an unrelated nested life identity.
+        auto bound=*dispatch.subclass_death;
+        bound.combat.combat.life=life;
+        const auto* api=SiN_GetServerNpcGruntEliteLifeApi(1,sizeof(ServerNpcGruntEliteLifeApi));
+        if(!api||!api->run(a,n,rd<unsigned>(a,0x378),info,0x48,b.now,&bound,dispatch.subclass_result))return false;
+        o.health_elite_route=elite;o.health_jet_route=jet;
+        auto& nested=dispatch.subclass_result->combat.combat.life;
+        o.health_subclass_death=nested.death_called;
+        if(dispatch.life_result&&dispatch.life_result!=&nested)*dispatch.life_result=nested;
     }else{
         const auto* api=SiN_GetServerNpcGruntLifeDispatchApi(1,sizeof(ServerNpcGruntLifeDispatchApi));
         if(!api||!api->run(a,n,info,0x48,b.now,&life,dispatch.life_result))return false;

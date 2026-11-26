@@ -2050,9 +2050,9 @@ int main(int argc,char** argv){
     f.put(f.actor,0xc4,0xb100u);f.put(f.actor,0xd0,0u);f.put(f.actor,0xa4,0x7001u);f.put(f.actor,0xe8,0xffffffffu);
     f.put(f.actor,0x98,100);f.put(f.actor,0x9c,100);f.put(f.actor,0x8c,1);f.put(f.actor,0x94,2);
     f.put(f.actor,0x16c,0u);f.actor[0x1f0]=1;f.actor[0xa28]=0;
-    auto hd_run=[&](int desired=80){
+    auto hd_run=[&](int desired=80,unsigned vt=0x2249aaa4u,unsigned bytes=0x1088u){
         std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,desired);f.put(inp.variant,0x10,5u);
-        return accept->run(f.actor,sizeof(f.actor),ground_vt,0x223db434u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&hd_b,&catalog_o);
+        return accept->run(f.actor,bytes,vt,0x223db434u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&hd_b,&catalog_o);
     };
     hd.admitted=false;
     assert(hd_run()&&catalog_o.health_admission_blocked&&f.actor[0xa28]&&!catalog_o.health_life_called&&!catalog_o.health_multiplier_rows);
@@ -2245,6 +2245,31 @@ int main(int argc,char** argv){
     assert(f.get<int>(f.actor,0x8c)==1&&f.get<int>(f.actor,0x850)==7&&f.get<int>(f.actor,0x858)==7&&f.get<float>(f.actor,0x854)==90.f);
     assert(f.actor[0xa44]&&f.actor[0x200]&&(f.get<unsigned>(f.actor,0x7cc)&(1u<<16)));
     assert((hd.death_order==std::vector<unsigned>{1,2,3,4,5,6})&&hd.deaths==1&&hd_life_result.death_called);
+    // All five subclass tables select the existing class-aware life entry.
+    // Mode zero deliberately stops before lethal class-specific effects;
+    // those bodies have their own loaded Phase 1228/1225 regressions.
+    static ServerNpcGruntEliteLifeBindings hd_subclass{};
+    static ServerNpcGruntEliteLifeResult hd_subclass_result{};
+    hd_subclass.combat.combat.ground=hd_ground;
+    hd_services.subclass_death=&hd_subclass;hd_services.subclass_result=&hd_subclass_result;
+    auto& sub_life=hd_subclass_result.combat.combat.life;
+    f.put(f.actor,0x94,0);f.put(f.actor,0x9c,100);
+    for(unsigned vt:{0x2248df04u,0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+        assert(hd_run(80,vt)&&catalog_o.health_life_called&&!catalog_o.health_ground_route&&!catalog_o.health_subclass_death);
+        assert(catalog_o.health_elite_route==(vt==0x2248df04u)&&catalog_o.health_jet_route==(vt!=0x2248df04u));
+        assert(sub_life.completed&&sub_life.mode_blocked&&hd_life_result.mode_blocked&&f.get<int>(f.actor,0x9c)==100);
+    }
+    hd_services.subclass_result=nullptr;
+    assert(!hd_run(80,0x2248df04u)&&!catalog_o.health_life_called);
+    hd_services.subclass_result=&hd_subclass_result;
+    assert(!hd_run(80,0x2248df04u,0xdb2u)&&!catalog_o.health_life_called);
+    assert(!hd_run(80,0x2248c514u,0xfe0u)&&!catalog_o.health_life_called);
+    hd_services.life_result=nullptr;
+    assert(hd_run(80,0x2248df04u)&&sub_life.mode_blocked&&catalog_o.health_elite_route);
+    hd_services.life_result=&sub_life; // nested result alias is supported
+    assert(hd_run(80,0x2248c514u)&&sub_life.mode_blocked&&catalog_o.health_jet_route);
+    hd_services.life_result=&hd_life_result;
+    assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);
     assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xd0,0xffffffffu);
     // Stale generation fails before advancement.
