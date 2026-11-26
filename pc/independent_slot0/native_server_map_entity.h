@@ -34,6 +34,32 @@ struct Bindings {
     int (__cdecl *accept_entity)(void*,void*,const char*,unsigned,const EntitySlice*) noexcept;
     const FactoryBindings* native_factory;
 };
+struct SpawnRow {void* actor;int depth;int priority;};
+struct SpawnBindings {
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *classname)(void*,void*,const char**) noexcept;
+    int (__cdecl *find_parent)(void*,unsigned,void**) noexcept;
+    int (__cdecl *set_parent)(void*,void*,void*,int) noexcept;
+    int (__cdecl *scope)(void*,const char*,bool) noexcept;
+    int (__cdecl *engine_scope)(void*,bool) noexcept;
+    int (__cdecl *debug_enabled)(void*,bool*) noexcept;
+    int (__cdecl *debug_actor)(void*,void*) noexcept;
+    int (__cdecl *spawn)(void*,void*,int*) noexcept;
+    int (__cdecl *cleanup)(void*) noexcept;
+    int (__cdecl *activate)(void*,void*) noexcept;
+    // Existing native class-specific spawn methods. The dispatch wrapper
+    // remains owner supplied unless this opt-in boundary is provided.
+    const native_resupply::LifecycleBindings* resupply;
+    const native_resupply::AntigenInteractionBindings* dispenser;
+    const native_resupply::CanisterBindings* canister;
+    int (__cdecl *native_spawn_begin)(void*,void*,bool*) noexcept;
+    int (__cdecl *native_spawn_end)(void*,void*,int*) noexcept;
+};
+struct SpawnResult {
+    unsigned completed,ranked,parent_reads,parents,debugged,spawned,failed,pruned,cleanups,activated,
+        scopes,closes,engine_scopes,engine_closes,native_spawns,native_activations;
+};
 struct Api {
     std::uint32_t version,size;
     int (__cdecl *token)(const char*,unsigned,unsigned,Token*) noexcept;
@@ -43,6 +69,7 @@ struct Api {
     int (__cdecl *register_factories)(FactoryDictionary*) noexcept;
     const FactorySpec* (__cdecl *find_factory)(const FactoryDictionary*,const char*) noexcept;
     int (__cdecl *create_factory)(const char*,const FactoryBindings*,FactoryResult*) noexcept;
+    int (__cdecl *spawn_ordinary)(SpawnRow*,unsigned,bool,const SpawnBindings*,SpawnResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
