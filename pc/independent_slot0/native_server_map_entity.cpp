@@ -114,11 +114,13 @@ constexpr FactorySpec autosave_spec{"logic_autosave",Family::LogicAutosave,0x224
 constexpr FactorySpec multicompare_spec{"logic_multicompare",Family::LogicMultiCompare,0x224fb600,0x2241f584,multicompare_extent};
 constexpr FactorySpec remap_spec{"math_remap",Family::MathRemap,0x224fb60c,0x2241f5a8,remap_extent};
 constexpr FactorySpec colorblend_spec{"math_colorblend",Family::MathColorBlend,0x224fb610,0x2241f5b4,colorblend_extent};
+constexpr FactorySpec dynamic_trigger_spec{"trigger_dynamic_difficulty",Family::TriggerDynamic,0x2250b404,0x22437fcc,dynamic_trigger_extent};
+constexpr FactorySpec secret_trigger_spec{"trigger_secret",Family::TriggerSecret,0x2250b408,0x22437fd8,secret_trigger_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||d->count<12||d->count>25)return false;
+    if(!d||!d->registered||d->count<12||d->count>27)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false,logic_autosave=false,logic_multicompare=false,math_remap=false,math_colorblend=false;
-    for(unsigned i=12;i<25;++i){
+    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false,logic_autosave=false,logic_multicompare=false,math_remap=false,math_colorblend=false,dynamic_trigger=false,secret_trigger=false;
+    for(unsigned i=12;i<27;++i){
         if(i>=d->count){if(d->slots[i])return false;continue;}
         if(d->slots[i]==&relay_spec&&!relay)relay=true;
         else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
@@ -133,12 +135,14 @@ bool valid_dictionary(const FactoryDictionary* d) noexcept {
         else if(d->slots[i]==&multicompare_spec&&!logic_multicompare)logic_multicompare=true;
         else if(d->slots[i]==&remap_spec&&!math_remap)math_remap=true;
         else if(d->slots[i]==&colorblend_spec&&!math_colorblend)math_colorblend=true;
+        else if(d->slots[i]==&dynamic_trigger_spec&&!dynamic_trigger)dynamic_trigger=true;
+        else if(d->slots[i]==&secret_trigger_spec&&!secret_trigger)secret_trigger=true;
         else return false;
     }
     return true;
 }
 int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
-    if(!valid_dictionary(d)||d->count==25)return 0;
+    if(!valid_dictionary(d)||d->count==27)return 0;
     for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
     d->slots[d->count++]=spec;return 1;
 }
@@ -155,6 +159,11 @@ int __cdecl register_autosave(FactoryDictionary* d) noexcept {return register_op
 int __cdecl register_multicompare(FactoryDictionary* d) noexcept {return register_optional(d,&multicompare_spec);}
 int __cdecl register_remap(FactoryDictionary* d) noexcept {return register_optional(d,&remap_spec);}
 int __cdecl register_colorblend(FactoryDictionary* d) noexcept {return register_optional(d,&colorblend_spec);}
+int __cdecl register_campaign_triggers(FactoryDictionary* d) noexcept {
+    if(!valid_dictionary(d)||d->count>25)return 0;
+    for(unsigned i=12;i<d->count;++i)if(d->slots[i]==&dynamic_trigger_spec||d->slots[i]==&secret_trigger_spec)return 0;
+    d->slots[d->count++]=&dynamic_trigger_spec;d->slots[d->count++]=&secret_trigger_spec;return 1;
+}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -179,6 +188,23 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         o->completed=1;return 1;
     }
     o->matched=1;
+    if(o->spec->family==Family::TriggerDynamic||o->spec->family==Family::TriggerSecret){
+        const auto* r=b->campaign_triggers;const unsigned extent=o->spec->extent;
+        if(!r||!r->allocate||!r->base_construct||!r->initialize||
+           !r->allocate(r->context,extent,&o->actor,&o->bytes)||!o->actor||o->bytes<extent)return 0;
+        auto* a=static_cast<unsigned char*>(o->actor);
+        if(!r->base_construct(r->context,a))return 0;
+        // Retail derived construction writes only the primary table.
+        // The three dynamic fields are zero from fresh owner allocation.
+        if(extent==dynamic_trigger_extent){
+            unsigned fields[3]{};std::memcpy(fields,a+0x470,12);
+            if(fields[0]||fields[1]||fields[2])return 0;
+        }
+        const unsigned vt=extent==dynamic_trigger_extent?dynamic_trigger_vtable:secret_trigger_vtable;
+        std::memcpy(a,&vt,4);
+        if(!r->initialize(r->context,a,name))return 0;
+        o->networkable=a+0x160;o->completed=1;return 1;
+    }
     if(o->spec->family==Family::Relay){
         const auto* r=b->relay;
         if(!r||!r->allocate||!r->base_construct||!r->initialize||
@@ -488,7 +514,15 @@ int __cdecl destroy_colorblend(void* actor,unsigned bytes,void* networkable,cons
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
+int __cdecl destroy_campaign_trigger(void* a,unsigned n,void* networkable,const TriggerFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!a||n<4||!b||!b->release_networkable)return 0;
+    const auto vt=entity_vtable(a);
+    const unsigned extent=vt==dynamic_trigger_vtable?dynamic_trigger_extent:vt==secret_trigger_vtable?secret_trigger_extent:0;
+    return extent&&n>=extent&&networkable==static_cast<unsigned char*>(a)+0x160&&b->release_networkable(b->context,networkable);
+}
 bool known_map_vtable(unsigned vt) noexcept {
+    if(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)return true;
     if(vt==colorblend_vtable||vt==remap_vtable||vt==multicompare_vtable||vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
@@ -613,6 +647,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     constexpr Spec remap_keys[]{{"in1",0x394,1},{"in2",0x398,1},{"out1",0x39c,1},{"out2",0x3a0,1},{"OutValue",0x3a4,11}};
     constexpr Spec multicompare_keys[]{{"OnEqual",0x394,11},{"OnNotEqual",0x3ac,11},{"IntegerValue",0x3c4,5},{"ShouldComparetoValue",0x3c8,5}};
     constexpr Spec autosave_keys[]{{"NewLevelUnit",0x394,6}};
+    constexpr Spec dynamic_keys[]{{"EstimatedTime",0x470,1},{"EstimatedDifficulty",0x474,5},{"EndOfGame",0x478,5}};
     constexpr Spec navigation_keys[]{{"target",0x90,2}};
     constexpr Spec menu_keys[]{
         {"resumeGamePressed",0x398,11},{"newGamePressed",0x3b0,11},{"optionsPressed",0x3c8,11},
@@ -626,6 +661,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
     if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);else if(vt==autosave_vtable)match(autosave_keys);else if(vt==multicompare_vtable)match(multicompare_keys);else if(vt==remap_vtable)match(remap_keys);else if(vt==colorblend_vtable)match(colorblend_keys);
+    else if(vt==dynamic_trigger_vtable)match(dynamic_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -2506,7 +2542,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting,&register_campaign_triggers,&destroy_campaign_trigger};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
