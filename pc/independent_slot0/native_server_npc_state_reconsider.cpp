@@ -5182,6 +5182,105 @@ int __cdecl assault_mode_ready(void* a,unsigned n,const ServerNpcGruntAssaultRes
 }
 const ServerNpcGruntAssaultResetApi assault_reset_api{1,sizeof(ServerNpcGruntAssaultResetApi),&assault_bind_primary,&assault_release_live,&assault_mode_ready};
 
+
+bool assault_rally_init(void* a,unsigned n,const ServerNpcGruntAssaultRallyBindings* b,ServerNpcGruntAssaultRallyResult* o,void*& p) noexcept{
+    if(!o)return false;*o={};o->selected_handle=o->owner_handle=o->reservation=0xffffffffu;o->priority=o->mode=-1;
+    if(!b||!assault_admission_init(a,n,&b->reset.admission,&o->reset.admission,p))return false;
+    o->identity_valid=1;return true;
+}
+bool assault_rally_span(void* q,const ServerNpcGruntAssaultRallyBindings& b) noexcept{
+    unsigned extent=0;const auto& ab=b.reset.admission;
+    return q&&ab.extent&&ab.extent(ab.context,q,&extent)&&extent>=0x3c0;
+}
+bool assault_rally_warning(const ServerNpcGruntAssaultRallyBindings& b,ServerNpcGruntAssaultRallyResult& o,std::uint32_t token,std::uint32_t arg=0) noexcept{
+    o.warning_token=token;if(!b.warning||!b.warning(b.context,token,arg))return false;o.warning_called=1;return true;
+}
+bool assault_rally_failure(void* a,unsigned n,void* p,const ServerNpcGruntAssaultRallyBindings& b,ServerNpcGruntAssaultRallyResult& o) noexcept{
+    write(p,0x1c,0);o.mode_cleared=1;
+    bool monk=read<unsigned>(a,0xc)==0x223f3a78u;
+    if(!monk){
+        if(!b.reset.class_matches||!b.reset.class_matches(b.reset.context,a,0x223f3a78u,&monk))return false;o.class_called=1;
+    }
+    if(monk&&read<int>(a,0x850)==4){o.monk_exception=1;return true;}
+    if(!assault_end_schedule(a,n))return false;o.schedule_cleared=1;return true;
+}
+// 220ce430: a live reservation blocks even the same owner. A stale one is replaceable.
+bool assault_rally_claim(void* a,void* q,const ServerNpcGruntAssaultRallyBindings& b,ServerNpcGruntAssaultRallyResult& o) noexcept{
+    if(!assault_rally_span(q,b))return false;
+    const auto& ab=b.reset.admission;const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    o.claim_called=1;o.reservation=read<unsigned>(q,0x3bc);
+    if(registry.Resolve(o.reservation)){o.claim_blocked=1;return true;}
+    if(!b.entity_handle||!b.entity_handle(b.context,a,&o.owner_handle)||registry.Resolve(o.owner_handle)!=a)return false;
+    write(q,0x3bc,o.owner_handle);o.claimed=1;return true;
+}
+bool assault_rally_store(void* p,void* q,const ServerNpcGruntAssaultRallyBindings& b,ServerNpcGruntAssaultRallyResult& o) noexcept{
+    if(!b.entity_handle||!b.entity_handle(b.context,q,&o.selected_handle))return false;
+    write(p,0x18,o.selected_handle);o.handle_written=1;return true;
+}
+int __cdecl assault_rally_direct(void* a,unsigned n,void* input,int mode,const ServerNpcGruntAssaultRallyBindings* b,ServerNpcGruntAssaultRallyResult* o) noexcept{
+    void* p=nullptr;if(!assault_rally_init(a,n,b,o,p))return 0;o->mode=mode;
+    const auto& ab=b->reset.admission;const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](){o->completed=1;return 1;};
+    void* q=nullptr;if(!b->cast_rally||!b->cast_rally(b->context,input,&q))return 0;o->cast_called=1;
+    if(!q){
+        if(!assault_rally_warning(*b,*o,0x223f3c1cu)||!assault_rally_failure(a,n,p,*b,*o))return 0;
+        return done();
+    }
+    if(!assault_rally_span(q,*b))return 0;++o->candidates;
+    o->reservation=read<unsigned>(q,0x3bc);
+    if(registry.Resolve(o->reservation)){++o->locked;return assault_rally_warning(*b,*o,0x223f3c48u)?done():0;}
+    o->selected=1;
+    if(!assault_rally_store(p,q,*b,*o))return 0;
+    q=registry.Resolve(o->selected_handle);
+    // Retail passes a null this pointer to claim on a corrupt returned handle.
+    if(!q||!assault_rally_claim(a,q,*b,*o))return 0;
+    write(p,0x1c,mode);o->mode_written=1;
+    if(!assault_bind_primary(a,n,&b->reset,&o->reset))return 0;o->primary_reset=1;return done();
+}
+int __cdecl assault_rally_named(void* a,unsigned n,std::uint32_t name,int mode,const ServerNpcGruntAssaultRallyBindings* b,ServerNpcGruntAssaultRallyResult* o) noexcept{
+    void* p=nullptr;if(!assault_rally_init(a,n,b,o,p))return 0;o->mode=mode;o->name_token=name?name:0x223d47a8u;
+    const auto& ab=b->reset.admission;const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](){o->completed=1;return 1;};
+    void* best=nullptr;void* previous=nullptr;
+    auto origin=[&](void* q,float* v){if(!b->origin||!b->origin(b->context,q,v))return false;++o->origin_calls;return true;};
+    auto squared=[](const float* node,const float* owner){
+        const float x=static_cast<float>(static_cast<double>(node[0])-owner[0]);
+        const float y=static_cast<float>(static_cast<double>(node[1])-owner[1]);
+        const float z=static_cast<float>(static_cast<double>(node[2])-owner[2]);
+        return static_cast<double>(z)*z+static_cast<double>(y)*y+static_cast<double>(x)*x;
+    };
+    for(;;){
+        void* q=nullptr;if(o->search_calls>=sin_independent::kEntityHandleCapacity+1||!b->next_named||!b->next_named(b->context,o->name_token,previous,&q))return 0;
+        ++o->search_calls;if(!q)break;if(q==previous||!assault_rally_span(q,*b))return 0;previous=q;++o->candidates;
+        const auto reservation=read<unsigned>(q,0x3bc);
+        if(registry.Resolve(reservation)){++o->locked;continue;}
+        const int priority=read<int>(q,0x3a0);
+        if(priority>o->priority){o->priority=priority;best=q;++o->priority_updates;continue;}
+        if(priority!=o->priority)continue;
+        // Retail would dereference null best for the first unlocked priority -1.
+        if(!best)return 0;
+        float owner[3]{},candidate[3]{},prior[3]{};
+        if(!origin(a,owner)||!origin(q,candidate)||!origin(best,prior))return 0;
+        ++o->tie_checks;o->candidate_distance=static_cast<float>(squared(candidate,owner));o->previous_distance=squared(prior,owner);
+        // FCOMP candidate float against prior extended sum: only ordered prior > candidate replaces.
+        if(o->previous_distance>o->candidate_distance)best=q;
+    }
+    if(!best){
+        if(!assault_rally_warning(*b,*o,0x223f3cd0u,read<unsigned>(a,0xc0)))return 0;
+        return done(); // no candidate leaves mode and prior secondary unchanged
+    }
+    o->selected=1;
+    // Named route claims before obtaining/storing the secondary handle.
+    if(!assault_rally_claim(a,best,*b,*o)||!assault_rally_store(p,best,*b,*o))return 0;
+    if(!registry.Resolve(o->selected_handle)){
+        if(!assault_rally_warning(*b,*o,0x223f3ca0u,o->name_token)||!assault_rally_failure(a,n,p,*b,*o))return 0;
+        return done();
+    }
+    write(p,0x1c,mode);o->mode_written=1;
+    if(!assault_bind_primary(a,n,&b->reset,&o->reset))return 0;o->primary_reset=1;return done();
+}
+const ServerNpcGruntAssaultRallyApi assault_rally_api{1,sizeof(ServerNpcGruntAssaultRallyApi),&assault_rally_direct,&assault_rally_named};
+
 struct AssaultNodeRoute {const ServerNpcGruntAssaultNodeBindings* bindings;ServerNpcGruntAssaultNodeResult* result;};
 int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const AssaultNodeRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& ab=b.events;
@@ -7758,4 +7857,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultTaskApi=_SiN_GetServerNpcGruntAssaultTaskApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultTaskApi* __cdecl SiN_GetServerNpcGruntAssaultTaskApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultTaskApi)?&assault_task_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultRallyApi=_SiN_GetServerNpcGruntAssaultRallyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultRallyApi* __cdecl SiN_GetServerNpcGruntAssaultRallyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultRallyApi)?&assault_rally_api:nullptr;
 }

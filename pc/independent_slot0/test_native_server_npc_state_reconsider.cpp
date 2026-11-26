@@ -4090,5 +4090,54 @@ int main(int argc,char** argv){
         f.put(q.a,0x7cc,1u<<10);f.put(q.primary,0x398,77u);p[0x25]=1;
         assert(run(121)&&o.advance_called&&o.reset_calls==1&&no.next_valid&&no.handle_written&&q.finds==1&&!p[0x25]&&TaskFixture::rd(p,0x14)==0x2002u&&p[8]);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntAssaultRallyApi>(GetProcAddress(s,server_npc_grunt_assault_rally_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_assault_rally_export)&&!g(0,sizeof(ServerNpcGruntAssaultRallyApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntAssaultRallyApi));assert(api);
+        struct RallyFixture {
+            alignas(4) unsigned char a[0xde8]{},rally[4][0x3c0]{},primary[0x3c0]{};
+            sin_independent::EntityHandleEntry entries[7]{};
+            float positions[4][3]{{0,0,20},{0,0,10},{0,0,10},{1,0,0}};
+            unsigned count=4,finds=0,warning=0,arg=0,expected_name=77;bool bad_handle=false,monk=false;
+            static RallyFixture& self(void* p){return *static_cast<RallyFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+            unsigned index(void* e){for(unsigned i=0;i<4;++i)if(e==rally[i])return i;assert(false);return 0;}
+        } q;
+        for(unsigned i=0;i<4;++i){q.entries[i+1].serial=i+1;q.entries[i+1].entity=reinterpret_cast<CBaseEntity*>(q.rally[i]);f.put(q.rally[i],0x394,88u);f.put(q.rally[i],0x3bc,0xffffffffu);f.put(q.rally[i],0x3a0,2);}
+        q.entries[5].serial=5;q.entries[5].entity=reinterpret_cast<CBaseEntity*>(q.primary);
+        q.entries[6].serial=6;q.entries[6].entity=reinterpret_cast<CBaseEntity*>(q.a);
+        ServerNpcGruntAssaultRallyBindings b{};auto& rb=b.reset;auto& ab=rb.admission;
+        b.context=rb.context=ab.context=&q;ab.entries=q.entries;ab.count=7;ab.actor_vtable=0x2249aaa4;ab.actor_token=0x10000;
+        ab.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0x3c0;return 1;};
+        rb.find_primary=[](void* p,std::uint32_t name,bool* found,std::uint32_t* v) noexcept -> int{auto& q=RallyFixture::self(p);assert(name==88);++q.finds;*found=true;*v=0x5005;return 1;};
+        rb.class_matches=[](void* p,void*,std::uint32_t name,bool* v) noexcept -> int{assert(name==0x223f3a78u);*v=RallyFixture::self(p).monk;return 1;};
+        b.cast_rally=[](void*,void* input,void** v) noexcept -> int{*v=input;return 1;};
+        b.next_named=[](void* p,std::uint32_t name,void* prior,void** v) noexcept -> int{auto& q=RallyFixture::self(p);assert(name==q.expected_name);unsigned i=prior?q.index(prior)+1:0;*v=i<q.count?q.rally[i]:nullptr;return 1;};
+        b.entity_handle=[](void* p,void* e,std::uint32_t* v) noexcept -> int{auto& q=RallyFixture::self(p);if(e==q.a){*v=0x6006;return 1;}unsigned i=q.index(e)+1;*v=q.bad_handle?0x9001u:i*0x1001u;return 1;};
+        b.origin=[](void* p,void* e,float* v) noexcept -> int{auto& q=RallyFixture::self(p);if(e==q.a){v[0]=v[1]=v[2]=0;}else std::memcpy(v,q.positions[q.index(e)],12);return 1;};
+        b.warning=[](void* p,std::uint32_t token,std::uint32_t arg) noexcept -> int{auto& q=RallyFixture::self(p);q.warning=token;q.arg=arg;return 1;};
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
+        auto* p=q.a+0xdb8;f.put(q.a,0xc0,91u);f.put(p,0x18,0x4004u);f.put(p,0x1c,2);
+        ServerNpcGruntAssaultRallyResult o{};
+        auto direct=[&](void* input){return api->direct(q.a,sizeof(q.a),input,3,&b,&o);};
+        auto named=[&](unsigned name=77){return api->named(q.a,sizeof(q.a),name,3,&b,&o);};
+        f.put(q.a,0x798,91u);assert(direct(nullptr)&&o.mode_cleared&&o.schedule_cleared&&q.warning==0x223f3c1cu&&RallyFixture::rd(p,0x18)==0x4004u);
+        f.put(p,0x1c,2);f.put(q.a,0x798,91u);f.put(q.rally[0],0x3bc,0x6006u);
+        assert(direct(q.rally[0])&&o.locked==1&&!o.claim_called&&!o.mode_written&&q.warning==0x223f3c48u&&RallyFixture::rd(q.a,0x798)==91u);
+        f.put(q.rally[0],0x3bc,0x9006u);assert(direct(q.rally[0])&&o.claimed&&o.primary_reset&&o.reset.handle_written&&o.selected_handle==0x1001u&&RallyFixture::rd(q.rally[0],0x3bc)==0x6006u);
+        assert(RallyFixture::rd(p,0x14)==0x5005u&&RallyFixture::rd(p,0x18)==0x1001u&&RallyFixture::rd(p,0x1c)==3u);
+        f.put(q.rally[0],0x3bc,0xffffffffu);f.put(q.rally[3],0x3a0,1);
+        assert(named()&&o.search_calls==5&&o.candidates==4&&o.priority==2&&o.tie_checks==2&&o.origin_calls==6&&o.selected_handle==0x2002u&&o.claimed);
+        f.put(q.rally[3],0x3a0,3);assert(named()&&o.locked==1&&o.selected_handle==0x4004u&&o.priority_updates==2);
+        for(unsigned i=0;i<4;++i)f.put(q.rally[i],0x3bc,0x6006u);
+        f.put(q.a,0x798,91u);assert(named()&&!o.selected&&o.locked==4&&q.warning==0x223f3cd0u&&q.arg==91&&RallyFixture::rd(p,0x1c)==3u&&RallyFixture::rd(q.a,0x798)==91u);
+        q.count=0;q.expected_name=0x223d47a8u;assert(named(0)&&o.search_calls==1&&o.name_token==0x223d47a8u);
+        q.count=1;q.expected_name=77;f.put(q.rally[0],0x3bc,0xffffffffu);f.put(q.rally[0],0x3a0,-1);
+        assert(!named()&&!o.completed&&!o.claim_called); // retail would dereference null best on tie -1
+        f.put(q.rally[0],0x3a0,2);q.bad_handle=true;assert(named()&&o.claimed&&o.handle_written&&o.mode_cleared&&o.schedule_cleared&&q.warning==0x223f3ca0u&&q.arg==77);
+        q.bad_handle=false;q.monk=true;f.put(q.a,0x850,4);f.put(q.a,0x798,91u);
+        assert(direct(nullptr)&&o.monk_exception&&!o.schedule_cleared&&RallyFixture::rd(q.a,0x798)==91u);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
