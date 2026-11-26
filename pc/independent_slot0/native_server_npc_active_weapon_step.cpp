@@ -14,6 +14,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryTreeApi* __cdecl SiN_GetServerNpcEnemyMemoryTreeApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntMemoryReportApi* __cdecl SiN_GetServerNpcGruntMemoryReportApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadLeaveApi* __cdecl SiN_GetServerNpcGruntSquadLeaveApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLifeDispatchApi* __cdecl SiN_GetServerNpcGruntLifeDispatchApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -1248,6 +1249,59 @@ bool fresh_jet_thrust(void* actor,unsigned n,const ServerWeaponActivityBindings&
     }
     return true;
 }
+// 22140d20 (outgoing, flag clear) and 22140d90 (incoming, flag set).
+// Each +c4 vector row is 12 bytes, with modifier token +0 and next +8.
+bool self_damage_scale(void* a,const ServerNpcActivePostAnimationBindings& storage,bool incoming,float& factor,unsigned& visited) noexcept {
+    factor=1.f;
+    unsigned index=rd<unsigned>(a,0xd0);bool seen[4096]{};
+    while(index!=0xffffffffu){
+        if(index>=4096||seen[index])return false;seen[index]=true;++visited;
+        void* rows=nullptr;if(!resolve(storage,rd<unsigned>(a,0xc4),12u*(index+1),&rows))return false;
+        const auto* row=static_cast<const unsigned char*>(rows)+12u*index;
+        void* modifier=nullptr;if(!resolve(storage,rd<unsigned>(row,0),9,&modifier))return false;
+        if((rd<std::uint8_t>(modifier,8)!=0)==incoming){
+            factor=static_cast<float>(double(factor)*rd<float>(modifier,0));
+            if(!std::isfinite(factor))return false;
+        }
+        index=rd<unsigned>(row,8);
+    }
+    return true;
+}
+bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    const auto& dispatch=*b.native_health;
+    if(n<0xdb2||!b.storage||!std::isfinite(b.now)||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
+    const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+    // This specialized route is only valid for the original type-zero
+    // SetHealth self-inflictor/self-attacker record.
+    if(rd<unsigned>(info,0x38)||registry.Resolve(rd<unsigned>(info,0x24))!=a||registry.Resolve(rd<unsigned>(info,0x28))!=a)return false;
+    // 22358e40 -> 22033cf0 self-attacker bypasses friendly rejection,
+    // then 2213c880 consults the live damage-filter parent at +a4.
+    if(void* parent=registry.Resolve(rd<unsigned>(a,0xa4))){
+        bool admitted=false;
+        if(parent==a||!dispatch.parent_admit||!dispatch.parent_admit(dispatch.context,parent,info,&admitted))return false;
+        if(!admitted){wr<std::uint8_t>(a,0xa28,1);++o.health_admission_blocked;return true;}
+    }
+    // 2220dbf0 can defer before copying or applying either scale.
+    if(dispatch.defer_damage){
+        if(!dispatch.enqueue||!dispatch.enqueue(dispatch.context,a,info,0x48))return false;
+        ++o.health_deferred;return true;
+    }
+    if(!dispatch.life||!dispatch.life_result)return false;
+    if(!self_damage_scale(a,*b.storage,false,o.health_outgoing_scale,o.health_multiplier_rows))return false;
+    wr<float>(info,0x2c,static_cast<float>(double(rd<float>(info,0x2c))*o.health_outgoing_scale));
+    if(!self_damage_scale(a,*b.storage,true,o.health_incoming_scale,o.health_multiplier_rows))return false;
+    o.health_scaled_amount=static_cast<float>(double(rd<float>(info,0x2c))*o.health_incoming_scale);
+    if(!std::isfinite(o.health_scaled_amount))return false;
+    wr<float>(info,0x2c,o.health_scaled_amount);
+    auto life=*dispatch.life;
+    auto& identity=life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
+    identity.entries=b.entities.entries;identity.count=b.entities.count;identity.speech.original_vtable=vt;
+    const auto* api=SiN_GetServerNpcGruntLifeDispatchApi(1,sizeof(ServerNpcGruntLifeDispatchApi));
+    if(!api||!api->run(a,n,info,0x48,b.now,&life,dispatch.life_result))return false;
+    // 2213bc80 immediately skips its player-attacker statistics branch
+    // for the authenticated Grunt self attacker (+120 returns false).
+    ++o.health_life_called;return true;
+}
 // Original concrete handlers, independent from the descriptor projection.
 // Return -1 for a handler not implemented here, 0 for malformed storage,
 // and 1 for a successfully executed native leaf.
@@ -1293,13 +1347,14 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
             wr<int>(a,0x9c,next);if(next>maximum)wr<int>(a,0x9c,maximum);
             ++o.health_healed;return 1;
         }
-        if(!b.health_damage)return -1;
+        if(!b.health_damage&&!b.native_health)return -1;
         alignas(4) unsigned char info[0x48]{};
         const unsigned self=rd<unsigned>(a,0x378);
         wr<unsigned>(info,0x24,self);wr<unsigned>(info,0x28,self);
         wr<float>(info,0x2c,amount);wr<float>(info,0x30,amount);
         wr<unsigned>(info,0x34,0x7f7fffffu);wr<unsigned>(info,0x40,0xffffffffu);
-        if(!b.health_damage(b.context,a,info,sizeof(info)))return 0;
+        if(b.native_health){if(!native_self_damage(a,n,vt,info,b,o))return 0;}
+        else if(!b.health_damage(b.context,a,info,sizeof(info)))return 0;
         ++o.health_damage;return 1;
     }
     case 0x22032000u:return native_set_squad(a,n,vt,d,b,o);
