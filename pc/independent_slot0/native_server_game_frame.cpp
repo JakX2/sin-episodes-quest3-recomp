@@ -15,6 +15,29 @@ bool scope(const Bindings& b,Result& o,const char* name,bool enter) noexcept {
 bool stage(const Bindings& b,int (__cdecl *fn)(void*) noexcept,unsigned& count) noexcept {
     if(!fn||!fn(b.context))return false;++count;return true;
 }
+bool cleanup_stage(const Bindings& b,Result& o) noexcept {
+    if(!b.deferred)return stage(b,b.cleanup,o.cleanup_calls);
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(native_map::Api));
+    if(!api)return false;
+    const bool ok=api->cleanup_deferred(b.deferred,&o.removal)!=0;
+    o.native_released+=o.removal.released;
+    if(ok){++o.cleanup_calls;++o.native_cleanup_calls;}
+    return ok;
+}
+// Do not clean one queue while native actor/input removal targets another.
+// An explicit opted-in route is rebound to the authoritative frame bindings.
+bool coherent_removal(const Bindings& b) noexcept {
+    if(!b.deferred)return true;
+    if(!b.deferred->queue)return false;
+    auto match=[&](const native_map::DeferredRemovalBindings* d){return !d||d->queue==b.deferred->queue;};
+    if(b.logic_auto&&b.logic_auto->behavior&&!match(b.logic_auto->behavior->deferred))return false;
+    if(b.queue&&b.queue->bindings&&b.queue->bindings->native_input){
+        const auto& input=*b.queue->bindings->native_input;
+        if(input.logic_kill&&!match(input.logic_kill->deferred))return false;
+        if(input.logic_multicompare&&input.logic_multicompare->kill&&!match(input.logic_multicompare->kill->deferred))return false;
+    }
+    return true;
+}
 template<class T>void write(void* a,unsigned off,T v) noexcept {std::memcpy(static_cast<unsigned char*>(a)+off,&v,sizeof(v));}
 unsigned known_kind(void* a,unsigned bytes,const Bindings& b) noexcept {
     using namespace native_resupply;
@@ -37,7 +60,9 @@ bool native_think(void* a,unsigned bytes,unsigned kind,const State& s,const Bind
         if(!b.logic_auto->behavior)return false;
         const auto* api=SiN_GetServerMapEntityApi(1,sizeof(native_map::Api));
         auto bound=*b.logic_auto;auto behavior=*bound.behavior;
-        behavior.now=&s.globals->curtime;bound.behavior=&behavior;
+        behavior.now=&s.globals->curtime;
+        if(behavior.deferred&&b.deferred)behavior.deferred=b.deferred;
+        bound.behavior=&behavior;
         if(!api||!api->auto_primary_run(a,bytes,s.globals->tick,s.globals->interval,&bound,&o.logic_auto))return false;
         ++o.native_auto;return true;
     }
@@ -107,7 +132,7 @@ bool actors(bool simulating,const State& s,const Bindings& b,Result& o) noexcept
     if(!scope(b,o,name,true))return false;
     *s.profile_enabled=*s.think_profile!=0;o.profile_written=1;
     auto& g=*s.globals;const float saved=g.curtime;o.actor_curtime=saved;
-    bool ok=stage(b,b.cleanup,o.cleanup_calls);
+    bool ok=cleanup_stage(b,o);
     auto run_one=[&](void* a){if(!a){++o.nulls;return true;}g.curtime=saved;return actor(a,s,b,o);};
     if(ok&&!simulating){
         // Original loop is strictly index < live maxClients (not <=).
@@ -146,9 +171,20 @@ bool events(const State& s,const Bindings& b,Result& o) noexcept {
             // Bind timer input cadence to the same live frame interval as
             // actor dispatch. Service itself supplies registry and clock.
             ServerEntityAcceptInputBindings input{};native_map::TimerBindings timer{};
-            if(bindings.native_input&&bindings.native_input->timer&&bindings.native_input->timer->cadence){
-                input=*bindings.native_input;timer=*input.timer;timer.tick_interval=&s.globals->interval;
-                input.timer=&timer;bindings.native_input=&input;
+            native_map::EntityKillBindings kill{},multi_kill{};native_map::MultiCompareBindings multi{};
+            if(bindings.native_input){
+                input=*bindings.native_input;
+                if(input.timer&&input.timer->cadence){
+                    timer=*input.timer;timer.tick_interval=&s.globals->interval;input.timer=&timer;
+                }
+                if(b.deferred&&input.logic_kill&&input.logic_kill->deferred){
+                    kill=*input.logic_kill;kill.deferred=b.deferred;input.logic_kill=&kill;
+                }
+                if(b.deferred&&input.logic_multicompare&&input.logic_multicompare->kill&&input.logic_multicompare->kill->deferred){
+                    multi=*input.logic_multicompare;multi_kill=*multi.kill;
+                    multi_kill.deferred=b.deferred;multi.kill=&multi_kill;input.logic_multicompare=&multi;
+                }
+                bindings.native_input=&input;
             }
             ok=api&&api->service(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events);
             if(ok)o.native_events=1;
@@ -168,14 +204,15 @@ int __cdecl run(bool simulating,const State* s,const Bindings* b,Result* o) noex
     auto finish=[&](bool ok){const bool closed=scope(*b,*o,name,false);o->completed=ok&&closed;return int(o->completed);};
     if(*s->level_transition){o->transition=1;return finish(true);}
     if(*s->skip_next){*s->skip_next=false;o->skip_consumed=1;return finish(true);}
+    if(!coherent_removal(*b))return finish(false);
     o->original_frametime=g.frametime;
     if(g.max_clients==1&&*s->double_step){*s->skip_next=true;g.frametime=float(double(g.frametime)*2.);o->double_step=1;}
     o->simulation_frametime=g.frametime;
-    bool ok=std::isfinite(g.frametime)&&stage(*b,b->cleanup,o->cleanup_calls)&&
+    bool ok=std::isfinite(g.frametime)&&cleanup_stage(*b,*o)&&
         stage(*b,b->pre_systems,o->pre_systems)&&stage(*b,b->pre_actors,o->pre_actors)&&
         stage(*b,b->manager,o->manager)&&stage(*b,b->engine_begin,o->engine_begin)&&
         actors(simulating,*s,*b,*o)&&stage(*b,b->post_systems,o->post_systems)&&events(*s,*b,*o)&&
-        stage(*b,b->cleanup,o->cleanup_calls)&&stage(*b,b->post_cleanup,o->post_cleanup);
+        cleanup_stage(*b,*o)&&stage(*b,b->post_cleanup,o->post_cleanup);
     if(ok&&b->rules_frame)ok=stage(*b,b->rules_frame,o->rules_called);
     if(ok&&b->trace_report)ok=stage(*b,b->trace_report,o->trace_report);
     if(ok)ok=stage(*b,b->frame_tail,o->tail);
