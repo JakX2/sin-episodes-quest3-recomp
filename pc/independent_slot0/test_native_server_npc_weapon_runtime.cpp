@@ -642,6 +642,8 @@ int main(int argc,char** argv){
         ServerEntityNamedEventQueueBindings queue_bindings{};
         ServerEntityNamedEventQueueResult queue_result{};
         bool service_locked{},nested{};
+        float live_clock{};std::uint8_t live_step{};
+        int* live_budget{};unsigned live_releases{},live_policy{};
     } outf{&f,void_output};
     outf.bindings.context=&outf;
     outf.bindings.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
@@ -838,6 +840,41 @@ int main(int argc,char** argv){
     outf.order.clear();assert(run_service(21.f,false)&&sr.completed&&sr.events==1&&sr.missing==1&&!sr.deliveries&&sr.removed==1);
     assert((outf.order==std::vector<unsigned>{900,999,2004,901}));check_queue({});
     assert(!outf.service_locked);
+    // Live globals are reloaded after each released event, as at
+    // 22155560 and 2215599f. Release can advance/retract the clock or
+    // enable the original single-step gate before engine unlock.
+    auto live_service=service_bind;live_service.live_now=&outf.live_clock;live_service.live_single_step=&outf.live_step;
+    live_service.release=[](void* p,unsigned token,void* row) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(q.service_locked&&token&&token<=q.queue_allocated&&row==q.queue_rows[token-1]);
+        ++q.live_releases;
+        if(q.live_releases==1){
+            if(q.live_policy==1)q.live_clock=12.f;
+            else if(q.live_policy==2){q.live_step=1;*q.live_budget=1;q.live_clock=12.f;}
+            else if(q.live_policy==3)q.live_clock=8.f;
+            else if(q.live_policy==4){q.live_step=1;*q.live_budget=0;}
+        }
+        return 1;
+    };
+    live_service.accept=[](void*,void*,unsigned,void*,void*,const void*,unsigned) noexcept -> int{return 1;};
+    live_service.find_named=nullptr;live_service.find_class=nullptr;live_service.missing=nullptr;
+    ServerEntityVoidOutputAction live_action{0u,590u,0u,0u,10u,0.f};
+    outf.live_budget=&steps;
+    auto prepare_live=[&](unsigned policy){
+        reset_queue();outf.live_releases=0;outf.live_policy=policy;outf.live_step=0;outf.live_clock=10.f;steps=9;
+        for(float deadline:{10.f,11.f,12.f}){
+            assert(enqueue_named(live_action,deadline));
+            f.put(outf.queue_rows[outf.queue_allocated-1],0x18,0x8002u);
+        }
+    };
+    auto run_live=[&](){return service->service(outf.queue_root,sizeof(outf.queue_root),root_token,-99.f,false,&steps,&live_service,&sr);};
+    prepare_live(1);assert(run_live()&&sr.events==3&&sr.clock_reads==3&&sr.step_reads==4&&!sr.steps_consumed&&steps==9&&!outf.service_locked);check_queue({});
+    prepare_live(2);assert(run_live()&&sr.events==1&&sr.step_stopped&&sr.steps_consumed==1&&steps==0&&!outf.service_locked);check_queue({2,3});
+    assert(run_live()&&sr.step_stopped&&!sr.events&&!sr.clock_reads&&sr.step_reads==1);
+    outf.live_step=0;assert(run_live()&&sr.events==2&&!sr.steps_consumed);check_queue({});
+    prepare_live(3);assert(run_live()&&sr.events==1&&sr.future_stopped&&sr.clock_reads==2);check_queue({2,3});
+    outf.live_clock=12.f;assert(run_live()&&sr.events==2);check_queue({});
+    prepare_live(4);assert(run_live()&&sr.events==1&&sr.step_stopped&&!sr.steps_consumed&&!steps);check_queue({2,3});
+    reset_queue();outf.live_step=0;
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
     // Datamap lookup, variant conversion and native field/handler dispatch.
     auto get_accept=reinterpret_cast<GetServerEntityAcceptInputApi>(GetProcAddress(server,server_entity_accept_input_export));
