@@ -2363,5 +2363,45 @@ int main(int argc,char** argv){
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&co.released==3&&!word(co.root,0x30));
         assert(word(target,0x394)==0x40e00000u&&word(actor,0x3a4)==0x41c80000u);
     }
+    {
+        alignas(4) unsigned char actor[colorblend_extent]{};
+        put(actor,0,colorblend_vtable);
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=colorblend_extent;return 1;};
+        assert(api->key_value(actor,"inmin","2",&keys,&kr)&&kr.offset==0x394);
+        assert(api->key_value(actor,"inmax","6",&keys,&kr)&&kr.offset==0x398);
+        assert(api->key_value(actor,"OutColor","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x3a4);
+        put(actor,0x39c,0x00ff6410u);put(actor,0x3a0,0xff0065ffu);
+        put(actor,0x3a8,0x11223344u);put(actor,0x3ac,0x55667788u);put(actor,0x3b0,0xffffffffu);
+        struct BlendFixture {ActionPool* pool;void* actor;void* activator;unsigned calls=0,rgba=0;} f{&pool,actor,timer};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<BlendFixture*>(p);if(token!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[0])))return 0;*row=f.pool->rows[0];*bytes=0x1c;return 1;
+        };
+        fire.enqueue_variant=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
+            auto& f=*static_cast<BlendFixture*>(p);assert(a==f.activator&&c==f.actor&&bytes==0x14&&action->variant_type==9&&action->action_id==41);
+            unsigned v[5]{};std::memcpy(v,variant,20);assert(v[1]==0x11223344u&&v[2]==0x55667788u&&v[3]==0xffffffffu&&v[4]==9);
+            f.rgba=v[0];++f.calls;return 1;
+        };
+        ColorBlendBindings behavior{&fire};ColorBlendResult result{};
+        auto in=[&](unsigned type,float v){return api->colorblend_input(actor,sizeof(actor),"iNvAlUe",timer,type,v,&behavior,&result);};
+        assert(api->colorblend_spawn(actor,sizeof(actor),&result)&&!result.reset_bounds&&!result.swapped);
+        assert(in(1,4.f)&&result.rgba==0x7f7f6487u&&f.rgba==result.rgba&&f.calls==1&&result.queued==1);
+        assert(in(1,1.f)&&result.clamped&&result.rgba==0x00ff6410u&&f.calls==2);
+        assert(in(1,9.f)&&result.clamped&&result.rgba==0xff0065ffu&&f.calls==3);
+        put(actor,0xb4,1u);assert(in(1,9.f)&&result.suppressed&&!result.stored&&f.calls==3);
+        unsigned nanbits=0x7fc00000u;float nan=0;std::memcpy(&nan,&nanbits,4);
+        assert(in(1,nan)&&result.suppressed&&f.calls==3);
+        put(actor,0xb4,0u);
+        assert(in(5,9.f)&&result.input==0.f&&result.rgba==0x00ff6410u&&f.calls==4);
+        put(actor,0x394,0x40c00000u);put(actor,0x398,0x40000000u);
+        assert(api->colorblend_spawn(actor,sizeof(actor),&result)&&result.swapped&&word(actor,0x394)==0x40000000u&&word(actor,0x398)==0x40c00000u);
+        assert(word(actor,0x39c)==0x00ff6410u&&word(actor,0x3a0)==0xff0065ffu);
+        assert(in(1,4.f)&&result.rgba==0x7f7f6487u&&f.calls==5);
+        put(actor,0x394,0x80000000u);put(actor,0x398,0);
+        assert(api->colorblend_spawn(actor,sizeof(actor),&result)&&result.reset_bounds&&!result.swapped&&!word(actor,0x394)&&word(actor,0x398)==0x3f800000u);
+        assert(!api->colorblend_input(actor,colorblend_extent-1,"InValue",timer,1,1.f,&behavior,&result));
+        assert(!api->colorblend_spawn(timer,timer_extent,&result));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }

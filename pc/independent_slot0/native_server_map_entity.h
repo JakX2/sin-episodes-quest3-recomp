@@ -223,6 +223,15 @@ struct CounterResult {
     float value,minimum,maximum;
 };
 inline constexpr unsigned remap_vtable=0x22421334,remap_extent=0x3bc;
+inline constexpr unsigned colorblend_vtable=0x224215c4,colorblend_extent=0x3bc;
+struct ColorBlendBindings {
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const RelayQueueBindings* native_queue;
+};
+struct ColorBlendResult {
+    unsigned completed,handled,reset_bounds,swapped,clamped,suppressed,stored,queued,native_output_queued,rgba;
+    float input,clamped_input;
+};
 struct RemapBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     const RelayQueueBindings* native_queue;
@@ -457,6 +466,8 @@ struct Api {
     int (__cdecl *remap_input)(void*,unsigned,const char*,void*,unsigned,float,const RemapBindings*,RemapResult*) noexcept;
     int (__cdecl *register_remap)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_remap)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *colorblend_spawn)(void*,unsigned,ColorBlendResult*) noexcept;
+    int (__cdecl *colorblend_input)(void*,unsigned,const char*,void*,unsigned,float,const ColorBlendBindings*,ColorBlendResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
