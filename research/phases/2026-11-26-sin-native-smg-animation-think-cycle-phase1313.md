@@ -1,0 +1,3 @@
+# Phase 1313: Due scheduler and actual model-event feedback
+
+Drive Phase1312 export with an engaged SMG actor, retained original attack schedule, original registered event IDs and synthetic studio sequence metadata. Two due ticks perform native condition gathering/task execution and actual animation traversal, each emitting event3002 from weapon and decrementing the same clip. Third due tick sees no ammo and stops before animation on intentionally unavailable schedule state query. Future deadline permits actual NPC event2 reload through animation, restores clip and clears no-ammo. This is synthetic model metadata, not actual studio assets or full projectile simulation; reselection intentionally unavailable. Windows CI pending.
