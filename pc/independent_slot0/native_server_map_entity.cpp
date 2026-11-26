@@ -113,11 +113,12 @@ constexpr FactorySpec navigation_spec{"logic_navigation",Family::LogicNavigation
 constexpr FactorySpec autosave_spec{"logic_autosave",Family::LogicAutosave,0x224fb62c,0x2241f608,autosave_extent};
 constexpr FactorySpec multicompare_spec{"logic_multicompare",Family::LogicMultiCompare,0x224fb600,0x2241f584,multicompare_extent};
 constexpr FactorySpec remap_spec{"math_remap",Family::MathRemap,0x224fb60c,0x2241f5a8,remap_extent};
+constexpr FactorySpec colorblend_spec{"math_colorblend",Family::MathColorBlend,0x224fb610,0x2241f5b4,colorblend_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||d->count<12||d->count>24)return false;
+    if(!d||!d->registered||d->count<12||d->count>25)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false,logic_autosave=false,logic_multicompare=false,math_remap=false;
-    for(unsigned i=12;i<24;++i){
+    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false,logic_autosave=false,logic_multicompare=false,math_remap=false,math_colorblend=false;
+    for(unsigned i=12;i<25;++i){
         if(i>=d->count){if(d->slots[i])return false;continue;}
         if(d->slots[i]==&relay_spec&&!relay)relay=true;
         else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
@@ -131,12 +132,13 @@ bool valid_dictionary(const FactoryDictionary* d) noexcept {
         else if(d->slots[i]==&autosave_spec&&!logic_autosave)logic_autosave=true;
         else if(d->slots[i]==&multicompare_spec&&!logic_multicompare)logic_multicompare=true;
         else if(d->slots[i]==&remap_spec&&!math_remap)math_remap=true;
+        else if(d->slots[i]==&colorblend_spec&&!math_colorblend)math_colorblend=true;
         else return false;
     }
     return true;
 }
 int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
-    if(!valid_dictionary(d)||d->count==24)return 0;
+    if(!valid_dictionary(d)||d->count==25)return 0;
     for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
     d->slots[d->count++]=spec;return 1;
 }
@@ -152,6 +154,7 @@ int __cdecl register_navigation(FactoryDictionary* d) noexcept {return register_
 int __cdecl register_autosave(FactoryDictionary* d) noexcept {return register_optional(d,&autosave_spec);}
 int __cdecl register_multicompare(FactoryDictionary* d) noexcept {return register_optional(d,&multicompare_spec);}
 int __cdecl register_remap(FactoryDictionary* d) noexcept {return register_optional(d,&remap_spec);}
+int __cdecl register_colorblend(FactoryDictionary* d) noexcept {return register_optional(d,&colorblend_spec);}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -192,16 +195,17 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
     }
-    if(o->spec->family==Family::MathRemap){
-        const auto* r=b->math_remap;
+    if(o->spec->family==Family::MathRemap||o->spec->family==Family::MathColorBlend){
+        const bool blend=o->spec->family==Family::MathColorBlend;
+        const auto* r=blend?b->math_colorblend:b->math_remap;
         if(!r||!r->allocate||!r->base_construct||!r->initialize||
            !r->allocate(r->context,remap_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<remap_extent)return 0;
         auto* a=static_cast<unsigned char*>(o->actor);
-        // Original 2217d500: base(1), primary vtable, output triplet.
+        // Original 2217d500 / 2217d5c0: identical extent and output triplet.
         if(!r->base_construct(r->context,a,1))return 0;
         unsigned bounds[4]{},head=0;std::memcpy(bounds,a+0x394,16);std::memcpy(&head,a+0x3b8,4);
         if(bounds[0]||bounds[1]||bounds[2]||bounds[3]||head)return 0;
-        const unsigned vt=remap_vtable,zero=0,invalid=0xffffffffu;
+        const unsigned vt=blend?colorblend_vtable:remap_vtable,zero=0,invalid=0xffffffffu;
         std::memcpy(a,&vt,4);std::memcpy(a+0x3a4,&zero,4);std::memcpy(a+0x3b0,&invalid,4);std::memcpy(a+0x3b4,&zero,4);
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
@@ -478,6 +482,12 @@ int __cdecl destroy_remap(void* actor,unsigned bytes,void* networkable,const Rel
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
+int __cdecl destroy_colorblend(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!actor||bytes<colorblend_extent||entity_vtable(actor)!=colorblend_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
+    return b->release_networkable(b->context,networkable);
+}
 bool known_map_vtable(unsigned vt) noexcept {
     if(vt==colorblend_vtable||vt==remap_vtable||vt==multicompare_vtable||vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
@@ -599,8 +609,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"OnLessThan",0x39c,11},{"OnEqualTo",0x3b4,11},
         {"OnNotEqualTo",0x3cc,11},{"OnGreaterThan",0x3e4,11}
     };
-    // COLOR32 key text remains at the owner parser until authenticated.
-    constexpr Spec colorblend_keys[]{{"inmin",0x394,1},{"inmax",0x398,1},{"OutColor",0x3a4,11}};
+    constexpr Spec colorblend_keys[]{{"inmin",0x394,1},{"inmax",0x398,1},{"colormin",0x39c,9},{"colormax",0x3a0,9},{"OutColor",0x3a4,11}};
     constexpr Spec remap_keys[]{{"in1",0x394,1},{"in2",0x398,1},{"out1",0x39c,1},{"out2",0x3a0,1},{"OutValue",0x3a4,11}};
     constexpr Spec multicompare_keys[]{{"OnEqual",0x394,11},{"OnNotEqual",0x3ac,11},{"IntegerValue",0x3c4,5},{"ShouldComparetoValue",0x3c8,5}};
     constexpr Spec autosave_keys[]{{"NewLevelUnit",0x394,6}};
@@ -637,6 +646,23 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         // Original atof -> float, accepts numeric prefix and empty->0.
         const float scalar=static_cast<float>(std::strtod(value,nullptr));
         write_field(actor,o->offset,scalar);o->scalar=1;
+    }else if(spec->type==9){
+        // Original 222793b1 -> 2228b4b0 -> 2228b420: bounded copy,
+        // atoi at each pointer, then advance to the NEXT literal space.
+        // Repeated spaces can duplicate a value; missing channels zero.
+        char buffer[128]{};unsigned len=0;
+        while(len<127&&value[len]){buffer[len]=value[len];++len;}
+        const char* p=buffer;unsigned rgba=0;
+        for(unsigned i=0;i<4;++i){
+            const char* q=p;while(*q==' '||(*q>='\t'&&*q<='\r'))++q;
+            const bool negative=*q=='-';if(negative||*q=='+')++q;
+            unsigned raw=0;while(*q>='0'&&*q<='9'){raw=raw*10u+unsigned(*q-'0');++q;}
+            if(negative)raw=0u-raw;
+            rgba|=(raw&255u)<<(8*i);
+            while(*p&&*p!=' ')++p;
+            if(!*p)break;++p;
+        }
+        write_field(actor,o->offset,rgba);o->scalar=1;
     }else if(spec->type==5||spec->type==6){
         // MSVCRT atoi overflow is not a portable C++ contract. Bound the
         // conversion rather than relying on host undefined behavior.
@@ -729,6 +755,7 @@ bool find_parent(const SpawnBindings& b,SpawnResult& o,void* a,void** parent) no
 int __cdecl timer_spawn(void*,unsigned,const TimerBindings*,TimerResult*) noexcept;
 int __cdecl counter_spawn(void*,unsigned,CounterResult*) noexcept;
 int __cdecl remap_spawn(void*,unsigned,RemapResult*) noexcept;
+int __cdecl colorblend_spawn(void*,unsigned,ColorBlendResult*) noexcept;
 int __cdecl menu_listen(void*,unsigned,bool,const MenuBindings*,MenuResult*) noexcept;
 int __cdecl navigation_activate(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
 bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) noexcept {
@@ -736,6 +763,7 @@ bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) n
     if(vt==timer_vtable&&b.logic_timer){native=true;TimerResult r{};return timer_spawn(a,n,b.logic_timer,&r)!=0;}
     if(vt==counter_vtable&&b.native_math_counter){native=true;CounterResult r{};return counter_spawn(a,n,&r)!=0;}
     if(vt==remap_vtable&&b.native_math_remap){native=true;RemapResult r{};return remap_spawn(a,n,&r)!=0;}
+    if(vt==colorblend_vtable&&b.native_math_colorblend){native=true;ColorBlendResult r{};return colorblend_spawn(a,n,&r)!=0;}
     if(vt==menu_vtable&&b.logic_menu){native=true;MenuResult r{};return menu_listen(a,n,false,b.logic_menu,&r)!=0;}
     native=(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
     if(!native)return b.virtual_spawn&&b.virtual_spawn(b.context,a);
@@ -804,7 +832,7 @@ bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexce
     }
     unsigned n=0;if(!extent_ok(b,a,4,n))return false;
     const auto vt=read_field<unsigned>(a,0);
-    const bool native=(vt==remap_vtable&&b.native_math_remap)||(vt==menu_vtable&&b.logic_menu)||(vt==counter_vtable&&b.native_math_counter)||(vt==timer_vtable&&b.logic_timer)||(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
+    const bool native=(vt==colorblend_vtable&&b.native_math_colorblend)||(vt==remap_vtable&&b.native_math_remap)||(vt==menu_vtable&&b.logic_menu)||(vt==counter_vtable&&b.native_math_counter)||(vt==timer_vtable&&b.logic_timer)||(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
     if(!native)return b.spawn&&b.spawn(b.context,a,&code);
     if(!b.native_spawn_begin||!b.native_spawn_end)return false;
     bool proceed=false;if(!b.native_spawn_begin(b.context,a,&proceed))return false;
@@ -812,6 +840,7 @@ bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexce
         if(vt==menu_vtable){MenuResult r{};if(!menu_listen(a,n,false,b.logic_menu,&r))return false;}
         else if(vt==counter_vtable){CounterResult r{};if(!counter_spawn(a,n,&r))return false;}
         else if(vt==remap_vtable){RemapResult r{};if(!remap_spawn(a,n,&r))return false;}
+        else if(vt==colorblend_vtable){ColorBlendResult r{};if(!colorblend_spawn(a,n,&r))return false;}
         else if(vt==timer_vtable){TimerResult r{};if(!timer_spawn(a,n,b.logic_timer,&r))return false;}
         else {
             const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return false;
@@ -1676,6 +1705,7 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
         case autosave_vtable:extent=autosave_extent;break;
         case multicompare_vtable:first=0x394;count=2;extent=multicompare_extent;break;
         case remap_vtable:first=0x3a4;count=1;extent=remap_extent;break;
+        case colorblend_vtable:first=0x3a4;count=1;extent=colorblend_extent;break;
         default:return 0;
     }
     if(n<extent||(menu&&(!b->unregister_menu||read_field<unsigned>(a,0x394)!=menu_listener_vtable))||
@@ -2102,7 +2132,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
