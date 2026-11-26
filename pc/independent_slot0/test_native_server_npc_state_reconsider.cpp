@@ -2887,5 +2887,49 @@ int main(int argc,char** argv){
         q.player_ok=true;q.entity_ok=false;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_found&&!o.entity_found);
         q.entity_ok=true;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.entity_found&&o.refreshed&&o.positioned&&o.random_calls==3&&o.oriented&&o.velocity_set&&o.finished&&q.step==6);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntActivityTranslationApi>(GetProcAddress(s,server_npc_grunt_activity_translation_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_activity_translation_export)&&!g(0,sizeof(ServerNpcGruntActivityTranslationApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntActivityTranslationApi));assert(api);
+        struct ActivityFixture{
+            alignas(4) unsigned char a[0x1088]{},linked[0xdb2]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            bool special=false,launcher=false;unsigned checks=0,caps=0;int lookup=-1;
+            static ActivityFixture& self(void* p){return *static_cast<ActivityFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.linked);
+        ServerNpcGruntActivityTranslationBindings b{};b.context=&q;b.entities.entries=q.entries;b.entities.count=2;b.entities.speech.original_vtable=0x2249aaa4;
+        b.entities.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xdb2;return 1;};
+        b.launcher_activity=900;b.other_activity=901;
+        b.has_weapon=[](void* p,void*,const char* name,bool* v) noexcept -> int{assert(!std::strcmp(name,"weapon_grenadelauncher"));*v=ActivityFixture::self(p).launcher;return 1;};
+        b.special_identity=[](void* p,void* a,bool* yes) noexcept -> int{auto& q=ActivityFixture::self(p);assert(a==q.a);++q.checks;*yes=q.special;return 1;};
+        b.component_translate=[](void*,std::uint32_t token,int activity,int* v) noexcept -> int{assert(token==77);*v=1000+activity;return 1;};
+        b.weapon_caps=[](void* p,void* w,unsigned* v) noexcept -> int{auto& q=ActivityFixture::self(p);assert(w==q.linked);++q.caps;*v=0x8000000u;return 1;};
+        b.linked_activity=[](void* p,void* a,void* link,int* v) noexcept -> int{auto& q=ActivityFixture::self(p);assert(a==q.a&&link==q.linked);*v=67;return 1;};
+        b.activity_lookup=[](void* p,void* a,int activity,int* v) noexcept -> int{auto& q=ActivityFixture::self(p);assert(a==q.a&&activity>=3&&activity<=5);*v=q.lookup;return 1;};
+        ServerNpcGruntActivityTranslationResult o{};
+        assert(api->run(q.a,sizeof(q.a),1,&b,&o)&&o.native_result==0x2d&&o.base_called);
+        q.a[0xca0]=1;assert(api->run(q.a,sizeof(q.a),16,&b,&o)&&o.native_result==0xc7);
+        assert(api->run(q.a,sizeof(q.a),66,&b,&o)&&o.native_result==0xc8);
+        q.a[0xca0]=0;q.special=true;
+        assert(api->run(q.a,sizeof(q.a),6,&b,&o)&&o.stance_written&&q.a[0xc64]&&o.native_result==7);
+        assert(api->run(q.a,sizeof(q.a),10,&b,&o)&&o.native_result==11);
+        f.put(q.a,0xc18,77u);assert(api->run(q.a,sizeof(q.a),1,&b,&o)&&o.component_called&&!o.base_called&&o.native_result==1072);
+        const unsigned checks=q.checks;q.launcher=true;
+        assert(api->run(q.a,sizeof(q.a),17,&b,&o)&&o.native_result==900&&o.weapon_checked&&!o.special_checked&&q.checks==checks);
+        q.launcher=false;assert(api->run(q.a,sizeof(q.a),17,&b,&o)&&o.native_result==901);
+        f.put(q.a,0xc18,0u);q.special=false;f.put(q.a,0x78c,0x1001u);f.put(q.a,0xa18,0x1001u);
+        assert(api->run(q.a,sizeof(q.a),66,&b,&o)&&o.caps_called&&o.linked_called&&o.native_result==67);
+        f.put(q.linked,0x3a4,static_cast<std::int16_t>(101));
+        assert(api->run(q.a,sizeof(q.a),3,&b,&o)&&o.lookup_called&&o.native_result==1);
+        q.lookup=42;assert(api->run(q.a,sizeof(q.a),3,&b,&o)&&o.native_result==5);
+        b.entities.speech.original_vtable=0x2248c514;f.put(q.a,0x1024,0x1001u);f.put(q.linked,0xc18,50.f);
+        for(int activity:{1,7,16})assert(api->run(q.a,sizeof(q.a),activity,&b,&o)&&o.jet_direct&&o.speed==50&&o.native_result==0xd0);
+        f.put(q.linked,0xc18,51.f);assert(api->run(q.a,sizeof(q.a),7,&b,&o)&&o.native_result==0xd5);
+        assert(api->run(q.a,sizeof(q.a),66,&b,&o)&&o.jet_direct&&o.native_result==0xda);
+        assert(api->run(q.a,sizeof(q.a),17,&b,&o)&&o.jet&&!o.jet_direct&&o.native_result==901);
+        f.put(q.a,0x1024,0x9001u);assert(!api->run(q.a,sizeof(q.a),17,&b,&o));
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
