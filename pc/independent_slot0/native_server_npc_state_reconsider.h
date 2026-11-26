@@ -1764,4 +1764,30 @@ struct ServerNpcGruntDeathSelectorApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntDeathSelectedBindings*,ServerNpcGruntDeathSelectedResult*) noexcept;
 };
 using GetServerNpcGruntDeathSelectorApi=const ServerNpcGruntDeathSelectorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_life_damage_export[]="SiN_GetServerNpcGruntLifeDamageApi";
+enum ServerNpcGruntLifeDamageRoute : unsigned {NpcDamageAlive=0,NpcDamageDying=1,NpcDamageDead=2};
+struct ServerNpcGruntLifeDamageBindings {
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    std::uint32_t original_vtable;
+    float* shared_direction; // original 22572bdc, three floats
+    float default_direction[3]; // original 225885b8
+    void* context;
+    int (__cdecl *center)(void*,void*,float*) noexcept; // entity +214
+    int (__cdecl *normalize)(void*,float*) noexcept; // imported vector normalize
+    int (__cdecl *remove)(void*,void*) noexcept; // 22286bf0
+    int (__cdecl *reaction)(void*,void*,void*,void*) noexcept; // +2d4(12,1,attacker,inflictor,0,0)
+};
+struct ServerNpcGruntLifeDamageResult {
+    float direction[3],fraction_before,fraction_after;
+    int health_before,health_after,native_result;
+    unsigned completed,inflictor_valid,centers,normalized,direction_written,health_writes,fraction_written,removed,reaction_called;
+};
+struct ServerNpcGruntLifeDamageApi {
+    std::uint32_t version,size;
+    // Route is caller-attested original virtual entry; not a life-state guess.
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,unsigned,const ServerNpcGruntLifeDamageBindings*,ServerNpcGruntLifeDamageResult*) noexcept;
+};
+using GetServerNpcGruntLifeDamageApi=const ServerNpcGruntLifeDamageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -2440,5 +2440,45 @@ int main(int argc,char** argv){
         }
         assert(!api->select(q.actor,0x297,q.damage,sizeof(q.damage),0,&b,&o));
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntLifeDamageApi>(GetProcAddress(s,server_npc_grunt_life_damage_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_life_damage_export)&&!g(0,sizeof(ServerNpcGruntLifeDamageApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntLifeDamageApi));assert(api);
+        struct LifeFixture{
+            alignas(4) unsigned char actor[0xdb2]{},other[0x20]{},damage[0x48]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float direction[3]{99,99,99};
+            unsigned centers=0,normalized=0,removed=0,reactions=0;
+            static LifeFixture& self(void* p){return *static_cast<LifeFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.other);
+        ServerNpcGruntLifeDamageBindings b{};b.entries=q.entries;b.count=3;b.original_vtable=0x2249aaa4;b.context=&q;
+        b.shared_direction=q.direction;b.default_direction[1]=1;
+        b.center=[](void* p,void* e,float* v) noexcept -> int{
+            auto& q=LifeFixture::self(p);assert(e==q.actor||e==q.other);++q.centers;v[0]=e==q.other?3.f:0.f;v[1]=0;v[2]=e==q.other?14.f:0.f;return 1;};
+        b.normalize=[](void* p,float* v) noexcept -> int{
+            auto& q=LifeFixture::self(p);assert(v[0]==3&&v[1]==0&&v[2]==4);++q.normalized;v[0]=0.6f;v[2]=0.8f;return 1;};
+        b.remove=[](void* p,void* a) noexcept -> int{auto& q=LifeFixture::self(p);assert(a==q.actor);++q.removed;return 1;};
+        b.reaction=[](void* p,void* a,void* attacker,void* inflictor) noexcept -> int{auto& q=LifeFixture::self(p);assert(a==q.actor&&attacker==q.other&&inflictor==q.other);++q.reactions;return 1;};
+        f.put(q.damage,0x24,0xffffffffu);f.put(q.damage,0x28,0x1001u);f.put(q.actor,0x9c,100);
+        f.put(q.damage,0x2c,0.5f);
+        ServerNpcGruntLifeDamageResult o{};
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageAlive,&b,&o)&&o.completed&&!o.native_result&&o.fraction_after==0.5f&&o.health_after==100&&o.direction_written&&q.direction[1]==1);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageAlive,&b,&o)&&o.native_result&&o.fraction_after==0&&o.health_after==99&&o.health_writes==1);
+        f.put(q.damage,0x24,0x1001u);f.put(q.damage,0x2c,12.f);q.damage[0x3b]=1;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageAlive,&b,&o)&&o.native_result&&o.health_after==87&&o.normalized&&q.direction[0]==0.6f&&!o.reaction_called);
+        f.put(q.damage,0x2c,12.5f);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageAlive,&b,&o)&&o.health_after==75&&o.reaction_called&&q.reactions==1);
+        f.put(q.actor,0x94,1);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageAlive,&b,&o)&&o.health_after==75&&!o.fraction_written&&o.reaction_called&&q.reactions==2);
+        f.put(q.actor,0x94,0);f.put(q.actor,0x9c,-490);f.put(q.damage,0x2c,10.f);q.damage[0x3b]=2;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageDying,&b,&o)&&o.native_result&&o.health_after==-500&&!o.removed&&!o.direction_written);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageDying,&b,&o)&&o.health_after==-510&&o.removed&&q.removed==1);
+        f.put(q.actor,0x9c,-480);f.put(q.damage,0x38,0x02000001u);f.put(q.damage,0x2c,20.f);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageDead,&b,&o)&&o.health_after==-502&&o.health_writes==2&&o.removed&&o.normalized&&q.removed==2);
+        f.put(q.damage,0x24,0x9001u);f.put(q.damage,0x38,1u);f.put(q.damage,0x2c,20.f);f.put(q.actor,0x9c,-500);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageDead,&b,&o)&&o.health_after==-502&&!o.removed&&!o.direction_written&&!o.inflictor_valid&&q.removed==2);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
