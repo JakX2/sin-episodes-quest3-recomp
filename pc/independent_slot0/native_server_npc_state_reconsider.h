@@ -3256,6 +3256,31 @@ struct ServerNpcWeaponAmmoApi {
     int (__cdecl *attack)(void*,unsigned,void*,float,float,const ServerNpcGruntAttackBindings*,const ServerNpcGruntCombatLineBindings*,const ServerNpcWeaponAmmoBindings*,ServerNpcGruntNativeLineAttackResult*) noexcept;
 };
 using GetServerNpcWeaponAmmoApi=const ServerNpcWeaponAmmoApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Original 22317300 weapon melee predictor. Native arithmetic and branch
+// ordering; engine virtual queries and dirty-transform refresh remain explicit.
+struct ServerNpcWeaponMeleeBindings {
+    void* context;
+    int (__cdecl *velocity_pair)(void*,void*,float*,float*) noexcept; // target +1e8
+    int (__cdecl *center)(void*,void*,float*) noexcept; // +214
+    int (__cdecl *forward)(void*,void*,float*) noexcept; // owner +31c
+    int (__cdecl *random)(void*,float,float,float*) noexcept;
+    int (__cdecl *second_prediction)(void*,void*,bool*) noexcept; // target +120
+    int (__cdecl *refresh_velocity)(void*,void*) noexcept; // 2213d750
+    int (__cdecl *refresh_origin)(void*,void*) noexcept; // 2213fa60
+};
+struct ServerNpcWeaponMeleeResult {
+    unsigned completed,has_enemy,random_called,vertical_rejected,facing_rejected,second_called,second_enabled,second_accepted;
+    int condition;
+    float prediction_time,predicted[3],horizontal,second_horizontal;
+    double vertical,predicted_dot;
+};
+inline constexpr char server_npc_weapon_melee_export[]="SiN_GetServerNpcWeaponMeleeApi";
+struct ServerNpcWeaponMeleeApi {
+    std::uint32_t version,size;
+    int (__cdecl *query)(void*,unsigned,void*,float,float,const ServerNpcGruntAssaultAdmissionBindings*,const ServerNpcWeaponMeleeBindings*,ServerNpcWeaponMeleeResult*) noexcept;
+    int (__cdecl *attack)(void*,unsigned,void*,float,float,const ServerNpcGruntAttackBindings*,const ServerNpcGruntCombatLineBindings*,const ServerNpcWeaponAmmoBindings*,const ServerNpcWeaponMeleeBindings*,ServerNpcGruntNativeLineAttackResult*,ServerNpcWeaponMeleeResult*) noexcept;
+};
+using GetServerNpcWeaponMeleeApi=const ServerNpcWeaponMeleeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 int grunt_schedule_cone_normal_internal(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*,const ServerNpcGruntScheduleConeServices*) noexcept;
 int grunt_schedule_line_jet_internal(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*,const ServerNpcGruntScheduleConeServices* = nullptr) noexcept;
 int grunt_schedule_line_failure_internal(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,const ServerNpcGruntScheduleConeServices* = nullptr) noexcept;

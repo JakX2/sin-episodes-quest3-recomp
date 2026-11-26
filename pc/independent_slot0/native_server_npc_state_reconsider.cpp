@@ -1597,10 +1597,64 @@ int __cdecl weapon_ammo_query(void* w,unsigned slot,const ServerNpcGruntAssaultA
     o->reserve=read<int>(combat,0x64c+4u*static_cast<unsigned>(o->ammo_type));o->reserve_read=1;
     return done(o->reserve>0);
 }
+// 22317300: known Grunt owner +fc returns self, +f4 true,
+// +154 resolves current enemy (22044840). Foreign owners remain unsupported.
+int __cdecl weapon_melee_query(void* actor,unsigned bytes,void* w,float dot,float distance,const ServerNpcGruntAssaultAdmissionBindings* ab,const ServerNpcWeaponMeleeBindings* b,ServerNpcWeaponMeleeResult* o) noexcept{
+    if(!o)return 0;*o={};
+    if(!actor||bytes<0x8a4||!w||!ab||!b||!relation_grunt_class(ab->actor_vtable)||!std::isfinite(dot)||!std::isfinite(distance)||distance<0||
+       ab->count>sin_independent::kEntityHandleCapacity||(ab->count&&!ab->entries))return 0;
+    unsigned n=0;
+    if(!ab->extent||!ab->extent(ab->context,w,&n)||n<0x498||read<unsigned>(w,0)!=0x22478d0cu)return 0;
+    const sin_independent::EntityHandleView registry(ab->entries,ab->count);
+    if(registry.Resolve(read<unsigned>(w,0x494))!=actor)return 0;
+    auto done=[&](int id){o->condition=id;o->completed=1;return 1;};
+    void* e=registry.Resolve(read<unsigned>(actor,0x8a0));if(!e)return done(0);
+    o->has_enemy=1;
+    float velocity[3]{},angular[3]{},center[3]{},owner_center[3]{},forward[3]{},roll=0;
+    if(!b->velocity_pair||!b->velocity_pair(b->context,e,velocity,angular)||!finite_vec(velocity))return 0;
+    if(!b->random||!b->random(b->context,-.3f,.2f,&roll)||!std::isfinite(roll)||roll<-.3f||roll>.2f)return 0;
+    o->random_called=1;
+    const double t=static_cast<double>(roll)+.1f;
+    o->prediction_time=t<0?0.f:static_cast<float>(t);
+    if(!b->center||!b->center(b->context,e,center)||!finite_vec(center))return 0;
+    for(unsigned i=0;i<3;++i)o->predicted[i]=static_cast<float>(static_cast<double>(velocity[i])*o->prediction_time+center[i]);
+    if(!finite_vec(o->predicted)||!b->center(b->context,actor,owner_center)||!finite_vec(owner_center))return 0;
+    float dx=static_cast<float>(static_cast<double>(o->predicted[0])-owner_center[0]);
+    float dy=static_cast<float>(static_cast<double>(o->predicted[1])-owner_center[1]);
+    o->vertical=std::abs(static_cast<double>(o->predicted[2])-owner_center[2]);
+    if(o->vertical>70.f){o->vertical_rejected=1;return done(0x25);}
+    if(!b->forward||!b->forward(b->context,actor,forward)||!finite_vec(forward))return 0;
+    o->predicted_dot=static_cast<double>(dy)*forward[1]+static_cast<double>(dx)*forward[0];
+    if(static_cast<double>(dot)<.7&&o->predicted_dot<.7){o->facing_rejected=1;return done(0x26);}
+    auto length=[](float x,float y){return std::sqrt(static_cast<double>(static_cast<float>(static_cast<double>(x)*x+static_cast<double>(y)*y)));};
+    o->horizontal=static_cast<float>(length(dx,dy));
+    bool second=false;o->second_called=1;
+    if(!std::isfinite(o->horizontal)||!b->second_prediction||!b->second_prediction(b->context,e,&second))return 0;
+    o->second_enabled=second;
+    if(second){
+        unsigned en=0;if(!ab->extent(ab->context,e,&en)||en<0x2c8)return 0;
+        if(read<unsigned>(e,0xb8)&0x1000u){if(!b->refresh_velocity||!b->refresh_velocity(b->context,e))return 0;}
+        if(read<unsigned>(e,0xb8)&0x800u){if(!b->refresh_origin||!b->refresh_origin(b->context,e))return 0;}
+        float future[3]{};
+        for(unsigned i=0;i<3;++i){
+            const float delta=static_cast<float>(static_cast<double>(read<float>(e,0x250+4*i))*.35f);
+            future[i]=static_cast<float>(static_cast<double>(read<float>(e,0x2bc+4*i))+delta);
+        }
+        if(read<unsigned>(w,0xb8)&0x800u){if(!b->refresh_origin||!b->refresh_origin(b->context,w))return 0;}
+        float diff[3]{};
+        for(unsigned i=0;i<3;++i)diff[i]=static_cast<float>(static_cast<double>(read<float>(w,0x2bc+4*i))-future[i]);
+        if(!finite_vec(diff))return 0;
+        const double second_length=length(diff[0],diff[1]);o->second_horizontal=static_cast<float>(second_length);
+        if(!std::isfinite(second_length))return 0;
+        // 22317503 compares the x87 sqrt before storing any float result.
+        if(second_length<=48.f){o->second_accepted=1;return done(0x16);}
+    }
+    return done(o->horizontal>48.f&&distance>48.f?0x25:0x16);
+}
 // Original weapon condition leaves, selected by the authenticated primary vtable.
 // Return 1 for reconstructed, 0 for an explicit unresolved engine-dependent arm,
 // -1 for invalid bounds/class. Never use a hosted callback to hide bad object data.
-int native_weapon_attack_condition(void* w,unsigned slot,float dot,float distance,const ServerNpcGruntAssaultAdmissionBindings& ab,int& id,const ServerNpcWeaponAmmoBindings* ammo=nullptr) noexcept{
+int native_weapon_attack_condition(void* w,unsigned slot,float dot,float distance,const ServerNpcGruntAssaultAdmissionBindings& ab,int& id,const ServerNpcWeaponAmmoBindings* ammo=nullptr,void* actor=nullptr,unsigned actor_bytes=0,const ServerNpcWeaponMeleeBindings* melee=nullptr,ServerNpcWeaponMeleeResult* melee_out=nullptr) noexcept{
     unsigned n=0,caps=0;
     if(!w||!ab.extent||!ab.extent(ab.context,w,&n)||n<4||!line_weapon_caps(w,ab,caps))return -1;
     const auto vt=read<unsigned>(w,0);
@@ -1609,7 +1663,11 @@ int native_weapon_attack_condition(void* w,unsigned slot,float dot,float distanc
     case 0x4b8: // 222aab70
         id=0;return 1;
     case 0x4b4: // 222aab60 except actual melee prediction 22317300
-        if(vt==0x22478d0cu)return 0;
+        if(vt==0x22478d0cu){
+            if(!melee)return 0;
+            if(!melee_out||!weapon_melee_query(actor,actor_bytes,w,dot,distance,&ab,melee,melee_out))return -1;
+            id=melee_out->condition;return 1;
+        }
         id=0;return 1;
     case 0x4ac:break;
     default:return -1;
@@ -1635,7 +1693,7 @@ int native_weapon_attack_condition(void* w,unsigned slot,float dot,float distanc
        dot<.5f?0x26:0x14;
     return 1;
 }
-int grunt_attack_gather_impl(void* actor,unsigned bytes,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* out,float now=0,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntCombatLineResult* line_results=nullptr,const ServerNpcWeaponAmmoBindings* ammo=nullptr) noexcept{
+int grunt_attack_gather_impl(void* actor,unsigned bytes,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* out,float now=0,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntCombatLineResult* line_results=nullptr,const ServerNpcWeaponAmmoBindings* ammo=nullptr,const ServerNpcWeaponMeleeBindings* melee=nullptr,ServerNpcWeaponMeleeResult* melee_out=nullptr) noexcept{
     if(!out)return 0;*out={};for(auto& id:out->conditions)id=-1;out->distance=distance;
     if(!actor||bytes<0x8f0||!target||!b||!relation_grunt_class(b->original_vtable)||!std::isfinite(distance)||distance<0||
        b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
@@ -1688,7 +1746,7 @@ int grunt_attack_gather_impl(void* actor,unsigned bytes,void* target,float dista
     auto weapon=[&](void* w,unsigned i,unsigned slot,int ready){
         int id=0;++out->weapon_queries;
         if(native_line){
-            const int resolved=native_weapon_attack_condition(w,slot,out->dot,distance,*native_line->admission,id,ammo);
+            const int resolved=native_weapon_attack_condition(w,slot,out->dot,distance,*native_line->admission,id,ammo,actor,bytes,melee,melee_out);
             if(resolved<0)return false;
             if(resolved>0){++out->native_queries;return set(i,id,ready);}
         }
@@ -1743,7 +1801,7 @@ int grunt_attack_gather_impl(void* actor,unsigned bytes,void* target,float dista
 int __cdecl grunt_attack_gather(void* a,unsigned n,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* o) noexcept{
     return grunt_attack_gather_impl(a,n,target,distance,b,o);
 }
-int native_line_attack_impl(void* a,unsigned n,void* target,float distance,float now,const ServerNpcGruntAttackBindings* b,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* o,const ServerNpcWeaponAmmoBindings* ammo=nullptr) noexcept{
+int native_line_attack_impl(void* a,unsigned n,void* target,float distance,float now,const ServerNpcGruntAttackBindings* b,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* o,const ServerNpcWeaponAmmoBindings* ammo=nullptr,const ServerNpcWeaponMeleeBindings* melee=nullptr,ServerNpcWeaponMeleeResult* melee_out=nullptr) noexcept{
     if(!o)return 0;*o={};
     // Bind the identical actor class, entity registry and condition namespace
     // used by attack cleanup and ready-condition writes; no borrowed pointers escape.
@@ -1751,7 +1809,7 @@ int native_line_attack_impl(void* a,unsigned n,void* target,float distance,float
     auto admission=*line->admission;
     admission.actor_vtable=b->original_vtable;admission.entries=b->entries;admission.count=b->count;admission.conditions=b->conditions;
     auto bound=*line;bound.admission=&admission;
-    return grunt_attack_gather_impl(a,n,target,distance,b,&o->attack,now,&bound,o->lines,ammo);
+    return grunt_attack_gather_impl(a,n,target,distance,b,&o->attack,now,&bound,o->lines,ammo,melee,melee_out);
 }
 int __cdecl grunt_native_line_attack(void* a,unsigned n,void* target,float distance,float now,const ServerNpcGruntAttackBindings* b,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* o) noexcept{
     return native_line_attack_impl(a,n,target,distance,now,b,line,o);
@@ -1760,6 +1818,11 @@ int __cdecl weapon_ammo_attack(void* a,unsigned n,void* target,float distance,fl
     if(!ammo){if(o)*o={};return 0;}
     return native_line_attack_impl(a,n,target,distance,now,b,line,o,ammo);
 }
+int __cdecl weapon_melee_attack(void* a,unsigned n,void* target,float distance,float now,const ServerNpcGruntAttackBindings* b,const ServerNpcGruntCombatLineBindings* line,const ServerNpcWeaponAmmoBindings* ammo,const ServerNpcWeaponMeleeBindings* melee,ServerNpcGruntNativeLineAttackResult* o,ServerNpcWeaponMeleeResult* m) noexcept{
+    if(!m)return 0;*m={};if(!melee){if(o)*o={};return 0;}
+    return native_line_attack_impl(a,n,target,distance,now,b,line,o,ammo,melee,m);
+}
+const ServerNpcWeaponMeleeApi weapon_melee_api{1,sizeof(ServerNpcWeaponMeleeApi),&weapon_melee_query,&weapon_melee_attack};
 const ServerNpcWeaponAmmoApi weapon_ammo_api{1,sizeof(ServerNpcWeaponAmmoApi),&weapon_ammo_query,&weapon_ammo_attack};
 const ServerNpcGruntNativeLineAttackApi native_line_attack_api{1,sizeof(ServerNpcGruntNativeLineAttackApi),&grunt_native_line_attack};
 int __cdecl grunt_goal_refresh(void*,unsigned,unsigned,float,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntGoalRefreshResult*) noexcept;
@@ -9991,4 +10054,9 @@ int native_line_squad_report_gather(void* a,unsigned n,float now,const ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcWeaponAmmoApi=_SiN_GetServerNpcWeaponAmmoApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWeaponAmmoApi* __cdecl SiN_GetServerNpcWeaponAmmoApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcWeaponAmmoApi)?&weapon_ammo_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcWeaponMeleeApi=_SiN_GetServerNpcWeaponMeleeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWeaponMeleeApi* __cdecl SiN_GetServerNpcWeaponMeleeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcWeaponMeleeApi)?&weapon_melee_api:nullptr;
 }
