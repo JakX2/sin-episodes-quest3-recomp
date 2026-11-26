@@ -1455,5 +1455,39 @@ int main(int argc,char** argv){
         ServerNpcGruntSquadLeaveResult lr{};
         assert(api->detach(q.actors[1],sizeof(q.actors[1]),0x2002u,102,&jb.group,&lr)&&lr.completed&&lr.missing&&!lr.cleared&&JoinFixture::rd(q.actors[1],0x9c4)==0&&JoinFixture::rd(q.actors[1],0x9c8)==123);
     }
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntSquadRegistryApi>(GetProcAddress(s,server_npc_grunt_squad_registry_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_squad_registry_export)&&!g(0,sizeof(ServerNpcGruntSquadRegistryApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntSquadRegistryApi));assert(api);
+        struct RegistryFixture{
+            alignas(4) unsigned char groups[4][0x78]{},actor[0xdb2]{};
+            sin_independent::EntityHandleEntry slots[2]{};
+            unsigned allocated=0,interned=0,released=0;
+            static RegistryFixture& self(void* p){return *static_cast<RegistryFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        ServerNpcGruntSquadRegistryBindings rb{};rb.context=rb.storage.context=&q;
+        rb.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& q=RegistryFixture::self(p);if(token<10||token>=10+q.allocated)return 0;*out=q.groups[token-10];*n=0x78;return 1;};
+        rb.allocate=[](void* p,unsigned size,std::uint32_t* token,std::uint32_t* array,void** out,unsigned* n) noexcept -> int{auto& q=RegistryFixture::self(p);assert(size==0x78&&q.allocated<4);unsigned i=q.allocated++;*token=10+i;*array=20+i;*out=q.groups[i];*n=0x78;std::memset(*out,0xa5,*n);return 1;};
+        rb.release=[](void* p,std::uint32_t) noexcept -> int{++RegistryFixture::self(p).released;return 1;};
+        rb.intern=[](void* p,const char* name,std::uint32_t* key) noexcept -> int{auto& q=RegistryFixture::self(p);assert(!std::strcmp(name,"Alpha")||!std::strcmp(name,"Bravo"));++q.interned;*key=!std::strcmp(name,"Alpha")?31u:32u;return 1;};
+        rb.name=[](void*,std::uint32_t token,const char** name,unsigned* n) noexcept -> int{assert(token==31||token==32);*name=token==31?"Alpha":"Bravo";*n=6;return 1;};
+        ServerNpcGruntSquadRegistryResult rr{};std::uint32_t head=0;
+        assert(api->lookup(head,"Alpha",&rb,&rr)&&rr.completed&&!rr.found&&!rr.visited);
+        assert(api->create(&head,"Alpha",&rb,&rr)&&rr.constructed&&rr.linked&&rr.token==10&&head==10&&rr.name_token==31);
+        assert(RegistryFixture::rd(q.groups[0],0)==0&&RegistryFixture::rd(q.groups[0],4)==31&&RegistryFixture::rd(q.groups[0],8)==0xa5a5a5a5u&&RegistryFixture::rd(q.groups[0],0x54)==0xa5a5a5a5u&&RegistryFixture::rd(q.groups[0],0x58)==0xffffffffu&&RegistryFixture::rd(q.groups[0],0x4c)==20&&RegistryFixture::rd(q.groups[0],0x70)==0);
+        assert(api->create(&head,nullptr,&rb,&rr)&&rr.constructed&&!rr.linked&&rr.token==11&&!rr.name_token&&head==10&&q.interned==1);
+        assert(api->lookup(head,nullptr,&rb,&rr)&&!rr.found&&rr.visited==1);
+        assert(api->create(&head,"",&rb,&rr)&&rr.linked&&head==12&&RegistryFixture::rd(q.groups[2],0)==10&&!rr.name_token&&q.interned==1);
+        assert(api->lookup(head,nullptr,&rb,&rr)&&rr.found&&rr.token==12&&rr.visited==1);
+        assert(api->lookup(head,"aLPHa",&rb,&rr)&&rr.found&&rr.token==10&&rr.visited==2);
+        ServerNpcGruntSquadJoinBindings jb{};jb.group.sentence.speech.original_vtable=0x2249aaa4;
+        jb.group.sentence.speech.context=&q;jb.group.sentence.speech.squad_storage=rb.storage.storage;
+        q.slots[1].serial=1;q.slots[1].entity=reinterpret_cast<CBaseEntity*>(q.actor);jb.group.sentence.entries=q.slots;jb.group.sentence.count=2;
+        assert(api->attach(q.actor,sizeof(q.actor),0x1001u,50,&head,"ALPHA",&rb,&jb,&rr)&&rr.found&&!rr.allocated&&rr.join.appended&&rr.join.index==0&&RegistryFixture::rd(q.actor,0x9c4)==10&&RegistryFixture::rd(q.actor,0x9c8)==31);
+        assert(api->attach(q.actor,sizeof(q.actor),0x1001u,51,&head,"Bravo",&rb,&jb,&rr)&&rr.linked&&rr.join.detached&&rr.join.appended&&head==13&&RegistryFixture::rd(q.actor,0x9c4)==13&&RegistryFixture::rd(q.groups[0],0x48)==0);
+        f.put(q.groups[0],0,10u);assert(!api->lookup(head,"absent",&rb,&rr)&&!rr.completed);f.put(q.groups[0],0,0u);
+        assert(q.allocated==4&&q.interned==2&&!q.released);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

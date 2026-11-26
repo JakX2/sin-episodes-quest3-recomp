@@ -2667,6 +2667,76 @@ int __cdecl grunt_squad_detach(void* a,unsigned n,std::uint32_t handle,float now
     }
     out->completed=1;return 1;
 }
+constexpr unsigned squad_name_limit=1024;
+bool squad_name_size(const char* name,unsigned extent,unsigned& length) noexcept{
+    length=0;if(!name)return true;
+    const unsigned limit=extent<squad_name_limit?extent:squad_name_limit;
+    while(length<limit&&name[length])++length;
+    return length<limit;
+}
+unsigned squad_fold(unsigned char c) noexcept{return c>='A'&&c<='Z'?c+32u:c;}
+bool squad_name_equal(const char* a,unsigned an,const char* b,unsigned bn) noexcept{
+    if(an!=bn)return false;
+    for(unsigned i=0;i<an;++i)if(squad_fold(static_cast<unsigned char>(a[i]))!=squad_fold(static_cast<unsigned char>(b[i])))return false;
+    return true;
+}
+bool squad_registry_lookup(std::uint32_t head,const char* name,const ServerNpcGruntSquadRegistryBindings& b,ServerNpcGruntSquadRegistryResult& out) noexcept{
+    unsigned length=0;if(!squad_name_size(name,squad_name_limit,length))return false;
+    // 220a8050 walks group+0 and compares name strings, treating null as empty.
+    // Bounded cycle guard; original assumes a finite linked list.
+    for(auto token=head;token;){
+        if(++out.visited>4096)return false;
+        void* group=nullptr;unsigned n=0;if(!memory_storage(&b.storage,token,0x78,group,n))return false;
+        const auto key=read<unsigned>(group,4);const char* stored=nullptr;unsigned size=0,stored_length=0;
+        if(key&&(!b.name||!b.name(b.context,key,&stored,&size)||!stored||!squad_name_size(stored,size,stored_length)))return false;
+        if(squad_name_equal(name,length,stored,stored_length)){
+            out.found=1;out.token=token;out.array_token=read<unsigned>(group,0x4c);out.name_token=key;return true;
+        }
+        token=read<unsigned>(group,0);
+    }
+    return true;
+}
+bool squad_registry_create(std::uint32_t& head,const char* name,const ServerNpcGruntSquadRegistryBindings& b,ServerNpcGruntSquadRegistryResult& out) noexcept{
+    unsigned len=0;if(!squad_name_size(name,squad_name_limit,len)||!b.allocate||!b.release)return false;
+    void* group=nullptr;unsigned n=0;std::uint32_t token=0,array_token=0;
+    if(!b.allocate(b.context,0x78,&token,&array_token,&group,&n))return false;
+    out.allocated=1;out.token=token;out.array_token=array_token;
+    auto rollback=[&](){if(token&&b.release(b.context,token))out.released=1;return false;};
+    if(!token||!array_token||!group||n<0x78)return rollback();
+    void* verified=nullptr;unsigned extent=0;
+    if(!memory_storage(&b.storage,token,0x78,verified,extent)||verified!=group)return rollback();
+    // 220aa6a0 initializes fields only, not the unused array or +54.
+    write(group,0x48,0u);write(group,0x4c,array_token);write(group,0x58,0xffffffffu);
+    for(unsigned off=0x60;off<=0x70;off+=4)write(group,off,0u);
+    std::uint32_t key=0;
+    // 221f3de0 returns zero for empty names without calling the intern pool.
+    if(len&&(!b.intern||!b.intern(b.context,name,&key)))return rollback();
+    write(group,0,0u);write(group,4,key);write(group,0x48,0u);write(group,0x50,0u);write(group,0x58,0xffffffffu);
+    write(group,0x74,0u);write(group,0x5c,0u);out.name_token=key;out.constructed=1;
+    // A non-null empty string still links, whereas a null input does not.
+    if(name){write(group,0,head);head=token;out.linked=1;}
+    return true;
+}
+int __cdecl squad_lookup(std::uint32_t head,const char* name,const ServerNpcGruntSquadRegistryBindings* b,ServerNpcGruntSquadRegistryResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!b||!squad_registry_lookup(head,name,*b,*out))return 0;
+    out->completed=1;return 1;
+}
+int __cdecl squad_create(std::uint32_t* head,const char* name,const ServerNpcGruntSquadRegistryBindings* b,ServerNpcGruntSquadRegistryResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!head||!b||!squad_registry_create(*head,name,*b,*out))return 0;
+    out->completed=1;return 1;
+}
+int __cdecl squad_attach(void* a,unsigned n,std::uint32_t handle,float now,std::uint32_t* head,const char* name,const ServerNpcGruntSquadRegistryBindings* b,const ServerNpcGruntSquadJoinBindings* join,ServerNpcGruntSquadRegistryResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!head||!b||!join||!std::isfinite(now)||!squad_registry_lookup(*head,name,*b,*out))return 0;
+    if(!out->found&&!squad_registry_create(*head,name,*b,*out))return 0;
+    void* group=nullptr;unsigned extent=0;void* other=nullptr;
+    if(!memory_storage(&b->storage,out->token,0x78,group,extent)||!speech_squad(join->group.sentence.speech,out->token,other)||group!=other)return 0;
+    if(!grunt_squad_join(a,n,out->token,out->array_token,handle,now,join,&out->join))return 0;
+    out->completed=1;return 1;
+}
+const ServerNpcGruntSquadRegistryApi squad_registry_api{1,sizeof(ServerNpcGruntSquadRegistryApi),&squad_lookup,&squad_create,&squad_attach};
 const ServerNpcGruntSquadJoinApi squad_join_api{1,sizeof(ServerNpcGruntSquadJoinApi),&grunt_squad_join,&grunt_squad_detach};
 const ServerNpcGruntSquadLeaveApi squad_leave_api{1,sizeof(ServerNpcGruntSquadLeaveApi),&grunt_squad_leave};
 const ServerNpcGruntRequestSpeechApi request_speech_api{1,sizeof(ServerNpcGruntRequestSpeechApi),&grunt_speak_request,&grunt_survivor_request};
@@ -3058,4 +3128,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadJoinApi=_SiN_GetServerNpcGruntSquadJoinApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadJoinApi* __cdecl SiN_GetServerNpcGruntSquadJoinApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadJoinApi)?&squad_join_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadRegistryApi=_SiN_GetServerNpcGruntSquadRegistryApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadRegistryApi* __cdecl SiN_GetServerNpcGruntSquadRegistryApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadRegistryApi)?&squad_registry_api:nullptr;
 }
