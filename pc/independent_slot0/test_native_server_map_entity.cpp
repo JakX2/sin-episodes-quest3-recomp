@@ -317,7 +317,7 @@ int main(int argc,char** argv){
     rb.cancel=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<RelayFixture*>(p);assert(a==f.actor);++f.canceled;return 1;};
     rb.refire=[](void* p,void* a,float d) noexcept ->int{auto& f=*static_cast<RelayFixture*>(p);assert(a==f.actor);++f.refires;f.delay=d;return 1;};
     RelayResult rr{};
-    auto input=[&](const char* name){return api->relay_input(relay,sizeof(relay),name,co.actor,&rb,&rr);};
+    auto input=[&](const char* name){return api->relay_input(relay,sizeof(relay),name,rf.activator,&rb,&rr);};
     assert(input("Trigger")&&rr.suppressed&&!rf.queued);
     assert(input("EnableRefire")&&!relay[0x3ad]);
     assert(input("Disable")&&relay[0x3ac]);
