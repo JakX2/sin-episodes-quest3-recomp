@@ -1843,5 +1843,47 @@ int main(int argc,char** argv){
         put(actor,0x394,0);
         assert(!timer_accept->run(actor,sizeof(actor),navigation_vtable,0x223d4940,timer,timer,v,sizeof(v),0,&input,&accepted)&&!accepted.completed);
     }
+    {
+        FactoryDictionary dict{};
+        assert(api->register_factories(&dict)&&api->register_autosave(&dict)&&api->register_navigation(&dict)&&api->register_menu(&dict)&&api->register_counter(&dict)&&api->register_compare(&dict)&&api->register_case(&dict)&&api->register_branch(&dict)&&api->register_auto(&dict)&&api->register_timer(&dict)&&api->register_relay(&dict)&&dict.count==22);
+        assert(!api->register_autosave(&dict));
+        const auto* spec=api->find_factory(&dict,"LOGIC_AUTOSAVE");
+        assert(spec&&spec->family==Family::LogicAutosave&&spec->original_object==0x224fb62c&&spec->original_vtable==0x2241f608&&spec->extent==autosave_extent);
+        struct AutosaveOwner {
+            alignas(4) unsigned char storage[autosave_extent]{};
+            unsigned char gate=0;
+            unsigned alloc=0,base=0,init=0,cleared=0,accepted=0,released=0;
+            bool mutate=false;std::string calls;
+        } f;
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<AutosaveOwner*>(p);assert(n==autosave_extent);++f.alloc;*a=f.storage;*bytes=n;return 1;};
+        owner.base_construct=[](void* p,void* a,int arg) noexcept ->int{auto& f=*static_cast<AutosaveOwner*>(p);assert(a==f.storage&&arg==1);++f.base;return 1;};
+        owner.initialize=[](void* p,void* a,const char* cls) noexcept ->int{auto& f=*static_cast<AutosaveOwner*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"logic_autosave"));++f.init;return 1;};
+        owner.release_networkable=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<AutosaveOwner*>(p);assert(a==f.storage+0x160);++f.released;return 1;};
+        FactoryBindings factories{};factories.dictionary=&dict;factories.logic_autosave=&owner;
+        auto keys=kb;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=autosave_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{if(std::strcmp(text,"logic_autosave"))return 0;*token=201;return 1;};
+        Bindings parse{};parse.context=&f;parse.native_factory=&factories;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<AutosaveOwner*>(p)->cleared;return 1;};
+        parse.accept_entity=[](void* p,void* a,const char*,unsigned,const EntitySlice*) noexcept ->int{auto& f=*static_cast<AutosaveOwner*>(p);assert(a==f.storage);++f.accepted;return 1;};
+        const char map[]="{ classname logic_autosave NewLevelUnit 1 }";
+        Result parsed{};
+        assert(api->parse(map,sizeof(map),&parse,&parsed)&&parsed.native_creates==1&&parsed.last_factory.networkable==f.storage+0x160);
+        assert(f.alloc==1&&f.base==1&&f.init==1&&f.cleared==1&&f.accepted==1&&word(f.storage,0)==autosave_vtable&&f.storage[0x394]);
+        AutosaveBindings behavior{};behavior.context=&f;
+        behavior.new_level_unit=[](void* p) noexcept ->int{auto& f=*static_cast<AutosaveOwner*>(p);f.calls+='N';if(f.mutate)f.gate=7;return 1;};
+        behavior.difficulty_gate=[](void* p,unsigned char* gate) noexcept ->int{auto& f=*static_cast<AutosaveOwner*>(p);f.calls+='G';*gate=f.gate;return 1;};
+        behavior.server_command=[](void* p,const char* cmd) noexcept ->int{auto& f=*static_cast<AutosaveOwner*>(p);assert(!std::strcmp(cmd,"autosave\n"));f.calls+='S';return 1;};
+        AutosaveResult result{};
+        assert(api->autosave_input(f.storage,sizeof(f.storage),"Save",&behavior,&result)&&result.new_level_unit&&result.gate_read&&result.command_queued&&f.calls=="NGS");
+        f.mutate=true;
+        assert(api->autosave_input(f.storage,sizeof(f.storage),"Save",&behavior,&result)&&result.suppressed&&result.gate==7&&!result.command_queued&&f.calls=="NGSNG");
+        assert(api->key_value(f.storage,"NewLevelUnit","0",&keys,&kr)&&!f.storage[0x394]);
+        assert(api->autosave_input(f.storage,sizeof(f.storage),"Save",&behavior,&result)&&!result.new_level_unit&&result.suppressed&&f.calls=="NGSNGG");
+        f.gate=0;assert(api->autosave_input(f.storage,sizeof(f.storage),"save",&behavior,&result)&&result.command_queued&&f.calls=="NGSNGGGS");
+        assert(api->autosave_input(f.storage,sizeof(f.storage),"SaveDangerous",&behavior,&result)&&!result.handled);
+        assert(!api->autosave_input(f.storage,autosave_extent-1,"Save",&behavior,&result));
+        assert(api->destroy_autosave(f.storage,autosave_extent,f.storage+0x160,&owner)&&f.released==1);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
