@@ -1345,4 +1345,23 @@ struct ServerNpcGruntSquadInitApi {
     int (__cdecl *initialize)(void*,unsigned,std::uint32_t,float,std::uint32_t*,const ServerNpcGruntSquadInitBindings*,ServerNpcGruntSquadInitResult*) noexcept;
 };
 using GetServerNpcGruntSquadInitApi=const ServerNpcGruntSquadInitApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_behavior_removal_export[]="SiN_GetServerNpcGruntBehaviorRemovalApi";
+struct ServerNpcGruntBehaviorRemovalBindings {
+    ServerNpcGruntRemovalBindings removal;
+    ServerNpcEnemyMemoryBindings component_storage;
+    void* context;
+    int (__cdecl *component_removed)(void*,std::uint32_t,void*,bool) noexcept; // +48
+    int (__cdecl *component_end)(void*,std::uint32_t) noexcept; // +20
+};
+struct ServerNpcGruntBehaviorRemovalResult {
+    ServerNpcGruntRemovalResult removal;
+    ServerNpcGruntSquadSlotsResult active_release;
+    unsigned completed,components,active_cleared,active_ended,slot_released;
+    std::uint32_t previous_active;
+};
+struct ServerNpcGruntBehaviorRemovalApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,bool,float,const ServerNpcGruntBehaviorRemovalBindings*,ServerNpcGruntBehaviorRemovalResult*) noexcept;
+};
+using GetServerNpcGruntBehaviorRemovalApi=const ServerNpcGruntBehaviorRemovalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

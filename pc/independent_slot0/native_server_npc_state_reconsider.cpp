@@ -3276,6 +3276,39 @@ int __cdecl grunt_event_speech(void* a,unsigned n,unsigned event,float now,const
 }
 const ServerNpcGruntEventSpeechApi event_speech_api{1,sizeof(ServerNpcGruntEventSpeechApi),&grunt_event_speech};
 const ServerNpcGruntReactionSpeechApi reaction_speech_api{1,sizeof(ServerNpcGruntReactionSpeechApi),&grunt_pain_speech,&grunt_death_speech};
+int __cdecl grunt_behavior_removal(void* a,unsigned n,std::uint32_t handle,void* attacker,bool event,float now,const ServerNpcGruntBehaviorRemovalBindings* b,ServerNpcGruntBehaviorRemovalResult* out) noexcept{
+    if(!out)return 0;*out={};out->active_release.index=out->active_release.selected=-1;
+    if(!a||n<0xc2c||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->removal.leave.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    if(registry.Resolve(handle)!=a)return 0;
+    // Original loop re-reads count and array after each callback.
+    for(int i=0;;++i){
+        const int count=read<int>(a,0xc28);if(count>4096)return 0;
+        if(i>=count)break;
+        void* array=nullptr;unsigned extent=0;
+        if(!memory_storage(&b->component_storage,read<unsigned>(a,0xc1c),4u*static_cast<unsigned>(count),array,extent))return 0;
+        const auto component=read<unsigned>(array,4*i);
+        if(!component||!b->component_removed||!b->component_removed(b->context,component,attacker,event))return 0;
+        ++out->components;
+    }
+    out->previous_active=read<unsigned>(a,0xc18);write(a,0xc18,0u);
+    if(out->previous_active){
+        out->active_cleared=1;
+        if(!b->component_end||!b->component_end(b->context,out->previous_active))return 0;
+        out->active_ended=1;
+        if(const auto token=read<unsigned>(a,0x9c4)){
+            auto slots=b->removal.reports.perception.slots;slots.entries=sb.entries;slots.count=sb.count;
+            if(!slots_release(token,registry.Resolve(read<unsigned>(a,0x8a0)),read<int>(a,0x9cc),now,&slots,&out->active_release))return 0;
+            write(a,0x9cc,-1);out->slot_released=1;
+        }
+        // All eight +778=2216e310, ret 8: no further action.
+    }
+    if(!grunt_removal(a,n,handle,attacker,event,now,&b->removal,&out->removal))return 0;
+    out->completed=1;return 1;
+}
+const ServerNpcGruntBehaviorRemovalApi behavior_removal_api{1,sizeof(ServerNpcGruntBehaviorRemovalApi),&grunt_behavior_removal};
 const ServerNpcGruntRemovalApi removal_api{1,sizeof(ServerNpcGruntRemovalApi),&grunt_removal};
 const ServerNpcGruntNativeStateApi native_state_api{1,sizeof(ServerNpcGruntNativeStateApi),&native_state_choose,&native_state_apply};
 const ServerNpcGruntSquadEnemyApi squad_enemy_api{1,sizeof(ServerNpcGruntSquadEnemyApi),&squad_enemy_broadcast};
@@ -3735,4 +3768,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadInitApi=_SiN_GetServerNpcGruntSquadInitApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadInitApi* __cdecl SiN_GetServerNpcGruntSquadInitApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadInitApi)?&squad_init_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorRemovalApi=_SiN_GetServerNpcGruntBehaviorRemovalApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorRemovalApi* __cdecl SiN_GetServerNpcGruntBehaviorRemovalApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorRemovalApi)?&behavior_removal_api:nullptr;
 }
