@@ -1868,13 +1868,17 @@ int __cdecl counter_input(void* a,unsigned n,const char* name,void* activator,un
 // Independent owner data is preflighted before any destructive callback;
 // a failed callback after release begins is terminal for that storage.
 int __cdecl registry_unlink_logic(void*,unsigned,unsigned,const RegistryRemovalBindings*,RegistryRemovalResult*) noexcept;
-int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBindings* b,LogicDestroyResult* o) noexcept {
+int destroy_entity_members(void* a,unsigned n,unsigned flags,const LogicDestroyBindings* b,LogicDestroyResult* o,const TriggerDestroyBindings* trigger) noexcept {
     if(!o)return 0;*o={};
     if(!a||n<4||!b||(!b->base_destroy&&!b->native_base)||((flags&1u)&&!b->free_actor))return 0;
     if(b->native_base&&(!b->native_base->registry||!b->native_base->registry->registry||!b->native_base->prefix||!b->native_base->suffix))return 0;
     unsigned first=0,count=0,extent=0;
     const auto vt=entity_vtable(a);const bool menu=vt==menu_vtable;
+    const bool is_trigger=vt==dynamic_trigger_vtable||vt==secret_trigger_vtable;
+    if(is_trigger!=bool(trigger))return 0;
     switch(vt){
+        case dynamic_trigger_vtable:first=0x414;count=3;extent=dynamic_trigger_extent;break;
+        case secret_trigger_vtable:first=0x414;count=3;extent=secret_trigger_extent;break;
         case relay_vtable:first=0x394;count=1;extent=relay_extent;break;
         case auto_vtable:first=0x394;count=7;extent=auto_extent;break;
         case timer_vtable:first=0x394;count=3;extent=timer_extent;break;
@@ -1942,7 +1946,41 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
     for(unsigned i=count;i>0;--i)if(!output_plan(first+(i-1)*0x18,false))return 0;
     if(b->native_base&&b->native_base->native_outputs)
         for(unsigned i=5;i>0;--i)if(!output_plan(0x2dc+(i-1)*0x18,true))return 0;
+    // CBaseTrigger destructor 221be440 purges its vector BEFORE
+    // the three derived output members. 22044c90 external sentinel
+    // -1 preserves the allocation and mirrors the pointer at +46c.
+    unsigned vector_token=0;void* vector_storage=nullptr;bool vector_external=false;
+    if(trigger){
+        vector_token=read_field<unsigned>(a,0x45c);
+        const int capacity=read_field<int>(a,0x460),size=read_field<int>(a,0x468);
+        vector_external=read_field<unsigned>(a,0x464)==0xffffffffu;
+        if(size<0||capacity<0||size>capacity||(capacity&&!vector_token))return 0;
+        if(vector_token&&!vector_external){
+            unsigned bytes=0;
+            if(!trigger->resolve_vector||!trigger->free_vector||
+               !trigger->resolve_vector(trigger->context,vector_token,&vector_storage,&bytes)||!bytes)return 0;
+            std::uintptr_t begin=0,end=0;
+            if(!range(vector_storage,bytes,begin,end)||(begin<actor_end&&actor_begin<end))return 0;
+            for(unsigned j=0;j<o->comparisons+o->actions+o->base_actions;++j){
+                const auto prev=reinterpret_cast<std::uintptr_t>(plan[j].row);
+                if(plan[j].token==vector_token||(begin<prev+0x1c&&prev<end))return 0;
+            }
+        }
+    }
     o->validated=1;
+    if(trigger){
+        write_field(a,0x468,0u);
+        if(vector_external){
+            write_field(a,0x46c,vector_token);o->trigger_vector_external=1;
+        }else{
+            if(vector_token){
+                if(!trigger->free_vector(trigger->context,vector_token,vector_storage))return 0;
+                write_field(a,0x45c,0u);o->trigger_vector_freed=1;
+            }
+            write_field(a,0x460,0u);write_field(a,0x46c,0u);
+        }
+        o->trigger_vector_purged=1;
+    }
     // Original 2217ddd0 resets derived vtables and unregisters the
     // secondary interface before releasing any output rows.
     if(menu){
@@ -1986,6 +2024,13 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
     o->base_called=1;
     if(flags&1u){if(!b->free_actor(b->context,a))return 0;o->freed=1;}
     o->completed=1;return 1;
+}
+int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBindings* b,LogicDestroyResult* o) noexcept {
+    return destroy_entity_members(a,n,flags,b,o,nullptr);
+}
+int __cdecl destroy_trigger_members(void* a,unsigned n,unsigned flags,const TriggerDestroyBindings* b,LogicDestroyResult* o) noexcept {
+    if(!b){if(o)*o={};return 0;}
+    return destroy_entity_members(a,n,flags,b->shared,o,b);
 }
 bool menu_valid(void* a,unsigned n,const MenuBindings* b,MenuResult* o) noexcept {
     if(!o)return false;*o={};
@@ -2629,7 +2674,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting,&register_campaign_triggers,&destroy_campaign_trigger,&campaign_trigger_spawn,&campaign_trigger_touch};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting,&register_campaign_triggers,&destroy_campaign_trigger,&campaign_trigger_spawn,&campaign_trigger_touch,&destroy_trigger_members};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
