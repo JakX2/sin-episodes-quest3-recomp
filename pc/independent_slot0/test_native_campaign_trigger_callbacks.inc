@@ -771,7 +771,7 @@
             alignas(4) unsigned char actor[0x3f4]{};
             unsigned actions[3][7]{},updates=0,base=0,freed=0,releases=0,order[3]{},network=0;
             void* slots[1]{};
-            const Api* api;
+            const sin_port::native_map::Api* api;
             const LogicDestroyBindings* destroy=nullptr;
             unsigned extent=0;
         } f;f.api=api;
