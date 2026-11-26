@@ -1,4 +1,5 @@
 #include "native_server_dynamic_resupply.h"
+#include "native_server_npc_active_weapon_step.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -327,5 +328,84 @@ int main(int argc,char** argv){
     dispatch_seed();entry.entity=reinterpret_cast<CBaseEntity*>(ef.actor);handle=0x3000;
     eb.entries=&entry;eb.entry_count=1;eb.master_handle=&handle;df.clients=0;
     assert(api->calculate_type(ef.actor,sizeof(ef.actor),0,&db,&dr)&&dr.completed&&dr.evaluation.master_skipped&&!dr.player_found&&!dr.extent_read&&!ef.creations&&EvalFixture::rd(ef.actor,8)==check_pvs_think);
+    // Original campaign output action -> native queue -> targetname ->
+    // resupply datamap -> CalculateType -> native evaluation.
+    using namespace sin_port::native_weapon_tables;
+    const auto get_input=reinterpret_cast<GetServerEntityAcceptInputApi>(GetProcAddress(s,server_entity_accept_input_export));
+    const auto get_queue=reinterpret_cast<GetServerEntityNamedEventQueueApi>(GetProcAddress(s,server_entity_named_event_queue_export));
+    const auto get_service=reinterpret_cast<GetServerEntityEventServiceApi>(GetProcAddress(s,server_entity_event_service_export));
+    const auto get_output=reinterpret_cast<GetServerEntityVoidOutputApi>(GetProcAddress(s,server_entity_void_output_export));
+    assert(get_input&&get_queue&&get_service&&get_output);
+    const auto* input_api=get_input(1,sizeof(ServerEntityAcceptInputApi));
+    const auto* queue_api=get_queue(1,sizeof(ServerEntityNamedEventQueueApi));
+    const auto* service_api=get_service(1,sizeof(ServerEntityEventServiceApi));
+    const auto* output_api=get_output(1,sizeof(ServerEntityVoidOutputApi));
+    assert(input_api&&queue_api&&service_api&&output_api);
+    struct CampaignFixture{
+        EvalFixture* e;
+        const ServerEntityNamedEventQueueApi* queue;
+        const ServerEntityNamedEventQueueBindings* bindings;
+        alignas(4) unsigned char root[0x38]{},event[0x38]{},action[0x1c]{},output[0x18]{},edict[4]{},parent[0x10]{};
+        unsigned allocated=0,released=0,actions=0,locks=0;
+        float now=20.f;
+    } cf{&ef,queue_api,nullptr};
+    auto store=[](void* p,unsigned token,void** a,unsigned* n) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);
+        switch(token){case 0x7200:*a=q.event;*n=sizeof(q.event);return q.allocated!=0;
+        case 0x7100:*a=q.action;*n=sizeof(q.action);return 1;
+        case 0x4321:*a=q.edict;*n=sizeof(q.edict);return 1;
+        case 0x224f0350:*a=q.parent;*n=sizeof(q.parent);return 1;default:return 0;}
+    };
+    auto strings=[](void*,unsigned token,const char** str,unsigned* n) noexcept ->int{
+        switch(token){case 501:*str="supply_trigger";break;case 601:*str="cAlCuLaTeTyPe";break;
+        case 602:*str="bEcOmEmAsTeR";break;case 603:*str="kIlL";break;case 604:*str="unrecognized";break;
+        default:return 0;}*n=unsigned(std::strlen(*str)+1);return 1;
+    };
+    ServerEntityNamedEventQueueBindings qb{};qb.context=&cf;qb.resolve=store;
+    qb.allocate=[](void* p,unsigned* token,void** a,unsigned* n) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);assert(!q.allocated);++q.allocated;*token=0x7200;*a=q.event;*n=sizeof(q.event);return 1;
+    };
+    qb.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};cf.bindings=&qb;
+    ServerEntityVoidOutputBindings ob{};ob.context=&cf;ob.resolve=store;
+    ob.enqueue=[](void* p,void* a,void* caller,const ServerEntityVoidOutputAction* action) noexcept ->int{
+        auto& q=*static_cast<CampaignFixture*>(p);assert(a==q.e->actor&&caller==a);
+        ServerEntityNamedEventQueueResult result{};
+        return q.queue->enqueue(q.root,sizeof(q.root),0x7000u,q.now,0x3000u,0x3000u,action,q.bindings,&result);
+    };
+    ob.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(token==0x7100&&row==q.action);++q.actions;return 1;};
+    ServerEntitySearchBindings sb{};sb.context=&cf;sb.head=&entry;sb.string_text=strings;
+    sb.extent=[](void* p,void* a,unsigned* n) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(a==q.e->actor);*n=sizeof(q.e->actor);return 1;};
+    ServerNpcActivePostAnimationBindings storage{};storage.context=&cf;storage.resolve=store;
+    ServerEntityResupplyInputBindings rb{};rb.dispatch=&db;rb.dispatch_result=&dr;
+    ServerEntityAcceptInputBindings ib{};ib.context=&cf;ib.storage=&storage;ib.string_text=strings;ib.resupply=&rb;
+    ServerEntityEventServiceBindings es{};es.context=&cf;es.resolve=store;es.native_search=&sb;es.native_input=&ib;es.live_now=&cf.now;
+    es.entities.entries=&entry;es.entities.count=1;
+    es.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(q.locks==unsigned(!enter));q.locks=enter?1:0;return 1;};
+    es.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<CampaignFixture*>(p);assert(token==0x7200&&row==q.event);++q.released;return 1;};
+    dispatch_seed();entry.entity=reinterpret_cast<CBaseEntity*>(ef.actor);entry.next=nullptr;entry.serial=3;
+    EvalFixture::u(ef.actor,0x378,0x3000);EvalFixture::u(ef.actor,0xc0,501);
+    // Deliberately absent nested registry; outer AcceptInput supplies it.
+    eb.entries=nullptr;eb.entry_count=0;eb.master_handle=nullptr;df.clients=1;df.present=true;
+    EvalFixture::u(cf.action,0,501);EvalFixture::u(cf.action,4,601);EvalFixture::f(cf.action,0xc,.25f);
+    EvalFixture::u(cf.action,0x10,1);EvalFixture::u(cf.action,0x14,92);EvalFixture::u(cf.output,0x14,0x7100);
+    ServerEntityVoidOutputResult out_action{};ServerEntityEventServiceResult out_service{};int steps=0;
+    assert(output_api->fire(cf.output,sizeof(cf.output),ef.actor,ef.actor,sizeof(ef.actor),0.f,&ob,&out_action)&&out_action.queued==1&&out_action.removed==1&&cf.actions==1);
+    assert(service_api->service(cf.root,sizeof(cf.root),0x7000,-99.f,false,&steps,&es,&out_service)&&out_service.future_stopped&&!ef.creations);
+    cf.now=20.25f;
+    assert(service_api->service(cf.root,sizeof(cf.root),0x7000,-99.f,false,&steps,&es,&out_service)&&out_service.completed&&out_service.events==1&&out_service.named==1&&out_service.native_inputs==1&&!out_service.foreign_inputs&&!out_service.rejected_inputs&&out_service.native_named_searches==2);
+    assert(dr.completed&&dr.evaluation.normal_spawns==2&&dr.evaluation.removed&&cf.released==1&&!cf.locks&&!EvalFixture::rd(cf.root,0x30)&&EvalFixture::rd(cf.edict,0)==1);
+    // Explicit void input conversion, master binding and inherited unknown.
+    LifecycleBindings campaign_life{};campaign_life.context=&ef;campaign_life.master_handle=&handle;
+    campaign_life.entity_handle=[](void* p,void* a,unsigned* v) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(a==q.actor);*v=EvalFixture::rd(a,0x378);return 1;};
+    campaign_life.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<EvalFixture*>(p);assert(a==q.actor);++q.removes;return 1;};
+    rb.lifecycle=&campaign_life;rb.lifecycle_result=&lr;ib.entities=es.entities;
+    dispatch_seed();EvalFixture::u(ef.actor,0x378,0x3000);handle=0xffffffffu;
+    unsigned char variant[0x14]{};EvalFixture::u(variant,0x10,2);
+    ServerEntityAcceptInputResult input_result{};
+    assert(input_api->run(ef.actor,sizeof(ef.actor),resupply_vtable,602,nullptr,nullptr,variant,sizeof(variant),0,&ib,&input_result)&&input_result.accepted&&input_result.resupply_handler&&input_result.converted&&input_result.row==3&&handle==0x3000u&&lr.think_cleared);
+    df.clients=0;
+    assert(input_api->run(ef.actor,sizeof(ef.actor),resupply_vtable,601,nullptr,nullptr,variant,sizeof(variant),0,&ib,&input_result)&&input_result.accepted&&input_result.row==2&&dr.evaluation.master_skipped&&!dr.player_found);
+    assert(input_api->run(ef.actor,sizeof(ef.actor),resupply_vtable,603,nullptr,nullptr,variant,sizeof(variant),0,&ib,&input_result)&&input_result.accepted&&input_result.row==1&&lr.removed&&ef.removes==1);
+    assert(input_api->run(ef.actor,sizeof(ef.actor),resupply_vtable,604,nullptr,nullptr,variant,sizeof(variant),0,&ib,&input_result)&&input_result.completed&&!input_result.accepted&&input_result.reason==EntityInputUnknown&&input_result.maps==2);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
