@@ -534,6 +534,93 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
     return 0;
 }
 const ServerEntityEventServiceApi event_service_api{1,sizeof(ServerEntityEventServiceApi),&service_events};
+// Verified +34 datamap getters and +90 AcceptInput on the eight Grunt
+// primary tables. Unknown classes are not silently treated as a Grunt.
+unsigned input_datamap(unsigned vt) noexcept {
+    switch(vt){
+    case 0x2248df04u:return 0x22534674u;
+    case 0x224954a4u:case 0x2249aaa4u:case 0x224a416cu:return 0x22534da4u;
+    case 0x2248c514u:case 0x2248e83cu:case 0x2249964cu:case 0x224a4a4cu:return 0x22535b28u;
+    default:return 0;
+    }
+}
+// Pure conversion leaves of 22155e60. Return false only for missing host
+// services, distinguish a rejected conversion from a malformed binding.
+bool input_convert(void* v,unsigned wanted,const ServerEntityAcceptInputBindings& b,bool& ok) noexcept {
+    const unsigned type=rd<unsigned>(v,0x10);ok=true;
+    if(type==wanted||wanted==20u)return true;
+    if(!wanted){wr<unsigned>(v,0,0u);wr<unsigned>(v,0x10,0u);return true;}
+    if(type==5u&&wanted==1u){wr<float>(v,0,static_cast<float>(rd<int>(v,0)));wr<unsigned>(v,0x10,1u);return true;}
+    if(type==5u&&wanted==6u){wr<std::uint8_t>(v,0,rd<int>(v,0)!=0);wr<unsigned>(v,0x10,6u);return true;}
+    if(type==1u&&wanted==5u){
+        const double value=std::trunc(double(rd<float>(v,0)));
+        const int i=(!std::isfinite(value)||value<double(std::numeric_limits<int>::min())||value>double(std::numeric_limits<int>::max()))?std::numeric_limits<int>::min():static_cast<int>(value);
+        wr<int>(v,0,i);wr<unsigned>(v,0x10,5u);return true;
+    }
+    if(type==1u&&wanted==6u){wr<std::uint8_t>(v,0,rd<float>(v,0)!=0.f);wr<unsigned>(v,0x10,6u);return true;}
+    // Void -> string is accepted by AcceptInput itself without conversion.
+    if(type==2u&&(wanted==1u||wanted==5u||wanted==6u||wanted==3u||wanted==9u||wanted==13u)){
+        if(!b.convert)return false;return b.convert(b.context,v,wanted,&ok)!=0;
+    }
+    if(type==13u&&wanted==2u){if(!b.convert)return false;return b.convert(b.context,v,wanted,&ok)!=0;}
+    ok=false;return true;
+}
+bool input_write(void* a,unsigned n,unsigned offset,const void* v,const ServerEntityAcceptInputBindings& b,unsigned& written) noexcept {
+    unsigned size=0;const unsigned type=rd<unsigned>(v,0x10);
+    switch(type){case 1:case 2:case 5:case 9:case 12:case 13:size=4;break;case 3:case 15:size=12;break;case 6:case 8:size=1;break;case 7:size=2;break;default:return true;}
+    if(offset>n||size>n-offset)return false;
+    void* dest=static_cast<unsigned char*>(a)+offset;
+    if(type==6u)wr<std::uint8_t>(dest,0,rd<std::uint8_t>(v,0)!=0);
+    else if(type==13u)wr<unsigned>(dest,0,rd<unsigned>(v,0xc));
+    else if(type==12u){
+        // Original writes a resolved pointer, not the serial handle.
+        if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
+        auto* e=sin_independent::EntityHandleView(b.entities.entries,b.entities.count).Resolve(rd<unsigned>(v,0xc));
+        wr<unsigned>(dest,0,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(e)));
+    }else std::memcpy(dest,v,size);
+    written=size;return true;
+}
+int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned token=input_datamap(vt),seen[32]{};
+    if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||!b->name_equal)return 0;
+    ServerEntityInputData data{};data.activator=activator;data.caller=caller;data.output_id=id;
+    std::memcpy(data.variant,variant,0x14);
+    auto rejected=[&](unsigned reason){
+        o->reason=reason;if(b->diagnostic&&!b->diagnostic(b->context,a,caller,input,reason,data.variant))return 0;
+        o->completed=1;return 1;
+    };
+    while(token){
+        if(o->maps>=32)return 0;
+        for(unsigned i=0;i<o->maps;++i)if(seen[i]==token)return 0;
+        seen[o->maps++]=token;
+        void* map=nullptr;if(!resolve(*b->storage,token,0x10,&map))return 0;
+        const int count=rd<int>(map,4);if(count<0||count>4096)return 0;
+        void* rows=nullptr;if(count&&!resolve(*b->storage,rd<unsigned>(map,0),0x34u*static_cast<unsigned>(count),&rows))return 0;
+        for(int i=0;i<count;++i){
+            ++o->rows;
+            const auto* row=static_cast<const unsigned char*>(rows)+0x34*i;
+            const unsigned flags=rd<std::uint16_t>(row,0x12);
+            if(!(flags&8u))continue;
+            bool same=false;if(!b->name_equal(b->context,rd<unsigned>(row,0x14),input,&same))return 0;
+            if(!same)continue;
+            o->matched=1;o->map=token;o->row=static_cast<unsigned>(i);o->handler=rd<unsigned>(row,0x1c);
+            o->expected_type=rd<unsigned>(row,0);o->actual_type=rd<unsigned>(data.variant,0x10);
+            if(o->actual_type!=o->expected_type&&!(o->actual_type==0&&o->expected_type==2)){
+                bool ok=false;if(!input_convert(data.variant,o->expected_type,*b,ok))return 0;
+                if(!ok)return rejected(EntityInputBadConversion);
+                o->converted=1;o->actual_type=rd<unsigned>(data.variant,0x10);
+            }
+            if(o->handler){if(!b->handler||!b->handler(b->context,a,o->handler,&data))return 0;}
+            else if(flags&4u){if(!input_write(a,n,rd<unsigned>(row,8),data.variant,*b,o->written))return 0;}
+            if(!dirty(a,*b->storage))return 0;
+            o->dirty=o->accepted=o->completed=1;return 1;
+        }
+        token=rd<unsigned>(map,0xc);
+    }
+    return rejected(EntityInputUnknown);
+}
+const ServerEntityAcceptInputApi accept_input_api{1,sizeof(ServerEntityAcceptInputApi),&accept_input};
 bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept;
 // 2213c980. All authenticated Grunt primary +18/+1c virtuals
 // are 22001bc0 (read +38) and 22001af0 (copy +240).
@@ -735,4 +822,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEnt
 #pragma comment(linker,"/EXPORT:SiN_GetServerEntityEventServiceApi=_SiN_GetServerEntityEventServiceApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityEventServiceApi* __cdecl SiN_GetServerEntityEventServiceApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntityEventServiceApi)?&event_service_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerEntityAcceptInputApi=_SiN_GetServerEntityAcceptInputApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityAcceptInputApi* __cdecl SiN_GetServerEntityAcceptInputApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntityAcceptInputApi)?&accept_input_api:nullptr;
 }
