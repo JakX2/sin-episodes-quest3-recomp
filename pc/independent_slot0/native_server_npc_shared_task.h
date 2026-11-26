@@ -142,6 +142,22 @@ struct ServerNpcSharedCueApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcSharedCueBindings*,ServerNpcSharedCueResult*) noexcept;
 };
 using GetServerNpcSharedCueApi=const ServerNpcSharedCueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_shared_native_speech_export[]="SiN_GetServerNpcSharedNativeSpeechApi";
+struct ServerNpcSharedNativeSpeechResult {
+    ServerNpcSharedTaskResult shared;
+    ServerNpcGruntSentenceResult idle;
+    ServerNpcGruntSentenceRequestResult idle_request;
+    ServerNpcGruntRequestSpeechResult alert;
+    ServerNpcGruntReactionSpeechResult reaction;
+    ServerNpcGruntEventSpeechResult event;
+    int mode;
+};
+struct ServerNpcSharedNativeSpeechApi {
+    std::uint32_t version,size;
+    int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,float,const ServerNpcSharedTaskBindings*,const ServerNpcGruntEventSpeechBindings*,ServerNpcSharedNativeSpeechResult*) noexcept;
+};
+using GetServerNpcSharedNativeSpeechApi=const ServerNpcSharedNativeSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+struct ServerNpcSharedNativeSpeechStats {ServerNpcSharedNativeSpeechResult last;unsigned calls,native,components;};
 inline constexpr char server_npc_shared_observation_export[]="SiN_GetServerNpcSharedObservationApi";
 struct ServerNpcSharedObservationBindings {
     void* context;
@@ -276,6 +292,8 @@ struct ServerNpcSharedParentSession {
     ServerNpcSharedSoundCoverStats* sound_cover_stats;
     const ServerNpcSharedTacticalCoverBindings* tactical;
     ServerNpcSharedTacticalCoverStats* tactical_stats;
+    const ServerNpcGruntEventSpeechBindings* native_speech=nullptr;
+    ServerNpcSharedNativeSpeechStats* native_speech_stats=nullptr;
 };
 int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementStats* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueStats* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationStats* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverStats* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverStats* = nullptr) noexcept;
 }
