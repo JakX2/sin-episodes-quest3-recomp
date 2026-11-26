@@ -1164,5 +1164,55 @@ int main(int argc,char** argv){
     EvalFixture::u(ex.canister,0x62c,0x109);EvalFixture::u(ex.canister,0x638,2);EvalFixture::u(ex.canister,0x668,0xdead0001);
     assert(api->antigen_canister_stop_leak(ex.canister,sizeof(ex.canister),&adb,&adr)&&adr.completed&&adr.leak_count==1&&!adr.steam_removed&&!adr.depleted&&EvalFixture::rd(ex.canister,0x668)==0xdead0001u);
     assert(api->antigen_canister_stop_leak(ex.canister,sizeof(ex.canister),&adb,&adr)&&adr.completed&&!adr.leak_stopped);
+    // Native gas creation from canister break, original lifetime/pulse
+    // behavior with existing engine radius service (not a fake instant heal).
+    struct GasFixture {
+        alignas(4) unsigned char gas[antigen_gas_extent]{};
+        float now=70.f,last_time=0,amount=0;
+        unsigned allocs=0,particles=0,particle_removes=0,starts=0,stops=0,loops=0,pulses=0,removes=0,schedules=0;
+        bool null_factory=false;
+    } agf;
+    AntigenGasBindings agb{};agb.context=&agf;
+    agb.allocate=[](void* p,unsigned n,void** a,unsigned* size) noexcept ->int{auto& q=*static_cast<GasFixture*>(p);assert(n==antigen_gas_extent);++q.allocs;std::memset(q.gas,0,n);*a=q.null_factory?nullptr:q.gas;*size=n;return 1;};
+    agb.base_construct=[](void*,void*) noexcept ->int{return 1;};
+    agb.initialize=[](void*,void*,const char* name) noexcept ->int{assert(!std::strcmp(name,"env_poison_gas"));return 1;};
+    agb.position=[](void*,void* a,const float* pos) noexcept ->int{for(unsigned i=0;i<3;++i)EvalFixture::f(a,0x2bc+4*i,pos[i]);return 1;};
+    agb.spawn_setup=[](void*,void*) noexcept ->int{return 1;};
+    agb.clock=[](void* p,float* now) noexcept ->int{*now=static_cast<GasFixture*>(p)->now;return 1;};
+    agb.random_float=[](void*,float lo,float hi,float* out) noexcept ->int{assert(lo==0&&hi==.5f);*out=.125f;return 1;};
+    agb.schedule=[](void* p,void* a,float time) noexcept ->int{auto& q=*static_cast<GasFixture*>(p);assert(a==q.gas);q.last_time=time;++q.schedules;return 1;};
+    agb.particle=[](void* p,void* a,unsigned* token) noexcept ->int{auto& q=*static_cast<GasFixture*>(p);assert(a==q.gas);++q.particles;*token=0x9876;return 1;};
+    agb.remove_particle=[](void* p,unsigned token) noexcept ->int{assert(token==0x9876);++static_cast<GasFixture*>(p)->particle_removes;return 1;};
+    agb.sound=[](void* p,void* a,const char* n,bool play) noexcept ->int{
+        auto& q=*static_cast<GasFixture*>(p);assert(a==q.gas);
+        if(!std::strcmp(n,"gas.antigen_spawn")){assert(play);++q.starts;}
+        else{assert(!std::strcmp(n,"gas.antigen_loop"));if(play)++q.loops;else ++q.stops;}return 1;
+    };
+    agb.radius_effect=[](void* p,void* a,const float* pos,float amount,float radius,unsigned flags) noexcept ->int{
+        auto& q=*static_cast<GasFixture*>(p);assert(a==q.gas&&pos[0]==0&&radius==150&&flags==0x400000u);++q.pulses;q.amount=amount;return 1;
+    };
+    agb.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<GasFixture*>(p);assert(a==q.gas);++q.removes;return 1;};
+    AntigenGasResult agras{};
+    float gas_origin[3]{};
+    agf.null_factory=true;
+    assert(api->antigen_gas_create(gas_origin,1,150,-1,-1,&agb,&agras)&&agras.completed&&!agras.allocated);
+    agf.null_factory=false;
+    assert(api->antigen_gas_create(gas_origin,1,150,-1,99,&agb,&agras)&&agras.completed&&agras.rate_reset&&agras.rate==5&&agras.particle_life==15&&agras.remaining==1&&agras.next_time==70.125f);
+    assert(agf.starts==1&&agf.particles==1&&EvalFixture::rd(agf.gas,8)==antigen_gas_think_token);
+    agf.now=70.125f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&agb,&agras)&&agras.completed&&!agras.radius_called&&agras.next_time==70.375f);
+    agf.now=70.375f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&agb,&agras)&&!agras.elapsed_admitted&&!agras.radius_called);
+    agf.now=70.625f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&agb,&agras)&&agras.completed&&agras.radius_called&&agras.amount==2.5f&&agras.remaining==.5f&&agras.particle_removed&&agras.loop_stopped&&agras.schedules==3&&agras.next_time==70.875f);
+    agf.now=71.125f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&agb,&agras)&&agras.completed&&agras.expired&&agras.removed&&agras.amount==2.5f&&agras.remaining==0);
+    assert(agf.pulses==2&&agf.particle_removes==1&&agf.stops==1&&agf.removes==1);
+    // Drive native gas factory from the actual canister break path.
+    assert(api->antigen_factory_create("prop_antigen_canister",&antigen_factory,&afres));
+    EvalFixture::f(ex.canister,0x628,42.f);EvalFixture::u(ex.canister,0x69c,0xa000);
+    adf.fragments=0;adb.cloud=nullptr;adb.native_gas=&agb;agf.now=80.f;
+    assert(api->antigen_canister_break(ex.canister,sizeof(ex.canister),&adb,&adr)&&adr.completed&&adr.broken&&adr.gas.completed&&adr.gas.started&&std::abs(adr.gas.remaining-4.2f)<.00001f&&adr.gas.radius==150&&adr.gas.rate==5);
+    assert(api->antigen_gas_stop(agf.gas,sizeof(agf.gas),&agb,&agras)&&agras.completed&&agras.particle_removed&&agras.next_time==-1);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
