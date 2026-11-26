@@ -37,7 +37,8 @@
             auto& r=*static_cast<FrameRemoval*>(p);assert(!r.frame->depth&&!r.campaign->locked&&r.queue.handle_access_disabled);
             auto* a=static_cast<unsigned char*>(net)-0x160;unsigned i=3;
             if(a==r.campaign->automatic)i=0;else if(a==r.campaign->relay)i=1;else if(a==r.pre)i=2;
-            assert(i<3&&r.entries[i].entity==reinterpret_cast<CBaseEntity*>(a)&&word(a,0xb8)&1u&&!word(a,0xc0));
+            unsigned flags=0,name=0;std::memcpy(&flags,a+0xb8,4);std::memcpy(&name,a+0xc0,4);
+            assert(i<3&&r.entries[i].entity==reinterpret_cast<CBaseEntity*>(a)&&(flags&1u)&&!name);
             assert(r.passes==(i==2?1u:3u));
             r.order+=i==0?'A':i==1?'R':'P';
             r.entries[i].entity=nullptr;++r.entries[i].serial;
