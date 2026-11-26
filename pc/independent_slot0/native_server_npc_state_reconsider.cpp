@@ -6607,9 +6607,41 @@ int __cdecl schedule_body_point(void* e,const float* source,bool noisy,const Ser
 // Original weapon +4a8=222ab5c0 on the reviewed nine weapon tables.
 // This call site passes false: no blocker-condition writes. The +6e8 high-capability
 // tail is deliberately not approximated.
-bool schedule_weapon_line(void* a,void* w,void* enemy,const float* start,const float* end,
-    const ServerNpcGruntAssaultAdmissionBindings& ab,const ServerNpcGruntScheduleLineServices& line,bool& allowed) noexcept{
-    allowed=false;
+bool line_weapon_caps(void* w,const ServerNpcGruntAssaultAdmissionBindings& ab,unsigned& caps) noexcept{
+    unsigned extent=0;if(!w||!ab.extent||!ab.extent(ab.context,w,&extent)||extent<4)return false;
+    switch(read<unsigned>(w,0)){
+    case 0x2245a554u:caps=0;return true;
+    case 0x22478d0cu:caps=0x8000;return true;
+    case 0x2247875cu:case 0x224776acu:case 0x2247a1e4u:case 0x22477c8cu:
+    case 0x22478214u:case 0x2247924cu:case 0x2247ab9cu:caps=0x2000;return true;
+    default:return false;
+    }
+}
+// 222ab724..222ab768 / 2203c4d4..2203c526 reload the current
+// enemy after the trace and after a proxy query, not before either.
+bool line_hit_target(void* a,void* hit,const ServerNpcGruntAssaultAdmissionBindings& ab,
+    const ServerNpcGruntScheduleLineServices& line,bool& proxy_hit,bool& direct_hit) noexcept{
+    proxy_hit=direct_hit=false;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto span=[&](void* e,unsigned min){unsigned n=0;return e&&ab.extent&&ab.extent(ab.context,e,&n)&&n>=min;};
+    if(void* enemy=assault_owner_target(a,registry)){
+        if(!span(enemy,4))return false;
+        const auto vt=read<unsigned>(enemy,0);
+        if(vt==0x2245222cu||vt==0x224aec3cu){
+            if(!span(enemy,0x9b0))return false;
+            if(void* proxy=registry.Resolve(read<unsigned>(enemy,0x9ac))){
+                void* entity=nullptr;if(!line.proxy_entity||!line.proxy_entity(line.context,proxy,&entity)||!entity)return false;
+                if(hit==entity){proxy_hit=true;return true;}
+                if(!span(hit,0x210))return false;
+                if(registry.Resolve(read<unsigned>(hit,0x20c))==entity){proxy_hit=true;return true;}
+            }
+        }
+    }
+    direct_hit=hit&&hit==assault_owner_target(a,registry);return true;
+}
+bool schedule_weapon_line(void* a,void* w,const float* start,const float* end,
+    const ServerNpcGruntAssaultAdmissionBindings& ab,const ServerNpcGruntScheduleLineServices& line,bool& allowed,int* condition=nullptr,void** blocker=nullptr) noexcept{
+    allowed=false;if(condition)*condition=-1;if(blocker)*blocker=nullptr;
     auto span=[&](void* e,unsigned minimum){unsigned n=0;return e&&ab.extent&&ab.extent(ab.context,e,&n)&&n>=minimum;};
     if(!span(w,0x498)||!line.shoot_position||!line.line_trace||!finite_vec(start)||!finite_vec(end))return false;
     const sin_independent::EntityHandleView registry(ab.entries,ab.count);
@@ -6632,24 +6664,17 @@ bool schedule_weapon_line(void* a,void* w,void* enemy,const float* start,const f
     if(!line.line_trace(line.context,a,from,end,0x46004003u,6,&fraction,&hit))return false;
     auto debug=[&](){return !line.debug_enabled||(line.debug_line&&line.debug_line(line.context,from,end));};
     if(fraction==1.f){allowed=true;return debug();}
-    if(!hit||!enemy||!span(enemy,4))return false;
-    const auto evt=read<unsigned>(enemy,0);
-    if(evt==0x2245222cu||evt==0x224aec3cu){
-        if(!span(enemy,0x9b0))return false;
-        if(void* proxy=registry.Resolve(read<unsigned>(enemy,0x9ac))){
-            void* entity=nullptr;if(!line.proxy_entity||!line.proxy_entity(line.context,proxy,&entity)||!entity)return false;
-            if(hit==entity){allowed=true;return true;}
-            if(!span(hit,0x210))return false;
-            if(registry.Resolve(read<unsigned>(hit,0x20c))==entity){allowed=true;return true;}
-        }
-    }
-    if(hit==enemy){allowed=true;return debug();}
+    if(!hit)return false; // original dereferences non-clear trace hit
+    bool proxy_hit=false,direct_hit=false;
+    if(!line_hit_target(a,hit,ab,line,proxy_hit,direct_hit))return false;
+    if(proxy_hit){allowed=true;return true;}
+    if(direct_hit){allowed=true;return debug();}
     void* combat=nullptr;
     if(!line.combat_entity||!line.combat_entity(line.context,hit,&combat))return false;
-    if(!combat)return true;
+    if(!combat){if(condition)*condition=0x2b;if(blocker)*blocker=hit;return true;}
     int relation=0;
     if(!line.disposition||!line.disposition(line.context,a,combat,&relation))return false;
-    allowed=relation==1;return true;
+    allowed=relation==1;if(!allowed&&condition)*condition=0x28;return true;
 }
 // Original 2226c080 / 2226be40: distance to infinite line, not segment.
 using cone_distance_math::cone_line_distance;
@@ -6734,6 +6759,64 @@ int __cdecl schedule_cone_filter(void* actor,unsigned n,void* weapon,unsigned ca
     }
     return done(initial);
 }
+// 2203c2b0 full condition-writing query; schedule41 uses the false variant.
+int __cdecl grunt_combat_line(void* actor,unsigned n,const float* start,const float* end,float now,bool set_conditions,const ServerNpcGruntCombatLineBindings* b,ServerNpcGruntCombatLineResult* o) noexcept{
+    if(!o)return 0;*o={};o->initial_condition=o->cone_condition=-1;o->blocker_handle=0xffffffffu;
+    if(!actor||n<0x9c8||!std::isfinite(now)||!start||!end||!finite_vec(start)||!finite_vec(end)||!b||!b->admission)return 0;
+    const auto& ab=*b->admission;
+    if(!relation_grunt_class(ab.actor_vtable)||ab.count>sin_independent::kEntityHandleCapacity||(ab.count&&!ab.entries))return 0;
+    if(b->cone&&b->cone->line!=b->line)return 0;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto active=[&](){return registry.Resolve(read<unsigned>(actor,0x78c));};
+    auto caps=[&](unsigned& value){
+        value=read<unsigned>(actor,0x8ec);
+        if(void* w=active()){unsigned wc=0;if(!line_weapon_caps(w,ab,wc))return false;value|=wc;}return true;
+    };
+    auto mark=[&](int condition){
+        if(!set_conditions||condition<0)return true;
+        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));ServerNpcConditionResult cr{};
+        if(!api||!api->store(actor,n,condition,NpcConditionCurrent,true,&ab.conditions,&cr))return false;
+        o->conditions_written+=cr.mapped;return true;
+    };
+    bool allowed=false;void* blocker=nullptr;
+    if(void* w=active()){
+        unsigned unused=0;if(!line_weapon_caps(w,ab,unused)||!b->line)return 0;
+        o->weapon_called=1;
+        if(!schedule_weapon_line(actor,w,start,end,ab,*b->line,allowed,&o->initial_condition,&blocker))return 0;
+    }else if(read<unsigned>(actor,0x8ec)&0x20000u){
+        // 2203c490 ignores the visibility return, testing the actual blocker.
+        o->point_called=1;void* hit=nullptr;
+        if(!b->point_blocker||!b->point_blocker(b->context,actor,end,0x46004003u,&hit))return 0;
+        if(!hit)allowed=true;
+        else{
+            bool proxy_hit=false,direct_hit=false;
+            if(!b->line||!line_hit_target(actor,hit,ab,*b->line,proxy_hit,direct_hit))return 0;
+            if(proxy_hit||direct_hit)allowed=true;
+            else{
+                bool combat=false;if(!b->point_combat||!b->point_combat(b->context,hit,&combat))return 0;
+                if(combat){
+                    int relation=0;if(!b->line->disposition||!b->line->disposition(b->line->context,actor,hit,&relation))return 0;
+                    allowed=relation==1;if(!allowed)o->initial_condition=0x28;
+                }else{o->initial_condition=0x2b;blocker=hit;}
+            }
+        }
+    }else o->initial_condition=6;
+    if(!mark(o->initial_condition))return 0;
+    if(set_conditions&&o->initial_condition==0x2b){
+        if(blocker&&(!b->entity_handle||!b->entity_handle(b->context,blocker,&o->blocker_handle)))return 0;
+        write(actor,0x98c,o->blocker_handle);o->blocker_written=1;
+    }
+    o->initial_allowed=allowed;
+    // Original reloads +5c0 and active weapon after initial trace.
+    if(!caps(o->capabilities))return 0;
+    if(o->capabilities&0x50000000u){
+        if(!b->cone||!schedule_cone_filter(actor,n,active(),o->capabilities,start,end,now,allowed,&ab,b->cone,&o->cone))return 0;
+        allowed=o->cone.allowed!=0;
+        if(o->cone.player_blocked){o->cone_condition=0x29;if(!mark(o->cone_condition))return 0;}
+    }
+    o->allowed=allowed;o->completed=1;return 1;
+}
+const ServerNpcGruntCombatLineApi combat_line_api{1,sizeof(ServerNpcGruntCombatLineApi),&grunt_combat_line};
 bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route,const ServerNpcGruntScheduleServices* svc=nullptr,const ServerNpcGruntSchedulePolicyServices* policy=nullptr,const ServerNpcGruntScheduleSceneServices* scene=nullptr,const ServerNpcGruntScheduleLineServices* line=nullptr,const ServerNpcGruntScheduleConeServices* cone=nullptr) noexcept{
     const auto vt=b.arbitration->activation->schedule->admission.actor_vtable;
     auto native=[&](int v){o.translated=v;o.translated_native=1;return true;};
@@ -6766,17 +6849,7 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         unsigned extent=0;return p&&ab.extent&&ab.extent(ab.context,p,&extent)&&extent>=bytes;
     };
     // Original PE32 primary-vtable tokens in the bounded object view, not host pointers.
-    auto weapon_caps=[&](void* w,unsigned& caps){
-        if(!span(w,4))return false;
-        switch(read<unsigned>(w,0)){
-        case 0x2245a554u:caps=0;return true; // CBaseCombatWeapon
-        case 0x22478d0cu:caps=0x8000;return true; // Melee
-        case 0x2247875cu:case 0x224776acu:case 0x2247a1e4u:
-        case 0x22477c8cu:case 0x22478214u:case 0x2247924cu:case 0x2247ab9cu:
-            caps=0x2000;return true; // seven SiN weapon +4a0 constant leaves
-        default:return false;
-        }
-    };
+    auto weapon_caps=[&](void* w,unsigned& caps){return line_weapon_caps(w,ab,caps);};
     auto target_kind=[&](void* e,bool& player,bool& npc){
         if(!span(e,4))return false;
         const auto v=read<unsigned>(e,0);
@@ -6953,7 +7026,7 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
                 }
                 if(!schedule_body_point(e,source,true,&ab,line,point))return false;
                 w=registry.Resolve(read<unsigned>(a,0x78c));
-                if(!w||!weapon_caps(w,caps)||!schedule_weapon_line(a,w,e,start,point,ab,*line,yes))return false;
+                if(!w||!weapon_caps(w,caps)||!schedule_weapon_line(a,w,start,point,ab,*line,yes))return false;
                 // 2203c352: high capability flags invoke additional cone/squad checks.
                 const unsigned combined=read<unsigned>(a,0x8ec)|caps;
                 if(combined&0x50000000u){
@@ -9737,4 +9810,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntScheduleConeApi=_SiN_GetServerNpcGruntScheduleConeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleConeApi* __cdecl SiN_GetServerNpcGruntScheduleConeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntScheduleConeApi)?&schedule_cone_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatLineApi=_SiN_GetServerNpcGruntCombatLineApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatLineApi* __cdecl SiN_GetServerNpcGruntCombatLineApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatLineApi)?&combat_line_api:nullptr;
 }

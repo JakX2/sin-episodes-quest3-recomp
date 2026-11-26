@@ -3191,6 +3191,31 @@ struct ServerNpcGruntScheduleConeApi {
     int (__cdecl *acquire)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,const ServerNpcGruntScheduleConeServices*,ServerNpcGruntScheduleAcquireResult*,ServerNpcGruntAssaultArbitrationResult*) noexcept;
 };
 using GetServerNpcGruntScheduleConeApi=const ServerNpcGruntScheduleConeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Full original +6e8 query (2203c2b0), including optional condition side effects.
+// The two point-visibility services are deliberately separate from the
+// weapon trace/proxy combat service: 2203c490 calls direct +fc on its blocker.
+inline constexpr char server_npc_grunt_combat_line_export[]="SiN_GetServerNpcGruntCombatLineApi";
+struct ServerNpcGruntCombatLineBindings {
+    const ServerNpcGruntAssaultAdmissionBindings* admission;
+    const ServerNpcGruntScheduleLineServices* line;
+    const ServerNpcGruntScheduleConeServices* cone;
+    void* context;
+    int (__cdecl *point_blocker)(void*,void*,const float*,unsigned,void**) noexcept; // +1ec, return blocker independently of visibility bool
+    int (__cdecl *point_combat)(void*,void*,bool*) noexcept; // blocker +fc non-null
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept; // +8 handle for 22035220
+};
+struct ServerNpcGruntCombatLineResult {
+    ServerNpcGruntScheduleConeResult cone;
+    unsigned completed,allowed,initial_allowed,weapon_called,point_called,conditions_written,blocker_written;
+    unsigned capabilities;
+    int initial_condition,cone_condition;
+    std::uint32_t blocker_handle;
+};
+struct ServerNpcGruntCombatLineApi {
+    std::uint32_t version,size;
+    int (__cdecl *query)(void*,unsigned,const float*,const float*,float,bool,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntCombatLineResult*) noexcept;
+};
+using GetServerNpcGruntCombatLineApi=const ServerNpcGruntCombatLineApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 int grunt_schedule_cone_normal_internal(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*,const ServerNpcGruntScheduleConeServices*) noexcept;
 int grunt_schedule_line_jet_internal(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*,const ServerNpcGruntScheduleConeServices* = nullptr) noexcept;
 int grunt_schedule_line_failure_internal(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,const ServerNpcGruntScheduleConeServices* = nullptr) noexcept;

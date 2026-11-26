@@ -4946,6 +4946,37 @@ int main(int argc,char** argv){
         f.put(q.enemy,0x2bc,0.f);f.put(q.a,0xc90,100.f);q.a[0xc64]=q.a[0xc66]=1;
         lf.fraction=1.f;lf.hit=nullptr;f.put(q.record,0,1000000091);
         assert(cone_api->acquire(q.a,sizeof(q.a),41,60,&ac,&cone,&ar,&translation)&&ar.completed&&ar.translated==91&&!q.a[0xc64]);
+        // Full +6e8 condition-producing route, including no-weapon point query.
+        const auto combat_line_getter=reinterpret_cast<GetServerNpcGruntCombatLineApi>(GetProcAddress(s,server_npc_grunt_combat_line_export));
+        assert(combat_line_getter&&!GetProcAddress(c,server_npc_grunt_combat_line_export)&&!combat_line_getter(0,sizeof(ServerNpcGruntCombatLineApi))&&!combat_line_getter(1,0));
+        const auto* combat_line=combat_line_getter(1,sizeof(ServerNpcGruntCombatLineApi));assert(combat_line);
+        ServerNpcGruntCombatLineBindings cl{};cl.admission=&ab;cl.line=&line;cl.cone=&cone;cl.context=&lf;
+        cl.point_blocker=[](void* p,void*,const float*,unsigned mask,void** out) noexcept -> int{
+            assert(mask==0x46004003u);*out=static_cast<LineFixture*>(p)->hit;return 1;
+        };
+        cl.point_combat=[](void* p,void*,bool* out) noexcept -> int{*out=static_cast<LineFixture*>(p)->combat!=nullptr;return 1;};
+        cl.entity_handle=[](void* p,void* hit,std::uint32_t* out) noexcept -> int{assert(hit==static_cast<LineFixture*>(p)->hit);*out=0x2002u;return 1;};
+        ServerNpcGruntCombatLineResult clr{};
+        auto query_line=[&](bool set){return combat_line->query(q.a,sizeof(q.a),st,ed,60,set,&cl,&clr);};
+        f.put(q.a,0x8ec,0u);f.put(q.a,0x78c,0x2002u);f.put(q.a,0x98c,0xffffffffu);bits(0);
+        q.a[0xc64]=0;lf.fraction=.5f;lf.hit=q.weapon;lf.combat=nullptr;
+        assert(query_line(false)&&clr.weapon_called&&!clr.allowed&&clr.initial_condition==43&&!clr.conditions_written&&!clr.blocker_written&&CombatFixture::rd(q.a,0x98c)==0xffffffffu);
+        assert(query_line(true)&&clr.initial_condition==43&&clr.conditions_written==1&&clr.blocker_written&&CombatFixture::rd(q.a,0x98c)==0x2002u&&(CombatFixture::rd(q.a,0x7d0)&(1u<<11)));
+        lf.combat=q.enemy;lf.relation=2;bits(0);
+        assert(query_line(true)&&clr.initial_condition==40&&!clr.allowed&&!clr.blocker_written&&(CombatFixture::rd(q.a,0x7d0)&(1u<<8)));
+        lf.relation=1;assert(query_line(true)&&clr.allowed&&clr.initial_condition==-1&&!clr.conditions_written);
+        f.put(q.a,0x78c,0xffffffffu);bits(0);
+        assert(query_line(true)&&!clr.weapon_called&&!clr.point_called&&!clr.allowed&&clr.initial_condition==6&&(CombatFixture::rd(q.a,0x7cc)&(1u<<6)));
+        f.put(q.a,0x8ec,0x20000u);lf.hit=nullptr;
+        assert(query_line(true)&&clr.point_called&&clr.allowed&&!clr.conditions_written);
+        lf.hit=q.weapon;lf.combat=nullptr;bits(0);
+        assert(query_line(true)&&clr.point_called&&!clr.allowed&&clr.initial_condition==43&&clr.blocker_written);
+        lf.hit=q.enemy;assert(query_line(true)&&clr.allowed&&!clr.conditions_written);
+        // No weapon with high-capability player check: condition6 then condition41.
+        cl.line=&player_line;cone.line=&player_line;cf.disposition=0;f.put(q.a,0x8ec,0x10000000u);bits(0);
+        assert(query_line(true)&&!clr.allowed&&clr.initial_condition==6&&clr.cone.player_blocked&&clr.cone.spread.no_weapon&&clr.cone_condition==41&&clr.conditions_written==2&&(CombatFixture::rd(q.a,0x7d0)&(1u<<9)));
+        assert(query_line(false)&&!clr.allowed&&!clr.conditions_written&&!clr.blocker_written);
+        f.put(q.a,0x78c,0x2002u);bits(0);
         f.put(q.a,0x8ec,0u);ab.entries=q.entries;ab.count=3;
 
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
