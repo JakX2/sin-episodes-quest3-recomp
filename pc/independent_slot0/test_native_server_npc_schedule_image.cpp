@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdio>
 #include <initializer_list>
+#include <cmath>
 using namespace sin_port::native_weapon_tables;
 struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
@@ -567,6 +568,76 @@ int main(int argc,char** argv){
     req_policy.random_int=nullptr;install_at(97,2);f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
     assert(!cone_think->run(f.actor,sizeof(f.actor),69.4966f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&cone_bind,&req_run));
     assert(req_run.requests.scheduler.maintenance.state.schedule==find(97)&&task_rolls==1);
+    // Actual ground schedule41 high-capability path through outer think, not a
+    // direct Cone API call. Distinct serial-resolved actor, weapon and player target.
+    struct ConeThinkFixture {
+        F* f;unsigned char weapon[0x498]{},enemy[0x9b0]{},blocker[0x9b0]{},memory[0x40]{};
+        unsigned traces=0,spreads=0,players=0;int disposition=1;
+    } high{&f};
+    f.put(high.weapon,0,0x224776acu);f.put(high.weapon,0x494,0x3000u);
+    f.put(high.enemy,0,0x224aec3cu);f.put(high.enemy,0x360,300.f);f.put(high.enemy,0x2bc,300.f);
+    f.put(high.memory,0,0x22068d70u);f.put(high.memory,0x18,0x22068b40u);high.memory[0x10]=255;
+    sin_independent::EntityHandleEntry high_entries[4]{};
+    high_entries[0].serial=3;high_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
+    high_entries[1].serial=7;high_entries[1].entity=reinterpret_cast<CBaseEntity*>(high.weapon);
+    high_entries[2].serial=8;high_entries[2].entity=reinterpret_cast<CBaseEntity*>(high.enemy);
+    high_entries[3].serial=9;high_entries[3].entity=reinterpret_cast<CBaseEntity*>(high.blocker);
+    auto high_old_entities=selection.state.entities;
+    selection.state.entities.entries=high_entries;selection.state.entities.count=4;
+    req_schedule.admission.context=&high;
+    req_schedule.admission.extent=[](void* p,void* e,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<ConeThinkFixture*>(p);
+        if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.weapon)*n=sizeof(q.weapon);
+        else if(e==q.enemy)*n=sizeof(q.enemy);else if(e==q.blocker)*n=sizeof(q.blocker);else return 0;return 1;
+    };
+    req_line.context=&high;
+    req_line.random_float=[](void*,float lo,float hi,float* out) noexcept -> int{assert(lo==.7f&&hi==1.f);*out=1.f;return 1;};
+    req_line.shoot_position=[](void* p,void* a,float* out) noexcept -> int{
+        auto& q=*static_cast<ConeThinkFixture*>(p);assert(a==q.f->actor&&!q.f->actor[0xc64]);out[0]=out[1]=out[2]=0;return 1;
+    };
+    req_line.line_trace=[](void* p,void* a,const float* start,const float* end,unsigned mask,int group,float* fraction,void** hit) noexcept -> int{
+        auto& q=*static_cast<ConeThinkFixture*>(p);assert(a==q.f->actor&&start[0]==0&&end[0]==300&&mask==0x46004003u&&group==6);
+        ++q.traces;*fraction=1.f;*hit=nullptr;return 1;
+    };
+    req_line.disposition=[](void* p,void* a,void* e,int* out) noexcept -> int{
+        auto& q=*static_cast<ConeThinkFixture*>(p);assert(a==q.f->actor&&e==q.blocker);*out=q.disposition;return 1;
+    };
+    req_line.center=[](void* p,void* e,float* out) noexcept -> int{
+        auto& q=*static_cast<ConeThinkFixture*>(p);assert(e==q.blocker);out[0]=100;out[1]=out[2]=0;return 1;
+    };
+    ServerNpcGruntAdaptiveSpreadBindings high_spread{};high_spread.context=&high;high_spread.memory.storage.context=&high;
+    high_spread.memory.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        if(token!=601)return 0;auto& q=*static_cast<ConeThinkFixture*>(p);*out=q.memory;*n=sizeof(q.memory);return 1;
+    };
+    high_spread.base_spread=[](void* p,void* a,void* w,void* target,float* out) noexcept -> int{
+        auto& q=*static_cast<ConeThinkFixture*>(p);assert(a==q.f->actor&&w==q.weapon&&!target);++q.spreads;out[0]=out[1]=out[2]=.125f;return 1;
+    };
+    req_cone.spread=&high_spread;req_cone.context=&high;
+    req_cone.player_count=[](void*,int* count) noexcept -> int{*count=1;return 1;};
+    req_cone.player_at=[](void* p,int index,void** out) noexcept -> int{assert(index==1);auto& q=*static_cast<ConeThinkFixture*>(p);++q.players;*out=q.blocker;return 1;};
+    req_cone.normalize=[](void*,float* v,float* length) noexcept -> int{
+        *length=std::sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);if(*length)for(unsigned i=0;i<3;++i)v[i]/=*length;return 1;
+    };
+    req_arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=41;return 1;};
+    auto high_run=[&](float now,bool legacy){
+        std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);bind_nav();
+        f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x8a0,0x8002u);f.put(f.actor,0x8ec,0x10000000u);
+        f.put(f.actor,0x984,601u);f.put(f.actor,0xc90,100.f);f.actor[0xc64]=f.actor[0xc66]=1;
+        return legacy?request_think->run(f.actor,sizeof(f.actor),now,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run):
+            cone_think->run(f.actor,sizeof(f.actor),now,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&cone_bind,&req_run);
+    };
+    assert(high_run(69.497f,false)&&req_run.requests.requests==1&&req_run.requests.request.acquisition.translated==91&&
+        req_run.requests.scheduler.maintenance.state.schedule==find(91)&&!f.actor[0xc64]&&high.traces==1&&high.spreads==1&&high.players==1);
+    high.disposition=0;
+    assert(high_run(69.498f,false)&&req_run.requests.request.acquisition.translated==91&&f.actor[0xc64]&&high.traces==2&&high.spreads==2&&high.players==2);
+    assert(!high_run(69.499f,true)&&!req_run.requests.request.acquisition.completed&&!f.actor[0xc64]&&high.traces==3&&high.spreads==2&&high.players==2);
+    req_cone.spread=nullptr;
+    assert(!high_run(69.4995f,false)&&!req_run.requests.request.acquisition.completed&&!f.actor[0xc64]&&high.traces==4&&high.spreads==2&&high.players==2);
+    // Restore the pre-existing test services and registry; no fixture pointers escape.
+    req_cone={};req_cone.line=&req_line;req_line={};req_line.scene=&req_scene;
+    req_schedule.admission.context=nullptr;req_schedule.admission.extent=nullptr;
+    selection.state.entities=high_old_entities;
+    req_arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=26;return 1;};
     selection.translate=old_trans;selection.fail_select=old_fail;selection.special_select=old_special;
     req_acquire.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
     unsigned char before[sizeof(f.actor)];std::memcpy(before,f.actor,sizeof(before));
