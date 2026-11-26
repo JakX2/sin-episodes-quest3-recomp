@@ -462,6 +462,14 @@ int main(int argc,char** argv){
     install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
     f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,69.49f);f.put(f.actor,0xcd4,2);
     assert(nst->run(f.actor,sizeof(f.actor),69.49f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nbind,&nsrun)&&nsrun.cycle.preschedule.think.completed&&nsrun.cycle.speech.delivered&&nsrun.cycle.speech.cleared&&!nsrun.selections&&!nsrun.outer.release_calls&&component_calls==1&&f.think_component_tasks==5);
+    auto gsrthink=reinterpret_cast<GetServerNpcNativeSquadReportThinkApi>(GetProcAddress(s,server_npc_native_squad_report_think_export));
+    assert(gsrthink&&!GetProcAddress(c,server_npc_native_squad_report_think_export)&&!gsrthink(0,sizeof(ServerNpcNativeSquadReportThinkApi))&&!gsrthink(1,0));
+    const auto* srthink=gsrthink(1,sizeof(ServerNpcNativeSquadReportThinkApi));assert(srthink);
+    ServerNpcNativeSquadReportThinkBindings srbind{};srbind.preschedule=nbind.preschedule;srbind.reports.perception=nbind.perception;
+    ServerNpcNativeSquadReportThinkResult srrun;
+    install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
+    f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,69.491f);f.put(f.actor,0xcd4,2);
+    assert(srthink->run(f.actor,sizeof(f.actor),69.491f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&srbind,&srrun)&&srrun.squad.cycle.preschedule.think.completed&&srrun.squad.cycle.speech.delivered&&!srrun.outer_reports.forwarded&&!srrun.squad.selections&&component_calls==1&&f.think_component_tasks==6);
     tcb.submit_goal=cover_submit;
     ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;
     m.before_selection=old_before;

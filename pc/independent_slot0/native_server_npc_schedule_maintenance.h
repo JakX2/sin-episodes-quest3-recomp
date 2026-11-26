@@ -112,5 +112,7 @@ struct ServerNpcNativeGatherRoute {
     ServerNpcGruntPerceptionSlotsResult* slots_result=nullptr;
     ServerGruntNativeSlotSelectorResult* slot_selection=nullptr;
     unsigned* slot_selections=nullptr;
+    const ServerNpcGruntSquadReportBindings* reports=nullptr;
+    ServerNpcGruntSquadReportResult* report_result=nullptr;
 };
 }

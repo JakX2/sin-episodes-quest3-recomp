@@ -31,6 +31,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSpeechApi* __cdecl SiN_GetServerNpcGruntPerceptionSpeechApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSlotsApi* __cdecl SiN_GetServerNpcGruntPerceptionSlotsApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeSlotResolutionApi* __cdecl SiN_GetServerNpcNativeSlotResolutionApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadReportApi* __cdecl SiN_GetServerNpcGruntSquadReportApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 struct GatherRoute {
@@ -202,7 +203,10 @@ int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMainten
                     bound.gather.base.perception.enemy_switch.best.memory.entries=selection.state.entities.entries;
                     bound.gather.base.perception.enemy_switch.best.memory.count=selection.state.entities.count;
                     ++*native_gather->calls;
-                    if(native_gather->slots){
+                    if(native_gather->reports){
+                        const auto* reports=SiN_GetServerNpcGruntSquadReportApi(1,sizeof(ServerNpcGruntSquadReportApi));
+                        if(!reports||!reports->gather(actor,bytes,now,&bound,native_gather->reports,native_gather->result,native_gather->report_result))return 0;
+                    }else if(native_gather->slots){
                         const auto* slots=SiN_GetServerNpcGruntPerceptionSlotsApi(1,sizeof(ServerNpcGruntPerceptionSlotsApi));
                         if(!slots||!slots->gather(actor,bytes,now,&bound,native_gather->slots,native_gather->result,native_gather->slots_result))return 0;
                     }else if(native_gather->dialogue){
