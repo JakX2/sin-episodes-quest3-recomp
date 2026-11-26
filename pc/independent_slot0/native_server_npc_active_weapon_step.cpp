@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWeaponActivityApi* __cdecl SiN_GetServerWeaponActivityApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSubclassSchedulerApi* __cdecl SiN_GetServerNpcSubclassSchedulerApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeWeaponPolicyThinkApi* __cdecl SiN_GetServerNpcNativeWeaponPolicyThinkApi(std::uint32_t,std::uint32_t) noexcept;
@@ -242,6 +243,52 @@ int __cdecl cadence_finish(void* a,unsigned n,float now,float interval,std::uint
     }
     out->completed=1;return 1;
 }
+template<class Binding,class Step,class Execute>
+int outer_run(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const Binding* b,const ServerNpcActiveWeaponStepBindings* base,const ServerNpcOuterUpdateBindings* outer,Step* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out,bool jet,Execute execute) noexcept {
+    if(!out||!step||!tail)return 0;
+    *out={};*tail={};std::memset(step,0,sizeof(*step));step->animation.frame.frame.failed_event=-1;
+    if(!a||!in||!std::isfinite(in->now)||!std::isfinite(interval)||interval<=0||!b||!base||!base->schedule||!outer||!outer->post)return 0;
+    const auto vt=base->schedule->scheduler.original_vtable;
+    const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
+    unsigned family=0;
+    if(!outer_class(vt,n)||!cls||!cls->classify(vt,&family)||jet!=(family==NpcSubclassJetpack))return 0;
+    const auto* condition=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    if(!condition||!outer->pvs)return 0;
+    auto admission=outer->admission;admission.storage=outer->post;
+    auto cadence=outer->cadence;cadence.storage=outer->post;
+    const float now=in->now;
+    if(rd<std::uint8_t>(a,0xbe1)){
+        out->impact_called=1;if(!outer->pending_impact||!outer->pending_impact(outer->context,a))return 0;
+    }
+    if(!cadence_set(a,n,-1.f,interval,vt,&cadence,&out->clear))return 0;
+    bool pvs=false;out->pvs_called=1;
+    if(!outer->pvs(outer->context,rd<unsigned>(a,0x16c),&pvs))return 0;out->pvs=pvs;
+    ServerNpcConditionResult mapped{};
+    if(!condition->store(a,n,1,NpcConditionCurrent,pvs,&base->schedule->scheduler.maintenance.selection.grunt.schedule.conditions,&mapped))return 0;
+    out->condition_mapped=mapped.mapped;
+    if(rd<int>(a,0x868)>0){
+        out->wake_called=1;if(!outer->wake||!outer->wake(outer->context,a,pvs))return 0;
+    }
+    if(rd<int>(a,0x85c)>=4||rd<int>(a,0x868)!=0)out->sleep_bypassed=1;
+    else if(!outer->active_scene)out->scene_bypassed=1;
+    else{
+        if(!outer_script(a,n,now,vt,&admission,&out->script)||!outer_admit(a,n,now,vt,&admission,&out->admission))return 0;
+        if(out->admission.admitted){
+            out->active_called=1;
+            if(!execute(a,n,in,interval,b,outer->post,step,tail))return 0;
+            out->think_called=step->think_called;
+        }else{wr<unsigned>(a,0x910,0x7f7fffffu);out->nav_sentinel_written=1;}
+    }
+    if(!cadence_finish(a,n,now,interval,vt,pvs,out->think_called!=0,&cadence,&out->finish))return 0;
+    out->completed=1;return 1;
+}
+int __cdecl outer_ground(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveWeaponStepBindings* b,const ServerNpcOuterUpdateBindings* outer,ServerNpcActiveWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out) noexcept {
+    return outer_run(a,n,in,interval,b,b,outer,step,tail,out,false,&ground_post);
+}
+int __cdecl outer_jet(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveJetWeaponStepBindings* b,const ServerNpcOuterUpdateBindings* outer,ServerNpcActiveJetWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out) noexcept {
+    return outer_run(a,n,in,interval,b,b&&!b->base.think?&b->base:nullptr,outer,step,tail,out,true,&jet_post);
+}
+const ServerNpcOuterUpdateApi outer_api{1,sizeof(ServerNpcOuterUpdateApi),&outer_ground,&outer_jet};
 const ServerNpcOuterCadenceApi cadence_api{1,sizeof(ServerNpcOuterCadenceApi),&cadence_set,&cadence_finish};
 const ServerNpcOuterAdmissionApi admission_api{1,sizeof(ServerNpcOuterAdmissionApi),&outer_admit,&outer_script};
 const ServerNpcActivePostAnimationApi post_api{1,sizeof(ServerNpcActivePostAnimationApi),&post,&ground_post,&jet_post};
@@ -272,4 +319,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterCadenceApi=_SiN_GetServerNpcOuterCadenceApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcOuterCadenceApi* __cdecl SiN_GetServerNpcOuterCadenceApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcOuterCadenceApi)?&cadence_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterUpdateApi=_SiN_GetServerNpcOuterUpdateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcOuterUpdateApi* __cdecl SiN_GetServerNpcOuterUpdateApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcOuterUpdateApi)?&outer_api:nullptr;
 }
