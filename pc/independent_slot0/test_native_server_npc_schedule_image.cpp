@@ -691,6 +691,32 @@ int main(int argc,char** argv){
             assert(cycle.outer_gather.gather.base.post.combat.range.report.mutation.updated&&cycle.scheduler.gather.gather.base.post.combat.range.report.mutation.updated);
             assert(outer_weapon.secondary.clip_positive&&inner_weapon.secondary.clip_positive);
         }
+        // Keep a valid original SCHED_GRUNT_RANGE_ATTACK1 descriptor and
+        // execute TASK_RANGE_ATTACK1 (67) across complete outer-think ticks.
+        // RTTI at 2247ab9c identifies CWeaponSMG, not the Magnum used above.
+        prepare_engaged(4,0);f.put(equipped.weapon,0,0x2247ab9cu);
+        f.put(f.actor,0x6cc,0x7001u);f.actor[0x3e0]=1;
+        f.put(f.actor,0x3ec,7);f.put(f.actor,0x884,7);
+        const auto attack_schedule=find(91);
+        assert(attack_schedule&&state->install(f.actor,sizeof(f.actor),attack_schedule,70.f,&sb,&sr));
+        f.put(f.actor,0x79c,global+191);
+        for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+        assert(state->inspect(f.actor,sizeof(f.actor),&sb,&sr)&&sr.task.id==67);
+        const float prior_stamp=stamp;stamp=0;
+        auto verify_tick=[&](float now){
+            assert(run_engaged(now)&&cycle.completed&&cycle.outer_gather.gather.completed&&cycle.preschedule_called&&cycle.maintenance_called);
+            assert(!cycle.scheduler.gather_calls&&!req_run.requests.requests&&!equipped.queries);
+            assert(cycle.outer_gather.gather.base.post.combat.attack_called&&outer_line.attack.conditions[0]==20&&outer_weapon.primary.clip_positive);
+            assert(!inner_weapon.primary.completed&&!inner_line.attack.line_calls);
+            assert(req_run.requests.scheduler.maintenance.state.schedule==attack_schedule);
+        };
+        verify_tick(70.f);
+        assert(stamp==70.f&&req_run.requests.scheduler.maintenance.state.index==4);
+        int burst_count=0;std::memcpy(&burst_count,f.actor+0xc98,4);assert(burst_count==4);
+        verify_tick(70.5f);assert(stamp==70.f);
+        verify_tick(71.f);assert(stamp==0.f);
+        verify_tick(72.f);assert(req_run.requests.scheduler.maintenance.state.index==5&&equipped.traces==4);
+        stamp=prior_stamp;
         selection.state.entities=previous_entities;selection.state.state_query=previous_query;selection.state.context=previous_context;
         req_schedule.admission=previous_admission;
     }
