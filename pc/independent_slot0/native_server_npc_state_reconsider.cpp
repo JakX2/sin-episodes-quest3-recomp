@@ -4129,13 +4129,10 @@ struct ComponentParentRoute {
     const BehaviorConditionRoute* conditions;
 };
 int grunt_component_damage_impl(void*,unsigned,const void*,unsigned,const ServerNpcGruntComponentDamageBindings*,ServerNpcGruntComponentDamageResult*,const ComponentParentRoute*) noexcept;
-int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
-    const auto& binding=*route.behavior->bindings;
-    auto& result=*route.behavior->result;
-    result.entered=1;result.active_token=out.component;
-    const auto& sb=b.base.chain.prefix.damage.reaction.sentence;
-    if(!binding.actor_token||binding.actor_token>0xfffff000u||out.component<binding.actor_token||n<0xc18)return 0;
-    const unsigned offset=out.component-binding.actor_token;
+struct EmbeddedBehaviorIdentity {unsigned embedded_offset;std::uint32_t behavior_vtable,bridge_vtable;};
+int embedded_behavior_identity(void* a,unsigned n,std::uint32_t actor_vtable,std::uint32_t actor_token,std::uint32_t active_token,bool activity,EmbeddedBehaviorIdentity& result) noexcept{
+    if(!a||!actor_token||actor_token>0xfffff000u||active_token<actor_token||n<0xc1c)return 0;
+    const unsigned offset=active_token-actor_token;
     std::uint32_t expected=0,bridge=0;
     switch(offset){
     case 0xcfc:expected=0x223f956c;break;
@@ -4148,7 +4145,7 @@ int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,
     case 0xeb8:expected=0x223f6b7c;break;
     default:return 0;
     }
-    switch(sb.speech.original_vtable){
+    switch(actor_vtable){
     case 0x2248df04:bridge=0x2248de9c;break;
     case 0x224954a4:bridge=0x2249543c;break;
     case 0x2249aaa4:bridge=0x2249aa40;break;
@@ -4159,14 +4156,27 @@ int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,
     case 0x224a4a4c:bridge=0x224a49e4;break;
     default:return 0;
     }
-    const unsigned need=offset==0xcd8?0x18:0x10;
+    const unsigned need=activity?(offset==0xcd8?0x19:offset==0xde8?0x44:0x10):(offset==0xcd8?0x18:0x10);
     if(offset>n||n-offset<need)return 0;
     auto* component=static_cast<unsigned char*>(a)+offset;
     result.embedded_offset=offset;result.behavior_vtable=read<unsigned>(component,0);
     result.bridge_vtable=read<unsigned>(a,0xc14);
-    const auto parent=binding.actor_token+0xc14;
+    const auto parent=actor_token+0xc14;
     if(result.behavior_vtable!=expected||result.bridge_vtable!=bridge||
-       read<unsigned>(component,4)!=binding.actor_token||read<unsigned>(component,0xc)!=parent)return 0;
+       read<unsigned>(component,4)!=actor_token||read<unsigned>(component,0xc)!=parent)return 0;
+    return 1;
+}
+int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
+    const auto& binding=*route.behavior->bindings;
+    auto& result=*route.behavior->result;
+    result.entered=1;result.active_token=out.component;
+    const auto& sb=b.base.chain.prefix.damage.reaction.sentence;
+    EmbeddedBehaviorIdentity identity{};
+    const bool valid=embedded_behavior_identity(a,n,sb.speech.original_vtable,binding.actor_token,out.component,false,identity)!=0;
+    result.embedded_offset=identity.embedded_offset;result.behavior_vtable=identity.behavior_vtable;result.bridge_vtable=identity.bridge_vtable;
+    if(!valid)return 0;
+    const auto offset=identity.embedded_offset,expected=identity.behavior_vtable,parent=binding.actor_token+0xc14;
+    auto* component=static_cast<unsigned char*>(a)+offset;
     result.identity_valid=1;
     auto bound=binding.component;bound.entries=sb.entries;bound.count=sb.count;bound.original_behavior_vtable=expected;
     const ComponentParentRoute native{a,n,now,&b.base,&out.base,route.notify,parent,&result.parent_native,route.behavior->conditions};
@@ -4968,7 +4978,146 @@ int linked_activity_route(void* a,void* link,const ServerNpcGruntSentenceBinding
     if(out.fraction!=1.f)out.native_result=0x43;
     return done();
 }
-int grunt_activity_translate_impl(void* a,unsigned n,int activity,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out,const ServerNpcGruntLinkedActivityBindings* linked=nullptr,ServerNpcGruntLinkedActivityResult* linked_out=nullptr) noexcept{
+int grunt_base_activity_translate(void* a,int translated,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out,const ServerNpcGruntLinkedActivityBindings* linked,ServerNpcGruntLinkedActivityResult* linked_out) noexcept{
+    const auto& sb=b->entities;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto done=[&](int v){out->native_result=v;out->completed=1;return 1;};
+    out->base_called=1;out->capabilities=read<unsigned>(a,0x8ec);
+    if(void* weapon=registry.Resolve(read<unsigned>(a,0x78c))){
+        unsigned caps=0;if(!b->weapon_caps||!b->weapon_caps(b->context,weapon,&caps))return 0;
+        out->caps_called=1;out->capabilities|=caps;
+    }
+    if(!(out->capabilities&0x8000000u))return done(translated);
+    void* link=registry.Resolve(read<unsigned>(a,0xa18));
+    if(translated==0x42){
+        int v=0;
+        if(linked){
+            if(!linked_out||!linked_activity_route(a,link,sb,*linked,*linked_out))return 0;
+            v=linked_out->native_result;
+        }else if(!b->linked_activity||!b->linked_activity(b->context,a,link,&v))return 0;
+        out->linked_called=1;return done(v);
+    }
+    if(translated==3||(translated==1&&(read<std::uint8_t>(a,0x988)&2))){
+        int v=3;
+        if(link){
+            unsigned extent=0;if(!sb.extent||!sb.extent(sb.speech.context,link,&extent)||extent<0x3a6)return 0;
+            const auto kind=read<std::int16_t>(link,0x3a4);
+            if(kind==100)v=4;else if(kind==101)v=5;
+        }
+        if(!b->activity_lookup||!b->activity_lookup(b->context,a,v,&out->activity_lookup))return 0;
+        out->lookup_called=1;return done(out->activity_lookup==-1?1:v);
+    }
+    return done(translated);
+}
+
+struct BehaviorActivityRoute {const ServerNpcGruntBehaviorActivityBindings* bindings;ServerNpcGruntBehaviorActivityResult* result;};
+int behavior_activity_route(void* a,unsigned n,int incoming,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out,const ServerNpcGruntLinkedActivityBindings* linked,ServerNpcGruntLinkedActivityResult* linked_out,const BehaviorActivityRoute& route) noexcept{
+    const auto& bindings=*route.bindings;auto& result=*route.result;
+    const auto& sb=b->entities;
+    result.entered=1;result.active_token=out->component;result.incoming=result.forwarded=incoming;
+    EmbeddedBehaviorIdentity identity{};
+    const bool valid=embedded_behavior_identity(a,n,sb.speech.original_vtable,bindings.actor_token,out->component,true,identity)!=0;
+    result.embedded_offset=identity.embedded_offset;result.behavior_vtable=identity.behavior_vtable;result.bridge_vtable=identity.bridge_vtable;
+    if(!valid)return 0;
+    result.identity_valid=1;
+    auto* component=static_cast<unsigned char*>(a)+identity.embedded_offset;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto done=[&](int value){result.native_result=value;result.direct=1;out->native_result=value;out->completed=out->component_called=1;return 1;};
+    auto fallback=[&](){
+        result.parent_native=1;
+        if(!grunt_base_activity_translate(a,result.forwarded,b,out,linked,linked_out))return 0;
+        result.native_result=out->native_result;out->component_called=1;return 1;
+    };
+    auto resolve=[&](){return registry.Resolve(read<unsigned>(a,0xa18));};
+    auto subtype=[&](void* target,int& kind){
+        unsigned bytes=0;
+        if(!target||!sb.extent||!sb.extent(sb.speech.context,target,&bytes)||bytes<0x3a6)return false;
+        kind=read<std::int16_t>(target,0x3a4);return true;
+    };
+    auto name=[&](void* target,std::uint32_t& token){
+        unsigned bytes=0;
+        if(!target||!sb.extent||!sb.extent(sb.speech.context,target,&bytes)||bytes<0x3b8)return false;
+        token=read<unsigned>(target,0x3b4);return true;
+    };
+    switch(identity.behavior_vtable){
+    case 0x224abec4u:
+        if(read<std::uint8_t>(component,0x18))return done(0x171);
+        break;
+    case 0x224ae624u:
+        if(incoming==0x10||incoming==0x42||incoming==1||incoming==0x48){
+            if(void* target=resolve()){
+                result.link_valid=1;
+                if(incoming==0x42)return done(0x43);
+                if(incoming==1||incoming==0x48)return done(0x2d);
+                if(!subtype(target,result.subtype))return 0;
+                if(result.subtype==101)return done(0x12);
+                if(result.subtype==107)return done(0xe8);
+                if(result.subtype==108)return done(0xe9);
+            }
+        }
+        break;
+    case 0x22495344u: {
+        result.state_before=result.state_after=read<int>(component,0x40);
+        if(void* target=resolve()){
+            result.link_valid=1;
+            if(!subtype(target,result.subtype))return 0;
+            if(result.subtype==101){
+                // All eight +714 entries are 22030e50, which returns 5 for subtype 101.
+                result.linked_selection=5;
+                if(incoming==1)result.forwarded=5;
+                if(result.state_before==1){write(component,0x40,2);result.state_after=2;result.state_written=1;}
+            }
+        }
+        const int state=read<int>(component,0x40);result.state_after=state;
+        if(state==1)break;
+        result.table_checked=1;result.standoff_key=(static_cast<std::uint32_t>(state)<<16)|static_cast<std::uint32_t>(result.forwarded);
+        if(!bindings.standoff_comparator)return 0;
+        const auto local=read<unsigned>(component,0x2c);
+        if(local)*bindings.standoff_comparator=local;
+        unsigned idx=read<std::uint16_t>(component,0x20);
+        if(idx==0xffffu)break;
+        if(read<unsigned>(component,0x10)!=0x220df9e0u||*bindings.standoff_comparator!=0x220deff0u)return 0;
+        void* table=nullptr;unsigned extent=0;
+        if(!memory_storage(&bindings.table_storage,read<unsigned>(component,0x14),16,table,extent))return 0;
+        const unsigned count=extent/16;
+        while(idx!=0xffffu){
+            if(idx>=count||result.table_visited>=count)return 0;
+            ++result.table_visited;
+            const unsigned off=16u*idx,key=read<unsigned>(table,off+8);
+            if(result.standoff_key==key){
+                result.table_index=idx;result.table_found=1;
+                const int value=read<int>(table,off+12);
+                if(value!=-1)return done(value);
+                break;
+            }
+            idx=read<std::uint16_t>(table,off+(result.standoff_key<key?0:2));
+        }
+        break;
+    }
+    case 0x223f6b7cu:
+        if(incoming==1){
+            if(void* target=resolve()){
+                result.link_valid=1;
+                if(!subtype(target,result.subtype))return 0;
+                if(result.subtype==900){
+                    std::uint32_t initial=0;
+                    if(!name(resolve(),initial))return 0;
+                    if(initial){
+                        if(!name(resolve(),result.name_token)||!subtype(resolve(),result.subtype))return 0;
+                        if(!bindings.symbol_lookup||!bindings.symbol_lookup(bindings.context,result.name_token,&result.symbol))return 0;
+                        result.symbol_called=1;
+                        // All eight +70c=2202f880 ignore subtype and return 1 for -1.
+                        return done(result.symbol==-1?1:result.symbol);
+                    }
+                }
+            }
+        }
+        break;
+    default:break; // four verified common bridge targets
+    }
+    return fallback();
+}
+int grunt_activity_translate_impl(void* a,unsigned n,int activity,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out,const ServerNpcGruntLinkedActivityBindings* linked=nullptr,ServerNpcGruntLinkedActivityResult* linked_out=nullptr,const BehaviorActivityRoute* behavior=nullptr) noexcept{
     if(!out)return 0;*out={};out->requested=out->translated=out->native_result=activity;out->activity_lookup=-1;
     if(!a||n<0xdc0||!b)return 0;
     const auto& sb=b->entities;
@@ -5011,36 +5160,13 @@ int grunt_activity_translate_impl(void* a,unsigned n,int activity,const ServerNp
     }
     out->translated=translated;out->component=read<unsigned>(a,0xc18);
     if(out->component){
+        if(behavior)return behavior_activity_route(a,n,translated,b,out,linked,linked_out,*behavior);
         int v=0;if(!b->component_translate||!b->component_translate(b->context,out->component,translated,&v))return 0;
         out->component_called=1;return done(v);
     }
-    out->base_called=1;out->capabilities=read<unsigned>(a,0x8ec);
-    if(void* weapon=registry.Resolve(read<unsigned>(a,0x78c))){
-        unsigned caps=0;if(!b->weapon_caps||!b->weapon_caps(b->context,weapon,&caps))return 0;
-        out->caps_called=1;out->capabilities|=caps;
-    }
-    if(!(out->capabilities&0x8000000u))return done(translated);
-    void* link=registry.Resolve(read<unsigned>(a,0xa18));
-    if(translated==0x42){
-        int v=0;
-        if(linked){
-            if(!linked_out||!linked_activity_route(a,link,sb,*linked,*linked_out))return 0;
-            v=linked_out->native_result;
-        }else if(!b->linked_activity||!b->linked_activity(b->context,a,link,&v))return 0;
-        out->linked_called=1;return done(v);
-    }
-    if(translated==3||(translated==1&&(read<std::uint8_t>(a,0x988)&2))){
-        int v=3;
-        if(link){
-            unsigned extent=0;if(!sb.extent||!sb.extent(sb.speech.context,link,&extent)||extent<0x3a6)return 0;
-            const auto kind=read<std::int16_t>(link,0x3a4);
-            if(kind==100)v=4;else if(kind==101)v=5;
-        }
-        if(!b->activity_lookup||!b->activity_lookup(b->context,a,v,&out->activity_lookup))return 0;
-        out->lookup_called=1;return done(out->activity_lookup==-1?1:v);
-    }
-    return done(translated);
+    return grunt_base_activity_translate(a,translated,b,out,linked,linked_out);
 }
+
 int __cdecl grunt_activity_translate(void* a,unsigned n,int activity,const ServerNpcGruntActivityTranslationBindings* b,ServerNpcGruntActivityTranslationResult* out) noexcept{
     return grunt_activity_translate_impl(a,n,activity,b,out);
 }
@@ -5051,6 +5177,14 @@ int __cdecl grunt_activity_full(void* a,unsigned n,int activity,const ServerNpcG
     return grunt_activity_translate_impl(a,n,activity,&b->translation,&out->translation,&b->linked,&out->linked);
 }
 const ServerNpcGruntLinkedActivityApi linked_activity_api{1,sizeof(ServerNpcGruntLinkedActivityApi),&grunt_activity_full};
+int __cdecl grunt_behavior_activity(void* a,unsigned n,int activity,const ServerNpcGruntBehaviorActivityBindings* b,ServerNpcGruntBehaviorActivityResult* out) noexcept{
+    if(!out)return 0;*out={};out->full.linked.native_result=0x42;out->full.linked.lookup=-1;
+    out->symbol=out->linked_selection=-1;out->table_index=0xffffu;
+    if(!b)return 0;
+    const BehaviorActivityRoute route{b,out};
+    return grunt_activity_translate_impl(a,n,activity,&b->full.translation,&out->full.translation,&b->full.linked,&out->full.linked,&route);
+}
+const ServerNpcGruntBehaviorActivityApi behavior_activity_api{1,sizeof(ServerNpcGruntBehaviorActivityApi),&grunt_behavior_activity};
 
 int __cdecl grunt_ragdoll_route(void* a,unsigned n,const void* damage,unsigned dn,const float* force,const ServerNpcGruntRagdollRouteBindings* b,ServerNpcGruntRagdollRouteResult* out) noexcept{
     if(!out)return 0;*out={};out->sample=-1;out->mode=out->source_handle=out->ragdoll_handle=0xffffffffu;
@@ -5822,4 +5956,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorConditionLifeApi=_SiN_GetServerNpcGruntBehaviorConditionLifeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorConditionLifeApi* __cdecl SiN_GetServerNpcGruntBehaviorConditionLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorConditionLifeApi)?&behavior_condition_life_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorActivityApi=_SiN_GetServerNpcGruntBehaviorActivityApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorActivityApi* __cdecl SiN_GetServerNpcGruntBehaviorActivityApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorActivityApi)?&behavior_activity_api:nullptr;
 }
