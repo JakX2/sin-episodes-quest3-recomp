@@ -1716,6 +1716,21 @@ int main(int argc,char** argv){
         q.actor[0][0xa44]=0;q.actor[0][0xb6]=1;f.put(q.node,4,1000u);f.put(q.actor[0],0x9c4,91u);f.put(q.group,0x48,1);
         rb.origin=[](void* p,void* a,float* pos) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(a==q.actor[0]&&BroadcastFixture::rd(a,0x9c4)==91&&BroadcastFixture::rd(q.group,0x48)==1);pos[0]=1;pos[1]=2;pos[2]=3;return 1;};
         assert(removal->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,107,&rb,&rr)&&rr.completed&&rr.report_checked&&!rr.zero_key.record&&rr.report_called&&rr.report.blocked&&rr.departure.removed&&rr.finalized);
+        auto gb=reinterpret_cast<GetServerNpcGruntBehaviorRemovalApi>(GetProcAddress(s,server_npc_grunt_behavior_removal_export));
+        assert(gb&&!GetProcAddress(c,server_npc_grunt_behavior_removal_export)&&!gb(0,sizeof(ServerNpcGruntBehaviorRemovalApi))&&!gb(1,0));
+        const auto* behavior=gb(1,sizeof(ServerNpcGruntBehaviorRemovalApi));assert(behavior);
+        struct BehaviorFixture {BroadcastFixture* q;std::uint32_t tokens[2];unsigned calls;};
+        BehaviorFixture bf{&q,{71,72},0};
+        ServerNpcGruntBehaviorRemovalBindings brb{};brb.removal=rb;brb.context=&bf;brb.component_storage.context=&bf;
+        brb.component_storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& b=*static_cast<BehaviorFixture*>(p);assert(token==73);*out=b.tokens;*n=8;return 1;};
+        brb.component_removed=[](void* p,std::uint32_t token,void* attacker,bool event) noexcept -> int{auto& b=*static_cast<BehaviorFixture*>(p);assert(token==71+b.calls&&attacker==b.q->targets[1]&&!event&&BroadcastFixture::rd(b.q->actor[0],0xc18)==72&&!b.q->actor[0][0xa44]);++b.calls;return 1;};
+        brb.component_end=[](void* p,std::uint32_t token) noexcept -> int{auto& b=*static_cast<BehaviorFixture*>(p);assert(token==72&&b.calls==2&&!BroadcastFixture::rd(b.q->actor[0],0xc18)&&BroadcastFixture::rd(b.q->bitmap,4)==(1u<<7));++b.calls;return 1;};
+        q.actor[0][0xa44]=0;f.put(q.actor[0],0x850,2);f.put(q.actor[0],0x9c4,91u);f.put(q.group,0x48,1);f.put(q.actor[0],0x8a0,0x4004u);f.put(q.actor[0],0x9cc,7);f.put(q.bitmap,4,1u<<7);
+        f.put(q.actor[0],0xc18,72u);f.put(q.actor[0],0xc1c,73u);f.put(q.actor[0],0xc28,2);
+        ServerNpcGruntBehaviorRemovalResult brr{};
+        assert(behavior->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,108,&brb,&brr)&&brr.completed&&brr.components==2&&brr.active_cleared&&brr.active_ended&&brr.slot_released&&brr.active_release.old_cleared&&brr.removal.slot_released&&!brr.removal.release.accesses&&brr.removal.departure.removed&&brr.removal.finalized&&bf.calls==3);
+        f.put(q.actor[0],0xc28,0);
+        assert(behavior->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,108,&brb,&brr)&&brr.completed&&brr.removal.repeated&&!brr.components&&!brr.active_ended);
     }
     {
         auto g=reinterpret_cast<GetServerNpcGruntReactionSpeechApi>(GetProcAddress(s,server_npc_grunt_reaction_speech_export));
