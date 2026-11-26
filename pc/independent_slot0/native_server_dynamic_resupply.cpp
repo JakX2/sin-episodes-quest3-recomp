@@ -213,9 +213,16 @@ bool refresh_origin(void* actor,const SpawnBindings& b,EvaluateResult& o) noexce
 }
 // 22146c40: factory, position, angles, owner and dispatch spawn, even
 // when the factory returns null. The caller decides whether null is fatal.
+int __cdecl pickup_factory_create(const char*,const PickupFactoryBindings*,PickupFactoryResult*) noexcept;
 bool create_pickup(void* actor,const char* name,const float* pos,const SpawnBindings& b,EvaluateResult& o,void*& item) noexcept {
     item=nullptr;
-    if(!b.create||!b.create(b.context,name,-1,&item))return false;
+    if(b.create){if(!b.create(b.context,name,-1,&item))return false;}
+    else {
+        if(!b.native_factory)return false;
+        PickupFactoryResult result{};++o.native_factory_calls;
+        if(!pickup_factory_create(name,b.native_factory,&result)){++o.native_factory_failures;o.partial_pickup=result.actor;return false;}
+        item=result.actor;
+    }
     ++o.factories;
     if(item){
         if(!b.position||!b.position(b.context,item,pos))return false;
@@ -757,7 +764,42 @@ int __cdecl item_touch(void* item,unsigned bytes,void* other,unsigned other_byte
     }
     if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health};
+unsigned pickup_type(unsigned vt) noexcept {
+    if(vt==vial_vtable)return count;
+    for(unsigned i=0;i<count;++i)if(vt==ammo_pickups[i].vtable)return i;
+    return count+1;
+}
+int __cdecl pickup_factory_create(const char* name,const PickupFactoryBindings* b,PickupFactoryResult* o) noexcept {
+    if(!o)return 0;*o={};o->type=count+1;
+    if(!name||!b||!b->allocate||!b->initialize)return 0;
+    if(class_equal(name,health_classname))o->type=count;
+    else for(unsigned i=0;i<count;++i)if(class_equal(name,ammo_types[i].classname)){o->type=i;break;}
+    if(o->type>count)return 0;
+    const bool vial=o->type==count;
+    if(vial?!b->vial:!b->ammo)return 0;
+    const unsigned extent=pickup_factory_specs[o->type].extent;
+    o->allocation_called=1;
+    if(!b->allocate(b->context,extent,&o->actor,&o->bytes)||!o->actor)return 0;
+    o->allocated=1;
+    if(o->bytes<extent)return 0;
+    if(vial){if(!vial_construct(o->actor,o->bytes,b->vial,&o->vial))return 0;}
+    else if(!ammo_pickup_construct(o->actor,o->bytes,o->type,b->ammo,&o->ammo))return 0;
+    o->constructed=1;
+    if(!b->initialize(b->context,o->actor,name))return 0;
+    o->initialized=1;o->networkable=static_cast<unsigned char*>(o->actor)+0x160;
+    o->completed=1;return 1;
+}
+int __cdecl pickup_factory_destroy(void* actor,unsigned bytes,void* networkable,const PickupFactoryBindings* b,PickupFactoryResult* o) noexcept {
+    if(!o)return 0;*o={};o->type=count+1;
+    if(!networkable){o->completed=1;return 1;}
+    if(!actor||bytes<4||networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
+    o->type=pickup_type(field<unsigned>(actor,0));
+    if(o->type>count||bytes<pickup_factory_specs[o->type].extent)return 0;
+    o->actor=actor;o->bytes=bytes;
+    if(!b->release_networkable(b->context,networkable))return 0;
+    o->released=o->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
