@@ -4032,5 +4032,63 @@ int main(int argc,char** argv){
         ready(2,0,false);assert(o.condition_checked);f.put(q.a,0x7d0,1u<<19);ready(2,0,true);
         ready(3,0,true);assert(o.mode_written&&ResetFixture::rd(p,0x20)==3u);ready(3,4,true);assert(!o.mode_written&&ResetFixture::rd(p,0x20)==4u);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntAssaultTaskApi>(GetProcAddress(s,server_npc_grunt_assault_task_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_assault_task_export)&&!g(0,sizeof(ServerNpcGruntAssaultTaskApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntAssaultTaskApi));assert(api);
+        struct TaskFixture {
+            alignas(4) unsigned char a[0xde8]{},primary[0x3c0]{},secondary[0x3c0]{},desc[0x48]{},behavior[0x18]{},task[8]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            bool target=false;double error=0.006;unsigned nav=0,targets=0,synthetic=0,requests=0,draws=0,finds=0;
+            static TaskFixture& self(void* p){return *static_cast<TaskFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.secondary);
+        static ServerNpcGruntAssaultNodeBindings nb;nb.context=&q;
+        auto& ab=nb.events;ab.context=&q;auto& busy=ab.events.events.events;busy.context=&q;
+        auto& tank=busy.events.events.events;tank.context=&q;auto& rb=tank.events.events;
+        auto& gate=rb.events.events.gate;gate.actor_token=0x10000;auto& sb=gate.speech.speech.sentence;
+        sb.entries=q.entries;sb.count=3;sb.speech.original_vtable=0x2249aaa4;
+        rb.conditions.context=&q;rb.conditions.descriptor=[](void* p,void*,const void** d,unsigned* n) noexcept -> int{auto& q=TaskFixture::self(p);*d=q.desc;*n=sizeof(q.desc);return 1;};
+        ab.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& q=TaskFixture::self(p);assert(e==q.primary||e==q.secondary);*n=sizeof(q.primary);return 1;};
+        nb.find_next=[](void* p,std::uint32_t token,std::uint32_t* v) noexcept -> int{auto& q=TaskFixture::self(p);assert(token==77);++q.finds;*v=0x2002u;return 1;};
+        tank.request=[](void* p,void* a,std::uint32_t token) noexcept -> int{auto& q=TaskFixture::self(p);assert(a==q.a&&token==0x223f3bf8u);++q.requests;return 1;};
+        busy.owner_event=[](void* p,void* a,int id,float arg) noexcept -> int{auto& q=TaskFixture::self(p);assert(a==q.a&&id==60&&!arg);++q.synthetic;q.a[0xdc0]=0;return 1;};
+        ServerNpcGruntAssaultTaskBindings b{};b.node=&nb;b.context=&q;
+        b.navigation_set=[](void* p,void* a,std::uint32_t token,int id) noexcept -> int{auto& q=TaskFixture::self(p);assert(a==q.a&&token==99&&id==-1);++q.nav;return 1;};
+        b.facing_error=[](void* p,void* a,std::uint32_t token,double* v) noexcept -> int{auto& q=TaskFixture::self(p);assert(a==q.a&&token==99);*v=q.error;return 1;};
+        b.owner_target=[](void* p,void* a,bool* v) noexcept -> int{auto& q=TaskFixture::self(p);assert(a==q.a);++q.targets;*v=q.target;return 1;};
+        b.behavior_schedules.context=&q;b.behavior_schedules.descriptor=[](void* p,void* e,const void** d,unsigned* n) noexcept -> int{auto& q=TaskFixture::self(p);assert(e==q.a+0xdb8);*d=q.behavior;*n=sizeof(q.behavior);return 1;};
+        b.debug_draw=[](void* p,void* a,int id) noexcept -> int{auto& q=TaskFixture::self(p);assert(a==q.a&&(id==100003||id==100000));++q.draws;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.behavior,4,1000000300);f.put(q.behavior,8,100000);f.put(q.behavior,12,100004);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);f.put(q.a,0x908,99u);
+        auto* p=q.a+0xdb8;f.put(p,0x14,0x1001u);f.put(p,0x18,0x2002u);
+        ServerNpcGruntAssaultTaskResult o{};static ServerNpcGruntAssaultNodeResult no;ServerNpcGruntRappelScheduleResult so{};
+        auto run=[&](int id){p[8]=1;f.put(q.task,0,id);return api->run(q.a,sizeof(q.a),q.task,sizeof(q.task),10,&b,&o,&no,&so);};
+        assert(run(77)&&o.completed&&o.marker_cleared&&!p[8]);
+        assert(run(100001)&&o.navigation_called&&o.facing_ready&&o.reset_calls==1&&so.completed&&p[8]);
+        f.put(q.a,0x7cc,1u<<20);assert(run(100003)&&o.reset_calls==2&&q.nav==2);
+        q.error=0.00601;assert(run(100001)&&!o.facing_ready&&o.reset_calls==1);
+        f.put(q.a,0x7cc,0u);q.error=std::numeric_limits<double>::quiet_NaN();assert(run(100003)&&!o.facing_ready&&!o.reset_calls);
+        f.put(p,0x18,0x9002u);assert(run(100006)&&!o.secondary_valid&&o.request_called&&q.requests==1&&!o.target_called);
+        f.put(p,0x18,0x2002u);f.put(p,0x1c,0);f.put(p,0x20,0);assert(run(100006)&&!o.mode_ready&&!o.reset_calls&&o.target_called);
+        f.put(p,0x1c,3);q.target=true;assert(run(100006)&&o.mode_ready&&o.mode_written&&o.reset_calls==1&&o.synthetic_called&&o.marker_restored&&p[8]&&q.synthetic==1);
+        f.put(q.secondary,0x398,88u);assert(run(100006)&&o.reset_calls==1&&!o.synthetic_called);
+        f.put(q.a,0x9dc,10.f);assert(run(100007)&&o.deadline_elapsed&&o.reset_calls==1);
+        f.put(q.a,0x9dc,10.01f);assert(run(100009)&&!o.deadline_elapsed&&!o.reset_calls);
+        q.primary[0x3b8]=1;f.put(q.a,0x7cc,1u<<10);assert(run(100007)&&o.node_flag&&o.reset_calls==1);
+        f.put(q.a,0x9dc,10.f);assert(run(100009)&&o.reset_calls==2);
+        f.put(q.a,0x9dc,std::numeric_limits<float>::quiet_NaN());assert(run(100009)&&!o.deadline_elapsed&&o.reset_calls==1);
+        f.put(q.a,0x7cc,0u);assert(run(121)&&o.marker_cleared&&!o.advance_called);
+        b.debug_enabled=true;f.put(q.a,0x798,123u);f.put(q.a,0x79c,1000000303);
+        assert(run(121)&&o.debug_called&&o.debug_schedule==100003&&o.debug_checks==1&&o.marker_cleared);
+        f.put(q.a,0x79c,1000000300);assert(run(121)&&o.debug_called&&o.debug_schedule==100000&&o.debug_checks==2&&q.draws==2);
+        f.put(q.a,0x79c,1000000301);assert(run(121)&&!o.debug_called&&o.debug_checks==2);
+        f.put(q.a,0x7cc,1u<<10);f.put(q.primary,0x398,77u);p[0x25]=1;
+        assert(run(121)&&o.advance_called&&o.reset_calls==1&&no.next_valid&&no.handle_written&&q.finds==1&&!p[0x25]&&TaskFixture::rd(p,0x14)==0x2002u&&p[8]);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
