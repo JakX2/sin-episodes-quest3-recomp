@@ -1,5 +1,6 @@
 #pragma once
 #include "native_server_npc_active_weapon_step.h"
+#include "native_server_map_entity.h"
 namespace sin_port::native_game_frame {
 using namespace native_weapon_tables;
 inline constexpr char export_name[]="SiN_GetServerGameFrameApi";
@@ -59,6 +60,7 @@ struct Bindings {
     // Opt-in edict-backed stationary branch. Engine +14/+18 scope is
     // separate from profiler scopes and must be paired even on failure.
     int (__cdecl *edict_scope)(void*,bool) noexcept;
+    const native_map::AutoPrimaryBindings* logic_auto;
 };
 struct Result {
     unsigned completed,transition,skip_consumed,double_step,profile_written,cleanup_calls,
@@ -71,6 +73,8 @@ struct Result {
     ServerResupplyPrimaryThinkResult resupply;
     ServerAntigenPrimaryThinkResult antigen;
     ServerEntityEventServiceResult events;
+    unsigned native_auto;
+    native_map::AutoPrimaryResult logic_auto;
 };
 struct Api {
     std::uint32_t version,size;
