@@ -4740,8 +4740,8 @@ int main(int argc,char** argv){
         assert(CombatFixture::rd(q.a,0x878)==0&&CombatFixture::rd(q.a,0x880)==196&&CombatFixture::rd(q.a,0x884)==11&&rf(q.a,0x99c)==50&&p.params==1);
         f.put(q.a,0x78c,0x9002u);p.model=false;old_rolls=p.rolls;policy_run(107,107,51.f);assert(p.rolls==old_rolls&&rf(q.a,0x99c)==51);
         // 2235b3d0: target memory cache plus scaled view offset, distinct hull route and retry deadline.
-        const auto sg=reinterpret_cast<GetServerNpcGruntScheduleSceneApi>(GetProcAddress(s,server_npc_grunt_schedule_scene_export));assert(sg);
-        const auto* scene_api=sg(1,sizeof(ServerNpcGruntScheduleSceneApi));assert(scene_api&&!sg(2,sizeof(ServerNpcGruntScheduleSceneApi)));
+        const auto scene_getter=reinterpret_cast<GetServerNpcGruntScheduleSceneApi>(GetProcAddress(s,server_npc_grunt_schedule_scene_export));assert(scene_getter);
+        const auto* scene_api=scene_getter(1,sizeof(ServerNpcGruntScheduleSceneApi));assert(scene_api&&!scene_getter(2,sizeof(ServerNpcGruntScheduleSceneApi)));
         struct SceneFixture {bool enabled=true,npc=false,visible=true;float fraction=.5f,last[3]{};unsigned gates=0,npcs=0,hulls=0,visits=0;} sc;
         const float invalid[3]={-1000,-2000,-3000};
         ServerNpcGruntScheduleSceneServices scene{};scene.policy=&ps;scene.context=&sc;scene.invalid_point=invalid;
