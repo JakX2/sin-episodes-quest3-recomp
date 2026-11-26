@@ -4908,6 +4908,14 @@ int main(int argc,char** argv){
         peer[0]=50;peer[1]=20;assert(cone_api->predicate(q.enemy,st,ed,peer,.95f,96,&ab,&cone,&cp)&&cp.width_called&&cp.blocked&&cp.spatial==20);
         peer[1]=30;assert(cone_api->predicate(q.enemy,st,ed,peer,.95f,96,&ab,&cone,&cp)&&cp.width_called&&!cp.blocked&&cp.spatial==30);
         assert(cone_api->predicate(nullptr,st,ed,peer,.95f,96,&ab,&cone,&cp)&&!cp.width_called&&!cp.blocked);
+        // 53-bit x87 instruction-sequence witness: original operation order matters
+        // when large world coordinates nearly cancel. Compare final float bits.
+        const std::uint32_t distance_witness[9]{0x48cc0866u,0x4b5ab3f5u,0x4b6af182u,
+            0x494c0000u,0x4bdab400u,0x4beaf000u,0x43066000u,0xc1a88000u,0x44410600u};
+        float witness[9];std::memcpy(witness,distance_witness,sizeof(witness));
+        assert(cone_api->predicate(q.enemy,witness+3,witness+6,witness,1.1f,1.e9f,&ab,&cone,&cp)&&cp.width_called&&cp.blocked);
+        std::uint32_t distance_bits=0;std::memcpy(&distance_bits,&cp.spatial,4);
+        assert(distance_bits==0x3cbf83d7u);
         struct ConeFixture{void* player=nullptr;int count=2,disposition=0;unsigned calls=0;} cf;
         cf.player=q.enemy;cone.context=&cf;
         auto player_line=line;player_line.context=&cf;
