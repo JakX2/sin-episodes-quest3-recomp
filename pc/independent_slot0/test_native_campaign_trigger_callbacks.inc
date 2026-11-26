@@ -292,3 +292,63 @@
             f.fail=false;
         }
     }
+
+// Original ordered +298 logical filter, including exact raw masks.
+    {
+        struct FilterFixture {
+            alignas(4) unsigned char trigger[dynamic_trigger_extent]{},other[0x9b0]{},custom[4]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            const char* classname="FUNC_PUSHABLE";unsigned names=0,players=0,npcs=0,vehicles=0,customs=0;
+            bool player=false,npc=false,vehicle=false,accept=true;
+        } f;
+        const auto filter=reinterpret_cast<TestCampaignTriggerFilter>(GetProcAddress(server,campaign_filter_export));
+        const auto start=reinterpret_cast<FilteredStartCampaignOutput>(GetProcAddress(server,filtered_start_touch_export));
+        assert(filter&&start&&!GetProcAddress(client,campaign_filter_export)&&!GetProcAddress(client,filtered_start_touch_export));
+        put(f.trigger,0,dynamic_trigger_vtable);put(f.trigger,0x410,0xffffffffu);
+        put(f.other,0,0x224aec3cu);put(f.other,0x9ac,0xffffffffu);
+        CampaignFilterBindings b{};b.context=&f;b.entries=f.entries;b.entry_count=2;
+        b.classname=[](void* p,void*,const char** s,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<FilterFixture*>(p);++f.names;*s=f.classname;*n=*s?static_cast<unsigned>(std::strlen(*s)+1):0;return 1;
+        };
+        b.is_player=[](void* p,void*,bool* yes) noexcept ->int{auto& f=*static_cast<FilterFixture*>(p);++f.players;*yes=f.player;return 1;};
+        b.npc_condition=[](void* p,void*,bool* yes) noexcept ->int{auto& f=*static_cast<FilterFixture*>(p);++f.npcs;*yes=f.npc;return 1;};
+        b.player_vehicle=[](void* p,void*,bool* yes) noexcept ->int{auto& f=*static_cast<FilterFixture*>(p);++f.vehicles;*yes=f.vehicle;return 1;};
+        b.custom_filter=[](void* p,void* filter,void* other,bool* yes) noexcept ->int{
+            auto& f=*static_cast<FilterFixture*>(p);assert(filter==f.custom&&other==f.other);++f.customs;*yes=f.accept;return 1;
+        };
+        CampaignFilterResult r{};
+        auto run=[&](unsigned flags){put(f.trigger,0xb4,flags);return filter(f.trigger,sizeof(f.trigger),f.other,sizeof(f.other),&b,&r);};
+        assert(run(0)&&!r.accepted&&!r.player_read);
+        assert(run(64)&&r.accepted&&r.eligibility==64&&r.player&&!f.players);
+        assert(run(1)&&!r.accepted);f.other[0xbc]=0x80;
+        assert(run(1|2|4|8)&&r.accepted&&r.eligibility==1&&!f.names);
+        f.other[0xbc]=0;f.other[0xbd]=0x20;
+        assert(run(1|2|4|8)&&r.accepted&&r.eligibility==2&&!f.names);
+        f.other[0xbd]=0;
+        assert(run(4|8)&&r.accepted&&r.eligibility==4&&f.names==1);
+        f.classname="func_other";put(f.other,0x204,6);
+        assert(run(4|8)&&r.accepted&&r.eligibility==8&&f.names==2);
+        assert(run(64|32)&&!r.accepted&&r.vehicle_reads==1);
+        f.entries[0].entity=reinterpret_cast<CBaseEntity*>(f.custom);f.entries[0].serial=3;
+        put(f.other,0x9ac,0x3000u);
+        assert(run(64|32)&&r.accepted&&r.vehicle_reads==1);
+        assert(run(64|512)&&!r.accepted&&r.vehicle_reads==1);
+        assert(run(64|32|512)&&!r.accepted&&r.vehicle_reads==2);
+        put(f.other,0x9ac,0x4000u);assert(run(64|512)&&r.accepted);
+        put(f.trigger,0x410,0x3000u);
+        assert(run(64)&&r.accepted&&r.custom_called&&f.customs==1);
+        f.accept=false;assert(run(64)&&!r.accepted&&f.customs==2);
+        put(f.trigger,0x410,0x4000u);assert(run(64)&&r.accepted&&!r.custom_called);
+        put(f.other,0,relay_vtable);
+        assert(run(64|16)&&!r.accepted&&r.npc_read&&!f.npcs);
+        put(f.other,0,0u);
+        assert(run(64|16)&&!r.accepted&&f.players==1&&f.npcs==1);
+        f.npc=true;assert(run(64|16)&&r.accepted&&f.npcs==2);
+        f.player=true;f.vehicle=true;assert(run(64|32)&&r.accepted&&f.vehicles==1);
+        put(f.other,0,0x224aec3cu);
+        put(f.trigger,0xb4,64|32);
+        assert(!filter(f.trigger,sizeof(f.trigger),f.other,4,&b,&r));
+        put(f.trigger,0xb4,0);
+        CampaignStartTouchBindings st{};CampaignStartTouchResult sr{};
+        assert(start(f.trigger,sizeof(f.trigger),f.other,sizeof(f.other),&st,&sr,&b,&r)&&sr.completed&&sr.filter_called&&!sr.accepted&&!sr.appended);
+    }
