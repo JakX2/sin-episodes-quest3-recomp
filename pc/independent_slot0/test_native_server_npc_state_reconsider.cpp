@@ -4739,6 +4739,43 @@ int main(int argc,char** argv){
         policy_run(107,107,50.f);assert(q.a[0xca0]&&p.lo==2&&p.hi==5&&CombatFixture::rd(q.a,0xc98)==5&&rf(q.a,0xc9c)==.075f&&rf(q.a,0x60c)==static_cast<float>(50.0+static_cast<double>(.075f)-.1)&&q.a[0x200]==1);
         assert(CombatFixture::rd(q.a,0x878)==0&&CombatFixture::rd(q.a,0x880)==196&&CombatFixture::rd(q.a,0x884)==11&&rf(q.a,0x99c)==50&&p.params==1);
         f.put(q.a,0x78c,0x9002u);p.model=false;old_rolls=p.rolls;policy_run(107,107,51.f);assert(p.rolls==old_rolls&&rf(q.a,0x99c)==51);
+        // 2235b3d0: target memory cache plus scaled view offset, distinct hull route and retry deadline.
+        const auto scene_getter=reinterpret_cast<GetServerNpcGruntScheduleSceneApi>(GetProcAddress(s,server_npc_grunt_schedule_scene_export));assert(scene_getter);
+        const auto* scene_api=scene_getter(1,sizeof(ServerNpcGruntScheduleSceneApi));assert(scene_api&&!scene_getter(2,sizeof(ServerNpcGruntScheduleSceneApi)));
+        struct SceneFixture {bool enabled=true,npc=false,visible=true;float fraction=.5f,last[3]{};unsigned gates=0,npcs=0,hulls=0,visits=0;} sc;
+        const float invalid[3]={-1000,-2000,-3000};
+        ServerNpcGruntScheduleSceneServices scene{};scene.policy=&ps;scene.context=&sc;scene.invalid_point=invalid;
+        scene.enabled=[](void* x,bool* v) noexcept -> int{auto& sc=*static_cast<SceneFixture*>(x);++sc.gates;*v=sc.enabled;return 1;};
+        scene.npc_gate=[](void* x,void*,bool* v) noexcept -> int{auto& sc=*static_cast<SceneFixture*>(x);++sc.npcs;*v=sc.npc;return 1;};
+        scene.eye=[](void*,void*,float* v) noexcept -> int{v[0]=1;v[1]=2;v[2]=3;return 1;};
+        scene.hull_trace=[](void* x,void*,const float* eye,const float* end,const float* mins,const float* maxs,unsigned mask,float* frac,float* normal) noexcept -> int{
+            auto& sc=*static_cast<SceneFixture*>(x);++sc.hulls;assert(eye[0]==1&&end[0]==40&&end[1]==50&&end[2]==60&&mins[2]==-12&&maxs[2]==12&&mask==0x46004003u);
+            *frac=sc.fraction;normal[0]=1;normal[1]=0;normal[2]=-1;return 1;
+        };
+        scene.point_visible=[](void* x,void*,const float* point,unsigned mask,bool* v) noexcept -> int{
+            auto& sc=*static_cast<SceneFixture*>(x);++sc.visits;assert(mask==0x4081u);std::memcpy(sc.last,point,12);*v=sc.visible;return 1;
+        };
+        f.put(q.enemy,0,0x224aec3cu);f.put(q.enemy,0x37c,4.f);f.put(q.enemy,0x380,8.f);f.put(q.enemy,0x384,12.f);
+        f.put(p.memory,0x30,40.f);f.put(p.memory,0x34,50.f);f.put(p.memory,0x38,60.f);
+        f.put(q.a,0x8a0,0x1001u);q.a[0xb7]=0;q.a[0xc64]=1;q.a[0xc66]=0;f.put(q.a,0xc90,0.f);f.put(q.a,0xc84,0.f);bits(0);
+        bool allowed=false;
+        auto target_policy=[&](float now,bool remembered){assert(scene_api->target_policy(q.a,sizeof(q.a),now,remembered,&ab,&scene,&allowed));};
+        target_policy(52,true);assert(allowed&&sc.hulls==0&&rf(q.a,0xfcc)==403&&rf(q.a,0xfd0)==134&&rf(q.a,0xfd4)==9);
+        target_policy(52,false);assert(allowed&&sc.hulls==1&&rf(q.a,0xfcc)==59&&rf(q.a,0xfd0)==56&&rf(q.a,0xfd4)==53);
+        sc.fraction=1;target_policy(52,false);assert(allowed&&sc.hulls==2&&rf(q.a,0xfcc)==43&&rf(q.a,0xfd4)==69);
+        sc.visible=false;target_policy(53,true);assert(!allowed&&rf(q.a,0xfcc)==-1000&&rf(q.a,0xfd4)==-3000&&rf(q.a,0xc84)==54);
+        sc.visible=true;const unsigned gates=sc.gates;target_policy(53.5f,true);assert(!allowed&&sc.gates==gates);
+        target_policy(54,true);assert(allowed&&rf(q.a,0xfcc)==403);
+        sc.enabled=false;target_policy(54,true);assert(!allowed&&rf(q.a,0xfcc)==403&&rf(q.a,0xc84)==54);sc.enabled=true;
+        f.put(q.enemy,0,0x2249aaa4u);target_policy(54,true);assert(!allowed&&sc.npcs==1);sc.npc=true;target_policy(54,true);assert(allowed&&sc.npcs==2);
+        auto scene_run=[&](int id,int expected){
+            f.put(q.record,0,1000000000+expected);
+            assert(scene_api->acquire(q.a,sizeof(q.a),id,55,&ac,&scene,&ar,&translation)&&ar.completed&&ar.translated_native&&ar.translated==expected&&ar.schedule_token==10);
+        };
+        f.put(q.a,0x9c4,0u);scene_run(33,106);scene_run(41,106);
+        f.put(q.a,0x9c4,91u);f.put(q.a,0x9cc,-1);f.put(q.row,4,1u<<9);scene_run(33,88);scene_run(41,91);
+        f.put(q.row,4,0u);scene_run(33,106);assert(CombatFixture::rd(q.row,4)==(1u<<9));
+        f.put(q.a,0x9c4,0u);
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
         f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
 

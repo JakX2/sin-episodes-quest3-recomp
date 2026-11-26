@@ -3093,4 +3093,24 @@ struct ServerNpcGruntSchedulePolicyApi {
     int (__cdecl *choose_jet)(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntSchedulePolicyServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept;
 };
 using GetServerNpcGruntSchedulePolicyApi=const ServerNpcGruntSchedulePolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_schedule_scene_export[]="SiN_GetServerNpcGruntScheduleSceneApi";
+struct ServerNpcGruntScheduleSceneServices {
+    const ServerNpcGruntSchedulePolicyServices* policy;
+    void* context;
+    const float* invalid_point; // three floats, original 225885b8
+    int (__cdecl *enabled)(void*,bool*) noexcept; // adaptive +188
+    int (__cdecl *npc_gate)(void*,void*,bool*) noexcept; // target +53c(0)
+    int (__cdecl *eye)(void*,void*,float*) noexcept; // actor +1c4
+    int (__cdecl *hull_trace)(void*,void*,const float*,const float*,const float*,const float*,unsigned,float*,float*) noexcept; // 220335e0, ignored actor, collision group 0
+    int (__cdecl *point_visible)(void*,void*,const float*,unsigned,bool*) noexcept; // 2213c760, null blocker output
+};
+struct ServerNpcGruntScheduleSceneApi {
+    std::uint32_t version,size;
+    int (__cdecl *target_policy)(void*,unsigned,float,bool,const ServerNpcGruntAssaultAdmissionBindings*,const ServerNpcGruntScheduleSceneServices*,bool*) noexcept;
+    int (__cdecl *acquire)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,const ServerNpcGruntScheduleSceneServices*,ServerNpcGruntScheduleAcquireResult*,ServerNpcGruntAssaultArbitrationResult*) noexcept;
+    int (__cdecl *choose_normal)(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleSceneServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*) noexcept;
+    int (__cdecl *choose_jet)(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleSceneServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept;
+};
+using GetServerNpcGruntScheduleSceneApi=const ServerNpcGruntScheduleSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
