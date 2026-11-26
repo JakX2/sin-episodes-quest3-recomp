@@ -169,4 +169,25 @@ struct ServerNpcNativeGatherCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcGruntGatherNativeBindings*,ServerNpcNativeGatherCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcNativeGatherCatalogSchedulerApi=const ServerNpcNativeGatherCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Original +41c routine; debug drawing/profiling omitted, engine housekeeping hosted.
+inline constexpr char server_npc_think_catalog_export[]="SiN_GetServerNpcThinkCatalogApi";
+struct ServerNpcThinkCatalogBindings {
+    ServerNpcGruntGatherNativeBindings gather;
+    void* context;
+    // Return nullptr for absent player, else the original player+0xc40 context.
+    int (__cdecl *player_context)(void*,const void**,unsigned*) noexcept;
+    int (__cdecl *component_player)(void*,std::uint32_t,const void*) noexcept; // component +bc
+    int (__cdecl *housekeeping)(void*,void*) noexcept; // 2203a330 (engine trace)
+    int (__cdecl *preschedule)(void*,void*,std::uint32_t,float) noexcept; // +424, original class
+};
+struct ServerNpcThinkCatalogResult {
+    ServerNpcNativeGatherCatalogSchedulerResult scheduler;
+    ServerNpcGruntGatherNativeResult outer_gather;
+    unsigned outer_called,player_called,housekeeping_called,preschedule_called,maintenance_called,conditions_cleared,completed;
+};
+struct ServerNpcThinkCatalogApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcThinkCatalogBindings*,ServerNpcThinkCatalogResult*) noexcept;
+};
+using GetServerNpcThinkCatalogApi=const ServerNpcThinkCatalogApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
