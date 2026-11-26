@@ -1799,5 +1799,49 @@ int main(int argc,char** argv){
         assert(!api->destroy_navigation(f.storage,navigation_extent,f.storage+0x164,&owner));
         assert(api->destroy_navigation(f.storage,navigation_extent,f.storage+0x160,&owner)&&f.destroyed.completed&&!f.destroyed.outputs&&f.destroyed.base_called&&f.destroyed.freed&&f.freed==1);
     }
+    {
+        alignas(4) unsigned char actor[navigation_extent]{},target[0x238]{};
+        put(actor,0,navigation_vtable);put(actor,0x394,navigation_listener_vtable);
+        put(actor,0x378,0x4001u);actor[0x1f0]=1;put(actor,0x90,201);put(actor,0x39c,1);put(target,0xc0,201);
+        struct NavigationQueue {ConnectedOutput* queue;void* actor;void* target;unsigned on=0,off=0,searches=0;} f{&co,actor,target};
+        NavigationBindings behavior{};behavior.context=&f;
+        behavior.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<NavigationQueue*>(p);*bytes=a==f.target?0x238:0;return *bytes!=0;};
+        behavior.find=[](void* p,void* prev,unsigned token,void** found) noexcept ->int{
+            auto& f=*static_cast<NavigationQueue*>(p);assert(token==201&&(!prev||prev==f.target));++f.searches;*found=prev?nullptr:f.target;return 1;
+        };
+        behavior.listen=[](void* p,void* listener,bool on) noexcept ->int{
+            auto& f=*static_cast<NavigationQueue*>(p);assert(listener==static_cast<unsigned char*>(f.actor)+0x394);
+            if(on)++f.on;else ++f.off;return 1;
+        };
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&tstorage;input.logic_navigation=&behavior;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==0x223d4940?"TurnOn":token==0x223d4928?"TurnOff":token==0x223d4914?"Toggle":token==401?"turnon":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        unsigned v[5]{5,0,0,0xffffffffu,5};nw::ServerEntityAcceptInputResult accepted{};
+        assert(timer_accept->run(actor,sizeof(actor),navigation_vtable,401,timer,timer,v,sizeof(v),0,&input,&accepted)&&accepted.row==2&&accepted.converted&&accepted.actual_type==0&&accepted.native_handler&&actor[0x200]&&f.on==1&&f.searches==2&&word(target,0x234)==0x7f7fffffu);
+        assert(timer_accept->run(actor,sizeof(actor),navigation_vtable,0x223d4940,timer,timer,v,sizeof(v),0,&input,&accepted)&&f.on==1&&f.searches==2);
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=150.f;
+        co.queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(timer);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        nw::ServerEntitySearchBindings search{};search.context=&f;
+        search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{*bytes=a==static_cast<NavigationQueue*>(p)->actor?navigation_extent:0;return *bytes!=0;};
+        nw::ServerEntityEventServiceBindings delivery{};delivery.context=&f;delivery.entities.entries=entries;delivery.entities.count=2;delivery.native_input=&input;delivery.native_search=&search;delivery.live_now=&co.now;
+        delivery.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<NavigationQueue*>(p)->queue;return q.queue.resolve(q.queue.context,token,row,bytes);};
+        delivery.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<NavigationQueue*>(p)->queue;assert(q.locked!=enter);q.locked=enter;return 1;};
+        delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<NavigationQueue*>(p)->queue;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x223d4914,0x3000,0x3000,v,sizeof(v),0.f,19,&co.queue,&cancel_qr));
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x223d4940,0x3000,0x3000,v,sizeof(v),.25f,20,&co.queue,&cancel_qr));
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x223d4928,0x3000,0x3000,v,sizeof(v),.5f,21,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&es.future_stopped&&f.off==1&&!actor[0x398]&&!word(target,0x234));
+        co.now=150.25f;
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&f.on==2&&actor[0x398]&&word(target,0x234)==0x7f7fffffu);
+        co.now=150.5f;
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&f.off==2&&f.searches==8&&!word(target,0x234)&&co.released==3&&!word(co.root,0x30));
+        put(actor,0x394,0);
+        assert(!timer_accept->run(actor,sizeof(actor),navigation_vtable,0x223d4940,timer,timer,v,sizeof(v),0,&input,&accepted)&&!accepted.completed);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }

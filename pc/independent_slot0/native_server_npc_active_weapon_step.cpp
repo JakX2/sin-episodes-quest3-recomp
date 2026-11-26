@@ -561,7 +561,8 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                (vt==sin_port::native_map::branch_vtable&&b->native_input->branch)||
                (vt==sin_port::native_map::case_vtable&&b->native_input->logic_case)||
                (vt==sin_port::native_map::compare_vtable&&b->native_input->logic_compare)||
-               (vt==sin_port::native_map::counter_vtable&&b->native_input->math_counter)){
+               (vt==sin_port::native_map::counter_vtable&&b->native_input->math_counter)||
+               (vt==sin_port::native_map::navigation_vtable&&b->native_input->logic_navigation)){
                 auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=clock();if(!std::isfinite(bound.now))return false;
                 sin_port::native_map::RelayBindings relay{};
                 sin_port::native_map::RelayQueueBindings relay_queue{};
@@ -940,6 +941,11 @@ constexpr NativeInputRow relay_inputs[]{
     {5,0,0x223d4914u,0x2217df20u,"Toggle"},
     {6,0,0x22422b7cu,0x2217df50u,"Trigger"},
     {7,0,0x22422b58u,0x2217def0u,"CancelPending"}
+};
+constexpr NativeInputRow navigation_inputs[]{
+    {2,0,0x223d4940u,0x22178190u,"TurnOn"},
+    {3,0,0x223d4928u,0x22178130u,"TurnOff"},
+    {4,0,0x223d4914u,0x221781c0u,"Toggle"}
 };
 constexpr NativeInputRow counter_inputs[]{
     {4,1,0x22420330u,0x2217add0u,"Add"},
@@ -2263,6 +2269,16 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
     default:return -1;
     }
 }
+constexpr NativeInputMap navigation_map{0x224fb0c8u,0x224f0350u,5,navigation_inputs,3};
+int native_navigation_input(void* a,unsigned n,unsigned handler,const ServerEntityAcceptInputBindings& b) noexcept {
+    if(!b.logic_navigation)return -1;
+    const char* text=nullptr;
+    for(const auto& row:navigation_inputs)if(row.handler==handler){text=row.text;break;}
+    if(!text)return -1;
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+    sin_port::native_map::NavigationResult result{};
+    return api&&api->navigation_input(a,n,text,b.logic_navigation,&result)&&result.completed&&result.handled?1:0;
+}
 constexpr NativeInputMap counter_map{0x224fb558u,0x224f0350u,15,counter_inputs,8};
 int native_counter_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
     if(!b.math_counter)return -1;
@@ -2356,7 +2372,8 @@ const NativeInputMap* native_input_map(unsigned token) noexcept {
 int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
-    unsigned token=vt==sin_port::native_map::counter_vtable&&b&&b->math_counter?counter_map.token:
+    unsigned token=vt==sin_port::native_map::navigation_vtable&&b&&b->logic_navigation?navigation_map.token:
+        vt==sin_port::native_map::counter_vtable&&b&&b->math_counter?counter_map.token:
         vt==sin_port::native_map::compare_vtable&&b&&b->logic_compare?compare_map.token:
         vt==sin_port::native_map::case_vtable&&b&&b->logic_case?case_map.token:
         vt==sin_port::native_map::branch_vtable&&b&&b->branch?branch_map.token:
@@ -2369,6 +2386,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
     if(vt==sin_port::native_map::case_vtable&&(!a||n<sin_port::native_map::case_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(vt==sin_port::native_map::compare_vtable&&(!a||n<sin_port::native_map::compare_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(vt==sin_port::native_map::counter_vtable&&(!a||n<sin_port::native_map::counter_extent||rd<unsigned>(a,0)!=vt))return 0;
+    if(vt==sin_port::native_map::navigation_vtable&&(!a||n<sin_port::native_map::navigation_extent||rd<unsigned>(a,0)!=vt||rd<unsigned>(a,0x394)!=sin_port::native_map::navigation_listener_vtable))return 0;
     if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||(!b->name_equal&&!b->string_text))return 0;
     if(vt==sin_port::native_map::timer_vtable&&b->timer&&b->timer->cadence){
         const auto& t=*b->timer;
@@ -2385,7 +2403,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         if(o->maps>=32)return 0;
         for(unsigned i=0;i<o->maps;++i)if(seen[i]==token)return 0;
         seen[o->maps++]=token;
-        const auto* native=token==counter_map.token&&b->math_counter?&counter_map:
+        const auto* native=token==navigation_map.token&&b->logic_navigation?&navigation_map:
+            token==counter_map.token&&b->math_counter?&counter_map:
             token==compare_map.token&&b->logic_compare?&compare_map:
             token==case_map.token&&b->logic_case?&case_map:
             token==branch_map.token&&b->branch?&branch_map:
@@ -2454,7 +2473,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
                 o->native_wake=1;
             }else if(o->handler){
-                const int status=vt==sin_port::native_map::counter_vtable?native_counter_input(a,n,o->handler,data,*b):
+                const int status=vt==sin_port::native_map::navigation_vtable?native_navigation_input(a,n,o->handler,*b):
+                    vt==sin_port::native_map::counter_vtable?native_counter_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::compare_vtable?native_compare_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::case_vtable?native_case_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::branch_vtable?native_branch_input(a,n,o->handler,data,*b):
