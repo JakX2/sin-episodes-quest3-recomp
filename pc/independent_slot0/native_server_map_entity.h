@@ -260,9 +260,10 @@ struct CaseBindings {
     const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
     void* entity_context;
     int (__cdecl *entity_extent)(void*,void*,unsigned*) noexcept;
+    const RelayQueueBindings* native_queue;
 };
 struct CaseResult {
-    unsigned completed,handled,matched,selected,defaulted,eligible,visited,randomized,warned,fired,queued;
+    unsigned completed,handled,matched,selected,defaulted,eligible,visited,randomized,warned,fired,queued,native_output_queued;
 };
 struct BranchBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;

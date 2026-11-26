@@ -2473,6 +2473,7 @@ int main(int argc,char** argv){
             else if(!std::strcmp(text,"relay"))*token=202;
             else if(!std::strcmp(text,"Disable"))*token=0x223edce8u;
             else if(!std::strcmp(text,"135 100 127 127"))*token=401;
+            else if(!std::strcmp(text,"Enable"))*token=0x223edd00u;
             else return 0;return 1;
         };
         assert(api->key_value(actor,"inmin","2",&keys,&kr)&&api->key_value(actor,"inmax","6",&keys,&kr)&&api->key_value(actor,"colormin","16 100 255",&keys,&kr)&&api->key_value(actor,"colormax","255 101 0 255",&keys,&kr));
@@ -2510,6 +2511,8 @@ int main(int argc,char** argv){
                 case 0x223edce8u:*text="Disable";break;
                 case 403:*text="4 trailing";break;
                 case 404:*text="iNvAlUe";break;
+                case 0x223edd00u:*text="Enable";break;
+                case 0x224203b8u:*text="PickRandom";break;
                 default:return 0;
             }
             *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
@@ -2544,6 +2547,41 @@ int main(int argc,char** argv){
         assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,404,0x3000,0x3000,outside,sizeof(outside),0.f,18,&co.queue,&cancel_qr));
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&co.released==4&&!word(co.root,0x30));
         assert(actor[0x200]&&!selector[0x200]&&!target[0x200]&&word(actor,0x3a4)==0x7f7f6487u);
+        // Entire three-entity chain now uses native enqueue paths. Preserve
+        // legacy fixture above; rebuild the exhausted numbered action.
+        assert(api->key_value(selector,"OnCase01","relay,Disable,,0,-1",&keys,&kr));
+        assert(api->key_value(selector,"OnDefault","relay,Enable,,0,-1",&keys,&kr));
+        fire.enqueue=nullptr;
+        fire.enqueue_variant=nullptr;
+        RelayQueueBindings case_route=route;
+        case_route.handle=[](void* p,void* a,unsigned* handle) noexcept ->int{
+            auto& f=*static_cast<BlendChain*>(p);
+            if(a==f.actor)*handle=0x4001u;else if(a==f.selector)*handle=0x5002u;else if(a==f.target)*handle=0x3000u;else return 0;return 1;
+        };
+        cases.native_queue=&case_route;
+        put(actor,0xb4,0u);target[0x3ac]=0;
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2242014cu,0x3000,0x3000,incoming,sizeof(incoming),0.f,19,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==3&&!es.rejected_inputs&&!es.foreign_inputs&&co.released==3&&f.fired==1&&target[0x3ac]==1);
+        assert(word(co.rows[2],0x14)==43&&!word(co.rows[2],0x2c)&&word(co.rows[2],0x10)==0x5002u);
+        // Nonmatching endpoint reaches OnDefault. Original FIELD_INPUT
+        // setter clears value/type but retains the other stored words.
+        put(selector,0x554,0xabcdef01u);put(selector,0x558,0x11223344u);put(selector,0x55c,0x55667788u);put(selector,0x560,0xffffffffu);put(selector,0x564,9u);
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;
+        unsigned endpoint[5]{2,0,0,0xffffffffu,5};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2242014cu,0x3000,0x3000,endpoint,sizeof(endpoint),0.f,20,&co.queue,&cancel_qr));
+        // The default output stores the full void variant. For relay Enable,
+        // generic AcceptInput matches type0 and ignores the remaining words.
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==3&&!es.rejected_inputs&&co.released==3&&target[0x3ac]==0&&f.fired==1);
+        assert(!word(selector,0x554)&&!word(selector,0x564)&&word(selector,0x558)==0x11223344u);
+        assert(word(co.rows[2],0x14)==44&&!word(co.rows[2],0x1c)&&word(co.rows[2],0x20)==0x11223344u&&word(co.rows[2],0x24)==0x55667788u&&word(co.rows[2],0x28)==0xffffffffu&&!word(co.rows[2],0x2c));
+        // PickRandom selects the only eligible numbered action, not default.
+        cases.random_int=[](void*,int lo,int hi,int* value) noexcept ->int{assert(lo==0&&hi==0);*value=0;return 1;};
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;
+        unsigned empty[5]{0,0,0,0xffffffffu,0};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x5002,0x224203b8u,0x3000,0x3000,empty,sizeof(empty),0.f,21,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==2&&es.native_inputs==2&&!es.rejected_inputs&&co.released==2&&target[0x3ac]==1&&f.fired==1);
+        assert(word(co.rows[1],0x14)==43&&!word(co.rows[1],0x2c));
     }
     FreeLibrary(server);FreeLibrary(client);
 }

@@ -1405,6 +1405,7 @@ bool case_variant_text(const CaseBindings& b,const void* variant,char (&buffer)[
     }
     *text="No conversion to string";return true;
 }
+bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
 // Original CLogicCase 2217ab00 and 22178cb0. Numbered match is
 // first populated case in ascending order, regardless of action count.
 // Random instead scans actual action lists, regardless of case token.
@@ -1456,10 +1457,17 @@ int __cdecl case_input(void* a,unsigned n,const char* name,void* activator,const
     if(!fire||!b->output)return 0;
     auto* out=static_cast<unsigned char*>(a)+off;
     // Original OnDefault passes its stored by-value variant to 22156680.
-    if(o->defaulted&&b->output->enqueue_variant){
-        if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b->output,&r))return 0;
-    }else if(!fire->fire(out,0x18,activator,a,n,0.f,b->output,&r))return 0;
-    o->fired=1;o->queued=r.queued;o->completed=1;return 1;
+    // Numbered matches and PickRandom instead fire a void event.
+    if(b->native_queue){
+        if(!native_named_output(a,n,activator,off,o->defaulted!=0,b->output,b->native_queue,o->queued))return 0;
+        o->native_output_queued=o->queued;
+    }else{
+        if(o->defaulted&&b->output->enqueue_variant){
+            if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b->output,&r))return 0;
+        }else if(!fire->fire(out,0x18,activator,a,n,0.f,b->output,&r))return 0;
+        o->queued=r.queued;
+    }
+    o->fired=1;o->completed=1;return 1;
 }
 // Original 2212dc30 stores the FLOAT value and type in the output
 // object, then passes its five-word variant by value to 22156680.
@@ -1511,7 +1519,6 @@ int __cdecl remap_spawn(void* a,unsigned n,RemapResult* o) noexcept {
     }
     o->handled=o->completed=1;return 1;
 }
-bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
 // CMathRemap::InputValue 2217a610. Clamp high before low,
 // suppress changed/unordered input only with original spawnflag bit 0.
 // Store intermediate result to float BEFORE the ordered output clamp.
