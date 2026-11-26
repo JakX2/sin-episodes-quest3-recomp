@@ -1,5 +1,7 @@
 #include "native_server_level.h"
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_level {
 namespace {
@@ -22,6 +24,41 @@ bool transition_reset(State& s,const Bindings& b,Result& o) noexcept {
     }
     s.transition_cache=s.transition_vector;*s.transition=true;o.transition_reset=1;return true;
 }
+int __cdecl unlock_chapter(const char* map,const ChapterBindings* b,ChapterResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!map||!b)return 0;
+    auto done=[&](){o->completed=1;return 1;};
+    auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
+    const ChapterSpec* match=nullptr;
+    for(unsigned i=0;i<20;++i){
+        const char* p=map;const char* q=chapters[i].map;
+        while(*q&&*p&&fold(*p)==fold(*q)){++p;++q;}
+        if(!*q){match=&chapters[i];o->matched=1;o->match_index=i;break;}
+    }
+    if(!match)return done();
+    std::snprintf(o->title,sizeof(o->title),"%s",match->title);
+    for(char& v:o->title){if(v=='\r'||v=='\n')v=0;}
+    const char* game=nullptr;
+    if(!b->game_argument||!b->game_argument(b->context,"-game","se1",&game)||!game)return 0;
+    std::snprintf(o->prefix,sizeof(o->prefix),"#%s_chapter",game);
+    const char* number=std::strstr(o->title,o->prefix);
+    if(!number)return done(); // preserve original case-sensitive strstr
+    o->prefix_found=1;
+    std::snprintf(o->chapter,sizeof(o->chapter),"%s",number+std::strlen(o->prefix));
+    if(char* tail=std::strstr(o->chapter,"_title"))*tail=0;
+    const char* current=nullptr;
+    if(!b->current||!b->current(b->context,&current))return 0;
+    if(!current)current="";o->current_read=1;
+    const int old_value=std::atoi(current),new_value=std::atoi(o->chapter);
+    bool less=old_value<new_value;
+    if(old_value==new_value){
+        const char* p=current;const char* q=o->chapter;
+        while(*p&&*q&&fold(*p)==fold(*q)){++p;++q;}
+        less=fold(*p)<fold(*q);
+    }
+    if(less){if(!b->set||!b->set(b->context,o->chapter))return 0;o->changed=1;}
+    return done();
+}
 int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) noexcept {
     if(!o)return 0;*o={};
     if(!ready(s,b,o)||!a||!a->map||s->level_ready||!b->scope)return 0;
@@ -29,7 +66,10 @@ int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) 
     constexpr char scope_name[]="CServerGameDLL::LevelInit";
     if(!b->scope(b->context,scope_name,true)){s->busy=false;return 0;}o->scope_entered=1;
     auto finish=[&](bool ok){const bool closed=b->scope(b->context,scope_name,false)!=0;o->scope_closed=closed;s->busy=false;s->failed=!(ok&&closed);s->level_ready=o->completed=ok&&closed;return int(o->completed);};
-    if(!stage(*b,b->pre_level,o->pre_level)||!b->chapter||!b->chapter(b->context,a->map))return finish(false);o->chapter=1;
+    if(!stage(*b,b->pre_level,o->pre_level))return finish(false);
+    if(b->chapter){if(!b->chapter(b->context,a->map))return finish(false);}
+    else if(!unlock_chapter(a->map,b->native_chapter,&o->chapter_result))return finish(false);
+    o->chapter=1;
     *s->load_kind=a->load_game?(a->old_level?2:1):(a->background?3:0);
     constexpr int descriptors[]{1,2,4,3};o->load_kind=*s->load_kind;o->descriptor=descriptors[o->load_kind];
     char filename[260]{};
@@ -106,7 +146,7 @@ int __cdecl server_activate(State* s,const Bindings* b,Result* o) noexcept {
     if(!stage(*b,b->manager_activate,o->manager))return finish(false);
     return finish(true);
 }
-const Api api{1,sizeof(Api),&level_init,&server_activate};
+const Api api{1,sizeof(Api),&level_init,&server_activate,&unlock_chapter};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerLevelApi=_SiN_GetServerLevelApi")

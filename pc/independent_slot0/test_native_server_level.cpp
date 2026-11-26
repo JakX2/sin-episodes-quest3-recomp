@@ -72,5 +72,29 @@ int main(int argc,char** argv){
     Fixture background;b=background.bind();a={background.map,"entities",nullptr,nullptr,false,true};
     assert(api->level_init(&background.state,&a,&b,&o)&&o.descriptor==3);
     background.seq.clear();assert(api->server_activate(&background.state,&b,&o)&&!o.map_event&&background.seq=="w(A)(Y)ZHVG");
+    // All twenty authenticated map prefix rows and original case-sensitive
+    // localization substring gate. No artificial chapter unlock.
+    unsigned game_calls=0;
+    ChapterBindings cb{};cb.context=&game_calls;
+    cb.game_argument=[](void* p,const char* name,const char* fallback,const char** game) noexcept ->int{
+        assert(!std::strcmp(name,"-game")&&!std::strcmp(fallback,"se1"));++*static_cast<unsigned*>(p);*game=fallback;return 1;
+    };
+    cb.current=[](void*,const char**) noexcept ->int{assert(false);return 0;};
+    cb.set=[](void*,const char*) noexcept ->int{assert(false);return 0;};
+    ChapterResult cr{};
+    for(unsigned i=0;i<20;++i)assert(api->unlock_chapter(chapters[i].map,&cb,&cr)&&cr.completed&&cr.matched&&cr.match_index==i&&!cr.prefix_found&&!cr.changed);
+    assert(game_calls==20);
+    assert(api->unlock_chapter("se1_U4LAB03_variant",&cb,&cr)&&cr.matched&&cr.match_index==10&&!cr.prefix_found);
+    assert(api->unlock_chapter("unknown",&cb,&cr)&&!cr.matched&&game_calls==21);
+    // Actual interface slot2 and slot3, controlled synchronous bindings.
+    auto level=reinterpret_cast<InvokeLevel>(GetProcAddress(server,level_export));
+    auto activate=reinterpret_cast<InvokeActivate>(GetProcAddress(server,activate_export));
+    assert(level&&activate&&!GetProcAddress(client,level_export)&&!GetProcAddress(client,activate_export));
+    Fixture actual;actual.startup.game_init_complete=false;b=actual.bind();a={actual.map,"entities",nullptr,nullptr,false,false};
+    assert(!level(&actual.state,&a,&b,&o)&&actual.seq.empty());
+    actual.startup.game_init_complete=true;b.chapter=nullptr;b.native_chapter=&cb;
+    assert(level(&actual.state,&a,&b,&o)&&o.completed&&o.chapter_result.matched&&o.chapter_result.match_index==3&&actual.seq=="[PENTMD]");
+    actual.seq.clear();assert(activate(&actual.state,nullptr,64,1,&b,&o)&&o.completed&&actual.seq=="w(A)(Y)ZEHVG");
+    assert(!activate(&actual.state,nullptr,64,1,&b,&o));
     FreeLibrary(server);FreeLibrary(client);
 }
