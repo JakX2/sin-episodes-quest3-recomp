@@ -3277,7 +3277,19 @@ int __cdecl grunt_event_speech(void* a,unsigned n,unsigned event,float now,const
 const ServerNpcGruntEventSpeechApi event_speech_api{1,sizeof(ServerNpcGruntEventSpeechApi),&grunt_event_speech};
 const ServerNpcGruntReactionSpeechApi reaction_speech_api{1,sizeof(ServerNpcGruntReactionSpeechApi),&grunt_pain_speech,&grunt_death_speech};
 
-int __cdecl grunt_damage_pain_prefix(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamagePainPrefixBindings* b,ServerNpcGruntDamagePainPrefixResult* out) noexcept{
+
+int __cdecl grunt_state_signal(void*,unsigned,int,const ServerNpcGruntStateSignalBindings*,ServerNpcGruntStateSignalResult*) noexcept;
+struct StateSignalRoute {
+    const ServerNpcGruntStateSignalBindings* bindings;
+    ServerNpcGruntStateSignalResult* result;
+};
+int bound_state_signal(void* a,unsigned n,int value,const ServerNpcGruntSentenceBindings& source,const StateSignalRoute& route) noexcept{
+    auto b=*route.bindings;
+    b.members.entries=source.entries;b.members.count=source.count;
+    b.members.speech.original_vtable=source.speech.original_vtable;
+    return grunt_state_signal(a,n,value,&b,route.result);
+}
+int grunt_damage_pain_prefix_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamagePainPrefixBindings* b,ServerNpcGruntDamagePainPrefixResult* out,const StateSignalRoute* route) noexcept{
     if(!out)return 0;*out={};
     if(!a||n<0xdb2||!damage||dn<0x48||!b||!std::isfinite(now)||!b->base_damage)return 0;
     const auto& sb=b->reaction.sentence;
@@ -3288,7 +3300,9 @@ int __cdecl grunt_damage_pain_prefix(void* a,unsigned n,void* damage,unsigned dn
     out->base_called=1;
     if(!out->base_result){out->completed=1;return 1;}
     if(read<int>(a,0x868)==1){
-        if(!b->state_signal||!b->state_signal(b->context,a,1))return 0;
+        if(route){
+            if(!bound_state_signal(a,n,1,sb,*route))return 0;
+        }else if(!b->state_signal||!b->state_signal(b->context,a,1))return 0;
         out->signal_called=1;
     }
     // Reload group and serial-checked attacker after both preceding calls.
@@ -3309,6 +3323,9 @@ int __cdecl grunt_damage_pain_prefix(void* a,unsigned n,void* damage,unsigned dn
         if(!grunt_pain_speech(a,n,now,&b->reaction,&out->pain))return 0;
     }
     out->tail_required=1;out->completed=1;return 1;
+}
+int __cdecl grunt_damage_pain_prefix(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamagePainPrefixBindings* b,ServerNpcGruntDamagePainPrefixResult* out) noexcept{
+    return grunt_damage_pain_prefix_impl(a,n,damage,dn,now,b,out,nullptr);
 }
 const ServerNpcGruntDamagePainPrefixApi damage_pain_prefix_api{1,sizeof(ServerNpcGruntDamagePainPrefixApi),&grunt_damage_pain_prefix};
 
@@ -3489,6 +3506,7 @@ struct DeathPrepareRoute {
     ServerNpcGruntDeathPrepareResult* result;
     unsigned* life_local;
     unsigned* life_external;
+    const StateSignalRoute* signal=nullptr;
 };
 
 int grunt_death_prefix_impl(void* a,unsigned n,std::uint32_t handle,void* damage,unsigned dn,float now,const ServerNpcGruntDeathPrefixBindings* b,ServerNpcGruntDeathPrefixResult* out,const DeathPrepareRoute* route) noexcept{
@@ -3507,7 +3525,9 @@ int grunt_death_prefix_impl(void* a,unsigned n,std::uint32_t handle,void* damage
         int global=-1;if(!schedule_local_id(a,0x47,b->schedules,global))return 0;
         if(global==read<int>(a,0x79c)){out->schedule_blocked=out->completed=1;return 1;}
     }
-    if(!b->state_signal||!b->state_signal(b->context,a,0))return 0;
+    if(route&&route->signal){
+        if(!bound_state_signal(a,n,0,sb,*route->signal))return 0;
+    }else if(!b->state_signal||!b->state_signal(b->context,a,0))return 0;
     out->signal_called=1;
     if(route){
         if(!grunt_death_prepare(a,n,damage,dn,route->bindings,route->result))return 0;
@@ -3589,6 +3609,25 @@ int __cdecl grunt_death_prepared_event(void* a,unsigned n,std::uint32_t handle,v
     return grunt_death_event_impl(a,n,handle,damage,dn,now,&b->event,&out->event,&route);
 }
 const ServerNpcGruntDeathPreparedEventApi death_prepared_event_api{1,sizeof(ServerNpcGruntDeathPreparedEventApi),&grunt_death_prepare,&grunt_death_prepared_event};
+int __cdecl grunt_combat_damage(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntCombatDamageBindings* b,ServerNpcGruntCombatDamageResult* out) noexcept{
+    if(!out)return 0;
+    out->damage={};out->signal={};
+    if(!b)return 0;
+    const StateSignalRoute route{&b->signal,&out->signal};
+    return grunt_damage_pain_prefix_impl(a,n,damage,dn,now,&b->damage,&out->damage,&route);
+}
+int __cdecl grunt_combat_death(void* a,unsigned n,std::uint32_t handle,void* damage,unsigned dn,float now,const ServerNpcGruntCombatDeathBindings* b,ServerNpcGruntCombatDeathResult* out) noexcept{
+    if(!out)return 0;
+    auto& d=out->death;
+    d.prepare={};d.prepare.selection=d.prepare.activity=-1;
+    d.life_local_dirty=d.life_external_dirty=0;out->signal={};
+    if(!b)return 0;
+    const StateSignalRoute signal{&b->signal,&out->signal};
+    const DeathPrepareRoute route{&b->death.prepare,&d.prepare,&d.life_local_dirty,&d.life_external_dirty,&signal};
+    return grunt_death_event_impl(a,n,handle,damage,dn,now,&b->death.event,&d.event,&route);
+}
+const ServerNpcGruntCombatReactionsApi combat_reactions_api{1,sizeof(ServerNpcGruntCombatReactionsApi),&grunt_combat_damage,&grunt_combat_death};
+
 
 
 
@@ -4086,4 +4125,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntStateSignalApi=_SiN_GetServerNpcGruntStateSignalApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntStateSignalApi* __cdecl SiN_GetServerNpcGruntStateSignalApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntStateSignalApi)?&state_signal_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatReactionsApi=_SiN_GetServerNpcGruntCombatReactionsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatReactionsApi* __cdecl SiN_GetServerNpcGruntCombatReactionsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatReactionsApi)?&combat_reactions_api:nullptr;
 }
