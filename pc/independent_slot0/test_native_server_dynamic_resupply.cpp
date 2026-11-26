@@ -1,4 +1,5 @@
 #include "native_server_dynamic_resupply.h"
+#include "native_client_vgui_button.h"
 #include "native_server_npc_active_weapon_step.h"
 #include "server_native_cvar_registration.h"
 #define WIN32_LEAN_AND_MEAN
@@ -1076,5 +1077,58 @@ int main(int argc,char** argv){
     assert(EvalFixture::rd(ex.canister,8)==antigen_canister_idle&&std::abs(affactory.fraction-.42f)<.00001f&&affactory.next==50.25f);
     af.now=51.f;
     assert(api->antigen_insert(af.actor,sizeof(af.actor),ex.canister,sizeof(ex.canister),&actual_exchange,&xr)&&xr.completed&&xr.cast_native&&xr.transferred&&xr.amount==42.f);
+    // Real client panel OnCommand -> event fields -> server native
+    // listener -> scheduled ejection -> native canister construction.
+    namespace vgui_button=sin_port::native_vgui_button;
+    const auto get_button=reinterpret_cast<vgui_button::GetApi>(GetProcAddress(c,vgui_button::export_name));
+    assert(get_button&&!GetProcAddress(s,vgui_button::export_name)&&!get_button(0,sizeof(vgui_button::Api)));
+    const auto* client_button=get_button(1,sizeof(vgui_button::Api));assert(client_button);
+    struct ClientButtonFixture {
+        alignas(4) unsigned char panel[0xdc]{},screen[0x54]{};
+        const ServerAntigenPrimaryThinkApi* frame;
+        ServerAntigenPrimaryThinkBindings* server;
+        AntigenFixture* antigen;
+        ServerAntigenPrimaryThinkResult server_result{};
+        unsigned creates=0,sets=0,fires=0,discards=0;
+        bool missing=false,fail_string=false;
+        int index=0;char event[32]{},command[32]{};
+    } cbf{};
+    cbf.frame=antigen_frame;cbf.server=&afb;cbf.antigen=&af;
+    sin_independent::EntityHandleEntry client_entries[1]{};
+    client_entries[0].serial=14;client_entries[0].entity=reinterpret_cast<CBaseEntity*>(cbf.screen);
+    EvalFixture::u(cbf.panel,0,vgui_button::panel_vtable);EvalFixture::u(cbf.panel,0xd8,0xe000);
+    EvalFixture::u(cbf.screen,0,vgui_button::screen_vtable);EvalFixture::u(cbf.screen,8,vgui_button::screen_networkable_vtable);EvalFixture::u(cbf.screen,0x50,123);
+    vgui_button::Bindings cbb{};cbb.context=&cbf;cbb.entries=client_entries;cbb.entry_count=1;
+    cbb.extent=[](void* p,void* e,unsigned* bytes) noexcept ->int{auto& q=*static_cast<ClientButtonFixture*>(p);assert(e==q.screen);*bytes=sizeof(q.screen);return 1;};
+    cbb.create_event=[](void* p,const char* n,bool force,void** out) noexcept ->int{
+        auto& q=*static_cast<ClientButtonFixture*>(p);assert(force&&!std::strcmp(n,"button_press"));++q.creates;
+        std::memcpy(q.event,n,std::strlen(n)+1);*out=q.missing?nullptr:&q;return 1;
+    };
+    cbb.set_int=[](void* p,void* e,const char* n,int value) noexcept ->int{
+        auto& q=*static_cast<ClientButtonFixture*>(p);assert(e==&q&&!std::strcmp(n,"entindex"));q.index=value;++q.sets;return 1;
+    };
+    cbb.set_string=[](void* p,void* e,const char* n,const char* value) noexcept ->int{
+        auto& q=*static_cast<ClientButtonFixture*>(p);assert(e==&q&&!std::strcmp(n,"command"));if(q.fail_string)return 0;
+        const auto len=std::strlen(value)+1;assert(len<=sizeof(q.command));std::memcpy(q.command,value,len);++q.sets;return 1;
+    };
+    cbb.fire_event=[](void* p,void* e,bool dont_broadcast) noexcept ->int{
+        auto& q=*static_cast<ClientButtonFixture*>(p);assert(e==&q&&!dont_broadcast);++q.fires;
+        return q.frame->button(q.antigen->actor,sizeof(q.antigen->actor),0xd003,.125f,q.event,q.index,q.command,q.server,&q.server_result);
+    };
+    cbb.discard_event=[](void* p,void* e) noexcept ->int{auto& q=*static_cast<ClientButtonFixture*>(p);assert(e==&q);++q.discards;return 1;};
+    vgui_button::Result cbr{};
+    afb.exchange=&actual_exchange;EvalFixture::u(af.actor,0x4b4,0xc002);
+    af.now=60.f;
+    cbf.missing=true;EvalFixture::u(cbf.panel,0xd8,0xf000);
+    assert(client_button->command(cbf.panel,sizeof(cbf.panel),"eject",&cbb,&cbr)&&cbr.completed&&cbr.create_called&&!cbr.created&&cbr.base_noop&&!cbf.fires);
+    cbf.missing=false;
+    assert(!client_button->command(cbf.panel,sizeof(cbf.panel),"eject",&cbb,&cbr)&&cbr.created&&!cbr.resolved&&cbr.discarded&&cbf.discards==1);
+    EvalFixture::u(cbf.panel,0xd8,0xe000);cbf.fail_string=true;
+    assert(!client_button->command(cbf.panel,sizeof(cbf.panel),"eject",&cbb,&cbr)&&cbr.index_native&&cbr.int_set&&!cbr.string_set&&cbr.discarded&&cbf.discards==2);
+    cbf.fail_string=false;EvalFixture::u(cbf.screen,0x50,124);
+    assert(client_button->command(cbf.panel,sizeof(cbf.panel),"eject",&cbb,&cbr)&&cbr.fired&&cbr.index==124&&cbf.server_result.interaction.button_checked&&!cbf.server_result.interaction.button_matched);
+    EvalFixture::u(cbf.screen,0x50,123);
+    assert(client_button->command(cbf.panel,sizeof(cbf.panel),"eject",&cbb,&cbr)&&cbr.completed&&cbr.fired&&cbr.index_native&&cbr.index==123&&cbf.server_result.interaction.eject_installed&&cbf.server_result.reschedule.tick==480);
+    assert(antigen_frame->run(af.actor,sizeof(af.actor),0xd003,480,.125f,&afb,&afr)&&afr.completed&&afr.exchange.factory.initialized&&afr.exchange.canister_amount.amount_written&&afr.exchange.amount==42.f&&afr.exchange.think_cleared);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
