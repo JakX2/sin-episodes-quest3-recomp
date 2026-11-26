@@ -1263,5 +1263,75 @@ int main(int argc,char** argv){
         assert(api->destroy_compare(nullptr,0,nullptr,nullptr)&&!api->destroy_compare(f.storage,compare_extent,f.storage+0x164,&owner)&&!f.released);
         assert(api->destroy_compare(f.storage,compare_extent,f.storage+0x160,&owner)&&f.released==1);
     }
+    {
+        // Real named float output chain from a queued string input.
+        alignas(4) unsigned char actor[compare_extent]{};
+        put(actor,0,compare_vtable);put(actor,0x378,0x4001u);actor[0x1f0]=1;
+        put(actor,0x398,0x3f800000u); // threshold 1
+        put(timer,0x3dc,0);put(timer,0x3e8,0);put(timer,0x3e0,0x3f800000u);
+        put(timer,0x74,-1);put(timer,0xb8,0x400000u);te.serial=3;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=compare_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            if(!std::strcmp(text,"timer"))*token=201;
+            else if(!std::strcmp(text,"RefireTime"))*token=0x22420090;
+            else if(!std::strcmp(text,"Disable"))*token=0x223edce8;
+            else return 0;return 1;
+        };
+        assert(api->key_value(actor,"OnNotEqualTo","timer,RefireTime,,0,1",&keys,&kr));
+        assert(api->key_value(actor,"OnGreaterThan","timer,Disable,,0.25,1",&keys,&kr));
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=130.f;
+        co.queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};
+        struct CompareQueueFixture {ConnectedOutput* queue;ActionPool* pool;void* actor;void* timer;unsigned fired=0;} f{&co,&pool,actor,timer};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<CompareQueueFixture*>(p);
+            for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue_variant=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
+            auto& f=*static_cast<CompareQueueFixture*>(p);assert(a==f.timer&&c==f.actor&&bytes==0x14&&action->variant_type==1);
+            unsigned value=0;std::memcpy(&value,variant,4);assert(value==0x40200000u);++f.fired;
+            auto& q=*f.queue;nw::ServerEntityNamedEventQueueResult out{};
+            return q.api->enqueue_variant(q.root,sizeof(q.root),99,q.now,0x3000u,0x4001u,action,variant,bytes,&q.queue,&out);
+        };
+        fire.release=[](void* p,unsigned,void*) noexcept ->int{++static_cast<CompareQueueFixture*>(p)->pool->released;return 1;};
+        CompareBindings behavior{&fire};
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&tstorage;input.logic_compare=&behavior;input.timer=&tb;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            switch(token){
+                case 0x224202e4:*text="SetValue";break;
+                case 0x22420704:*text="SetValueCompare";break;
+                case 0x224206dc:*text="SetCompareValue";break;
+                case 0x224206c4:*text="Compare";break;
+                case 0x22420090:*text="RefireTime";break;
+                case 0x22420054:*text="FireTimer";break;
+                case 0x223edd00:*text="Enable";break;
+                case 0x223edce8:*text="Disable";break;
+                case 0x223d4914:*text="Toggle";break;
+                case 401:*text="2.5 seconds";break;
+                default:return 0;
+            }
+            *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(timer);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        struct CompareDelivery {CompareQueueFixture* f;} ctx{&f};
+        nw::ServerEntityEventServiceBindings delivery{};delivery.context=&ctx;delivery.entities.entries=entries;delivery.entities.count=2;delivery.native_input=&input;delivery.live_now=&co.now;
+        delivery.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<CompareDelivery*>(p)->f->queue;return q.queue.resolve(q.queue.context,token,row,bytes);};
+        delivery.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<CompareDelivery*>(p)->f->queue;assert(q.locked!=enter);q.locked=enter;return 1;};
+        delivery.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** target) noexcept ->int{auto& f=*static_cast<CompareDelivery*>(p)->f;assert(f.queue->locked&&name==201&&a==f.timer&&c==f.actor);*target=prev?nullptr:f.timer;return 1;};
+        delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<CompareDelivery*>(p)->f->queue;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
+        nw::ServerEntitySearchBindings search{};search.context=&f;
+        search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<CompareQueueFixture*>(p);*bytes=a==f.actor?compare_extent:a==f.timer?timer_extent:0;return *bytes!=0;};
+        delivery.native_search=&search;
+        unsigned incoming[5]{401,0,0,0xffffffffu,2};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x22420704,0x3000,0x3000,incoming,sizeof(incoming),0.f,19,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==2&&es.native_inputs==2&&es.future_stopped&&f.fired==2&&pool.released==2);
+        assert(word(actor,0x394)==0x40200000u&&actor[0x200]&&word(timer,0x3e0)==0x40200000u&&word(timer,0x74)==1060&&co.released==2);
+        assert(word(co.rows[1],0x1c)==0x40200000u&&word(co.rows[1],0x2c)==1&&word(co.rows[2],0x1c)==0x40200000u&&word(co.rows[2],0x2c)==1);
+        co.now=130.25f;
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&word(timer,0x3dc)==1&&word(timer,0x74)==0xffffffffu&&co.released==3&&!word(co.root,0x30));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
