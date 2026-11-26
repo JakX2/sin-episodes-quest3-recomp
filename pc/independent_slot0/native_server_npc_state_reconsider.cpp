@@ -2795,6 +2795,31 @@ int __cdecl squad_attach(void* a,unsigned n,std::uint32_t handle,float now,std::
     if(!grunt_squad_join(a,n,out->token,out->array_token,handle,now,join,&out->join))return 0;
     out->completed=1;return 1;
 }
+int __cdecl squad_input(void* a,unsigned n,std::uint32_t handle,float now,std::uint32_t* head,unsigned type,std::uint32_t token,const ServerNpcGruntSquadRegistryBindings* b,const ServerNpcGruntSquadJoinBindings* join,ServerNpcGruntSquadInputResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0xdb2||!head||!b||!join||!std::isfinite(now)||!relation_grunt_class(join->group.sentence.speech.original_vtable))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    // All eight +5c0 = 22030360, reads actor capability word +8ec.
+    if(!(read<unsigned>(a,0x8ec)&0x04000000u)){out->capability_blocked=1;return done();}
+    if(type!=2){token=0;out->nonstring=1;}
+    write(a,0x9c8,token);out->name_token=token;
+    if(!token){
+        out->clearing=1;
+        const auto old=read<unsigned>(a,0x9c4);
+        if(old){
+            if(!grunt_squad_leave(a,n,old,handle,true,now,&join->group,&out->departure))return 0;
+            write(a,0x9c4,0u);out->owner_written=1;
+        }
+        return done();
+    }
+    const char* name=nullptr;unsigned extent=0,len=0;
+    if(!b->name||!b->name(b->context,token,&name,&extent)||!name||!squad_name_size(name,extent,len))return 0;
+    if(!squad_attach(a,n,handle,now,head,name,b,join,&out->attachment))return 0;
+    // Input explicitly assigns the returned group even if join declined (e.g. +8c).
+    write(a,0x9c4,out->attachment.token);out->owner_written=1;
+    return done();
+}
+const ServerNpcGruntSquadInputApi squad_input_api{1,sizeof(ServerNpcGruntSquadInputApi),&squad_input};
 int __cdecl squad_destroy(std::uint32_t* head,std::uint32_t token,const ServerNpcGruntSquadDestroyBindings* b,ServerNpcGruntSquadDestroyResult* out) noexcept{
     if(!out)return 0;*out={};out->token=token;
     if(!head||!b)return 0;
@@ -3528,4 +3553,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntNativeStateApi=_SiN_GetServerNpcGruntNativeStateApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntNativeStateApi* __cdecl SiN_GetServerNpcGruntNativeStateApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntNativeStateApi)?&native_state_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadInputApi=_SiN_GetServerNpcGruntSquadInputApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadInputApi* __cdecl SiN_GetServerNpcGruntSquadInputApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadInputApi)?&squad_input_api:nullptr;
 }
