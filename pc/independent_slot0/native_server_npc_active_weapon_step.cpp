@@ -288,6 +288,89 @@ int __cdecl outer_ground(void* a,unsigned n,const ServerNpcRunAnimationInput* in
 int __cdecl outer_jet(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveJetWeaponStepBindings* b,const ServerNpcOuterUpdateBindings* outer,ServerNpcActiveJetWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out) noexcept {
     return outer_run(a,n,in,interval,b,b&&!b->base.think?&b->base:nullptr,outer,step,tail,out,true,&jet_post);
 }
+int __cdecl wake_policy(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNpcWakePolicyBindings* b,ServerNpcWakePolicyResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!a||!b||!outer_class(vt,n)||b->max_clients<0||b->max_clients>128)return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    auto wake=[&](unsigned reason){
+        if(!b->wake)return false;
+        ++out->wake_calls;out->reason=reason;return b->wake(b->context,a,true)!=0;
+    };
+    if(rd<int>(a,0x868)<=0)return done();
+    if(b->max_clients>1)return wake(NpcWakeMultiplayer)?done():0;
+    void* player=nullptr;out->local_queried=1;
+    if(!b->local_player||!b->local_player(b->context,&player))return 0;
+    if(!player){
+        out->missing_player=1;
+        return b->missing_player&&b->missing_player(b->context)?done():0;
+    }
+    auto flags=[&](void* e,unsigned& value){
+        unsigned bytes=0;if(!b->extent||!b->extent(b->context,e,&bytes)||bytes<0xc0)return false;
+        value=rd<unsigned>(e,0xbc);return true;
+    };
+    const float radius=rd<float>(a,0x86c);
+    if(!std::isfinite(radius))return 0;
+    unsigned player_flags=0;
+    if(double(radius)>0.1){
+        if(!flags(player,player_flags))return 0;
+        if(!(player_flags&0x8000u)){
+            float own[3]{},other[3]{};
+            if(!b->origin||!b->origin(b->context,a,own)||!b->origin(b->context,player,other))return 0;
+            double d[3]{};
+            for(unsigned i=0;i<3;++i){
+                if(!std::isfinite(own[i])||!std::isfinite(other[i]))return 0;
+                // 22027db0 stores each vector subtraction as float.
+                d[i]=static_cast<float>(double(other[i])-own[i]);
+                if(!std::isfinite(d[i]))return 0;
+            }
+            const double squared=d[0]*d[0]+d[1]*d[1]+d[2]*d[2];
+            out->proximity_checked=1;out->distance_squared=static_cast<float>(squared);
+            if(squared<=double(radius)*radius)return wake(NpcWakeProximity)?done():0;
+        }
+    }
+    const int mode=rd<int>(a,0x868);
+    if(mode==2)return !pvs||wake(NpcWakePvs)?done():0;
+    if(mode!=1)return done();
+    const auto* condition=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    constexpr int damage_conditions[]{16,17};
+    for(int id:damage_conditions){
+        ServerNpcConditionResult cr{};++out->damage_checked;
+        if(!condition||!condition->test(a,n,id,NpcConditionCurrent,&b->conditions,&cr))return 0;
+        if(cr.value)return wake(NpcWakeDamage)?done():0;
+    }
+    if(pvs)for(int i=1;i<=b->max_clients;++i){
+        void* e=nullptr;++out->players_visited;
+        if(!b->client||!b->client(b->context,i,&e))return 0;
+        if(!e)continue;
+        unsigned value=0;if(!flags(e,value))return 0;if(value&0x8000u)continue;
+        bool visible=false;++out->visibility_calls;
+        if(!b->player_visible||!b->player_visible(b->context,e,a,0x4081,&visible))return 0;
+        if(visible&&!wake(NpcWakeVisiblePlayer))return 0;
+        // Original loop does not return after a visibility wake.
+    }
+    // Verified all eight +500 targets return 0x141f, including danger bit8.
+    if(rd<std::uint8_t>(a,0xb4)&1u)return done();
+    int index=-1;if(!b->active_sound_head||!b->active_sound_head(b->context,&index))return 0;
+    bool seen[64]{};
+    while(index!=-1){
+        if(index<0||index>=64||seen[index])return 0;seen[index]=true;
+        const void* row=nullptr;unsigned bytes=0;
+        if(!b->sound||!b->sound(b->context,index,&row,&bytes)||!row||bytes<0x2c)return 0;
+        ++out->sounds_visited;
+        if(rd<unsigned>(row,0xc)&8u){
+            bool audible=false;++out->audible_calls;
+            if(!b->sound_audible||!b->sound_audible(b->context,a,rd<unsigned>(a,0x898),row,&audible))return 0;
+            if(audible){
+                bool visible=false;++out->sound_visibility_calls;
+                if(!b->sound_visible||!b->sound_visible(b->context,a,row,&visible))return 0;
+                if(visible)return wake(NpcWakeSound)?done():0;
+            }
+        }
+        index=rd<std::int16_t>(row,0x18);
+    }
+    return done();
+}
+const ServerNpcWakePolicyApi wake_api{1,sizeof(ServerNpcWakePolicyApi),&wake_policy};
 const ServerNpcOuterUpdateApi outer_api{1,sizeof(ServerNpcOuterUpdateApi),&outer_ground,&outer_jet};
 const ServerNpcOuterCadenceApi cadence_api{1,sizeof(ServerNpcOuterCadenceApi),&cadence_set,&cadence_finish};
 const ServerNpcOuterAdmissionApi admission_api{1,sizeof(ServerNpcOuterAdmissionApi),&outer_admit,&outer_script};
@@ -324,4 +407,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterUpdateApi=_SiN_GetServerNpcOuterUpdateApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcOuterUpdateApi* __cdecl SiN_GetServerNpcOuterUpdateApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcOuterUpdateApi)?&outer_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcWakePolicyApi=_SiN_GetServerNpcWakePolicyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWakePolicyApi* __cdecl SiN_GetServerNpcWakePolicyApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcWakePolicyApi)?&wake_api:nullptr;
 }

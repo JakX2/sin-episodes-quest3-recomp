@@ -155,4 +155,33 @@ struct ServerNpcOuterUpdateApi {
 };
 using GetServerNpcOuterUpdateApi=const ServerNpcOuterUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char server_npc_wake_policy_export[]="SiN_GetServerNpcWakePolicyApi";
+struct ServerNpcWakePolicyBindings {
+    ServerNpcConditionMapBindings conditions;
+    void* context;
+    int max_clients;
+    int (__cdecl *local_player)(void*,void**) noexcept; // 22288a40
+    int (__cdecl *client)(void*,int,void**) noexcept; // 22286c70
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *origin)(void*,void*,float*) noexcept; // 220092d0
+    int (__cdecl *player_visible)(void*,void*,void*,unsigned,bool*) noexcept; // player +1f0
+    int (__cdecl *missing_player)(void*) noexcept;
+    int (__cdecl *active_sound_head)(void*,int*) noexcept;
+    int (__cdecl *sound)(void*,int,const void**,unsigned*) noexcept;
+    int (__cdecl *sound_audible)(void*,void*,std::uint32_t,const void*,bool*) noexcept; // 220a1a80
+    int (__cdecl *sound_visible)(void*,void*,const void*,bool*) noexcept; // 22034b90
+    int (__cdecl *wake)(void*,void*,bool) noexcept; // ground/elite 22040ea0, jet 22366e60
+};
+struct ServerNpcWakePolicyResult {
+    unsigned completed,local_queried,missing_player,proximity_checked,damage_checked,players_visited,visibility_calls,
+        sounds_visited,audible_calls,sound_visibility_calls,wake_calls,reason;
+    float distance_squared;
+};
+enum ServerNpcWakeReason : unsigned {NpcWakeNone,NpcWakeMultiplayer,NpcWakeProximity,NpcWakePvs,NpcWakeDamage,NpcWakeVisiblePlayer,NpcWakeSound};
+struct ServerNpcWakePolicyApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,bool,const ServerNpcWakePolicyBindings*,ServerNpcWakePolicyResult*) noexcept;
+};
+using GetServerNpcWakePolicyApi=const ServerNpcWakePolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
