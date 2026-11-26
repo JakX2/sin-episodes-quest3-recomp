@@ -2015,6 +2015,8 @@ int main(int argc,char** argv){
         alignas(4) unsigned char rows[3*12]{},mods[3][12]{};
         bool admitted=true;unsigned admissions{},queued{},centers{},normalizes{},casts{},bones{},deaths{};
         float direction[3]{};std::vector<unsigned> outputs;
+        alignas(4) unsigned char death_descriptor[0x48]{};
+        std::vector<unsigned> death_order;
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -2196,6 +2198,53 @@ int main(int argc,char** argv){
     f.put(hq.events[1],0x18,0x7001u);
     assert(service->service(hq.root,sizeof(hq.root),0x7000u,94.f,false,&steps,&hq_service,&sr)&&sr.direct==1&&sr.native_inputs==1&&!sr.rejected_inputs&&!sr.native_named_searches&&!sr.native_class_searches&&!wt.member[0x968]);
     f.put(f.actor,0xa8c,0u);
+    // The actual ground death composition consumes the same scripted
+    // record, writes life state and executes removal/condition logic.
+    // Model selection, loot policy and engine base death remain explicit.
+    static ServerNpcGruntGroundDeathBindings hd_ground{};
+    static ServerNpcGruntGroundLifeResult hd_ground_result{};
+    hd_ground.context=&hd;
+    hd_ground.loot_enabled=[](void* p,bool* enabled) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(q.f->get<int>(q.f->actor,0xc68)==11);q.death_order.push_back(1);*enabled=false;return 1;
+    };
+    auto& gd=hd_ground.base.combat.death;
+    gd.prepare.context=&hd;
+    gd.prepare.model_available=[](void* p,void* a,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);q.death_order.push_back(2);*yes=false;return 1;
+    };
+    gd.event.context=&hd;
+    auto& gp=gd.event.prefix;
+    gp.schedules.context=&hd;
+    gp.schedules.descriptor=[](void* p,void* a,const void** desc,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);*desc=q.death_descriptor;*bytes=sizeof(q.death_descriptor);return 1;
+    };
+    f.put(hd.death_descriptor,0x34,npc_global_condition_base);f.put(hd.death_descriptor,0x38,0);f.put(hd.death_descriptor,0x3c,100);
+    gp.removal.removal.context=&hd;
+    gp.removal.removal.event=[](void* p,void* a,void* attacker) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&attacker==a&&q.f->get<int>(a,0x8c)==1);q.death_order.push_back(3);return 1;
+    };
+    gp.removal.removal.finalize=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<std::uint8_t>(a,0xa44)==1);q.death_order.push_back(4);return 1;
+    };
+    gd.event.base_death=[](void* p,void* a,void* record) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x9c)==-200&&q.f->get<float>(record,0x2c)==300.f&&q.f->get<float>(record,0x30)==100.f);
+        q.death_order.push_back(5);return 1;
+    };
+    gd.event.activity_lookup=[](void* p,void* a,int activity,int* result) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&activity==0x18);q.death_order.push_back(6);*result=42;return 1;
+    };
+    hd_services.ground_death=&hd_ground;hd_services.ground_result=&hd_ground_result;hd_life.death=nullptr;
+    f.put(f.actor,0x9c,100);f.put(f.actor,0x8c,0);f.put(f.actor,0x94,2);f.put(f.actor,0x994,89.f);
+    f.put(f.actor,0x798,0u);f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0x868,0);
+    f.put(f.actor,0xa18,0xffffffffu);f.put(f.actor,0x970,0xffffffffu);f.put(f.actor,0x9c4,0u);
+    f.put(f.actor,0xc18,0u);f.put(f.actor,0xc28,0);f.put(f.actor,0x7cc,0u);
+    f.actor[0xa44]=0;f.actor[0xcb1]=0;f.actor[0x200]=0;
+    assert(hd_run(0)&&catalog_o.health_ground_route&&catalog_o.health_ground_death&&catalog_o.health_life_called&&hd_ground_result.ground_called&&hd_ground_result.ground.completed);
+    auto& death_event=hd_ground_result.ground.base.combat.death.event;
+    assert(hd_ground_result.ground.attacker_class==11&&death_event.completed&&death_event.prefix.life_changed&&death_event.prefix.removal.removal.finalized&&death_event.state_written&&death_event.ideal_written);
+    assert(f.get<int>(f.actor,0x8c)==1&&f.get<int>(f.actor,0x850)==7&&f.get<int>(f.actor,0x858)==7&&f.get<float>(f.actor,0x854)==90.f);
+    assert(f.actor[0xa44]&&f.actor[0x200]&&(f.get<unsigned>(f.actor,0x7cc)&(1u<<16)));
+    assert((hd.death_order==std::vector<unsigned>{1,2,3,4,5,6})&&hd.deaths==1&&hd_life_result.death_called);
     assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xd0,0xffffffffu);
     // Stale generation fails before advancement.
