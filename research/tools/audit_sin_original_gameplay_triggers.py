@@ -106,6 +106,13 @@ ORIGINAL_METHODS={
   "sequence_schedule_reset":(0x221af490,102,"07a9798beec834dccfb8551e5a89cd45f96e40e99aab7c6b87e777363f02755c"),
   "sequence_remove_think":(0x221c0d40,57,"07f35ebb311076475ecc55737b7e8a84a20380d13c163dfeaa6672c342f75bc7"),
   "sequence_handle_equal":(0x22028fe0,64,"379165bed57270bc9df20b615fa07fb3f61dc939f61ec1f6f3503e1652515f3f"),
+  "sequence_npc_task106_case":(0x22054601,169,"fca27774d1234ccca366c103f04bef7259cc7f0add087fc4e2b2cbb923c2e927"),
+  "sequence_npc_task108_case":(0x220546aa,109,"1bdd5f3b504b749d69576999fbe565412baf37769a3ddcd9abb0318c651f45df"),
+  "sequence_npc_task109_case":(0x22054717,106,"ddfa07de6d9c2faf1136c3f4f1f55644151bc5f889d8ae3ecb23a8dde5b33e03"),
+  "sequence_npc_task110_case":(0x22054781,90,"454d9fe9ed6815614cf0ac3d2896a6efe2056881444241c997ec1b4873b69131"),
+  "sequence_group_ready":(0x221adef0,12,"7d1509fd885708ef67ca1b4cd152b0983ba10ee6a6205bb8c00d1bf889ea47ba"),
+  "sequence_waiting":(0x221adf00,7,"bab98b95dd0fd5c04e42353458bbffa92caaefd05db8bca11908779c9ed77109"),
+  "sequence_begin_output":(0x221adf70,16,"642e3595f71cb26e9f47a7c838ce487bbd3c6e0336ab408c2605e9dc431ce9b9"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
@@ -325,6 +332,10 @@ def verify_filter_factory_keys(read_u32,read_text):
 FILTER_DESTRUCTORS={0x224149a4:0x2216bc40,0x22414c3c:0x2216bd00,0x22414ed4:0x2216be40,0x2241516c:0x2216bf20}
 FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x224,0x2214a060),(0x268,0x220019f0))
 SEQUENCE_WORDS={
+    # RunTask 220538d0: byte table indexed by task-2, then jump table.
+    # Pin neighboring bytes too, not guessed task numbers.
+    0x22054bac:0x1b1a2519,0x22054bb0:0x1d0d251c,
+    0x22054b10:0x22054601,0x22054b14:0x220546aa,0x22054b18:0x22054717,0x22054b1c:0x22054781,
     0x223bd498:0x2242ee1c,0x223bd49d:0x22505008,0x22505008:0x2242ee70,0x2242ee70:0x221b0190,0x2242ee74:0x221ae880,
     0x2242f668:0x224c1b4c,0x224c1b4c:0,0x224c1b50:0,0x224c1b58:0x22505014,
     **{0x221aeba4+4*i:target for i,target in enumerate((0x221aeb7e,0x221aeaef,0x221aeafa,0x221aeb06,0x221aeb12,0x221aeb7e))},

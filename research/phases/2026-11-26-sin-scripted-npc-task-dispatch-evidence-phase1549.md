@@ -1,0 +1,12 @@
+# Phase 1549: original scripted NPC RunTask dispatch evidence
+
+Re-extracted owner Drive SE1/bin.zip server.dll and verified SHA-256 568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650. Disassembled 220538d0, byte-index 22054b44[task-2], pointer table 22054aac[index]. Four relevant cases, seven region digests and six exact table words pinned. These are case slices inside a shared function, not seven standalone functions.
+
+| Task | Byte index | Target | Observed behavior |
+| --- | --- | --- | --- |
+| 106 (0x6a) | 25 | 22054601 | Resolve NPC +970; wait for +3b8 count==0; TaskComplete(false), fire begin output 221adf70 (self activator and caller), StartSequence(play token, true); re-resolve NPC +970, clear schedule if handle gone, set playback rate 1 through 2203d0d0. Missing script path logs and completes. |
+| 108 (0x6c) | 26 | 220546aa | 2204d350(0,0), test NPC +3e0 animation finished; test saved script flag +3c8 bit 0x400, optionally 220f00a0(sequence) and 2214c730(0x400); re-resolve script; PlayDone, then TaskComplete(false). |
+| 109 (0x6d) | 27 | 22054717 | Missing script warns and +47c(5); otherwise wait while animation unfinished and successor resolves null; when finished OR live successor, terminal Finish; no unconditional TaskComplete on the finish branch. |
+| 110 (0x6e) | 28 | 22054781 | Missing script warns and +47c(5); live script +3c0 waiting latch holds; otherwise 221ae370 and TaskComplete(false). |
+
+Other relevant caller: StartTask case at 2205279f invokes StartSequence with pre-idle token and false, compares pre-idle/play strings and may set playback rate 0. Need authenticate its own jump mapping before coding. RunTask 106 missing-handle log string 223de16c, 109/110 223ddf50. The 108 original dereferences the script before later re-resolution; independent adapter should explicitly refuse stale/foreign storage before dereference. 2204f1e0 returns null-resolved predicate; 220295f0 compares resolved identity inequality. Do not equate raw non-invalid handles with live actors. Existing native TaskLifecycle API is candidate for 2203d2d0; existing animation and finish sidecars are available after cumulative Windows verification. No runtime code changed in this evidence phase; no generic physics or model-loading work.
