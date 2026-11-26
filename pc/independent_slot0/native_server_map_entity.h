@@ -116,10 +116,26 @@ struct TimerBindings {
     int (__cdecl *random)(void*,float,float,float*) noexcept;
     int (__cdecl *schedule)(void*,void*,float) noexcept;
     void* schedule_context;
+    // Optional original default-context tick setter replaces hosted schedule.
+    const native_weapon_tables::ServerNpcOuterCadenceBindings* cadence;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    const float* tick_interval;
 };
 struct TimerResult {
     unsigned completed,handled,suppressed,scheduled,randomized,fired,queued,output_offset,clamped,changed;
     float interval,next_think;
+};
+struct TimerPrimaryBindings {
+    const TimerBindings* behavior;
+    void* context;
+    int (__cdecl *record)(void*,void*,int,float,int) noexcept;
+    int (__cdecl *scope)(void*,void*,bool) noexcept;
+};
+struct TimerPrimaryResult {
+    TimerResult behavior;
+    unsigned completed,native_result,no_think,not_due,recorded,entered,closed,invoked;
+    int due_tick,next_tick,last_tick;
+    float recorded_time,last_time;
 };
 struct AutoPrimaryBindings {
     const AutoBindings* behavior;
@@ -247,6 +263,7 @@ struct Api {
     int (__cdecl *timer_input)(void*,unsigned,const char*,unsigned,float,const TimerBindings*,TimerResult*) noexcept;
     int (__cdecl *register_timer)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_timer)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *timer_primary_run)(void*,unsigned,int,const TimerPrimaryBindings*,TimerPrimaryResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

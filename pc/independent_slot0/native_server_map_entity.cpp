@@ -887,10 +887,22 @@ int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activa
 // plus stored interval. Random bounds are passed through in original order.
 bool timer_valid(void* a,unsigned n,const TimerBindings* b,TimerResult* o) noexcept {
     if(!o)return false;*o={};
-    return a&&n>=timer_extent&&entity_vtable(a)==timer_vtable&&b;
+    if(!a||n<timer_extent||entity_vtable(a)!=timer_vtable||!b)return false;
+    if(!b->cadence)return true;
+    return b->tick_interval&&std::isfinite(*b->tick_interval)&&*b->tick_interval>0.f&&
+        b->entry_count<=sin_independent::kEntityHandleCapacity&&(!b->entry_count||b->entries)&&
+        sin_independent::EntityHandleView(b->entries,b->entry_count).Resolve(read_field<unsigned>(a,0x378))==a;
+}
+bool timer_set_tick(void* a,float time,const TimerBindings& b) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerNpcOuterCadenceApi(1,sizeof(ServerNpcOuterCadenceApi));
+    ServerNpcOuterCadenceResult result{};
+    return b.cadence&&b.tick_interval&&api&&api->set_default(a,timer_extent,time,*b.tick_interval,timer_vtable,b.cadence,&result);
 }
 bool timer_schedule(void* a,float time,const TimerBindings& b,TimerResult& o) noexcept {
-    if(!std::isfinite(time)||!b.schedule||!b.schedule(b.schedule_context?b.schedule_context:b.context,a,time))return false;
+    if(!std::isfinite(time))return false;
+    if(b.cadence){if(!timer_set_tick(a,time,b))return false;}
+    else if(!b.schedule||!b.schedule(b.schedule_context?b.schedule_context:b.context,a,time))return false;
     o.next_think=time;o.scheduled=1;return true;
 }
 bool timer_reschedule(void* a,const TimerBindings& b,TimerResult& o) noexcept {
@@ -948,7 +960,37 @@ int __cdecl timer_input(void* a,unsigned n,const char* name,unsigned type,float 
     }else o->handled=0;
     o->completed=ok;return int(ok);
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer};
+// Original +bc 2217a120 jumps directly to 22179370; ignore stored +8.
+int __cdecl timer_primary_run(void* a,unsigned n,int tick,const TimerPrimaryBindings* b,TimerPrimaryResult* o) noexcept {
+    if(!o)return 0;*o={};o->due_tick=o->next_tick=o->last_tick=-1;
+    if(!b||!b->behavior||!b->behavior->cadence||!b->behavior->now||
+       !timer_valid(a,n,b->behavior,&o->behavior)||read_field<int>(a,0x50)>0)return 0;
+    const auto& behavior=*b->behavior;
+    auto idle=[&](){o->next_tick=read_field<int>(a,0x74);o->native_result=o->completed=1;return 1;};
+    if(read_field<unsigned>(a,0xb8)&0x400000u){o->no_think=1;return idle();}
+    o->due_tick=read_field<int>(a,0x74);
+    if(o->due_tick<=0||o->due_tick>tick){o->not_due=1;return idle();}
+    const float now=*behavior.now,interval=*behavior.tick_interval;
+    if(!std::isfinite(now)||!b->record||!b->scope)return 0;
+    const double scheduled=double(o->due_tick)*double(interval);
+    o->recorded_time=scheduled>double(now)?now:static_cast<float>(scheduled);
+    if(!std::isfinite(o->recorded_time)||!b->record(b->context,a,tick,o->recorded_time,read_field<int>(a,0x74)))return 0;
+    o->recorded=1;
+    // Same default clear and repeated flag check as the auto path.
+    if(!timer_set_tick(a,-1.f,behavior)||!timer_set_tick(a,-1.f,behavior))return 0;
+    if(!b->scope(b->context,a,true))return 0;o->entered=1;
+    o->invoked=1;const bool ok=timer_fire(a,n,behavior,o->behavior);
+    o->behavior.handled=1;o->behavior.completed=ok;
+    const bool closed=b->scope(b->context,a,false)!=0;o->closed=closed;
+    if(!ok||!closed)return 0;
+    o->last_time=*behavior.now;
+    const double last=std::trunc(double(o->last_time)/double(interval)+0.5);
+    if(!std::isfinite(last)||last<INT_MIN||last>INT_MAX)return 0;
+    o->last_tick=static_cast<int>(last);write_field(a,0x34,o->last_tick);
+    o->next_tick=read_field<int>(a,0x74);
+    o->native_result=(read_field<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
