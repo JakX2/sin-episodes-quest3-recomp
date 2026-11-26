@@ -1790,4 +1790,19 @@ struct ServerNpcGruntLifeDamageApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,unsigned,const ServerNpcGruntLifeDamageBindings*,ServerNpcGruntLifeDamageResult*) noexcept;
 };
 using GetServerNpcGruntLifeDamageApi=const ServerNpcGruntLifeDamageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_alive_damage_export[]="SiN_GetServerNpcGruntAliveDamageApi";
+struct ServerNpcGruntAliveDamageBindings {
+    ServerNpcGruntDamageNativeChainBindings chain;
+    ServerNpcGruntLifeDamageBindings life;
+};
+struct ServerNpcGruntAliveDamageResult {
+    ServerNpcGruntDamageNativeChainResult chain;
+    ServerNpcGruntLifeDamageResult life;
+};
+struct ServerNpcGruntAliveDamageApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntAliveDamageBindings*,ServerNpcGruntAliveDamageResult*) noexcept;
+};
+using GetServerNpcGruntAliveDamageApi=const ServerNpcGruntAliveDamageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
