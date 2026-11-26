@@ -1,5 +1,7 @@
 #include "native_server_dynamic_resupply.h"
 #include "original_ammo_definitions.h"
+#include "native_server_npc_active_weapon_step.h"
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
 #include <cmath>
 #include <limits>
@@ -532,7 +534,66 @@ int __cdecl vial_touch(void* item,unsigned bytes,void* player,const VialPickupBi
     else{if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;}
     o->accepted=o->completed=1;return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch};
+int __cdecl item_touch(void* item,unsigned bytes,void* other,unsigned other_bytes,const ItemTouchBindings* b,ItemTouchResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!item||bytes<0x4cc||!other||other_bytes<4||!b)return 0;
+    const unsigned vt=field<unsigned>(item,0);
+    bool is_vial=vt==vial_vtable,known=is_vial;
+    if(!is_vial&&bytes>=0x4d8)for(const auto& p:ammo_pickups)if(vt==p.vtable){known=true;break;}
+    if(!known)return 0;
+    auto done=[&](){o->completed=1;return 1;};
+    auto native_player=[](void* a){const auto v=field<unsigned>(a,0);return v==0x2245222cu||v==0x224aec3cu;};
+    void* player=other;unsigned player_bytes=other_bytes;
+    if(!native_player(other)){
+        void* vehicle=nullptr;
+        if(!b->vehicle||!b->vehicle(b->context,other,&vehicle))return 0;++o->vehicle_reads;
+        if(vehicle){
+            if(!b->vehicle(b->context,other,&vehicle)||!vehicle)return 0;++o->vehicle_reads;
+            if(!b->passenger||!b->passenger(b->context,vehicle,0,&player))return 0;o->passenger_read=1;
+            if(!player)return done();
+            if(!b->extent||!b->extent(b->context,player,&player_bytes)||player_bytes<4)return 0;++o->extent_reads;
+        }
+    }
+    o->player=player;bool player_ok=false;
+    if(native_player(player)){player_ok=true;o->player_native=1;}
+    else if(!b->is_player||!b->is_player(b->context,player,&player_ok))return 0;
+    o->player_checked=1;
+    if(!player_ok)return done();
+    if(player_bytes<0xbc)return 0;
+    if(field<unsigned>(player,0xb8)&0x20000000u){o->blocked=1;return done();}
+    bool allow=false;
+    if(!b->can_pickup||!b->can_pickup(b->context,player,item,&allow))return 0;
+    o->permission_read=1;if(!allow)return done();
+    o->subclass_called=1;
+    if(is_vial){
+        if(!vial_touch(item,bytes,player,b->vial,&o->vial))return 0;o->accepted=o->vial.accepted;
+    }else{
+        if(!ammo_pickup_touch(item,bytes,player,b->ammo,&o->ammo))return 0;o->accepted=o->ammo.accepted;
+    }
+    // Subclass removal requests must be deferred: original still uses item.
+    if(!o->accepted){
+        bool force=false;
+        if(!b->force_failed_pickup||!b->force_failed_pickup(b->context,&force))return 0;o->force_read=1;
+        if(!force)return done();
+    }else{
+        using namespace native_weapon_tables;
+        const auto* api=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+        if(!api)return 0;ServerEntityVoidOutputResult result{};
+        // Unconnected output has no callbacks to invoke.
+        ServerEntityVoidOutputBindings empty{};
+        if(!api->fire(static_cast<unsigned char*>(item)+0x49c,bytes-0x49c,player,item,bytes,0.f,b->output?b->output:&empty,&result))return 0;
+        o->output_called=1;o->output_actions=result.queued;
+        set_field(item,0x7c,0u);o->touch_cleared=1;
+        set_field(item,8,0u);o->think_cleared=1;
+        if(!b->picked_up||!b->picked_up(b->context,player,item))return 0;o->picked_up=1;
+        if(!b->respawn_rule||!b->respawn_rule(b->context,item,&o->rule))return 0;o->rule_called=1;
+        if(o->rule==5){
+            if(!b->respawn||!b->respawn(b->context,item))return 0;o->respawned=1;return done();
+        }
+    }
+    if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;return done();
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
