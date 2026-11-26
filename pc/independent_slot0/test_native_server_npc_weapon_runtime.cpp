@@ -2018,6 +2018,7 @@ int main(int argc,char** argv){
         alignas(4) unsigned char death_descriptor[0x48]{};
         std::vector<unsigned> death_order;
         unsigned jet_ticks{};
+        float think_clock{},think_scheduled{};
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -2324,7 +2325,7 @@ int main(int argc,char** argv){
         auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&time==1.f&&flags==1&&!x&&!y&&radius==25.f&&last==1);q.death_order.push_back(24);return 1;
     };
     jet_branch.ragdoll=[](void* p,void* a,void* damage,const float* force) noexcept -> int{
-        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x8c)==1&&q.f->get<float>(damage,0x2c)==300.f&&!force[0]&&!force[1]&&!force[2]);q.death_order.push_back(25);return 1;
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x8c)==1&&q.f->get<float>(damage,0x2c)==300.f&&!force[0]&&!force[1]&&!force[2]);q.f->put(a,0x1028,0x7001u);q.death_order.push_back(25);return 1;
     };
     jet_branch.time=[](void* p,float* now) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);q.death_order.push_back(26);*now=90.f+float(q.jet_ticks++)*.125f;return 1;
@@ -2345,6 +2346,54 @@ int main(int argc,char** argv){
         assert(f.get<float>(f.actor,0x1058)==300.f&&f.get<float>(f.actor,0x105c)==100.f&&f.get<unsigned>(f.actor,0x1054)==0x8002u);
         assert((hd.death_order==std::vector<unsigned>{20,21,22,23,24,25,26,27,26,28})&&hd.jet_ticks==2);
     }
+    // Continue the same delayed death from the scripted input, rather
+    // than inventing a second synthetic damage record for DeathThink.
+    auto get_think=reinterpret_cast<GetServerNpcJetpackDeathThinkApi>(GetProcAddress(server,server_npc_jetpack_death_think_export));
+    assert(get_think&&!GetProcAddress(client,server_npc_jetpack_death_think_export));
+    const auto* death_think=get_think(1,sizeof(ServerNpcJetpackDeathThinkApi));assert(death_think);
+    static ServerNpcJetpackDeathThinkBindings think{};
+    static ServerNpcJetpackDeathThinkResult think_result{};
+    think.ground=sub_ground;think.context=&hd;
+    auto& ts=think.ground.base.combat.death.event.prefix.removal.removal.leave.sentence;
+    ts.entries=hd_b.entities.entries;ts.count=hd_b.entities.count;
+    ts.speech.original_vtable=0x224a4a4cu;
+    think.ground.base.combat.death.event.prefix.context=&hd;
+    think.ground.base.combat.death.event.prefix.jet_release=[](void* p,unsigned token) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(!token);q.death_order.push_back(34);return 1;
+    };
+    think.time=[](void* p,float* time) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);*time=q.think_clock;return 1;
+    };
+    think.schedule=[](void* p,void* a,float time) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);q.think_scheduled=time;q.death_order.push_back(36);return 1;
+    };
+    think.effect_begin=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);q.death_order.push_back(30);return 1;
+    };
+    think.terminal_effect=[](void* p,void* a,void* subject,bool mode4) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&subject==q.parent&&mode4);q.death_order.push_back(31);return 1;
+    };
+    think.remove=[](void* p,void* subject) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(subject==q.parent);q.death_order.push_back(32);return 1;
+    };
+    think.effect_end=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);q.death_order.push_back(33);return 1;
+    };
+    think.install_think=[](void* p,void* a,unsigned token) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&token==0x221c0d40u&&q.f->get<int>(a,0x1004)==4);q.death_order.push_back(35);return 1;
+    };
+    f.put(f.actor,0x1008,0u);f.put(f.actor,0x1000,0xffffffffu);
+    hd.death_order.clear();hd.think_clock=92.f;
+    assert(death_think->run(f.actor,sizeof(f.actor),0x8002u,&think,&think_result)&&think_result.completed&&think_result.elapsed==2.0&&!think_result.expired&&!think_result.death_called);
+    assert((hd.death_order==std::vector<unsigned>{36})&&!f.actor[0xa44]&&hd.think_scheduled==92.1f);
+    hd.death_order.clear();hd.think_clock=92.125f;
+    assert(!death_think->run(f.actor,sizeof(f.actor),0x9002u,&think,&think_result)&&hd.death_order.empty());
+    assert(death_think->run(f.actor,sizeof(f.actor),0x8002u,&think,&think_result)&&think_result.completed&&think_result.expired&&think_result.terminal_mode==4&&think_result.death_called&&think_result.ground.completed);
+    assert(think_result.primary_removed&&think_result.effect_closed&&think_result.installed&&think_result.mode_written&&think_result.scheduled_called);
+    assert(f.get<unsigned>(f.actor,0x1028)==0xffffffffu&&f.get<int>(f.actor,0x1004)==3&&f.actor[0xa44]);
+    assert(f.get<int>(f.actor,0x9c)==-200&&f.get<int>(f.actor,0x850)==7&&f.get<float>(f.actor,0x854)==92.125f);
+    assert((hd.death_order==std::vector<unsigned>{30,31,32,33,35,1,2,3,4,34,5,6,36}));
+    assert(hd.think_scheduled==static_cast<float>(double(92.125f)+double(.1f))&&hd.deaths==1);
     std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
     assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);
     assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
