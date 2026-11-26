@@ -279,9 +279,12 @@ struct ServerEntityAcceptInputBindings {
     int (__cdecl *string_text)(void*,std::uint32_t,const char**,unsigned*) noexcept;
     // Optional native variant entity conversion; AcceptInput registry wins.
     const ServerEntitySearchBindings* search;
+    // Use the recovered input-only projection of the four NPC datamaps.
+    // Other inherited maps still require the original-shaped storage service.
+    bool native_npc_datamaps;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {

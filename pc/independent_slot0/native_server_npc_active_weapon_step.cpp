@@ -714,6 +714,60 @@ bool input_write(void* a,unsigned n,unsigned offset,const void* v,const ServerEn
     }else std::memcpy(dest,v,size);
     written=size;return true;
 }
+// Input-only projection of all 27 input-enabled rows in the four original
+// NPC maps. Non-input descriptors are not synthesized as save/restore data.
+struct NativeInputRow {
+    unsigned index,type,name,handler;
+    const char* text;
+};
+constexpr NativeInputRow base_npc_inputs[]{
+    {121,2,0x223db450u,0x22031f90u,"SetRelationship"},
+    {122,5,0x223db434u,0x22037a30u,"SetHealth"},
+    {123,0,0x223db414u,0x22031fe0u,"BeginRappel"},
+    {124,0,0x223db3f4u,0x22031ff0u,"PauseRappel"},
+    {125,2,0x223db3d8u,0x22032000u,"SetSquad"},
+    {126,0,0x223db3c4u,0x220320b0u,"Wake"},
+    {127,2,0x223db3a0u,0x2203f1f0u,"ForgetEntity"},
+    {128,1,0x223db374u,0x220320c0u,"IgnoreDangerSounds"},
+    {129,0,0x223db360u,0x220424a0u,"Break"},
+    {130,0,0x223db33cu,0x2202e7d0u,"StartScripting"},
+    {131,0,0x223db318u,0x2202e7e0u,"StopScripting"},
+    {132,0,0x223db2fcu,0x22044d80u,"GagEnable"},
+    {133,0,0x223db2d8u,0x22042c00u,"GagDisable"},
+    {134,2,0x223db2b8u,0x22032120u,"SetVoiceGroup"}
+};
+constexpr NativeInputRow grunt_inputs[]{
+    {31,0,0x22490f34u,0x2235f260u,"LookOff"},
+    {32,0,0x22490f20u,0x2235ddc0u,"LookOn"},
+    {33,0,0x22485b74u,0x22357e30u,"StartPatrolling"},
+    {34,0,0x22485b50u,0x22357e40u,"StopPatrolling"},
+    {35,2,0x223f5624u,0x22357e50u,"Assault"},
+    {36,6,0x22490eecu,0x22357ea0u,"ThrowGrenades"}
+};
+constexpr NativeInputRow jet_inputs[]{
+    {19,2,0x22498948u,0x22365fe0u,"ChangePathTrack"},
+    {20,0,0x22498914u,0x22363b80u,"EnableRelativePathnode"},
+    {21,0,0x224988dcu,0x22363580u,"DisableRelativePathnode"},
+    {22,0,0x224988b8u,0x22367470u,"ActivateJets"},
+    {23,0,0x22498894u,0x22366110u,"DeactivateJets"},
+    {24,0,0x2249886cu,0x22363be0u,"EnableForcePath"},
+    {25,0,0x22498840u,0x22363c40u,"DisableForcePath"}
+};
+struct NativeInputMap {
+    unsigned token,parent,count;
+    const NativeInputRow* rows;
+    unsigned input_count;
+};
+constexpr NativeInputMap npc_input_maps[]{
+    {0x224dbd9cu,0x2251f258u,139,base_npc_inputs,14},
+    {0x22534da4u,0x224dbd9cu,39,grunt_inputs,6},
+    {0x22534674u,0x22534da4u,2,nullptr,0},
+    {0x22535b28u,0x22534da4u,26,jet_inputs,7}
+};
+const NativeInputMap* native_input_map(unsigned token) noexcept {
+    for(const auto& m:npc_input_maps)if(m.token==token)return &m;
+    return nullptr;
+}
 int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
@@ -729,15 +783,38 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         if(o->maps>=32)return 0;
         for(unsigned i=0;i<o->maps;++i)if(seen[i]==token)return 0;
         seen[o->maps++]=token;
-        void* map=nullptr;if(!resolve(*b->storage,token,0x10,&map))return 0;
-        const int count=rd<int>(map,4);if(count<0||count>4096)return 0;
-        void* rows=nullptr;if(count&&!resolve(*b->storage,rd<unsigned>(map,0),0x34u*static_cast<unsigned>(count),&rows))return 0;
+        const auto* native=b->native_npc_datamaps?native_input_map(token):nullptr;
+        void* map=nullptr;void* rows=nullptr;int count=0;unsigned parent=0;
+        if(native){
+            ++o->native_maps;count=static_cast<int>(native->count);parent=native->parent;
+        }else{
+            if(!resolve(*b->storage,token,0x10,&map))return 0;
+            count=rd<int>(map,4);if(count<0||count>4096)return 0;
+            if(count&&!resolve(*b->storage,rd<unsigned>(map,0),0x34u*static_cast<unsigned>(count),&rows))return 0;
+            parent=rd<unsigned>(map,0xc);
+        }
+        unsigned native_index=0;
         for(int i=0;i<count;++i){
             ++o->rows;
-            const auto* row=static_cast<const unsigned char*>(rows)+0x34*i;
+            unsigned char projected[0x34]{};
+            const NativeInputRow* descriptor=nullptr;
+            const unsigned char* row=nullptr;
+            if(native){
+                if(native_index==native->input_count||native->rows[native_index].index!=static_cast<unsigned>(i))continue;
+                descriptor=&native->rows[native_index++];
+                wr<unsigned>(projected,0,descriptor->type);
+                wr<std::uint16_t>(projected,0x12,8u);
+                wr<unsigned>(projected,0x14,descriptor->name);
+                wr<unsigned>(projected,0x1c,descriptor->handler);
+                row=projected;
+            }else row=static_cast<const unsigned char*>(rows)+0x34*i;
             const unsigned flags=rd<std::uint16_t>(row,0x12);
             if(!(flags&8u))continue;
-            bool same=false;if(!input_name_equal(*b,rd<unsigned>(row,0x14),input,same))return 0;
+            bool same=false;
+            if(descriptor&&!b->name_equal){
+                if(input==descriptor->name)same=true;
+                else{const char* actual=nullptr;if(!input_text(*b,input,&actual))return 0;same=search_equal(descriptor->text,actual);}
+            }else if(!input_name_equal(*b,rd<unsigned>(row,0x14),input,same))return 0;
             if(!same)continue;
             o->matched=1;o->map=token;o->row=static_cast<unsigned>(i);o->handler=rd<unsigned>(row,0x1c);
             o->expected_type=rd<unsigned>(row,0);o->actual_type=rd<unsigned>(data.variant,0x10);
@@ -759,7 +836,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             if(!dirty(a,*b->storage))return 0;
             o->dirty=o->accepted=o->completed=1;return 1;
         }
-        token=rd<unsigned>(map,0xc);
+        token=parent;
     }
     return rejected(EntityInputUnknown);
 }
