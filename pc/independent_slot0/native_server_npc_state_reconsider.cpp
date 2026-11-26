@@ -3346,6 +3346,55 @@ int __cdecl grunt_behavior_removal(void* a,unsigned n,std::uint32_t handle,void*
     out->completed=1;return 1;
 }
 const ServerNpcGruntBehaviorRemovalApi behavior_removal_api{1,sizeof(ServerNpcGruntBehaviorRemovalApi),&grunt_behavior_removal};
+
+int __cdecl grunt_death_prefix(void* a,unsigned n,std::uint32_t handle,void* damage,unsigned dn,float now,const ServerNpcGruntDeathPrefixBindings* b,ServerNpcGruntDeathPrefixResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0xdb2||!damage||dn<0x3c||!b||!std::isfinite(now))return 0;
+    const auto& sb=b->removal.removal.leave.sentence;
+    const auto vt=sb.speech.original_vtable;
+    if(!relation_grunt_class(vt)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const bool elite=vt==0x2248df04;
+    const bool jet=vt==0x2248c514||vt==0x2248e83c||vt==0x2249964c||vt==0x224a4a4c;
+    if((elite&&n<0xfe0)||(jet&&n<0x100c))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    if(registry.Resolve(handle)!=a)return 0;
+    // 2205eec0(0x47,1): compare mapped schedule against +79c only if schedule exists.
+    if(read<unsigned>(a,0x798)){
+        int global=-1;if(!schedule_local_id(a,0x47,b->schedules,global))return 0;
+        if(global==read<int>(a,0x79c)){out->schedule_blocked=out->completed=1;return 1;}
+    }
+    if(!b->state_signal||!b->state_signal(b->context,a,0))return 0;
+    out->signal_called=1;
+    if(!b->prepare||!b->prepare(b->context,a,damage))return 0;
+    out->prepared=1;
+    if(read<int>(a,0x8c)!=1){
+        if(!b->life_change||!b->life_change(b->context,a))return 0;
+        write(a,0x8c,1);out->life_changed=1;
+    }
+    out->attacker=read<unsigned>(damage,0x28);
+    if(!grunt_behavior_removal(a,n,handle,registry.Resolve(out->attacker),true,now,&b->removal,&out->removal))return 0;
+    out->removed=1;
+    // +180 dispatch: three ground tables no-op, Elite serial handle, four Jetpack manager release.
+    if(elite){
+        if(void* link=registry.Resolve(read<unsigned>(a,0xfdc))){
+            if(!b->elite_link||!b->elite_link(b->context,link))return 0;
+            out->subclass_called=1;
+        }
+    }else if(jet){
+        out->jet_token=read<unsigned>(a,0x1008);
+        if(!b->jet_release||!b->jet_release(b->context,out->jet_token))return 0;
+        out->subclass_called=1;write(a,0x1008,0u);out->jet_cleared=1;
+    }
+    auto reaction=b->reaction;
+    reaction.sentence=sb;
+    // Preserve removal's class/serial registry but use the caller's speech service policy.
+    reaction.sentence.speech=b->reaction.sentence.speech;
+    reaction.sentence.speech.original_vtable=vt;
+    if(!grunt_death_speech(a,n,now,&reaction,&out->speech))return 0;
+    out->speech_called=1;out->tail_required=out->completed=1;return 1;
+}
+const ServerNpcGruntDeathPrefixApi death_prefix_api{1,sizeof(ServerNpcGruntDeathPrefixApi),&grunt_death_prefix};
+
 const ServerNpcGruntRemovalApi removal_api{1,sizeof(ServerNpcGruntRemovalApi),&grunt_removal};
 const ServerNpcGruntNativeStateApi native_state_api{1,sizeof(ServerNpcGruntNativeStateApi),&native_state_choose,&native_state_apply};
 const ServerNpcGruntSquadEnemyApi squad_enemy_api{1,sizeof(ServerNpcGruntSquadEnemyApi),&squad_enemy_broadcast};
@@ -3815,4 +3864,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamagePainPrefixApi=_SiN_GetServerNpcGruntDamagePainPrefixApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamagePainPrefixApi* __cdecl SiN_GetServerNpcGruntDamagePainPrefixApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamagePainPrefixApi)?&damage_pain_prefix_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDeathPrefixApi=_SiN_GetServerNpcGruntDeathPrefixApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDeathPrefixApi* __cdecl SiN_GetServerNpcGruntDeathPrefixApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDeathPrefixApi)?&death_prefix_api:nullptr;
 }

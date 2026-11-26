@@ -1384,4 +1384,29 @@ struct ServerNpcGruntDamagePainPrefixApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamagePainPrefixBindings*,ServerNpcGruntDamagePainPrefixResult*) noexcept;
 };
 using GetServerNpcGruntDamagePainPrefixApi=const ServerNpcGruntDamagePainPrefixApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_death_prefix_export[]="SiN_GetServerNpcGruntDeathPrefixApi";
+struct ServerNpcGruntDeathPrefixBindings {
+    ServerNpcGruntBehaviorRemovalBindings removal;
+    ServerNpcGruntReactionSpeechBindings reaction;
+    ServerNpcConditionMapBindings schedules;
+    void* context;
+    int (__cdecl *state_signal)(void*,void*,int) noexcept; // +4d8(0)
+    int (__cdecl *prepare)(void*,void*,void*) noexcept; // 22042dc0
+    int (__cdecl *life_change)(void*,void*) noexcept; // +1a8
+    int (__cdecl *elite_link)(void*,void*) noexcept; // 22315450
+    int (__cdecl *jet_release)(void*,std::uint32_t) noexcept; // 221b9770 manager +28
+};
+struct ServerNpcGruntDeathPrefixResult {
+    ServerNpcGruntBehaviorRemovalResult removal;
+    ServerNpcGruntReactionSpeechResult speech;
+    unsigned completed,schedule_blocked,signal_called,prepared,life_changed,removed,subclass_called,jet_cleared,speech_called,tail_required;
+    std::uint32_t attacker,jet_token;
+};
+struct ServerNpcGruntDeathPrefixApi {
+    std::uint32_t version,size;
+    // Original 22042e70..22042f07 only; caller attests entry to base death route.
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntDeathPrefixBindings*,ServerNpcGruntDeathPrefixResult*) noexcept;
+};
+using GetServerNpcGruntDeathPrefixApi=const ServerNpcGruntDeathPrefixApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

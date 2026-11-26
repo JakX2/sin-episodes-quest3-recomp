@@ -1879,5 +1879,47 @@ int main(int argc,char** argv){
         f.put(q.actor,0x9c4,0u);f.put(q.actor,0xbc,0u);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.tail_required&&o.pain_called&&o.pain.deadline_written&&q.speech==1&&q.cast==3);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntDeathPrefixApi>(GetProcAddress(s,server_npc_grunt_death_prefix_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_death_prefix_export)&&!g(0,sizeof(ServerNpcGruntDeathPrefixApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntDeathPrefixApi));assert(api);
+        struct DeathFixture{
+            alignas(4) unsigned char actor[0x1088]{},other[0x20]{},damage[0x48]{},desc[0x18]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            unsigned step=0;bool subclass=false;
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+            static DeathFixture& self(void* p){return *static_cast<DeathFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.actor);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.other);
+        ServerNpcGruntDeathPrefixBindings b{};b.context=&q;b.removal.removal.context=&q;
+        auto& sb=b.removal.removal.leave.sentence;sb.entries=q.entries;sb.count=3;sb.speech.original_vtable=0x2249aaa4;
+        b.reaction.sentence.speech.volume=1;b.reaction.sentence.speech.level=75;
+        b.reaction.request.context=&q;b.reaction.request.manager_ready=true;
+        b.reaction.request.group_index=[](void* p,const char* cue,int* out) noexcept -> int{
+            auto& q=DeathFixture::self(p);assert(q.step==(q.subclass?6u:5u)&&!std::strcmp(cue,"GRUNT_DIE"));++q.step;*out=-1;return 1;};
+        b.state_signal=[](void* p,void* a,int value) noexcept -> int{auto& q=DeathFixture::self(p);assert(a==q.actor&&!value&&q.step==0);++q.step;return 1;};
+        b.prepare=[](void* p,void* a,void* d) noexcept -> int{auto& q=DeathFixture::self(p);assert(a==q.actor&&d==q.damage&&q.step==1);++q.step;return 1;};
+        b.life_change=[](void* p,void* a) noexcept -> int{auto& q=DeathFixture::self(p);assert(a==q.actor&&q.step==2&&!DeathFixture::rd(a,0x8c));++q.step;return 1;};
+        b.removal.removal.event=[](void* p,void* a,void* attacker) noexcept -> int{
+            auto& q=DeathFixture::self(p);assert(a==q.actor&&attacker==q.other&&q.step==3&&DeathFixture::rd(a,0x8c)==1&&q.actor[0xa44]);++q.step;return 1;};
+        b.removal.removal.finalize=[](void* p,void* a) noexcept -> int{auto& q=DeathFixture::self(p);assert(a==q.actor&&q.step==4);++q.step;return 1;};
+        b.elite_link=[](void* p,void* link) noexcept -> int{auto& q=DeathFixture::self(p);assert(link==q.other&&q.step==5);++q.step;return 1;};
+        b.jet_release=[](void* p,std::uint32_t token) noexcept -> int{auto& q=DeathFixture::self(p);assert(q.step==5&&token==77&&DeathFixture::rd(q.actor,0x1008)==77);++q.step;return 1;};
+        b.schedules.context=&q;
+        b.schedules.descriptor=[](void* p,void*,const void** d,unsigned* n) noexcept -> int{auto& q=DeathFixture::self(p);*d=q.desc;*n=sizeof(q.desc);return 1;};
+        f.put(q.desc,4,1000000000);f.put(q.desc,8,0);f.put(q.desc,12,100);
+        f.put(q.actor,0x798,7u);f.put(q.actor,0x79c,1000000071);
+        static ServerNpcGruntDeathPrefixResult o;
+        assert(api->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),20,&b,&o)&&o.schedule_blocked&&!o.tail_required&&!q.step);
+        for(unsigned vt:{0x2249aaa4u,0x2248df04u,0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+            std::memset(q.actor,0,sizeof(q.actor));q.step=0;sb.speech.original_vtable=vt;q.subclass=vt!=0x2249aaa4;
+            f.put(q.damage,0x28,0x2002u);q.actor[0xcb1]=1;f.put(q.actor,0xccc,17);
+            f.put(q.actor,0xfdc,0x2002u);f.put(q.actor,0x1008,77u);
+            assert(api->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),20,&b,&o)&&o.completed&&o.signal_called&&o.prepared&&o.life_changed&&o.removed&&o.removal.removal.event&&o.speech_called&&o.speech.request.group_called&&o.tail_required&&o.subclass_called==q.subclass&&q.step==(q.subclass?7u:6u));
+            if(vt!=0x2249aaa4&&vt!=0x2248df04)assert(o.jet_cleared&&o.jet_token==77&&!DeathFixture::rd(q.actor,0x1008));
+        }
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
