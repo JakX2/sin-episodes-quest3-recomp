@@ -1,0 +1,3 @@
+# Phase 1535: scripted sequence primary think
+
+Private original verified SHA 568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650. Non-edict 2221c35f calls 22222c30(0), whose default context 22222b90 checks due tick, records min(scheduled time, now), clears via 2214d870, invokes 2221a030 and records post-call time. Primary slot +bc 22002ca0 dispatches installed think token or returns on null. Four method-range hashes and vtable leaf added. Standalone primary opt-in reuses native cadence and acquisition think; named contexts and unknown tokens refused. Loaded tests authored for delayed event -> not due -> rules retry -> acquisition -> no-think -> null-token path with notifications and balanced scope. Actual frame route next. CI pending.
