@@ -2,7 +2,8 @@
     {
         struct Trigger {
             alignas(4) unsigned char storage[dynamic_trigger_extent]{};
-            unsigned other=0,event=0;bool gate=false,player=true,available=true;
+            alignas(4) unsigned char manager[0x268]{};
+            unsigned other=0,event=0;bool gate=false,player=true,available=true,raw_check=false;
             std::string order,name;
             int descriptor=-1,owner=0,subject=0,decision=0;
             float values[4]{};
@@ -74,6 +75,7 @@
         DeferredRemovalBindings deferred{};deferred.context=&f;deferred.queue=&queue;
         deferred.update=[](void* p,void* a,unsigned handler) noexcept ->int{
             auto& f=*static_cast<Trigger*>(p);assert(a==f.storage&&handler==0x221446f0u);
+            if(f.raw_check)assert(f.manager[0x11]==1&&f.order=="PnCM");
             f.order+='U';return 1;
         };
         deferred.release=[](void* p,void* net) noexcept ->int{
@@ -93,4 +95,45 @@
             assert(f.order==(vt==dynamic_trigger_vtable?"PnCEU":"PnCU")&&!word(a,0xc0));
             assert(api->cleanup_deferred(&deferred,&dr)&&dr.released==1&&!queue.count);
         }
+        // Native singleton leaf: the owner acquires an initialized
+        // manager; only the recovered +11 byte is changed.
+        auto reset=[&](unsigned end){
+            std::memset(a,0,dynamic_trigger_extent);put(a,0,dynamic_trigger_vtable);put(a,0x378,0x3000u);
+            put(a,0x160,0x22454f00u);put(a,0x168,ptrword(a));put(a,0xc0,3u);put(a,0x470,0x41480000u);
+            put(a,0x474,7u);put(a,0x478,end);f.order.clear();
+        };
+        b.end_game=nullptr;
+        b.difficulty_manager=[](void* p,void** out,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<Trigger*>(p);assert(f.order=="PnC"&&!f.manager[0x11]);f.order+='M';*out=f.manager;*bytes=sizeof(f.manager);return 1;
+        };
+        std::memset(f.manager,0x5a,sizeof(f.manager));f.manager[0x11]=0;put(f.manager,0,0x2245cdacu);
+        reset(257);f.raw_check=true;
+        assert(api->campaign_trigger_touch(a,dynamic_trigger_extent,&f.other,&b,&r)&&r.native_manager&&r.manager_signaled&&r.native_removed&&f.order=="PnCMU");
+        assert(f.manager[0x10]==0x5a&&f.manager[0x11]==1&&f.manager[0x12]==0x5a);
+        DeferredRemovalResult dr{};assert(api->cleanup_deferred(&deferred,&dr)&&dr.released==1);
+        reset(256);f.raw_check=false;f.manager[0x11]=0;
+        assert(api->campaign_trigger_touch(a,dynamic_trigger_extent,&f.other,&b,&r)&&!r.native_manager&&!r.manager_signaled&&f.order=="PnCU"&&!f.manager[0x11]);
+        assert(api->cleanup_deferred(&deferred,&dr));
+        reset(257);put(f.manager,0,0u);
+        assert(!api->campaign_trigger_touch(a,dynamic_trigger_extent,&f.other,&b,&r)&&r.event_unavailable&&!r.manager_signaled&&!r.removed&&f.order=="PnCM"&&!queue.count);
+        // Existing DLL-owned fixed policy, not a second accounting store.
+        using FixedApi=sin_port::fixed_service::Api;
+        const auto get_fixed=reinterpret_cast<sin_port::fixed_service::GetApi>(GetProcAddress(server,sin_port::fixed_service::export_name));assert(get_fixed);
+        const FixedApi* fixed=get_fixed(sin_port::fixed_service::abi_version,sizeof(FixedApi));assert(fixed&&fixed->begin_campaign(2));
+        sin_port::fixed_service::State initial{},observed{};
+        assert(fixed->get_state(&initial)&&!initial.trigger_count&&!initial.completed);
+        float metric=0,after=0;assert(fixed->get_metric(0,&metric));
+        b.difficulty_manager=nullptr;b.fixed_campaign=true;
+        reset(256);
+        assert(api->campaign_trigger_touch(a,dynamic_trigger_extent,&f.other,&b,&r)&&r.fixed_observed&&!r.manager_signaled&&r.native_removed&&f.order=="PnCU");
+        assert(fixed->get_state(&observed)&&observed.trigger_count==1&&!observed.completed&&observed.revision==initial.revision);
+        assert(api->campaign_trigger_touch(a,dynamic_trigger_extent,&f.other,&b,&r)&&r.already_removed&&!r.fixed_observed&&f.order=="PnCUP");
+        assert(fixed->get_state(&observed)&&observed.trigger_count==1);
+        assert(api->cleanup_deferred(&deferred,&dr));
+        reset(257);
+        assert(api->campaign_trigger_touch(a,dynamic_trigger_extent,&f.other,&b,&r)&&r.fixed_observed&&r.manager_signaled&&r.native_removed);
+        assert(fixed->get_state(&observed)&&observed.trigger_count==2&&observed.completed&&observed.revision==initial.revision&&fixed->get_metric(0,&after)&&after==metric);
+        assert(api->cleanup_deferred(&deferred,&dr)&&fixed->end_campaign());
+        reset(257);
+        assert(!api->campaign_trigger_touch(a,dynamic_trigger_extent,&f.other,&b,&r)&&f.order=="P"&&!queue.count);
     }

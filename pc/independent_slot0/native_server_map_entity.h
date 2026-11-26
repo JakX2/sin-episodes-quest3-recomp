@@ -377,12 +377,16 @@ struct CampaignTriggerBindings {
     int (__cdecl *end_game)(void*) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
     const DeferredRemovalBindings* deferred;
+    // Original 222bc4a0 lazy singleton owner. The native leaf writes
+    // +11 only after event dispatch. Opt-in fixed policy is exclusive.
+    int (__cdecl *difficulty_manager)(void*,void**,unsigned*) noexcept;
+    bool fixed_campaign;
 };
 struct CampaignTriggerResult {
     unsigned completed,dynamic,spawn_suppressed,base_spawned,warned,nonplayer,
         special_called,event_attempted,event_unavailable,event_fired,manager_signaled,removed;
     int descriptor;
-    unsigned native_removed;
+    unsigned native_removed,native_manager,fixed_observed,already_removed;
 };
 struct SpawnBindings {
     void* context;

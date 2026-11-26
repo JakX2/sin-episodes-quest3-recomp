@@ -3,6 +3,7 @@
 #include <cmath>
 #include "server_fixed_difficulty_service.h"
 extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" const sin_port::fixed_service::Api* __cdecl SiN_GetFixedDifficultyApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
 #include <cstdlib>
 #include <cerrno>
@@ -866,16 +867,48 @@ int __cdecl campaign_trigger_touch(void* a,unsigned n,void* other,const Campaign
     if(!campaign_valid(a,n,b,o)||!other||!b->is_player)return 0;
     bool player=false;if(!b->is_player(b->context,other,&player))return 0;
     if(!player){o->nonplayer=o->completed=1;return 1;}
+    // The existing fixed-policy adapter is deliberately opt-in. Unlike
+    // the original raw Touch leaf it refuses duplicate observations once
+    // native deferred removal has marked the actor.
+    const sin_port::fixed_service::Api* fixed=nullptr;
+    static bool fixed_touch_active=false;
+    struct FixedGuard {
+        bool& active;bool owns=false;
+        ~FixedGuard(){if(owns)active=false;}
+    } guard{fixed_touch_active};
+    if(o->dynamic&&b->fixed_campaign){
+        if(b->difficulty_manager||!b->deferred||!b->deferred->queue||fixed_touch_active)return 0;
+        if(read_field<unsigned>(a,0xb8)&1u){o->already_removed=o->completed=1;return 1;}
+        using namespace sin_port::fixed_service;
+        fixed=SiN_GetFixedDifficultyApi(abi_version,sizeof(sin_port::fixed_service::Api));
+        State state{};if(!fixed||!fixed->get_state(&state))return 0;
+        fixed_touch_active=guard.owns=true;
+    }
     const char* name=nullptr;if(!campaign_name(a,*b,name))return 0;
     float value=0;int decision=0;
     if(o->dynamic){
         if(read_field<unsigned>(a,0xb8)&0x800u){if(!b->special||!b->special(b->context,a))return 0;o->special_called=1;}
         value=read_field<float>(a,0x470);decision=read_field<int>(a,0x474);
     }
+    if(fixed&&!std::isfinite(value))return 0;
     if(!campaign_event(a,name,o->dynamic?0:12,value,decision,*b,*o))return 0;
     // EndOfGame is read after the event helper, and only its LOW BYTE.
-    if(o->dynamic&&read_field<unsigned char>(a,0x478)){
-        if(!b->end_game||!b->end_game(b->context))return 0;o->manager_signaled=1;
+    if(o->dynamic){
+        const unsigned end=read_field<unsigned char>(a,0x478);
+        if(fixed){
+            // Existing fixed profile owns accounting. Observe once even
+            // when CreateEvent returned null; no adaptive metric changes.
+            if(!fixed->observe_trigger(decision,value,static_cast<int>(end)))return 0;
+            o->fixed_observed=1;o->manager_signaled=end!=0;
+        }else if(end){
+            if(b->difficulty_manager){
+                void* manager=nullptr;unsigned bytes=0;
+                if(!b->difficulty_manager(b->context,&manager,&bytes)||!manager||bytes<0x268||
+                   read_field<unsigned>(manager,0)!=0x2245cdacu)return 0;
+                write_field(manager,0x11,static_cast<unsigned char>(1));o->native_manager=1;
+            }else if(!b->end_game||!b->end_game(b->context))return 0;
+            o->manager_signaled=1;
+        }
     }
     if(!campaign_remove(a,*b,*o))return 0;
     o->completed=1;return 1;
