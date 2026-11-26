@@ -4977,6 +4977,32 @@ int main(int argc,char** argv){
         cl.line=&player_line;cone.line=&player_line;cf.disposition=0;f.put(q.a,0x8ec,0x10000000u);bits(0);
         assert(query_line(true)&&!clr.allowed&&clr.initial_condition==6&&clr.cone.player_blocked&&clr.cone.spread.no_weapon&&clr.cone_condition==41&&clr.conditions_written==2&&(CombatFixture::rd(q.a,0x7d0)&(1u<<9)));
         assert(query_line(false)&&!clr.allowed&&!clr.conditions_written&&!clr.blocker_written);
+        // Native line replaces the hosted +6e8 in original attack-condition gather.
+        const auto native_attack_getter=reinterpret_cast<GetServerNpcGruntNativeLineAttackApi>(GetProcAddress(s,server_npc_grunt_native_line_attack_export));
+        assert(native_attack_getter&&!GetProcAddress(c,server_npc_grunt_native_line_attack_export)&&!native_attack_getter(0,sizeof(ServerNpcGruntNativeLineAttackApi))&&!native_attack_getter(1,0));
+        const auto* native_attack=native_attack_getter(1,sizeof(ServerNpcGruntNativeLineAttackApi));assert(native_attack);
+        ServerNpcGruntAttackBindings nab{};nab.context=&q;nab.original_vtable=ab.actor_vtable;nab.entries=extended_entries;nab.count=4;nab.conditions=ac.schedule.conditions;
+        nab.origin=[](void* p,void* entity,float* out) noexcept -> int{
+            auto& z=CombatFixture::self(p);assert(entity==z.a||entity==z.enemy);out[0]=entity==z.a?0.f:200.f;out[1]=out[2]=0;return 1;
+        };
+        nab.forward=[](void*,void*,float* out) noexcept -> int{out[0]=1;out[1]=out[2]=0;return 1;};
+        nab.aim_point=[](void*,void*,const float*,float* out) noexcept -> int{out[0]=200;out[1]=out[2]=0;return 1;};
+        nab.eye=[](void*,void*,float* out) noexcept -> int{out[0]=200;out[1]=0;out[2]=10;return 1;};
+        // No legacy line or weapon-capability callback.
+        nab.weapon_condition=[](void*,void*,unsigned slot,float dot,float distance,int* id) noexcept -> int{
+            assert(slot==0x4ac&&dot==1.f&&distance==200.f);*id=0x14;return 1;
+        };
+        cl.line=&line;cone.line=&line;f.put(q.a,0x78c,0xffffffffu);f.put(q.a,0x8ec,0x20000u);bits(0);
+        ServerNpcGruntNativeLineAttackResult nar{};
+        auto gather_attack=[&](){return native_attack->gather(q.a,sizeof(q.a),q.enemy,200,60,&nab,&cl,&nar);};
+        lf.hit=nullptr;
+        assert(gather_attack()&&nar.attack.line_calls==1&&nar.attack.cleanup_calls==1&&nar.attack.line_clear&&nar.attack.conditions[0]==20&&nar.lines[0].point_called&&!nar.lines[1].completed);
+        lf.hit=q.weapon;lf.combat=nullptr;
+        assert(gather_attack()&&nar.attack.line_calls==2&&nar.attack.cleanup_calls==2&&!nar.attack.line_clear&&nar.attack.suppressed==1&&nar.lines[0].initial_condition==43&&nar.lines[1].initial_condition==43&&nar.lines[1].blocker_written&&!(CombatFixture::rd(q.a,0x7cc)&(1u<<20)));
+        cl.point_blocker=[](void* p,void*,const float* end,unsigned,void** out) noexcept -> int{*out=end[2]==0?static_cast<LineFixture*>(p)->hit:nullptr;return 1;};
+        assert(gather_attack()&&nar.attack.line_calls==2&&nar.attack.line_clear&&nar.lines[0].initial_condition==43&&nar.lines[1].allowed&&nar.attack.conditions[0]==20);
+        f.put(q.a,0x78c,0x2002u);f.put(q.a,0x8ec,0u);lf.fraction=1.f;
+        assert(gather_attack()&&nar.attack.line_calls==1&&nar.attack.weapon_queries==1&&nar.attack.weapon_capabilities==0x2000u&&nar.lines[0].weapon_called&&nar.attack.line_clear);
         f.put(q.a,0x78c,0x2002u);bits(0);
         f.put(q.a,0x8ec,0u);ab.entries=q.entries;ab.count=3;
 
