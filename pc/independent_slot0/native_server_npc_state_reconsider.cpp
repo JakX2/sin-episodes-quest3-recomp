@@ -6115,6 +6115,91 @@ int __cdecl assault_lifecycle_run(void* a,unsigned n,const void* task,unsigned t
 }
 const ServerNpcGruntAssaultLifecycleApi assault_lifecycle_api{1,sizeof(ServerNpcGruntAssaultLifecycleApi),&assault_lifecycle_start,&assault_lifecycle_run};
 
+bool assault_activation_init(void* a,unsigned n,float now,const ServerNpcGruntAssaultActivationBindings* b,ServerNpcGruntAssaultActivationResult* o) noexcept{
+    if(!o)return false;*o={};o->slot.index=o->slot.selected=-1;
+    if(!a||n<0xc1c||!b||!b->schedule||!std::isfinite(now))return false;
+    const auto& ab=b->schedule->admission;
+    return relation_grunt_class(ab.actor_vtable)&&ab.actor_token&&ab.actor_token<=0xfffff000u&&
+        ab.count<=sin_independent::kEntityHandleCapacity&&(!ab.count||ab.entries);
+}
+int assault_change_active_impl(void* a,unsigned n,std::uint32_t next,float now,const ServerNpcGruntAssaultActivationBindings& b,ServerNpcGruntAssaultActivationResult& o) noexcept{
+    const auto& ab=b.schedule->admission;
+    o.previous=read<unsigned>(a,0xc18);o.next=next;
+    auto identity=[&](std::uint32_t token,EmbeddedBehaviorIdentity& id){
+        return !token||embedded_behavior_identity(a,n,ab.actor_vtable,ab.actor_token,token,false,id);
+    };
+    EmbeddedBehaviorIdentity prior{},arrival{};
+    if(!identity(o.previous,prior)||!identity(next,arrival))return 0;
+    o.departure_vtable=prior.behavior_vtable;o.arrival_vtable=arrival.behavior_vtable;
+    auto done=[&](){o.after=read<unsigned>(a,0xc18);o.completed=1;return 1;};
+    auto other=[&](const EmbeddedBehaviorIdentity& id,unsigned slot){
+        return b.other_lifecycle&&b.other_lifecycle(b.context,a,static_cast<unsigned char*>(a)+id.embedded_offset,n-id.embedded_offset,id.behavior_vtable,slot);
+    };
+    // Original writes the requested token even when unchanged.
+    if(next!=o.previous&&next&&!b.activation_guard)return 0;
+    write(a,0xc18,next);o.active_written=1;o.changed=next!=o.previous;
+    if(!o.changed)return done();
+    if(next){
+        // Assault +1c = one-byte RET; four other admitted components also have empty +1c.
+        const auto vt=arrival.behavior_vtable;
+        if(vt!=0x223f5544&&vt!=0x223f956c&&vt!=0x224ab88c&&vt!=0x224ab494){
+            if(!other(arrival,0x1c))return 0;
+        }
+        o.arrival_called=1;
+        *b.activation_guard=1;o.guard_set=1;
+        // Original reloads active +c18 after arrival callback, not the requested token.
+        EmbeddedBehaviorIdentity current{};const auto active=read<unsigned>(a,0xc18);
+        bool ok=active&&identity(active,current);
+        if(ok){
+            // Assault and no-op behavior +24 forward to bridge +0, suppressed by guard=1.
+            if(current.behavior_vtable!=0x223f5544&&current.behavior_vtable!=0x224ab88c)
+                ok=other(current,0x24);
+        }
+        *b.activation_guard=0;o.guard_cleared=1;
+        if(!ok)return 0;o.post_arrival_called=1;
+    }
+    if(o.previous){
+        if(prior.behavior_vtable==0x223f5544){
+            if(!assault_deactivate(a,n,b.schedule,&o.departure))return 0;o.native_departure=1;
+        }else if(prior.behavior_vtable!=0x223f956c&&prior.behavior_vtable!=0x224ab88c){
+            if(!other(prior,0x20))return 0;o.other_departure=1;
+        }
+        // Original 22054ca0 uses the current squad, enemy and slot after departure.
+        if(const auto group=read<unsigned>(a,0x9c4)){
+            if(!b.slots)return 0;auto slots=*b.slots;slots.entries=ab.entries;slots.count=ab.count;
+            const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+            if(!slots_release(group,assault_owner_target(a,registry),read<int>(a,0x9cc),now,&slots,&o.slot))return 0;
+            write(a,0x9cc,-1);o.slot_released=1;
+        }
+    }
+    // All eight Grunt +778 targets are 2216e310 (RET 8).
+    o.notification_ignored=1;return done();
+}
+int __cdecl assault_change_active(void* a,unsigned n,std::uint32_t next,float now,const ServerNpcGruntAssaultActivationBindings* b,ServerNpcGruntAssaultActivationResult* o) noexcept{
+    if(!assault_activation_init(a,n,now,b,o))return 0;
+    return assault_change_active_impl(a,n,next,now,*b,*o);
+}
+int __cdecl assault_reevaluate_active(void* a,unsigned n,std::uint32_t candidate,bool force,float now,const ServerNpcGruntAssaultActivationBindings* b,ServerNpcGruntAssaultActivationResult* o) noexcept{
+    if(!assault_activation_init(a,n,now,b,o))return 0;
+    o->previous=o->after=read<unsigned>(a,0xc18);o->next=candidate;
+    auto done=[&](){o->completed=1;return 1;};
+    if(candidate!=o->previous)return done();
+    if(!candidate)return 0; // retail assumes non-null candidate if equal
+    const auto& ab=b->schedule->admission;EmbeddedBehaviorIdentity id{};
+    if(!embedded_behavior_identity(a,n,ab.actor_vtable,ab.actor_token,candidate,false,id))return 0;
+    bool admitted=false;
+    if(id.behavior_vtable==0x223f5544){
+        if(!assault_admit(a,n,now,&ab,&o->admission))return 0;admitted=o->admission.admitted!=0;
+    }else if(!b->other_admit||!b->other_admit(b->context,a,static_cast<unsigned char*>(a)+id.embedded_offset,n-id.embedded_offset,id.behavior_vtable,&admitted))return 0;
+    o->admission_checked=1;o->admitted=admitted;
+    if(admitted)return done();
+    if(force){o->force_kept=1;return done();}
+    if(!assault_change_active_impl(a,n,0,now,*b,*o))return 0;
+    o->reevaluated=o->deactivated=1;return 1;
+}
+const ServerNpcGruntAssaultActivationApi assault_activation_api{1,sizeof(ServerNpcGruntAssaultActivationApi),&assault_change_active,&assault_reevaluate_active};
+
+
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -8016,4 +8101,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultLifecycleApi=_SiN_GetServerNpcGruntAssaultLifecycleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultLifecycleApi* __cdecl SiN_GetServerNpcGruntAssaultLifecycleApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultLifecycleApi)?&assault_lifecycle_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultActivationApi=_SiN_GetServerNpcGruntAssaultActivationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultActivationApi* __cdecl SiN_GetServerNpcGruntAssaultActivationApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultActivationApi)?&assault_activation_api:nullptr;
 }
