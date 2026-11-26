@@ -853,6 +853,45 @@ int native_set_squad(void* a,unsigned n,const ServerEntityInputData& d,const Ser
     }
     return 1;
 }
+// InputBeginRappel/InputPauseRappel tail through the shared Grunt +6f0/+6f4
+// thunks to the embedded +cfc behavior. Map the private condition ID through
+// its registered class descriptor, then use the original actor condition bank.
+int native_rappel_input(void* a,unsigned n,bool begin,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    if(!b.rappel)return -1;
+    if(n<0xd20||rd<unsigned>(a,0xcfc)!=0x223f956cu||rd<unsigned>(a,0xd00)!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(a)))return 0;
+    auto* component=static_cast<unsigned char*>(a)+0xcfc;
+    struct RangeContext {const ServerNpcActivePostAnimationBindings* storage;} range{b.storage};
+    ServerNpcConditionMapBindings map{};
+    map.context=&range;
+    map.descriptor=[](void* p,void*,const void** data,unsigned* bytes) noexcept -> int{
+        const auto& q=*static_cast<RangeContext*>(p);
+        void* row=nullptr;*bytes=0;
+        if(!q.storage||!q.storage->resolve||!q.storage->resolve(q.storage->context,0x2254c648u,&row,bytes)||!row)return 0;
+        *data=row;return 1;
+    };
+    map.storage=[](void* p,unsigned token,const void** data,unsigned* bytes) noexcept -> int{
+        const auto& q=*static_cast<RangeContext*>(p);
+        void* row=nullptr;*bytes=0;
+        if(!q.storage||!q.storage->resolve||!q.storage->resolve(q.storage->context,token,&row,bytes)||!row)return 0;
+        *data=row;return 1;
+    };
+    ServerNpcConditionResult mapped{};
+    if(!resolve_npc_condition_range(component,begin?100000:100001,&map,&mapped))return 0;
+    o.rappel_mapped=mapped.mapped;
+    const auto* condition=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    ServerNpcConditionResult stored{};
+    if(!condition||!condition->store(a,n,mapped.global,NpcConditionCurrent,true,b.rappel->actor_conditions,&stored))return 0;
+    o.rappel_condition=stored.mapped;
+    if(!begin)return 1;
+    // 220ddc70: set condition first, optional transform detach, then snapshot
+    // the owner's current three words (not a pre-detach position).
+    if(rd<unsigned>(a,0xb8)&0x800u){
+        if(!b.rappel->detach||!b.rappel->detach(b.rappel->context,a))return 0;
+        ++o.rappel_detached;
+    }
+    std::memcpy(component+0x18,static_cast<unsigned char*>(a)+0x2bc,12);++o.rappel_snapshot;
+    return 1;
+}
 // Original concrete handlers, independent from the descriptor projection.
 // Return -1 for a handler not implemented here, 0 for malformed storage,
 // and 1 for a successfully executed native leaf.
@@ -873,6 +912,8 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
     };
     switch(handler){
     case 0x22032000u:return native_set_squad(a,n,d,b,o);
+    case 0x22031fe0u:return native_rappel_input(a,n,true,b,o);
+    case 0x22031ff0u:return native_rappel_input(a,n,false,b,o);
     case 0x2202e7d0u:return byte(0x968,1); // StartScripting
     case 0x2202e7e0u:return byte(0x968,0); // StopScripting
     case 0x22044d80u:return flag(2u,true);  // GagEnable
