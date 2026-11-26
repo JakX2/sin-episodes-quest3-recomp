@@ -111,6 +111,30 @@ struct EvaluateResult {
     Result ammo;
     FallbackResult fallback;
 };
+inline constexpr unsigned resupply_vtable=0x2246b4bcu,check_pvs_think=0x222f90d0u;
+struct LifecycleBindings {
+    void* context;
+    // Base entity constructor and activation remain engine services.
+    int (__cdecl *base_construct)(void*,void*,int) noexcept;
+    int (__cdecl *mark_edict)(void*,std::uint32_t,unsigned) noexcept;
+    int (__cdecl *precache)(void*,const char*,int) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *now)(void*,float*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+    int (__cdecl *base_activate)(void*,void*) noexcept;
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept;
+    int (__cdecl *warning)(void*,const char*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned entry_count;
+    std::uint32_t* master_handle;
+};
+struct LifecycleResult {
+    unsigned base_called,flag_added,deferred_dirty,edict_marked,defaults_written,
+        precached,manual,random_called,clock_read,scheduled,think_installed,
+        master_assigned,master_retained,warning_called,think_cleared,removed,completed;
+    float delay,next_time;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -128,6 +152,11 @@ struct Api {
     int (__cdecl *evaluate)(void*,unsigned,const void*,unsigned,int,const EvaluateBindings*,EvaluateResult*) noexcept;
     // 222a44d0: first inventory weapon whose primary or secondary index matches.
     int (__cdecl *owns)(const InventoryView*,int,OwnershipResult*) noexcept;
+    int (__cdecl *construct)(void*,unsigned,const LifecycleBindings*,LifecycleResult*) noexcept;
+    int (__cdecl *spawn)(void*,unsigned,const LifecycleBindings*,LifecycleResult*) noexcept;
+    int (__cdecl *activate)(void*,unsigned,const LifecycleBindings*,LifecycleResult*) noexcept;
+    int (__cdecl *become_master)(void*,unsigned,const LifecycleBindings*,LifecycleResult*) noexcept;
+    int (__cdecl *kill)(void*,unsigned,const LifecycleBindings*,LifecycleResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

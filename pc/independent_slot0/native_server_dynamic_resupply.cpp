@@ -295,7 +295,73 @@ int __cdecl evaluate(void* actor,unsigned bytes,const void* player,unsigned play
     if(!s.remove||!s.remove(s.context,actor))return 0;
     out->removed=out->completed=1;return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns};
+template<class T>void set_field(void* p,unsigned off,T value) noexcept {
+    std::memcpy(static_cast<unsigned char*>(p)+off,&value,sizeof(value));
+}
+bool lifecycle_start(void* actor,unsigned bytes,const LifecycleBindings* b,LifecycleResult* o,bool constructed=true) noexcept {
+    if(!o)return false;*o={};
+    return actor&&bytes>=0x3b0&&b&&(!constructed||field<unsigned>(actor,0)==resupply_vtable);
+}
+int __cdecl construct(void* actor,unsigned bytes,const LifecycleBindings* b,LifecycleResult* o) noexcept {
+    if(!lifecycle_start(actor,bytes,b,o,false)||!b->base_construct||!b->base_construct(b->context,actor,0))return 0;
+    o->base_called=1;set_field(actor,0,resupply_vtable);
+    const unsigned flags=field<unsigned>(actor,0xb4);
+    if(!(flags&1u)){
+        if(field<std::uint8_t>(actor,0x1f0)){
+            set_field(actor,0x200,std::uint8_t(1));o->deferred_dirty=1;
+        }else if(const unsigned edict=field<unsigned>(actor,0x16c)){
+            if(!b->mark_edict||!b->mark_edict(b->context,edict,1u))return 0;
+            o->edict_marked=1;
+        }
+        set_field(actor,0xb4,flags|1u);o->flag_added=1;
+    }
+    for(unsigned i=0;i<count+1;++i){set_field(actor,0x394+4*i,1.f);++o->defaults_written;}
+    o->completed=1;return 1;
+}
+int __cdecl spawn(void* actor,unsigned bytes,const LifecycleBindings* b,LifecycleResult* o) noexcept {
+    if(!lifecycle_start(actor,bytes,b,o)||!b->precache)return 0;
+    if(!b->precache(b->context,health_classname,0))return 0;++o->precached;
+    for(const auto& type:ammo_types){if(!b->precache(b->context,type.classname,0))return 0;++o->precached;}
+    if(field<unsigned>(actor,0xb4)&2u){o->manual=o->completed=1;return 1;}
+    if(!b->random_float||!b->random_float(b->context,.2f,.4f,&o->delay))return 0;o->random_called=1;
+    float now=0;if(!b->now||!b->now(b->context,&now))return 0;o->clock_read=1;
+    o->next_time=float(double(now)+double(o->delay));
+    if(!b->schedule||!b->schedule(b->context,actor,o->next_time))return 0;o->scheduled=1;
+    set_field(actor,8,check_pvs_think);o->think_installed=o->completed=1;return 1;
+}
+bool registry_ok(const LifecycleBindings& b) noexcept {
+    return b.master_handle&&b.entry_count<=sin_independent::kEntityHandleCapacity&&(!b.entry_count||b.entries);
+}
+int __cdecl activate(void* actor,unsigned bytes,const LifecycleBindings* b,LifecycleResult* o) noexcept {
+    if(!lifecycle_start(actor,bytes,b,o)||!registry_ok(*b)||!b->base_activate||!b->base_activate(b->context,actor))return 0;
+    o->base_called=1;
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    if(field<unsigned>(actor,0xb4)&2u){
+        if(!registry.Resolve(*b->master_handle)){
+            if(!b->entity_handle||!b->entity_handle(b->context,actor,b->master_handle))return 0;
+            o->master_assigned=1;
+        }else o->master_retained=1;
+    }
+    if(field<unsigned>(actor,0xb4)&1u){
+        float now=0;if(!b->now||!b->now(b->context,&now))return 0;o->clock_read=1;
+        // Original x87 ordered strictly-less-than 1.0, not <=.
+        if(now<1.f&&registry.Resolve(*b->master_handle)){
+            if(!b->warning||!b->warning(b->context,"item_dynamic_resupply set to 'Use Master', but no item_dynamic_resupply master exists.\n"))return 0;
+            o->warning_called=1;
+        }
+    }
+    o->completed=1;return 1;
+}
+int __cdecl become_master(void* actor,unsigned bytes,const LifecycleBindings* b,LifecycleResult* o) noexcept {
+    if(!lifecycle_start(actor,bytes,b,o)||!b->master_handle||!b->entity_handle||
+       !b->entity_handle(b->context,actor,b->master_handle))return 0;
+    o->master_assigned=1;set_field(actor,8,0u);o->think_cleared=o->completed=1;return 1;
+}
+int __cdecl kill(void* actor,unsigned bytes,const LifecycleBindings* b,LifecycleResult* o) noexcept {
+    if(!lifecycle_start(actor,bytes,b,o)||!b->remove||!b->remove(b->context,actor))return 0;
+    o->removed=o->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
