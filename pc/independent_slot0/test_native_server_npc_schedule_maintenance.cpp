@@ -214,7 +214,35 @@ int main(int argc,char** argv){
         reset();f.condition(63);f.yield=true;f.put(f.rows[0],0,global+71);f.put(f.tasks[0],0,158);
         arbitration.shared_select=nullptr;
         assert(native->run(f.actor,sizeof(f.actor),10,&nb,&nr,nullptr,nullptr)&&nr.request.forced_schedule&&nr.request.requested==71&&nr.scheduler.maintenance.state.schedule==1&&nr.scheduler.grunt.lifecycle.completed);
+        // Elite shares +494/+498 but has its own +43c mapping and task dispatcher.
+        nb.scheduler.original_vtable=0x2248df04;arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=25;return 1;};
+        arbitration.shared_translate=nullptr;
+        f.put(f.rows[0],0,global+118);f.put(f.tasks[0],0,3);f.put(f.tasks[0],4,1.f);
+        reset();f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.yield=true;
+        assert(native->run(f.actor,sizeof(f.actor),10,&nb,&nr,nullptr,nullptr)&&nr.request.requested==25&&nr.request.acquisition.translated==118&&nr.scheduler.elite.lifecycle.completed);
+        assert(nr.scheduler.subclass==NpcSubclassElite&&f.get<int>(0x79c)==global+25);
+        assert(!native->run(f.actor,0xfdf,10,&nb,&nr,nullptr,nullptr));
         nb.scheduler.original_vtable=0x2249964c;assert(!native->run(f.actor,sizeof(f.actor),10,&nb,&nr,nullptr,nullptr));
+        const auto jg=reinterpret_cast<GetServerNpcNativeJetRequestSchedulerApi>(GetProcAddress(s,server_npc_native_jet_request_scheduler_export));
+        assert(jg&&!GetProcAddress(c,server_npc_native_jet_request_scheduler_export)&&!jg(0,sizeof(ServerNpcNativeJetRequestSchedulerApi))&&!jg(1,0));
+        const auto* jet_api=jg(1,sizeof(ServerNpcNativeJetRequestSchedulerApi));assert(jet_api);
+        const float invalid[3]{};
+        ServerNpcGruntJetSelectorBindings jet{};jet.combat=&combat;jet.invalid_point=invalid;
+        ServerNpcNativeJetRequestSchedulerBindings jb{};jb.scheduler=nb.scheduler;jb.selector=&jet;jb.line=&line;
+        static ServerNpcNativeJetRequestSchedulerResult jr{};
+        arbitration.shared_select=nullptr;arbitration.shared_translate=[](void*,void*,int id,int* v) noexcept -> int{*v=id;return 1;};
+        f.put(f.tasks[0],0,160);
+        for(unsigned vt:{0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+            jb.scheduler.original_vtable=vt;reset();f.yield=true;
+            assert(jet_api->run(f.actor,sizeof(f.actor),10,&jb,&jr,nullptr,nullptr)&&jr.base.request.requested==118&&jr.base.request.acquisition.translated==118&&jr.tail.completed&&jr.tail.schedule==118);
+            assert(jr.base.scheduler.subclass==NpcSubclassJetpack&&jr.base.scheduler.jetpack.lifecycle.completed&&f.get<int>(0xfec)==2);
+        }
+        // Jet failure translates 41 directly to 122; no shared translation.
+        f.put(f.rows[1],0,global+122);f.put(f.tasks[1],0,160);
+        arbitration.shared_translate=nullptr;reset();f.yield=true;f.put(f.actor,0x798,1u);f.put(f.actor,0x7a4,1);f.put(f.actor,0x7b0,7);f.put(f.actor,0x7bc,41);f.condition(33);
+        assert(jet_api->run(f.actor,sizeof(f.actor),10,&jb,&jr,nullptr,nullptr)&&jr.base.failure_requests==1&&jr.base.request.requested==41&&jr.base.request.acquisition.translated==122&&jr.base.scheduler.maintenance.state.schedule==2&&jr.base.scheduler.jetpack.lifecycle.completed);
+        assert(!jet_api->run(f.actor,0x1084,10,&jb,&jr,nullptr,nullptr));
+        jb.scheduler.original_vtable=0x2249aaa4;assert(!jet_api->run(f.actor,sizeof(f.actor),10,&jb,&jr,nullptr,nullptr));
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native maintenance loop task lifecycle, failure schedule and bounded iterations");
 }

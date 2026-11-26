@@ -108,6 +108,23 @@ struct ServerNpcNativeRequestSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerNpcNativeRequestSchedulerBindings*,ServerNpcNativeRequestSchedulerResult*,ServerGruntCombatSchedulerStats*,ServerGruntFullTaskStats*) noexcept;
 };
 using GetServerNpcNativeRequestSchedulerApi=const ServerNpcNativeRequestSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_native_jet_request_scheduler_export[]="SiN_GetServerNpcNativeJetRequestSchedulerApi";
+struct ServerNpcNativeJetRequestSchedulerBindings {
+    ServerNpcSubclassSchedulerBindings scheduler;
+    const ServerNpcGruntJetSelectorBindings* selector;
+    const ServerNpcGruntScheduleLineServices* line;
+    const ServerGruntHelperTaskBindings* full_tasks;
+};
+struct ServerNpcNativeJetRequestSchedulerResult {
+    ServerNpcNativeRequestSchedulerResult base;
+    ServerNpcGruntJetSelectorResult tail,special;
+};
+struct ServerNpcNativeJetRequestSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerNpcNativeJetRequestSchedulerBindings*,ServerNpcNativeJetRequestSchedulerResult*,ServerGruntCombatSchedulerStats*,ServerGruntFullTaskStats*) noexcept;
+};
+using GetServerNpcNativeJetRequestSchedulerApi=const ServerNpcNativeJetRequestSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_npc_gather_scheduler_export[]="SiN_GetServerNpcGatherSchedulerApi";
 struct ServerNpcGatherSchedulerBindings {
     ServerNpcSubclassSchedulerBindings scheduler;
@@ -150,5 +167,7 @@ struct ServerNpcNativeGatherRoute {
     const ServerNpcGruntSpecialCombatBindings* request_selector=nullptr;
     const ServerNpcGruntScheduleLineServices* request_line=nullptr;
     ServerNpcNativeRequestSchedulerResult* request_result=nullptr;
+    const ServerNpcGruntJetSelectorBindings* jet_request_selector=nullptr;
+    ServerNpcNativeJetRequestSchedulerResult* jet_request_result=nullptr;
 };
 }
