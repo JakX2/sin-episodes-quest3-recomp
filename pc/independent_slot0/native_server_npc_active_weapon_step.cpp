@@ -544,6 +544,32 @@ unsigned input_datamap(unsigned vt) noexcept {
     default:return 0;
     }
 }
+// 223a5574 -> 223a8410 in the original C locale. A string pool
+// supplies actual bytes and extent; a numeric token is not a name.
+bool input_text(const ServerEntityAcceptInputBindings& b,unsigned token,const char** text) noexcept {
+    *text="";if(!token)return true;
+    unsigned bytes=0;
+    if(!b.string_text||!b.string_text(b.context,token,text,&bytes)||!*text||!bytes)return false;
+    const unsigned bound=bytes<4096u?bytes:4096u;
+    return std::memchr(*text,0,bound)!=nullptr;
+}
+bool input_name_equal(const ServerEntityAcceptInputBindings& b,unsigned left,unsigned right,bool& same) noexcept {
+    if(b.name_equal)return b.name_equal(b.context,left,right,&same)!=0;
+    const char* a=nullptr;const char* c=nullptr;
+    if(!input_text(b,left,&a)||!input_text(b,right,&c))return false;
+    auto lower=[](unsigned char x){return x>='A'&&x<='Z'?static_cast<unsigned char>(x+32):x;};
+    while(*a&&lower(static_cast<unsigned char>(*a))==lower(static_cast<unsigned char>(*c))){++a;++c;}
+    same=lower(static_cast<unsigned char>(*a))==lower(static_cast<unsigned char>(*c));return true;
+}
+// Original 223a56cb tail-jumps to 223a5673. Its decimal accumulation is
+// explicitly modulo 2^32, including overflow and final two's-complement sign.
+unsigned input_decimal(const char* p) noexcept {
+    while(*p==' '||(*p>='\t'&&*p<='\r'))++p;
+    const bool negative=*p=='-';if(negative||*p=='+')++p;
+    unsigned v=0;
+    while(*p>='0'&&*p<='9'){v=v*10u+static_cast<unsigned>(*p-'0');++p;}
+    return negative?0u-v:v;
+}
 // Pure conversion leaves of 22155e60. Return false only for missing host
 // services, distinguish a rejected conversion from a malformed binding.
 bool input_convert(void* v,unsigned wanted,const ServerEntityAcceptInputBindings& b,bool& ok) noexcept {
@@ -559,6 +585,12 @@ bool input_convert(void* v,unsigned wanted,const ServerEntityAcceptInputBindings
     }
     if(type==1u&&wanted==6u){wr<std::uint8_t>(v,0,rd<float>(v,0)!=0.f);wr<unsigned>(v,0x10,6u);return true;}
     // Void -> string is accepted by AcceptInput itself without conversion.
+    if(type==2u&&(wanted==5u||wanted==6u)&&b.string_text&&!b.convert){
+        const char* text=nullptr;if(!input_text(b,rd<unsigned>(v,0),&text))return false;
+        const unsigned value=input_decimal(text);
+        if(wanted==5u)wr<unsigned>(v,0,value);else wr<std::uint8_t>(v,0,value!=0);
+        wr<unsigned>(v,0x10,wanted);return true;
+    }
     if(type==2u&&(wanted==1u||wanted==5u||wanted==6u||wanted==3u||wanted==9u||wanted==13u)){
         if(!b.convert)return false;return b.convert(b.context,v,wanted,&ok)!=0;
     }
@@ -584,7 +616,7 @@ int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWak
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
     unsigned token=input_datamap(vt),seen[32]{};
-    if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||!b->name_equal)return 0;
+    if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||(!b->name_equal&&!b->string_text))return 0;
     ServerEntityInputData data{};data.activator=activator;data.caller=caller;data.output_id=id;
     std::memcpy(data.variant,variant,0x14);
     auto rejected=[&](unsigned reason){
@@ -603,7 +635,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             const auto* row=static_cast<const unsigned char*>(rows)+0x34*i;
             const unsigned flags=rd<std::uint16_t>(row,0x12);
             if(!(flags&8u))continue;
-            bool same=false;if(!b->name_equal(b->context,rd<unsigned>(row,0x14),input,&same))return 0;
+            bool same=false;if(!input_name_equal(*b,rd<unsigned>(row,0x14),input,same))return 0;
             if(!same)continue;
             o->matched=1;o->map=token;o->row=static_cast<unsigned>(i);o->handler=rd<unsigned>(row,0x1c);
             o->expected_type=rd<unsigned>(row,0);o->actual_type=rd<unsigned>(data.variant,0x10);

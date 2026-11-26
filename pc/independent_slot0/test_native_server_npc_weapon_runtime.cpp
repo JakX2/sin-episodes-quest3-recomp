@@ -985,6 +985,43 @@ int main(int argc,char** argv){
     assert(scripted.wake_result.completed&&scripted.wake_result.transitions==1&&scripted.wake_result.outputs==1&&scripted.wake_result.flags_changed==1);
     assert(f.get<int>(wt.member,0x868)==0&&f.get<unsigned>(wt.member,0x78)==0&&wt.member[0x200]&&!outf.service_locked);check_queue({});
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
+    // Native input names compare bytes, not token identity. Decimal parsing
+    // matches original 223a5673 including modulo-32-bit overflow.
+    inp.bindings.name_equal=nullptr;inp.bindings.convert=nullptr;
+    inp.bindings.string_text=[](void*,unsigned token,const char** text,unsigned* n) noexcept -> int{
+        switch(token){
+        case 600u:*text="SetHealth";break;case 1600u:*text="sEThEALTH";break;
+        case 601u:*text="SetRadius";break;
+        case 602u:*text="SetFlag";break;case 1602u:*text="SETFLAG";break;
+        case 603u:*text="SetName";break;case 604u:*text="SetHandle";break;
+        case 0x223db3c4u:*text="Wake";break;case 1700u:*text="wAkE";break;
+        case 2000u:*text=" \t-42suffix";break;
+        case 2001u:*text="+4294967296";break;
+        case 2002u:*text="4294967297";break;
+        case 2003u:*text="true";break;
+        case 2004u:*text="-2147483649";break;
+        case 2005u:*text="";break;
+        case 2006u:*text="0x20";break;
+        case 2999u:*text="Missing";break;
+        case 3000u:{static const char bad[]{'x','y'};*text=bad;*n=sizeof(bad);return 1;}
+        default:return 0;
+        }
+        *n=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    assert(run_input(1600u,2u,2000u)&&inp.result.accepted&&inp.result.converted&&f.get<int>(f.actor,0x9c)==-42);
+    assert(run_input(1600u,2u,2001u)&&inp.result.accepted&&f.get<unsigned>(f.actor,0x9c)==0u);
+    assert(run_input(1600u,2u,2002u)&&inp.result.accepted&&f.get<unsigned>(f.actor,0x9c)==1u);
+    assert(run_input(1600u,2u,2004u)&&inp.result.accepted&&f.get<unsigned>(f.actor,0x9c)==0x7fffffffu);
+    assert(run_input(1600u,2u,2005u)&&inp.result.accepted&&!f.get<unsigned>(f.actor,0x9c));
+    assert(run_input(1600u,2u,0u)&&inp.result.accepted&&!f.get<unsigned>(f.actor,0x9c));
+    assert(run_input(1600u,2u,2006u)&&inp.result.accepted&&!f.get<unsigned>(f.actor,0x9c));
+    assert(run_input(1602u,2u,2002u)&&inp.result.accepted&&f.actor[0x870]==1);
+    assert(run_input(1602u,2u,2003u)&&inp.result.accepted&&!f.actor[0x870]);
+    const unsigned before_handlers=inp.handlers;
+    assert(run_input(1700u,0u,0u)&&inp.result.accepted&&inp.handlers==before_handlers+1);
+    assert(run_input(2999u,0u,0u)&&inp.result.completed&&!inp.result.accepted&&inp.result.reason==EntityInputUnknown);
+    assert(!run_input(1600u,2u,3000u)&&!inp.result.completed&&!f.actor[0x200]);
+    assert(!run_input(3000u,0u,0u)&&!inp.result.completed&&!f.actor[0x200]);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

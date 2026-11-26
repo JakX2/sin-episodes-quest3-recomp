@@ -273,6 +273,9 @@ struct ServerEntityAcceptInputBindings {
     // are authoritative from AcceptInput; other handler tokens remain hosted.
     const ServerNpcWakeTransitionBindings* wake;
     ServerNpcWakeTransitionResult* wake_result;
+    // Bounded C-locale string token resolver. Enables original ASCII
+    // case-insensitive input matching and decimal string-to-int/bool leaves.
+    int (__cdecl *string_text)(void*,std::uint32_t,const char**,unsigned*) noexcept;
 };
 struct ServerEntityAcceptInputResult {
     unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake;
