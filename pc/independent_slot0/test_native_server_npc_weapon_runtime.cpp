@@ -1748,21 +1748,21 @@ int main(int argc,char** argv){
     assert(assault_input(901u)&&catalog_o.assault_linked&&catalog_o.assault_reset&&f.get<unsigned>(f.actor,0xdd0)==0x1003u);
     auto get_arb=reinterpret_cast<GetServerNpcGruntAssaultArbitrationApi>(GetProcAddress(server,server_npc_grunt_assault_arbitration_export));
     assert(get_arb);const auto* arb=get_arb(1,sizeof(ServerNpcGruntAssaultArbitrationApi));assert(arb);
-    ServerNpcGruntAssaultScheduleBindings assault_schedule{};auto& admission=assault_schedule.admission;
-    admission.entries=assault_slots;admission.count=6;admission.actor_vtable=ground_vt;admission.actor_token=actor_token;
-    admission.context=&assault_f;admission.extent=assault_search.extent;
-    admission.conditions.context=&assault_f;
-    admission.conditions.descriptor=[](void* p,void* actor,const void** desc,unsigned* bytes) noexcept -> int{
+    ServerNpcGruntAssaultScheduleBindings assault_schedule{};auto& assault_admission=assault_schedule.admission;
+    assault_admission.entries=assault_slots;assault_admission.count=6;assault_admission.actor_vtable=ground_vt;assault_admission.actor_token=actor_token;
+    assault_admission.context=&assault_f;assault_admission.extent=assault_search.extent;
+    assault_admission.conditions.context=&assault_f;
+    assault_admission.conditions.descriptor=[](void* p,void* actor,const void** desc,unsigned* bytes) noexcept -> int{
         auto& q=*static_cast<AssaultFixture*>(p);assert(actor==q.f->actor);*desc=q.conditions;*bytes=sizeof(q.conditions);return 1;
     };
-    admission.owner_ready=[](void* p,void* actor,bool* yes) noexcept -> int{
+    assault_admission.owner_ready=[](void* p,void* actor,bool* yes) noexcept -> int{
         auto& q=*static_cast<AssaultFixture*>(p);assert(actor==q.f->actor);*yes=q.ready;return 1;
     };
     f.put(assault_f.conditions,0x34,npc_global_condition_base);f.put(assault_f.conditions,0x38,0);f.put(assault_f.conditions,0x3c,100);
     f.put(assault_f.schedules,4,npc_global_condition_base+300);f.put(assault_f.schedules,8,100000);
     f.put(assault_f.schedules,12,100009);f.put(assault_f.schedules,16,npc_global_condition_base+309);
     std::uint8_t guard=0;ServerNpcGruntAssaultActivationBindings activation{};activation.schedule=&assault_schedule;activation.activation_guard=&guard;
-    ServerNpcGruntAssaultPolicyBindings assault_policy{};assault_policy.admission=admission;
+    ServerNpcGruntAssaultPolicyBindings assault_policy{};assault_policy.admission=assault_admission;
     assault_policy.behavior_schedules.context=&assault_f;
     assault_policy.behavior_schedules.descriptor=[](void* p,void* component,const void** desc,unsigned* bytes) noexcept -> int{
         auto& q=*static_cast<AssaultFixture*>(p);assert(component==q.f->actor+0xdb8);*desc=q.schedules;*bytes=sizeof(q.schedules);return 1;
