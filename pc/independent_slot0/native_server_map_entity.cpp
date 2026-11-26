@@ -3636,13 +3636,16 @@ bool animation_valid(void* a,unsigned n,void* npc,const ScriptedSequenceAnimatio
         npc&&b->control->extent(b->control->context,npc,&bytes)&&bytes>=0x974&&
         SinReadCampaignTouchMarkerInternal(npc,&nv)&&scripted_npc_marker(nv)&&SinCampaignStorageReadableInternal(npc,bytes);
 }
-bool animation_done(void*,unsigned,void*,unsigned,const ScriptedSequenceAnimationBindings&,ScriptedSequenceAnimationResult&) noexcept;
+int sequence_finish(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,ScriptedSequenceFinishResult*) noexcept;
+bool animation_done(void*,unsigned,void*,unsigned,const ScriptedSequenceAnimationBindings&,ScriptedSequenceAnimationResult&,
+    const ScriptedSequenceFinishBindings* =nullptr,ScriptedSequenceFinishResult* =nullptr) noexcept;
 bool animation_start(void* a,unsigned n,void* npc,unsigned bytes,unsigned token,bool complete_empty,
-    const ScriptedSequenceAnimationBindings& b,ScriptedSequenceAnimationResult& o) noexcept {
+    const ScriptedSequenceAnimationBindings& b,ScriptedSequenceAnimationResult& o,
+    const ScriptedSequenceFinishBindings* finish=nullptr,ScriptedSequenceFinishResult* terminal=nullptr) noexcept {
     write_field(a,0x3cd,static_cast<unsigned char>(1));
     if(!token&&complete_empty){
         o.empty_completed=1;
-        if(!animation_done(a,n,npc,bytes,b,o))return false;
+        if(!animation_done(a,n,npc,bytes,b,o,finish,terminal))return false;
         o.started=0; // original AL false, even if post-idle started
         return true;
     }
@@ -3669,7 +3672,7 @@ bool animation_start(void* a,unsigned n,void* npc,unsigned bytes,unsigned token,
 // and native StartSequence; otherwise call the remaining finish leaf.
 // Both branches fire OnEndSequence with null activator and self caller.
 bool animation_done(void* a,unsigned n,void* npc,unsigned bytes,const ScriptedSequenceAnimationBindings& b,
-    ScriptedSequenceAnimationResult& o) noexcept {
+    ScriptedSequenceAnimationResult& o,const ScriptedSequenceFinishBindings* finish,ScriptedSequenceFinishResult* terminal) noexcept {
     const auto& c=*b.control;
     if(c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count)||!b.events||!b.events->output)return false;
     const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
@@ -3679,7 +3682,10 @@ bool animation_done(void* a,unsigned n,void* npc,unsigned bytes,const ScriptedSe
         if(!animation_start(a,n,npc,bytes,post,false,b,o))return false;
         o.post_idle_started=o.started;
     }else{
-        if(!b.finish||!b.finish(b.context,a,npc))return false;o.finish_called=1;
+        if(finish){
+            if(!terminal||finish->animation!=&b||!sequence_finish(a,n,npc,finish,terminal))return false;
+        }else if(!b.finish||!b.finish(b.context,a,npc))return false;
+        o.finish_called=1;
     }
     if(b.events->native_queue){
         if(!native_named_output(a,n,nullptr,0x3f8,false,b.events->output,b.events->native_queue,o.queued))return false;
@@ -3694,12 +3700,15 @@ bool animation_done(void* a,unsigned n,void* npc,unsigned bytes,const ScriptedSe
     o.output_called=1;return true;
 }
 int run_sequence_animation(void* a,unsigned n,void* npc,unsigned token,bool complete_empty,bool done,
-    const ScriptedSequenceAnimationBindings* b,ScriptedSequenceAnimationResult* o) noexcept {
+    const ScriptedSequenceAnimationBindings* b,ScriptedSequenceAnimationResult* o,
+    const ScriptedSequenceFinishBindings* finish=nullptr,ScriptedSequenceFinishResult* terminal=nullptr) noexcept {
+    if(terminal){*terminal={};terminal->due_tick=-1;terminal->successor_handle=0xffffffffu;terminal->animation.sequence=terminal->animation.activity=-1;}
     if(!o)return 0;*o={};o->sequence=o->activity=-1;
+    if(finish&&(!terminal||finish->animation!=b))return 0;
     unsigned bytes=0;if(!animation_valid(a,n,npc,b,bytes))return 0;
     static thread_local bool active=false;if(active)return 0;
     struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
-    const bool ok=done?animation_done(a,n,npc,bytes,*b,*o):animation_start(a,n,npc,bytes,token,complete_empty,*b,*o);
+    const bool ok=done?animation_done(a,n,npc,bytes,*b,*o,finish,terminal):animation_start(a,n,npc,bytes,token,complete_empty,*b,*o,finish,terminal);
     o->completed=ok;return int(ok);
 }
 // 221afa70 terminal completion, with 221af490 schedule reset
@@ -4258,4 +4267,19 @@ extern "C" int __cdecl SiN_CompleteScriptedSequencePlay(void* a,unsigned n,void*
 extern "C" int __cdecl SiN_FinishScriptedSequence(void* a,unsigned n,void* npc,
     const sin_port::native_map::ScriptedSequenceFinishBindings* b,sin_port::native_map::ScriptedSequenceFinishResult* o) noexcept {
     return sin_port::native_map::sequence_finish(a,n,npc,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_StartScriptedSequenceAnimationNative=_SiN_StartScriptedSequenceAnimationNative")
+extern "C" int __cdecl SiN_StartScriptedSequenceAnimationNative(void* a,unsigned n,void* npc,unsigned token,bool complete_empty,
+    const sin_port::native_map::ScriptedSequenceFinishBindings* b,sin_port::native_map::ScriptedSequenceAnimationResult* o,
+    sin_port::native_map::ScriptedSequenceFinishResult* terminal) noexcept {
+    if(!b||!terminal){if(o)*o={};if(terminal)*terminal={};return 0;}
+    return sin_port::native_map::run_sequence_animation(a,n,npc,token,complete_empty,false,b->animation,o,b,terminal);
+}
+#pragma comment(linker,"/EXPORT:SiN_CompleteScriptedSequencePlayNative=_SiN_CompleteScriptedSequencePlayNative")
+extern "C" int __cdecl SiN_CompleteScriptedSequencePlayNative(void* a,unsigned n,void* npc,
+    const sin_port::native_map::ScriptedSequenceFinishBindings* b,sin_port::native_map::ScriptedSequenceAnimationResult* o,
+    sin_port::native_map::ScriptedSequenceFinishResult* terminal) noexcept {
+    if(!b||!terminal){if(o)*o={};if(terminal)*terminal={};return 0;}
+    return sin_port::native_map::run_sequence_animation(a,n,npc,0,false,true,b->animation,o,b,terminal);
 }

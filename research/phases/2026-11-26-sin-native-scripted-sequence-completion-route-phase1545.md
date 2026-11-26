@@ -1,0 +1,3 @@
+# Phase 1545: native play completion route
+
+Connect phase 1544 terminal finish to existing 221ae2c0 completion and empty-token 221aebc0 path without widening old ABI. Separate exports accept the native finish sidecar and distinct animation/terminal result objects. Ordinary post-idle behavior unchanged; terminal branch calls native finish before OnEndSequence. Existing hosted finish callback remains for old API only. New regression exercises actual native transfer followed by output, empty completion with no transfer, nonrepeatable self suppression. No new original code digests; Windows CI pending.

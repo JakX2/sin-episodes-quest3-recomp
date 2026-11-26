@@ -1412,6 +1412,7 @@
             sin_independent::EntityHandleEntry entries[3]{};
             float now=10.f,interval=.1f;
             unsigned notices=0;bool has_schedule=true,motion=true;int schedule=0x6c;
+            alignas(4) unsigned char action[0x1c]{};
             std::string calls;
         } f;
         const auto finish=reinterpret_cast<FinishScriptedSequence>(GetProcAddress(server,scripted_sequence_finish_export));
@@ -1464,4 +1465,27 @@
         // Stale successor, no schedule: no transfer or motion probe.
         f.calls.clear();f.has_schedule=false;put(f.seq,0x3d4,0x6002u);
         assert(finish(f.seq,sizeof(f.seq),f.npc,&b,&out)&&out.schedule_reads==1&&!out.successor_found&&!out.transferred&&f.calls=="CSX");
+        // Now drive the same terminal transfer via play completion,
+        // with no legacy finish callback. End output follows possession.
+        const auto complete=reinterpret_cast<CompleteScriptedSequencePlayNative>(GetProcAddress(server,scripted_sequence_play_done_native_export));
+        const auto start=reinterpret_cast<StartScriptedSequenceAnimationNative>(GetProcAddress(server,scripted_sequence_start_native_export));
+        assert(complete&&start&&!GetProcAddress(client,scripted_sequence_play_done_native_export)&&!GetProcAddress(client,scripted_sequence_start_native_export));
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);if(token!=1)return 0;*row=f.action;*bytes=0x1c;return 1;
+        };
+        fire.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* a) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(!activator&&caller==f.seq&&a->target==21&&a->input==22);f.calls+='O';return 1;
+        };
+        put(f.action,0,21u);put(f.action,4,22u);put(f.action,0x10,0xffffffffu);put(f.seq,0x40c,1u);
+        ScriptedSequenceEventBindings event{&fire,nullptr};animation.events=&event;
+        animation.finish=[](void*,void*,void*) noexcept ->int{assert(false);return 0;};
+        ScriptedSequenceAnimationResult anim{};
+        f.calls.clear();put(f.seq,0x3d4,0x5002u);put(f.seq,0x3d0,0x4001u);put(f.npc,0x970,0x3000u);
+        assert(complete(f.seq,sizeof(f.seq),f.npc,&b,&anim,&out)&&anim.finish_called&&anim.output_called&&anim.queued==1&&out.transferred&&f.calls=="CSXPO"&&word(f.npc,0x970)==0x5002u);
+        f.calls.clear();put(f.seq,0x3d4,0xffffffffu);
+        assert(start(f.seq,sizeof(f.seq),f.npc,0,true,&b,&anim,&out)&&anim.empty_completed&&!anim.started&&anim.finish_called&&anim.output_called&&out.completed&&!out.transferred&&f.calls=="CSXO");
+        // Nonrepeatable self links never transfer back to the dying script.
+        f.calls.clear();put(f.seq,0xb4,0u);put(f.seq,0x3d4,0x3000u);put(f.seq,0xb8,0x400000u);put(f.seq,0x74,-1);
+        assert(complete(f.seq,sizeof(f.seq),f.npc,&b,&anim,&out)&&out.removal_scheduled&&out.self_skipped&&!out.transferred&&f.calls=="TCSXO");
     }
