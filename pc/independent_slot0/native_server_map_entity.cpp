@@ -240,7 +240,7 @@ int __cdecl destroy_timer(void* actor,unsigned bytes,void* networkable,const Rel
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -326,9 +326,13 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"LowerRandomBound",0x3ec,1},{"UpperRandomBound",0x3f0,1},
         {"OnTimer",0x394,11},{"OnTimerHigh",0x3ac,11},{"OnTimerLow",0x3c4,11}
     };
+    constexpr Spec branch_keys[]{
+        {"InitialValue",0x394,6},{"SetValue",0x394,6},
+        {"OnTrue",0x398,11},{"OnFalse",0x3b0,11}
+    };
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);
     if(!spec){match(common);if(spec)o->base_field=1;}
     if(!spec)return foreign(name);
     o->offset=spec->offset;o->field_type=spec->type;
@@ -990,7 +994,32 @@ int __cdecl timer_primary_run(void* a,unsigned n,int tick,const TimerPrimaryBind
     o->next_tick=read_field<int>(a,0x74);
     o->native_result=(read_field<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run};
+// Original 22179ba0/22179be0/22179c20 and silent 22178d70.
+// SetValue is the direct FIELD_BOOLEAN descriptor, not a handler.
+int __cdecl branch_input(void* a,unsigned n,const char* name,void* activator,unsigned type,unsigned char value,const BranchBindings* b,BranchResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<branch_extent||entity_vtable(a)!=branch_vtable||!name||!b)return 0;
+    const auto prior=read_field<unsigned char>(a,0x394);
+    auto next=prior;bool fire=false;o->handled=1;
+    if(equal_class(name,"SetValue"))next=static_cast<unsigned char>(type==6&&value!=0);
+    else if(equal_class(name,"SetValueTest")){next=type==6?value:0;fire=true;}
+    else if(equal_class(name,"Toggle"))next=static_cast<unsigned char>(!prior);
+    else if(equal_class(name,"ToggleTest")){next=static_cast<unsigned char>(!prior);fire=true;}
+    else if(equal_class(name,"Test"))fire=true;
+    else o->handled=0;
+    if(next!=prior){write_field(a,0x394,next);o->changed=1;}
+    o->value=next;
+    if(fire){
+        using namespace sin_port::native_weapon_tables;
+        const auto* api=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+        ServerEntityVoidOutputResult result{};
+        o->output_offset=next?0x398:0x3b0;
+        if(!api||!b->output||!api->fire(static_cast<unsigned char*>(a)+o->output_offset,0x18,activator,a,n,0.f,b->output,&result))return 0;
+        o->fired=1;o->queued=result.queued;
+    }
+    o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

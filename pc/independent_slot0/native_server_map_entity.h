@@ -109,6 +109,13 @@ struct AutoResult {
     float next_think;
 };
 inline constexpr unsigned timer_vtable=0x22420e14,timer_extent=0x3f4;
+inline constexpr unsigned branch_vtable=0x22422294,branch_extent=0x3c8;
+struct BranchBindings {
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+};
+struct BranchResult {
+    unsigned completed,handled,changed,fired,queued,output_offset,value;
+};
 struct TimerBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -264,6 +271,7 @@ struct Api {
     int (__cdecl *register_timer)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_timer)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
     int (__cdecl *timer_primary_run)(void*,unsigned,int,const TimerPrimaryBindings*,TimerPrimaryResult*) noexcept;
+    int (__cdecl *branch_input)(void*,unsigned,const char*,void*,unsigned,unsigned char,const BranchBindings*,BranchResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -815,5 +815,38 @@ int main(int argc,char** argv){
     nw::ServerEntityVoidOutputResult decimal_fire{};
     assert(fire_api->fire(timer+0x394,0x18,timer,timer,sizeof(timer),0.f,&decimal_fire_bind,&decimal_fire)&&decimal_fire.queued==1&&decimal_fire.removed==1&&decimal_pool.released==1);
     assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&tes,&es)&&es.native_inputs==1&&word(timer,0x3e0)==0x41480000u&&word(timer,0x74)==820&&co.released==1);
+    {
+        // Original branch: silent setters, two outputs, incoming activator.
+        alignas(4) unsigned char actor[branch_extent]{};
+        put(actor,0,branch_vtable);
+        ActionPool bp{};OutputActionBindings bo=output;bo.context=&bp;bo.next_id=&bp.id;
+        auto bk=kb;bk.native_output=&bo;
+        bk.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=branch_extent;return 1;};
+        assert(api->key_value(actor,"InitialValue","-2",&bk,&kr)&&kr.field_type==6&&actor[0x394]==1);
+        assert(api->key_value(actor,"SetValue","0",&bk,&kr)&&!actor[0x394]);
+        assert(api->key_value(actor,"OnTrue","relay,Trigger,,0,-1",&bk,&kr)&&kr.offset==0x398);
+        assert(api->key_value(actor,"OnFalse","relay,Trigger,,0,-1",&bk,&kr)&&kr.offset==0x3b0);
+        struct BranchFixture {void* actor;void* activator;ActionPool* pool;std::string order;} bf{actor,timer,&bp};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&bf;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<BranchFixture*>(p);
+            for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<BranchFixture*>(p);assert(a==f.activator&&c==f.actor&&action->action_id>=41&&action->action_id<=42);
+            f.order+=char('0'+action->action_id-41);return 1;
+        };
+        BranchBindings bb{&fire};BranchResult br{};
+        auto bi=[&](const char* name,unsigned type=0,unsigned char val=0){return api->branch_input(actor,sizeof(actor),name,timer,type,val,&bb,&br);};
+        assert(bi("Test")&&br.fired&&br.output_offset==0x3b0&&bf.order=="1");
+        assert(bi("SetValue",6,1)&&br.changed&&!br.fired&&bf.order=="1");
+        assert(bi("Test")&&br.output_offset==0x398&&bf.order=="10");
+        assert(bi("Toggle")&&br.changed&&!br.value&&!br.fired);
+        assert(bi("ToggleTest")&&br.value&&br.fired&&bf.order=="100");
+        assert(bi("SetValueTest",6,7)&&br.value==7&&actor[0x394]==7&&bf.order=="1000");
+        assert(bi("SetValueTest",5,1)&&!br.value&&bf.order=="10001");
+        assert(bi("Unknown")&&!br.handled);
+        assert(!api->branch_input(actor,branch_extent-1,"Test",timer,0,0,&bb,&br));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
