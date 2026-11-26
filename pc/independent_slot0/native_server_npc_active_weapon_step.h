@@ -227,6 +227,29 @@ struct ServerEntityNamedEventQueueApi {
 };
 using GetServerEntityNamedEventQueueApi=const ServerEntityNamedEventQueueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Original 22155530 queue service. Entity lookup and AcceptInput remain
+// explicit engine boundaries, while timing, routing and unlinking are native.
+inline constexpr char server_entity_event_service_export[]="SiN_GetServerEntityEventServiceApi";
+struct ServerEntityEventServiceBindings {
+    void* context;
+    ServerWeaponActivityBindings entities;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *lock)(void*,bool enter) noexcept;
+    int (__cdecl *find_named)(void*,void* previous,std::uint32_t name,void* activator,void* caller,void**) noexcept;
+    int (__cdecl *find_class)(void*,void* previous,std::uint32_t name,void**) noexcept;
+    int (__cdecl *accept)(void*,void* target,std::uint32_t input,void* activator,void* caller,const void* variant,std::uint32_t output_id) noexcept;
+    int (__cdecl *release)(void*,std::uint32_t,void*) noexcept;
+    int (__cdecl *missing)(void*,std::uint32_t target,std::uint32_t input,void* caller) noexcept;
+};
+struct ServerEntityEventServiceResult {
+    unsigned completed,events,deliveries,named,direct,classname,missing,removed,locks,step_stopped,future_stopped;
+};
+struct ServerEntityEventServiceApi {
+    std::uint32_t version,size;
+    int (__cdecl *service)(void* sentinel,unsigned sentinel_bytes,std::uint32_t sentinel_token,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings*,ServerEntityEventServiceResult*) noexcept;
+};
+using GetServerEntityEventServiceApi=const ServerEntityEventServiceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_wake_transition_export[]="SiN_GetServerNpcWakeTransitionApi";
 struct ServerNpcWakeTransitionBindings {
     const ServerNpcActivePostAnimationBindings* storage;
