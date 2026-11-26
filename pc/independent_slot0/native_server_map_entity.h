@@ -388,6 +388,26 @@ struct PipelineResult {
     SpawnResult spawn;
 };
 inline constexpr unsigned relay_vtable=0x224228cc,relay_extent=0x3b0,relay_output=0x394;
+// All these retail primary tables share +50 = 221435b0 and inherit
+// CBaseEntity::InputKill through their original derived datamap.
+inline constexpr unsigned logic_kill_extent(unsigned vt) noexcept {
+    switch(vt){
+    case relay_vtable:return relay_extent;
+    case auto_vtable:return auto_extent;
+    case timer_vtable:return timer_extent;
+    case branch_vtable:return branch_extent;
+    case case_vtable:return case_extent;
+    case compare_vtable:return compare_extent;
+    case counter_vtable:return counter_extent;
+    case menu_vtable:return menu_extent;
+    case navigation_vtable:return navigation_extent;
+    case autosave_vtable:return autosave_extent;
+    case multicompare_vtable:return multicompare_extent;
+    case remap_vtable:return remap_extent;
+    case colorblend_vtable:return colorblend_extent;
+    default:return 0;
+    }
+}
 // Owner supplies the existing live queue, stable registry and pool storage.
 // A nonzero protected node is currently being dispatched and cannot be freed.
 struct RelayQueueBindings {
@@ -483,6 +503,7 @@ struct Api {
     int (__cdecl *colorblend_input)(void*,unsigned,const char*,void*,unsigned,float,const ColorBlendBindings*,ColorBlendResult*) noexcept;
     int (__cdecl *register_colorblend)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_colorblend)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *logic_kill)(void*,unsigned,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const EntityKillBindings*,EntityKillResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
