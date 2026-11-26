@@ -516,6 +516,39 @@ int main(int argc,char** argv){
     // MSVC x86 C1054: static zero-initialization avoids recursive aggregate initialization.
     static ServerNpcNativeSquadTaskThinkResult taskrun;
     assert(taskthink->run(f.actor,sizeof(f.actor),69.494f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&taskbind,&taskrun)&&taskrun.think.think.squad.cycle.preschedule.think.completed&&taskrun.speech_tasks.calls==1&&taskrun.speech_tasks.native==1&&taskrun.speech_tasks.last.mode==1&&taskrun.speech_tasks.last.event.metric==241&&!taskrun.speech_tasks.last.event.sentence.mode_allowed&&taskrun.speech_tasks.last.shared.lifecycle.completed&&component_calls==1&&f.think_component_tasks==8);
+    // New outer-think route: retained descriptor performs the same native speech task.
+    const auto grt=reinterpret_cast<GetServerNpcNativeRequestThinkApi>(GetProcAddress(s,server_npc_native_request_think_export));
+    assert(grt&&!GetProcAddress(c,server_npc_native_request_think_export)&&!grt(0,sizeof(ServerNpcNativeRequestThinkApi))&&!grt(1,0));
+    const auto* request_think=grt(1,sizeof(ServerNpcNativeRequestThinkApi));assert(request_think);
+    ServerNpcGruntAssaultScheduleBindings req_schedule{};req_schedule.admission.actor_token=0x10000u;
+    ServerNpcGruntAssaultActivationBindings req_activation{};req_activation.schedule=&req_schedule;
+    ServerNpcGruntAssaultArbitrationBindings req_arbitration{};req_arbitration.activation=&req_activation;
+    req_arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=26;return 1;};
+    ServerNpcGruntScheduleAcquireBindings req_acquire{};req_acquire.arbitration=&req_arbitration;
+    ServerNpcGruntScheduleRequestBindings req_binding{};req_binding.acquisition=&req_acquire;
+    ServerNpcGruntSelectorTailBindings req_tail{};req_tail.request=&req_binding;
+    ServerNpcGruntCombatSelectorBindings req_combat{};req_combat.tail=&req_tail;
+    ServerNpcGruntSpecialCombatBindings req_selector{};req_selector.combat=&req_combat;
+    ServerNpcGruntScheduleSceneServices req_scene{};
+    ServerNpcGruntScheduleLineServices req_line{};req_line.scene=&req_scene;
+    ServerNpcNativeRequestThinkBindings req_think{};req_think.think=taskbind;req_think.selector=&req_selector;req_think.line=&req_line;
+    static ServerNpcNativeRequestThinkResult req_run;
+    install_at(88,3);bind_nav();f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);component_calls=0;
+    assert(request_think->run(f.actor,sizeof(f.actor),69.495f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
+    assert(!req_run.requests.requests&&req_run.think.think.think.squad.cycle.preschedule.think.completed&&req_run.think.speech_tasks.calls==1&&component_calls==1);
+    // Inactive state7 avoids unrelated perception; shared selection26 is remapped to the
+    // real catalog descriptor94, whose initial task88 stores fail schedule95.
+    auto old_trans=selection.translate;auto old_fail=selection.fail_select;auto old_special=selection.special_select;
+    selection.translate=nullptr;selection.fail_select=nullptr;selection.special_select=nullptr;
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
+    assert(request_think->run(f.actor,sizeof(f.actor),69.496f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
+    assert(req_run.requests.requests==1&&!req_run.requests.failure_requests&&req_run.requests.request.requested==26&&req_run.requests.request.acquisition.translated==94&&req_run.requests.request.acquisition.schedule_token==find(94));
+    assert(req_run.requests.scheduler.maintenance.state.schedule==find(94)&&req_run.requests.scheduler.maintenance.started==1&&req_run.think.think.think.squad.cycle.preschedule.think.completed);
+    int fail_id=0;std::memcpy(&fail_id,f.actor+0x7bc,4);assert(fail_id==95);
+    selection.translate=old_trans;selection.fail_select=old_fail;selection.special_select=old_special;
+    req_acquire.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
+    unsigned char before[sizeof(f.actor)];std::memcpy(before,f.actor,sizeof(before));
+    assert(!request_think->run(f.actor,sizeof(f.actor),69.497f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run)&&!std::memcmp(before,f.actor,sizeof(before)));
     ab.shared.component_task=saved_component_task;
     tcb.submit_goal=cover_submit;
     ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;

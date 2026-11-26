@@ -147,5 +147,8 @@ struct ServerNpcNativeGatherRoute {
     unsigned* apply_calls=nullptr;
     const ServerNpcGruntEventSpeechBindings* speech_tasks=nullptr;
     ServerNpcSharedNativeSpeechStats* speech_stats=nullptr;
+    const ServerNpcGruntSpecialCombatBindings* request_selector=nullptr;
+    const ServerNpcGruntScheduleLineServices* request_line=nullptr;
+    ServerNpcNativeRequestSchedulerResult* request_result=nullptr;
 };
 }
