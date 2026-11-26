@@ -459,11 +459,21 @@ struct DeletionListenerBindings {
     int (__cdecl *deleted)(void*,void* listener,void* entity) noexcept;
 };
 struct DeletionListenerResult {unsigned completed,stale,notified,unregistered;};
+// Opt-in non-physics metadata portion of UpdateOnRemove, 2214471f..22144787.
+struct RemovalMetadataBindings {
+    void* context;
+    int (__cdecl *string_text)(void*,unsigned,const char**,unsigned*) noexcept;
+    int (__cdecl *edict)(void*,unsigned,void**,unsigned*) noexcept;
+    // Original +224 cleanup only when +218 is nonzero. Owner handles
+    // this existing engine/physics boundary, not the native metadata leaf.
+    int (__cdecl *cleanup_224)(void*,void*) noexcept;
+};
 struct NativeRemovalUpdateBindings {
     const DeletionListenerBindings* listeners;
     void* context;
-    // The remainder of CBaseEntity::UpdateOnRemove starting at 2214471f.
+    // Remainder starting at 2214471f, or 22144787 with metadata.
     int (__cdecl *tail)(void*,void*) noexcept;
+    const RemovalMetadataBindings* metadata;
 };
 struct DeferredRemovalBindings {
     void* context;
@@ -482,6 +492,7 @@ struct DeferredRemovalResult {
     unsigned completed,already_marked,marked,updated,name_cleared,invalid_handle,queued,
         entered,pre_called,released,closed,remaining,discarded;
     unsigned native_update,notified,unregistered,stale_notification;
+    unsigned metadata,edict_flag_added,global_checked,global_dead,global_noop,cleanup_224,flags_cleared,dirty_marked;
 };
 // Original CBaseEntityList active and non-networked free chains.
 struct RegistryChain {sin_independent::EntityHandleEntry* head;sin_independent::EntityHandleEntry* tail;};

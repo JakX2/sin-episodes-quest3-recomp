@@ -2625,5 +2625,6 @@ int main(int argc,char** argv){
 #include "test_native_registry_unlink.inc"
 #include "test_native_delete_listeners.inc"
 #include "test_native_registry_destroy.inc"
+#include "test_native_removal_metadata.inc"
     FreeLibrary(server);FreeLibrary(client);
 }

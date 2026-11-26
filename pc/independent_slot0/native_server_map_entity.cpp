@@ -2087,6 +2087,45 @@ int __cdecl notify_deleting(unsigned handle,const DeletionListenerBindings* b,De
     }
     o->completed=1;return 1;
 }
+// 2214471f..22144787. With EFL_KILLME already set, 221639f0
+// returns immediately; all supported logic +268 slots are RET.
+bool removal_metadata(void* a,const RemovalMetadataBindings& b,DeferredRemovalResult& o) noexcept {
+    if(read_field<unsigned>(a,0x16c)){
+        const unsigned prior=read_field<unsigned>(a,0xbc);
+        write_field(a,0xbc,prior|0x04000000u);o.edict_flag_added=(prior&0x04000000u)==0;
+    }
+    const unsigned global=read_field<unsigned>(a,0x10);
+    if(global){
+        const char* text=nullptr;unsigned bytes=0;
+        if(!b.string_text||!b.string_text(b.context,global,&text,&bytes)||!text||!bytes||
+            !std::memchr(text,0,bytes<4096?bytes:4096))return false;
+        using namespace sin_port::fixed_service;
+        const auto* api=SiN_GetGlobalStateApi(global_state_version,sizeof(GlobalStateApi));
+        if(!api)return false;
+        const int index=api->find(text);o.global_checked=1;
+        // Original setter is void and ignores missing or gate-blocked
+        // entries. The independent service reports refusal instead.
+        if(index>=0&&api->set_state(index,2))o.global_dead=1;else o.global_noop=1;
+    }
+    if(read_field<unsigned>(a,0x218)){
+        if(!b.cleanup_224||!b.cleanup_224(b.context,a))return false;
+        o.cleanup_224=1;
+    }
+    // Read after +224, as the original does. Clear bit 0 at +78,
+    // preserving remaining flags and original dirty-mark routing.
+    const unsigned flags=read_field<unsigned>(a,0x78);
+    if(flags&1u){
+        if(read_field<unsigned char>(a,0x1f0)){
+            write_field(a,0x200,static_cast<unsigned char>(1));o.dirty_marked=1;
+        }else if(const unsigned token=read_field<unsigned>(a,0x16c)){
+            void* edict=nullptr;unsigned bytes=0;
+            if(!b.edict||!b.edict(b.context,token,&edict,&bytes)||!edict||bytes<4)return false;
+            write_field(edict,0,read_field<unsigned>(edict,0)|1u);o.dirty_marked=1;
+        }
+        write_field(a,0x78,flags&~1u);o.flags_cleared=1;
+    }
+    o.metadata=1;return true;
+}
 bool removal_update_native(void* a,unsigned n,unsigned vt,const NativeRemovalUpdateBindings& b,DeferredRemovalQueue& q,DeferredRemovalResult& o) noexcept {
     if(!listener_storage(b.listeners)||!b.tail)return false;
     const auto& l=*b.listeners;
@@ -2106,7 +2145,7 @@ bool removal_update_native(void* a,unsigned n,unsigned vt,const NativeRemovalUpd
     DeletionListenerResult notified{};
     const bool ok=notify_deleting(read_field<unsigned>(a,0x378),&l,&notified)!=0;
     o.notified=notified.notified;o.stale_notification=notified.stale;
-    if(!ok||!b.tail(b.context,a))return false;
+    if(!ok||(b.metadata&&!removal_metadata(a,*b.metadata,o))||!b.tail(b.context,a))return false;
     o.native_update=1;return true;
 }
 // 22286bf0 -> 22286b90 -> 221636d0. The embedded networkable's
