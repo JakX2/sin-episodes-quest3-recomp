@@ -1035,4 +1035,24 @@ struct ServerNpcGruntPerceptionSpeechApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntPerceptionSpeechBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntPerceptionSpeechResult*) noexcept;
 };
 using GetServerNpcGruntPerceptionSpeechApi=const ServerNpcGruntPerceptionSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_leave_export[]="SiN_GetServerNpcGruntSquadLeaveApi";
+struct ServerNpcGruntSquadLeaveBindings {
+    ServerNpcGruntSentenceBindings sentence;
+    ServerNpcGruntSentenceRequestBindings request;
+    void* context;
+    // Original primary vtable identity and native actor extent, not the replacement vptr.
+    int (__cdecl *member_class)(void*,void*,std::uint32_t*,unsigned*) noexcept;
+    int (__cdecl *other_notify)(void*,void*,void*) noexcept; // non-Grunt +750
+};
+struct ServerNpcGruntSquadLeaveResult {
+    ServerNpcGruntRequestSurvivorResult last;
+    unsigned completed,missing,removed,cleared,notifications,native_notifications,external_notifications,stale;
+    int index,remaining;
+};
+struct ServerNpcGruntSquadLeaveApi {
+    std::uint32_t version,size;
+    // 220aa0d0: remove first live pointer match, ordered notifications, then +690 and +9c8 clear.
+    int (__cdecl *leave)(void*,unsigned,std::uint32_t,std::uint32_t,bool,float,const ServerNpcGruntSquadLeaveBindings*,ServerNpcGruntSquadLeaveResult*) noexcept;
+};
+using GetServerNpcGruntSquadLeaveApi=const ServerNpcGruntSquadLeaveApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

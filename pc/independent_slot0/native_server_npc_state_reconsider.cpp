@@ -2557,6 +2557,49 @@ int __cdecl grunt_survivor_request(void* a,unsigned n,void* removed,unsigned rn,
     if(!request)return 0;
     return grunt_survivor_impl(a,n,removed,rn,now,b,&out->survivor,request,&out->request);
 }
+int __cdecl grunt_squad_leave(void* a,unsigned n,std::uint32_t group_token,std::uint32_t handle,bool notify,float now,const ServerNpcGruntSquadLeaveBindings* b,ServerNpcGruntSquadLeaveResult* out) noexcept{
+    if(!out)return 0;*out={};out->index=-1;
+    if(!b||!std::isfinite(now))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(!a)return done();
+    const auto& sb=b->sentence;
+    if(n<0x9cc||!group_token||!relation_grunt_class(sb.speech.original_vtable)||
+       sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    // Host requires +8 handle getter to identify a live departing actor.
+    if(registry.Resolve(handle)!=a)return 0;
+    void* group=nullptr;if(!speech_squad(sb.speech,group_token,group))return 0;
+    int count=read<int>(group,0x48);if(count<0||count>16)return 0;
+    for(int i=0;i<count;++i)if(registry.Resolve(read<unsigned>(group,8+4*i))==a){out->index=i;break;}
+    if(out->index<0){out->missing=1;out->remaining=count;return done();}
+    // 220aa116 memmove, then decrement. Native leaves unused trailing slot untouched.
+    auto* rows=static_cast<unsigned char*>(group)+8;
+    if(out->index+1<count)std::memmove(rows+4*out->index,rows+4*(out->index+1),4*(count-out->index-1));
+    write(group,0x48,--count);out->removed=1;out->remaining=count;
+    if(notify){
+        for(int i=0;;++i){
+            const int live_count=read<int>(group,0x48);if(live_count<0||live_count>16)return 0;
+            if(i>=live_count)break;
+            void* member=registry.Resolve(read<unsigned>(group,8+4*i));
+            if(!member){++out->stale;continue;}
+            unsigned extent=0,vt=0;
+            if(!b->member_class||!b->member_class(b->context,member,&vt,&extent))return 0;
+            ++out->notifications;
+            if(relation_grunt_class(vt)){
+                auto bound=sb;bound.speech.original_vtable=vt;
+                ++out->native_notifications;
+                if(!grunt_survivor_request(member,extent,a,n,now,&bound,&b->request,&out->last))return 0;
+            }else{
+                ++out->external_notifications;
+                if(!b->other_notify||!b->other_notify(b->context,member,a))return 0;
+            }
+        }
+    }
+    // All eight known Grunt +690 methods store actor+9c4 directly.
+    write(a,0x9c4,0u);write(a,0x9c8,0u);out->cleared=1;out->remaining=read<int>(group,0x48);
+    return done();
+}
+const ServerNpcGruntSquadLeaveApi squad_leave_api{1,sizeof(ServerNpcGruntSquadLeaveApi),&grunt_squad_leave};
 const ServerNpcGruntRequestSpeechApi request_speech_api{1,sizeof(ServerNpcGruntRequestSpeechApi),&grunt_speak_request,&grunt_survivor_request};
 const ServerNpcGruntNativeSpeechApi native_speech_api{1,sizeof(ServerNpcGruntNativeSpeechApi),&grunt_speak_native,&grunt_survivor};
 const ServerNpcGruntSentenceApi sentence_api{1,sizeof(ServerNpcGruntSentenceApi),&sentence_gate,&sentence_dispatch};
@@ -2936,4 +2979,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPerceptionSpeechApi=_SiN_GetServerNpcGruntPerceptionSpeechApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSpeechApi* __cdecl SiN_GetServerNpcGruntPerceptionSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPerceptionSpeechApi)?&perception_speech_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadLeaveApi=_SiN_GetServerNpcGruntSquadLeaveApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadLeaveApi* __cdecl SiN_GetServerNpcGruntSquadLeaveApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadLeaveApi)?&squad_leave_api:nullptr;
 }

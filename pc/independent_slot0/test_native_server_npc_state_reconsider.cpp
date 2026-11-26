@@ -1348,5 +1348,50 @@ int main(int argc,char** argv){
         f.put(f.speech_squad,0x48,2);f.query=4;f.speech_name="GRUNT_MAN_DOWN_ELITE";
         assert(full->survivor(f.actor,sizeof(f.actor),f.replacement,sizeof(f.replacement),230,&sb,&rb,&sr)&&sr.survivor.completed&&!sr.survivor.last_member&&sr.request.submitted&&sr.survivor.sentence.cooldown.owner_written&&!sr.survivor.final_mark.owner_written);
     }
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntSquadLeaveApi>(GetProcAddress(s,server_npc_grunt_squad_leave_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_squad_leave_export)&&!g(0,sizeof(ServerNpcGruntSquadLeaveApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntSquadLeaveApi));assert(api);
+        struct SquadFixture {
+            alignas(4) unsigned char actor[3][0xdb2]{},group[0x58]{};
+            sin_independent::EntityHandleEntry slots[4]{};
+            unsigned requests=0,submissions=0,randoms=0;const char* expected=nullptr;
+            static SquadFixture& self(void* p){return *static_cast<SquadFixture*>(p);}
+            static unsigned rd(const void* p,unsigned offset){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+offset,4);return v;}
+        } q;
+        for(unsigned i=0;i<3;++i){
+            q.slots[i+1].serial=i+1;q.slots[i+1].entity=reinterpret_cast<CBaseEntity*>(q.actor[i]);
+            f.put(q.actor[i],0x204,1);f.put(q.actor[i],0x850,3);f.put(q.actor[i],0x9c4,91u);f.put(q.actor[i],0x9c8,123u);f.put(q.actor[i],0x16c,i+1);
+            f.put(q.actor[i],0xccc,-1);
+        }
+        f.put(q.group,8,0x2002u);f.put(q.group,12,0x1001u);f.put(q.group,16,0x9003u);f.put(q.group,20,0x3003u);f.put(q.group,0x48,4);
+        ServerNpcGruntSquadLeaveBindings lb{};auto& sb=lb.sentence;auto& rb=lb.request;
+        lb.context=&q;sb.speech.context=&q;rb.context=&q;sb.speech.original_vtable=0x2249aaa4;sb.entries=q.slots;sb.count=4;sb.speech.volume=1;sb.speech.level=75;
+        sb.speech.squad_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& q=SquadFixture::self(p);assert(token==91);*out=q.group;*n=sizeof(q.group);return 1;};
+        lb.member_class=[](void* p,void* a,std::uint32_t* vt,unsigned* n) noexcept -> int{auto& q=SquadFixture::self(p);assert(a==q.actor[1]||a==q.actor[2]);*vt=a==q.actor[1]?0x2248df04:0x2248c514;*n=sizeof(q.actor[0]);return 1;};
+        sb.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xdb2;return 1;};
+        sb.entity_rejected=[](void*,void*,bool* out) noexcept -> int{*out=false;return 1;};
+        sb.speech.random_float=[](void* p,float lo,float hi,float* out) noexcept -> int{auto& q=SquadFixture::self(p);assert(lo==1.5f&&hi==2);++q.randoms;*out=1.5f;return 1;};
+        rb.manager_ready=true;
+        rb.group_index=[](void* p,const char* cue,int* id) noexcept -> int{
+            auto& q=SquadFixture::self(p);assert(!std::strcmp(cue,q.expected));
+            // During notifications the removed member still owns its group, but is no longer in the list.
+            if(q.requests==0){assert(SquadFixture::rd(q.actor[0],0x9c4)==91&&SquadFixture::rd(q.group,0x48)==3);}
+            else{assert(SquadFixture::rd(q.actor[1],0x9c4)==91&&SquadFixture::rd(q.group,0x48)==2);}
+            ++q.requests;*id=4;return 1;
+        };
+        rb.pick_name=[](void*,int id,char* s,unsigned n,int* out) noexcept -> int{assert(id==4&&n==64);std::memcpy(s,"!TEST",6);*out=0;return 1;};
+        rb.name_index=[](void*,const char* name,int* id) noexcept -> int{assert(!std::strcmp(name,"TEST"));*id=19;return 1;};
+        rb.submit=[](void* p,std::uint32_t token,int index,float volume,int level,int zero,std::uint32_t extra) noexcept -> int{auto& q=SquadFixture::self(p);assert(token==q.submissions+2&&index==19&&volume==1&&level==75&&!zero&&!extra);++q.submissions;return 1;};
+        ServerNpcGruntSquadLeaveResult lr{};
+        q.expected="GRUNT_MAN_DOWN";
+        assert(api->leave(q.actor[0],sizeof(q.actor[0]),91,0x1001u,true,100,&lb,&lr)&&lr.completed&&lr.removed&&lr.cleared&&lr.index==1&&lr.remaining==3&&lr.native_notifications==2&&lr.stale==1&&q.requests==1&&q.submissions==1&&q.randoms==2);
+        assert(lr.last.survivor.sentence.cooldown.priority_blocked&&SquadFixture::rd(q.actor[0],0x9c4)==0&&SquadFixture::rd(q.actor[0],0x9c8)==0&&SquadFixture::rd(q.group,8)==0x2002u&&SquadFixture::rd(q.group,12)==0x9003u&&SquadFixture::rd(q.group,16)==0x3003u&&SquadFixture::rd(q.group,20)==0x3003u);
+        q.expected="GRUNT_LAST_OF_SQUAD";
+        assert(api->leave(q.actor[1],sizeof(q.actor[1]),91,0x2002u,true,101,&lb,&lr)&&lr.completed&&lr.remaining==2&&lr.native_notifications==1&&lr.stale==1&&lr.last.survivor.last_member&&lr.last.survivor.final_mark.squad_written&&q.requests==2&&q.submissions==2&&q.randoms==4);
+        f.put(q.actor[1],0x9c4,91u);f.put(q.actor[1],0x9c8,123u);
+        assert(api->leave(q.actor[1],sizeof(q.actor[1]),91,0x2002u,true,102,&lb,&lr)&&lr.missing&&!lr.cleared&&SquadFixture::rd(q.actor[1],0x9c4)==91);
+        assert(api->leave(q.actor[2],sizeof(q.actor[2]),91,0x3003u,false,102,&lb,&lr)&&lr.completed&&lr.remaining==1&&!lr.notifications&&lr.cleared&&q.requests==2);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
