@@ -4,6 +4,13 @@
 namespace sin_port::native_resupply {
 inline constexpr char export_name[]="SiN_GetServerDynamicResupplyApi";
 inline constexpr unsigned count=6;
+enum class Convar : unsigned { Modifier, HealthKit, Debug };
+struct ConvarSpec {const char* name;const char* initial;unsigned flags;unsigned original_object;};
+inline constexpr ConvarSpec convars[]{
+    {"sk_dynamic_resupply_modifier","1.0",0,0x22596510u},
+    {"sk_healthkit","25",0x4000u,0x225965e0u},
+    {"g_debug_dynamicresupplies","0",0,0x22596558u}
+};
 struct AmmoType {const char* classname;const char* name;int units;float full_weight;};
 inline constexpr AmmoType ammo_types[count]{
     {"item_ammo_magnum","MAG",10,.5f},
@@ -36,6 +43,7 @@ struct Bindings {
     int (__cdecl *reserve)(void*,int,int*) noexcept;
     int (__cdecl *scale)(void*,float*) noexcept;
     const InventoryView* native_inventory;
+    void* engine_cvar; // optional read-only VEngineCvar002
 };
 struct Result {unsigned rows,owned,index_native,max_native,reserve_reads,scale_reads,ownership_native,reserve_native;};
 inline constexpr char health_classname[]="item_healthvial";
@@ -43,6 +51,7 @@ struct HealthBindings {
     void* context;
     int (__cdecl *vial_value)(void*,float*) noexcept;
     int (__cdecl *scale)(void*,float*) noexcept;
+    void* engine_cvar;
 };
 struct HealthResult {unsigned vial_reads,scale_reads,completed;};
 struct FallbackBindings {
@@ -98,12 +107,15 @@ struct EvaluateBindings {
     FallbackBindings fallback;
     SpawnBindings spawn;
     bool native_player_inventory;
+    void* engine_cvar; // authoritative live debug and optional nested reads
 };
 struct EvaluateResult {
     unsigned master_skipped,master_profile,origin_refreshes,motion_refreshes,
         factories,finalizes,normal_spawns,fallback_spawns,null_factory,
         corrections,randoms,think_cleared,removed,completed;
     int selected_health,selected_ammo;
+    unsigned debug_native;
+    int debug_value;
     float next_position[3];
     AmmoRow health_row,ammo_rows[count];
     NearbyResult health_nearby,ammo_nearby;
