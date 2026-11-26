@@ -472,12 +472,50 @@ const ServerEntityNamedEventQueueApi named_event_queue_api{1,sizeof(ServerEntity
 // 22155530: service each due node under an engine lock, dispatch all name
 // matches, then a live direct target, else class fallback if none matched.
 // Re-read links after dispatch: AcceptInput can insert another earlier event.
+unsigned input_datamap(unsigned vt) noexcept;
+int __cdecl search_named(void*,unsigned,void*,void*,const ServerEntitySearchBindings*,ServerEntitySearchResult*) noexcept;
+int __cdecl search_class(void*,unsigned,const ServerEntitySearchBindings*,ServerEntitySearchResult*) noexcept;
+int __cdecl accept_input(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*) noexcept;
 int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings* b,ServerEntityEventServiceResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!sentinel||n<0x38||!root||!std::isfinite(now)||!b||(single_step&&!steps))return 0;
     if(b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
     const sin_independent::EntityHandleView registry(b->entities.entries,b->entities.count);
     if(single_step&&*steps<=0){o->step_stopped=o->completed=1;return 1;}
+    if(b->native_input&&!b->native_search)return 0;
+    ServerEntitySearchBindings native_search{};
+    if(b->native_search){native_search=*b->native_search;native_search.entities=b->entities;}
+    auto find_named=[&](void* prev,unsigned name,void* activator,void* caller,void** entity){
+        if(b->find_named)return b->find_named(b->context,prev,name,activator,caller,entity)!=0;
+        if(!b->native_search)return false;
+        ServerEntitySearchResult result{};++o->native_named_searches;
+        if(!search_named(prev,name,activator,caller,&native_search,&result))return false;
+        *entity=result.entity;return true;
+    };
+    auto find_class=[&](void* prev,unsigned name,void** entity){
+        if(b->find_class)return b->find_class(b->context,prev,name,entity)!=0;
+        if(!b->native_search)return false;
+        ServerEntitySearchResult result{};++o->native_class_searches;
+        if(!search_class(prev,name,&native_search,&result))return false;
+        *entity=result.entity;return true;
+    };
+    auto accept=[&](void* entity,unsigned input,void* activator,void* caller,const void* variant,unsigned id){
+        if(b->native_input){
+            unsigned bytes=0;
+            if(!native_search.extent||!native_search.extent(native_search.context,entity,&bytes)||bytes<4)return false;
+            const unsigned vt=rd<unsigned>(entity,0);
+            if(input_datamap(vt)){
+                auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=now;
+                ServerEntityAcceptInputResult result{};
+                if(!accept_input(entity,bytes,vt,input,activator,caller,variant,0x14,id,&bound,&result)||!result.completed)return false;
+                // Retail ignores the virtual AcceptInput return. A rejected
+                // input is a completed delivery, not a missing target.
+                ++o->native_inputs;if(!result.accepted)++o->rejected_inputs;return true;
+            }
+        }
+        if(!b->accept||!b->accept(b->context,entity,input,activator,caller,variant,id))return false;
+        ++o->foreign_inputs;return true;
+    };
     auto row_for=[&](unsigned token,void** row){
         unsigned bytes=0;*row=nullptr;
         return token&&token!=root&&b->resolve&&b->resolve(b->context,token,row,&bytes)&&*row&&*row!=sentinel&&bytes>=0x38;
@@ -494,15 +532,14 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
             bool found=false;
             auto deliver=[&](void* entity,unsigned& count){
                 unsigned char variant[0x14];std::memcpy(variant,static_cast<unsigned char*>(row)+0x1c,sizeof(variant));
-                if(!b->accept||!b->accept(b->context,entity,rd<unsigned>(row,8),registry.Resolve(rd<unsigned>(row,0xc)),registry.Resolve(rd<unsigned>(row,0x10)),variant,rd<unsigned>(row,0x14)))return false;
+                if(!accept(entity,rd<unsigned>(row,8),registry.Resolve(rd<unsigned>(row,0xc)),registry.Resolve(rd<unsigned>(row,0x10)),variant,rd<unsigned>(row,0x14)))return false;
                 ++count;++o->deliveries;found=true;return true;
             };
             if(target){
-                if(!b->find_named)return false;
                 void* prev=nullptr;
                 for(unsigned i=0;;++i){
                     void* entity=nullptr;
-                    if(!b->find_named(b->context,prev,target,registry.Resolve(rd<unsigned>(row,0xc)),registry.Resolve(rd<unsigned>(row,0x10)),&entity))return false;
+                    if(!find_named(prev,target,registry.Resolve(rd<unsigned>(row,0xc)),registry.Resolve(rd<unsigned>(row,0x10)),&entity))return false;
                     if(!entity)break;
                     if(i==512||entity==prev||!deliver(entity,o->named))return false;prev=entity;
                 }
@@ -510,10 +547,9 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
             if(void* direct=registry.Resolve(rd<unsigned>(row,0x18))){
                 if(!deliver(direct,o->direct))return false;
             }else if(!found&&target){
-                if(!b->find_class)return false;
                 void* prev=nullptr;
                 for(unsigned i=0;;++i){
-                    void* entity=nullptr;if(!b->find_class(b->context,prev,target,&entity))return false;
+                    void* entity=nullptr;if(!find_class(prev,target,&entity))return false;
                     if(!entity)break;
                     if(i==512||entity==prev||!deliver(entity,o->classname))return false;prev=entity;
                 }

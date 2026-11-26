@@ -230,6 +230,10 @@ using GetServerEntityNamedEventQueueApi=const ServerEntityNamedEventQueueApi* (_
 // Original 22155530 queue service. Entity lookup and AcceptInput remain
 // explicit engine boundaries, while timing, routing and unlinking are native.
 inline constexpr char server_entity_event_service_export[]="SiN_GetServerEntityEventServiceApi";
+struct ServerEntitySearchBindings;
+struct ServerEntityAcceptInputBindings;
+// Native delivery for authenticated NPC classes. Foreign classes retain
+// their explicit virtual AcceptInput boundary.
 struct ServerEntityEventServiceBindings {
     void* context;
     ServerWeaponActivityBindings entities;
@@ -240,9 +244,12 @@ struct ServerEntityEventServiceBindings {
     int (__cdecl *accept)(void*,void* target,std::uint32_t input,void* activator,void* caller,const void* variant,std::uint32_t output_id) noexcept;
     int (__cdecl *release)(void*,std::uint32_t,void*) noexcept;
     int (__cdecl *missing)(void*,std::uint32_t target,std::uint32_t input,void* caller) noexcept;
+    const ServerEntitySearchBindings* native_search;
+    const ServerEntityAcceptInputBindings* native_input;
 };
 struct ServerEntityEventServiceResult {
     unsigned completed,events,deliveries,named,direct,classname,missing,removed,locks,step_stopped,future_stopped;
+    unsigned native_named_searches,native_class_searches,native_inputs,rejected_inputs,foreign_inputs;
 };
 struct ServerEntityEventServiceApi {
     std::uint32_t version,size;
