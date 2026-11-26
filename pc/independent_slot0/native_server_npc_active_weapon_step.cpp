@@ -806,7 +806,7 @@ bool search_equal(const char* a,const char* b) noexcept {
     return search_lower(static_cast<unsigned char>(*a))==search_lower(static_cast<unsigned char>(*b));
 }
 int logic_kill_requested(unsigned vt,unsigned input,const ServerEntityAcceptInputBindings& b) noexcept {
-    if(!b.logic_kill||!b.logic_kill->remove||!sin_port::native_map::logic_kill_extent(vt))return 0;
+    if(!sin_port::native_map::kill_available(b.logic_kill)||!sin_port::native_map::logic_kill_extent(vt))return 0;
     bool same=false;
     if(b.name_equal){
         if(!input_name_equal(b,0x2240b624u,input,same))return -1;
@@ -2411,7 +2411,7 @@ constexpr NativeInputMap multicompare_map{0x224fb4b0u,0x224f0350u,7,multicompare
 int native_multicompare_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
     if(!b.logic_multicompare)return -1;
     const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
-    if(handler==0x2213cdc0u&&b.logic_multicompare->kill&&b.logic_multicompare->kill->remove){
+    if(handler==0x2213cdc0u&&sin_port::native_map::kill_available(b.logic_multicompare->kill)){
         sin_port::native_map::EntityKillResult result{};
         return api&&api->multicompare_kill(a,n,b.entities.entries,b.entities.count,b.logic_multicompare->kill,&result)&&result.completed&&result.handled?1:0;
     }
@@ -2607,7 +2607,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         // Other inherited inputs retain owner storage.
         bool base_kill=false;
         const bool native_kill=shared_kill||(vt==sin_port::native_map::autosave_vtable&&b->logic_autosave&&b->logic_autosave->remove)||
-            (vt==sin_port::native_map::multicompare_vtable&&b->logic_multicompare&&b->logic_multicompare->kill&&b->logic_multicompare->kill->remove);
+            (vt==sin_port::native_map::multicompare_vtable&&b->logic_multicompare&&sin_port::native_map::kill_available(b->logic_multicompare->kill));
         if(token==logic_base_kill_map.token&&native_kill){
             if(shared_kill)base_kill=true;
             else if(b->name_equal){
