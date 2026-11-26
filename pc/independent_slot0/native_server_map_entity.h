@@ -119,6 +119,20 @@ inline constexpr unsigned compare_vtable=0x22422004,compare_extent=0x3fc;
 inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
 // Derived scalar-deleting destructor boundary, distinct from the
 // factory's owner networkable-release boundary.
+inline constexpr unsigned menu_vtable=0x22422534,menu_listener_vtable=0x22422524,menu_extent=0x518;
+struct MenuBindings {
+    void* context;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    int (__cdecl *event_name)(void*,void*,const char**,unsigned*) noexcept;
+    int (__cdecl *event_string)(void*,void*,const char*,const char*,const char**,unsigned*) noexcept;
+    int (__cdecl *base_spawn)(void*,void*) noexcept;
+    int (__cdecl *base_restore)(void*,void*) noexcept;
+    // Return transport success, not the original manager's bool result.
+    int (__cdecl *subscribe)(void*,void*,const char*,bool) noexcept;
+};
+struct MenuResult {
+    unsigned completed,base_called,subscribed,name_reads,button_reads,selected,highlighted,outputs,queued,first_offset,last_offset;
+};
 struct LogicDestroyBindings {
     void* context;
     int (__cdecl *resolve)(void*,unsigned,void**,unsigned*) noexcept;
@@ -336,6 +350,8 @@ struct Api {
     int (__cdecl *register_counter)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_counter)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
     int (__cdecl *destroy_logic)(void*,unsigned,unsigned,const LogicDestroyBindings*,LogicDestroyResult*) noexcept;
+    int (__cdecl *menu_listen)(void*,unsigned,bool,const MenuBindings*,MenuResult*) noexcept;
+    int (__cdecl *menu_event)(void*,unsigned,void*,const MenuBindings*,MenuResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
