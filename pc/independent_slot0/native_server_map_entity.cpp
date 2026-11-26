@@ -327,7 +327,7 @@ int __cdecl destroy_compare(void* actor,unsigned bytes,void* networkable,const R
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -383,6 +383,18 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         if(!b->resupply_bounds_warning||!b->resupply_bounds_warning(b->context,actor))return 0;
         o->ignored_bounds=o->handled=1;return done();
     }
+    // CMathCounter::KeyValue 22179950 handles the exact startvalue
+    // name before base # suffix normalization; original atoi wraps.
+    if(vt==counter_vtable&&equal_class(key,"startvalue")){
+        if(bytes<counter_extent)return 0;
+        const char* p=value;while(*p==' '||(*p>='\t'&&*p<='\r'))++p;
+        const bool negative=*p=='-';if(negative||*p=='+')++p;
+        unsigned raw=0;while(*p>='0'&&*p<='9'){raw=raw*10u+unsigned(*p-'0');++p;}
+        if(negative)raw=0u-raw;
+        int scalar=0;std::memcpy(&scalar,&raw,4);
+        write_field(actor,0x3a0,static_cast<float>(scalar));write_field(actor,0x3b0,1u);
+        o->offset=0x3a0;o->field_type=1;o->scalar=o->handled=1;return done();
+    }
     char name[token_capacity]{};
     unsigned length=0;while(key[length]&&key[length]!='#'){
         if(length==sizeof(name)-1)return 0;name[length]=key[length];++length;
@@ -417,6 +429,10 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"InitialValue",0x394,6},{"SetValue",0x394,6},
         {"OnTrue",0x398,11},{"OnFalse",0x3b0,11}
     };
+    constexpr Spec counter_keys[]{
+        {"min",0x394,1},{"max",0x398,1},{"OutValue",0x3a0,11},
+        {"OnHitMin",0x3b8,11},{"OnHitMax",0x3d0,11}
+    };
     constexpr Spec compare_keys[]{
         {"InitialValue",0x394,1},{"CompareValue",0x398,1},
         {"OnLessThan",0x39c,11},{"OnEqualTo",0x3b4,11},
@@ -425,7 +441,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     Spec numbered{};
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -1269,7 +1285,89 @@ int __cdecl compare_input(void* a,unsigned n,const char* name,void* activator,un
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare};
+bool counter_valid(void* a,unsigned n,CounterResult* o) noexcept {
+    if(!o)return false;*o={};
+    return a&&n>=counter_extent&&entity_vtable(a)==counter_vtable;
+}
+bool counter_bounded(void* a) noexcept {
+    return read_field<float>(a,0x394)!=0.f||read_field<float>(a,0x398)!=0.f;
+}
+float counter_clamp(void* a,float value,CounterResult& o) noexcept {
+    const float hi=read_field<float>(a,0x398),lo=read_field<float>(a,0x394);
+    if(value>hi){o.clamped=1;return hi;}
+    if(value<lo){o.clamped=1;return lo;}
+    return value;
+}
+void counter_store(void* a,float value,CounterResult& o) noexcept {
+    write_field(a,0x3a0,value);write_field(a,0x3b0,1u);o.stored=1;
+}
+void counter_snapshot(void* a,CounterResult& o) noexcept {
+    o.value=read_field<float>(a,0x3a0);o.minimum=read_field<float>(a,0x394);o.maximum=read_field<float>(a,0x398);
+}
+int __cdecl counter_spawn(void* a,unsigned n,CounterResult* o) noexcept {
+    if(!counter_valid(a,n,o))return 0;
+    const float lo=read_field<float>(a,0x394),hi=read_field<float>(a,0x398);
+    if(lo>hi){write_field(a,0x394,hi);write_field(a,0x398,lo);o->swapped=1;}
+    // Original 221799b0: zero/zero means unlimited, no variant setter.
+    if(counter_bounded(a))counter_store(a,counter_clamp(a,read_field<float>(a,0x3a0),*o),*o);
+    counter_snapshot(a,*o);o->handled=o->completed=1;return 1;
+}
+bool counter_emit(void* a,unsigned n,unsigned offset,void* activator,const CounterBindings& b,CounterResult& o,bool typed) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    if(!fire||!b.output)return false;
+    auto* out=static_cast<unsigned char*>(a)+offset;ServerEntityVoidOutputResult r{};
+    if(typed){
+        if(!b.output->enqueue_variant||!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b.output,&r))return false;
+    }else if(!fire->fire(out,0x18,activator,a,n,0.f,b.output,&r))return false;
+    ++o.outputs;o.queued+=r.queued;return true;
+}
+bool counter_update(void* a,unsigned n,float candidate,void* activator,const CounterBindings& b,CounterResult& o) noexcept {
+    // Original 2217aa00: boundary events before clamp and typed OutValue.
+    // The min check and clamp reread live bounds after earlier outputs.
+    if(counter_bounded(a)){
+        if(candidate>=read_field<float>(a,0x398)){
+            if(!read_field<unsigned char>(a,0x39d)){
+                write_field(a,0x39d,static_cast<unsigned char>(1));o.hit_max=1;
+                if(!counter_emit(a,n,0x3d0,activator,b,o,false))return false;
+            }
+        }else write_field(a,0x39d,static_cast<unsigned char>(0));
+        if(candidate<=read_field<float>(a,0x394)){
+            if(!read_field<unsigned char>(a,0x39c)){
+                write_field(a,0x39c,static_cast<unsigned char>(1));o.hit_min=1;
+                if(!counter_emit(a,n,0x3b8,activator,b,o,false))return false;
+            }
+        }else write_field(a,0x39c,static_cast<unsigned char>(0));
+        candidate=counter_clamp(a,candidate,o);
+    }
+    counter_store(a,candidate,o);
+    return counter_emit(a,n,0x3a0,activator,b,o,true);
+}
+int __cdecl counter_input(void* a,unsigned n,const char* name,void* activator,unsigned type,float value,const CounterBindings* b,CounterResult* o) noexcept {
+    if(!counter_valid(a,n,o)||!name||!b)return 0;
+    const float arg=type==1?value:0.f,current=read_field<float>(a,0x3a0);
+    float candidate=current;bool update=true;o->handled=1;
+    if(equal_class(name,"Add"))candidate=static_cast<float>(double(current)+arg);
+    else if(equal_class(name,"Subtract"))candidate=static_cast<float>(double(current)-arg);
+    else if(equal_class(name,"Multiply"))candidate=static_cast<float>(double(current)*arg);
+    else if(equal_class(name,"Divide")){
+        if(type!=1||arg==0.f){
+            if(b->divide_warning&&!b->divide_warning(b->context,a))return 0;
+            o->warned=1;candidate=current;
+        }else candidate=static_cast<float>(double(current)/arg);
+    }else if(equal_class(name,"SetValue"))candidate=arg;
+    else if(equal_class(name,"SetValueNoFire")){
+        candidate=counter_bounded(a)?counter_clamp(a,arg,*o):arg;
+        counter_store(a,candidate,*o);update=false;
+    }else if(equal_class(name,"SetHitMax")){
+        write_field(a,0x398,arg);if(arg<read_field<float>(a,0x394))write_field(a,0x394,arg);
+    }else if(equal_class(name,"SetHitMin")){
+        write_field(a,0x394,arg);if(arg>read_field<float>(a,0x398))write_field(a,0x398,arg);
+    }else{o->handled=0;update=false;}
+    if(update&&!counter_update(a,n,candidate,activator,*b,*o))return 0;
+    counter_snapshot(a,*o);o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

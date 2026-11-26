@@ -1333,5 +1333,49 @@ int main(int argc,char** argv){
         co.now=130.25f;
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&word(timer,0x3dc)==1&&word(timer,0x74)==0xffffffffu&&co.released==3&&!word(co.root,0x30));
     }
+    {
+        alignas(4) unsigned char actor[counter_extent]{};
+        put(actor,0,counter_vtable);
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=counter_extent;return 1;};
+        assert(api->key_value(actor,"startvalue","7.9",&keys,&kr)&&kr.offset==0x3a0&&word(actor,0x3a0)==0x40e00000&&word(actor,0x3b0)==1);
+        assert(api->key_value(actor,"min","10",&keys,&kr)&&api->key_value(actor,"max","2",&keys,&kr));
+        assert(api->key_value(actor,"OutValue","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x3a0);
+        assert(api->key_value(actor,"OnHitMin","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x3b8);
+        assert(api->key_value(actor,"OnHitMax","relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x3d0);
+        CounterResult result{};
+        assert(api->counter_spawn(actor,sizeof(actor),&result)&&result.swapped&&result.stored&&result.minimum==2.f&&result.maximum==10.f&&result.value==7.f);
+        struct CounterFixture {void* actor;void* activator;ActionPool* pool;std::string order;float value=0;unsigned warnings=0;} f{actor,timer,&pool};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<CounterFixture*>(p);
+            for(unsigned i=0;i<3;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<CounterFixture*>(p);assert(a==f.activator&&c==f.actor&&!action->variant_type&&(action->action_id==42||action->action_id==43));
+            f.order+=char('0'+action->action_id-41);return 1;
+        };
+        fire.enqueue_variant=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
+            auto& f=*static_cast<CounterFixture*>(p);assert(a==f.activator&&c==f.actor&&bytes==0x14&&action->variant_type==1&&action->action_id==41);
+            float value=0;std::memcpy(&value,variant,4);assert(value==f.value);f.order+='0';return 1;
+        };
+        CounterBindings behavior{};behavior.context=&f;behavior.output=&fire;
+        behavior.divide_warning=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<CounterFixture*>(p);assert(a==f.actor);++f.warnings;return 1;};
+        auto ci=[&](const char* name,float value,unsigned type=1){return api->counter_input(actor,sizeof(actor),name,timer,type,value,&behavior,&result);};
+        f.value=10;assert(ci("Add",5)&&result.hit_max&&result.clamped&&result.outputs==2&&f.order=="20");
+        assert(ci("Add",1)&&!result.hit_max&&result.outputs==1&&f.order=="200");
+        f.value=5;assert(ci("Divide",2)&&result.value==5&&!actor[0x39d]&&f.order=="2000");
+        f.value=2;assert(ci("Subtract",10)&&result.hit_min&&result.clamped&&f.order=="200010");
+        assert(ci("Divide",0)&&result.warned&&f.warnings==1&&!result.hit_min&&f.order=="2000100");
+        assert(ci("SetValueNoFire",6)&&result.value==6&&result.stored&&!result.outputs&&actor[0x39c]);
+        f.value=9;assert(ci("SetHitMin",9)&&result.value==9&&result.minimum==9&&result.maximum==10&&!result.hit_min&&f.order=="20001000");
+        f.value=8;assert(ci("SetHitMax",8)&&result.value==8&&result.minimum==8&&result.maximum==8&&result.hit_max&&f.order=="2000100020");
+        // Both limits zero disables boundary checking without clearing latches.
+        put(actor,0x394,0);put(actor,0x398,0);
+        f.value=-16;assert(ci("Multiply",-2)&&result.value==-16&&!result.clamped&&result.outputs==1);
+        assert(ci("SetValueNoFire",123,5)&&!word(actor,0x3a0)&&!result.outputs);
+        assert(ci("Unknown",0)&&!result.handled);
+        assert(!api->counter_spawn(actor,counter_extent-1,&result));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }

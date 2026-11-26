@@ -115,6 +115,16 @@ inline constexpr unsigned timer_vtable=0x22420e14,timer_extent=0x3f4;
 inline constexpr unsigned branch_vtable=0x22422294,branch_extent=0x3c8;
 inline constexpr unsigned case_vtable=0x22421d74,case_extent=0x56c;
 inline constexpr unsigned compare_vtable=0x22422004,compare_extent=0x3fc;
+inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
+struct CounterBindings {
+    void* context;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    int (__cdecl *divide_warning)(void*,void*) noexcept;
+};
+struct CounterResult {
+    unsigned completed,handled,stored,swapped,clamped,hit_max,hit_min,outputs,queued,warned;
+    float value,minimum,maximum;
+};
 struct CompareBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
 };
@@ -307,6 +317,8 @@ struct Api {
     int (__cdecl *compare_input)(void*,unsigned,const char*,void*,unsigned,float,const CompareBindings*,CompareResult*) noexcept;
     int (__cdecl *register_compare)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_compare)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *counter_spawn)(void*,unsigned,CounterResult*) noexcept;
+    int (__cdecl *counter_input)(void*,unsigned,const char*,void*,unsigned,float,const CounterBindings*,CounterResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
