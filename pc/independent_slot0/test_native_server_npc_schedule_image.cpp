@@ -881,6 +881,41 @@ int main(int argc,char** argv){
         assert(step->run(f.actor,sizeof(f.actor),&reloaded,&step_bind,&step_result)&&!step_result.think_called&&step_result.animation.fixed_resets==1&&step_result.animation.frame.frame.npc_events==1&&step_result.completed);
         int loaded=-1;std::memcpy(&loaded,equipped.weapon+0x4ec,4);assert(loaded==8&&equipped.sounds==3);
         assert(conditions->test(f.actor,sizeof(f.actor),4,NpcConditionCurrent,&sb.conditions,&condition)&&!condition.value);
+        // Reproduce automatic selection on an exhausted, still-engaged
+        // weapon. Original state1 ideal query is an explicit engine boundary;
+        // after it returns combat state3, the native selector must choose 48.
+        prepare_engaged(0,0);f.put(equipped.weapon,0,0x2247ab9cu);
+        assert(state->install(f.actor,sizeof(f.actor),attack_schedule,76.f,&sb,&sr));
+        f.put(f.actor,0x79c,global+191);
+        for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+        const auto prior_changed=selection.state.state_changed;
+        selection.state.state_query=[](void* p,void*,int current,int* out) noexcept -> int{
+            assert(current==1);++static_cast<EquippedThinkFixture*>(p)->queries;*out=3;return 1;
+        };
+        selection.state.state_changed=[](void*,void*,int old,int desired) noexcept -> int{
+            assert(old==1&&desired==3);return 1;
+        };
+        ServerNpcGruntPointPolicyBindings grenade{};
+        ServerNpcGruntSchedulePolicyServices reload_policy{};
+        reload_policy.enemy_memory=&vis.memory;reload_policy.grenade=&grenade;
+        unsigned reload_rolls=0;reload_policy.context=&reload_rolls;
+        reload_policy.probability=[](void* p,float chance,bool* out) noexcept -> int{
+            assert(chance==20.f);++*static_cast<unsigned*>(p);*out=true;return 1;
+        };
+        auto reload_scene=req_scene;reload_scene.policy=&reload_policy;
+        auto reload_line=engaged_line;reload_line.scene=&reload_scene;
+        auto reload_cone=engaged_cone;reload_cone.line=&reload_line;
+        auto reload_combat=engaged_combat;reload_combat.line=&reload_line;reload_combat.cone=&reload_cone;
+        active.cone=&reload_cone;active.combat_line=&reload_combat;
+        assert(run_engaged(76.f)&&cycle.completed&&cycle.scheduler.gather_calls==1&&equipped.queries==1);
+        assert(!outer_weapon.primary.available&&!inner_weapon.primary.available&&outer_line.attack.conditions[0]==4);
+        assert(req_run.requests.requests==1&&req_run.requests.combat.schedule==48&&req_run.requests.request.requested==48);
+        assert(req_run.requests.request.acquisition.translated==84&&reload_rolls==1&&req_run.requests.scheduler.maintenance.state.schedule==find(84));
+        assert(req_run.requests.scheduler.maintenance.started==1&&req_run.requests.scheduler.maintenance.state.task.id==88);
+        int reload_fail=-1;std::memcpy(&reload_fail,f.actor+0x7bc,4);assert(reload_fail==49);
+        // New descriptor's real first task installs the ordinary reload
+        // fallback. No manual installation of schedule84 or forced selector.
+        selection.state.state_changed=prior_changed;
         ids=prior_ids;
         stamp=prior_stamp;
         selection.state.entities=previous_entities;selection.state.state_query=previous_query;selection.state.context=previous_context;
