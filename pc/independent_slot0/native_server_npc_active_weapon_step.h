@@ -55,4 +55,30 @@ struct ServerNpcActiveJetWeaponStepApi {
     int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcActiveJetWeaponStepBindings*,ServerNpcActiveJetWeaponStepResult*) noexcept;
 };
 using GetServerNpcActiveJetWeaponStepApi=const ServerNpcActiveJetWeaponStepApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_active_post_animation_export[]="SiN_GetServerNpcActivePostAnimationApi";
+struct ServerNpcActivePostAnimationBindings {
+    void* context;
+    // Resolve a bounded original pointer token; mutable for the network dirty word.
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *navigation_update)(void*,void*,std::uint32_t,float) noexcept;
+    int (__cdecl *prepare_pose)(void*,void*) noexcept;
+    int (__cdecl *capability_pose)(void*,void*) noexcept; // +650
+    int (__cdecl *timed_pose)(void*,void*,float) noexcept; // +644
+    int (__cdecl *finish_pose)(void*,void*) noexcept; // +2e8
+    int (__cdecl *motor_finish)(void*,void*,std::uint32_t) noexcept; // +64c -> motor+50
+};
+struct ServerNpcActivePostAnimationResult {
+    unsigned navigation_called,path_active,path_changed,capabilities_first,capabilities_second;
+    unsigned prepare_called,capability_called,timed_called,finish_called,motor_called,timestamp_changed,completed;
+    float navigation_delta,pose_delta;
+};
+struct ServerNpcActivePostAnimationApi {
+    std::uint32_t version,size;
+    // 2204342c..22043467, fixed frame time. Engine leaves remain explicit.
+    int (__cdecl *run)(void*,unsigned,float,float,const ServerNpcScheduleServicesBindings*,const ServerNpcActivePostAnimationBindings*,ServerNpcActivePostAnimationResult*) noexcept;
+    int (__cdecl *ground)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveWeaponStepBindings*,const ServerNpcActivePostAnimationBindings*,ServerNpcActiveWeaponStepResult*,ServerNpcActivePostAnimationResult*) noexcept;
+    int (__cdecl *jet)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveJetWeaponStepBindings*,const ServerNpcActivePostAnimationBindings*,ServerNpcActiveJetWeaponStepResult*,ServerNpcActivePostAnimationResult*) noexcept;
+};
+using GetServerNpcActivePostAnimationApi=const ServerNpcActivePostAnimationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
