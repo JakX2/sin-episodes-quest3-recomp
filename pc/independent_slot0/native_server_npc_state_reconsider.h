@@ -2006,4 +2006,32 @@ struct ServerNpcJetpackDeathBranchesApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcJetpackDeathBranchesBindings*,ServerNpcJetpackDeathBranchesResult*) noexcept;
 };
 using GetServerNpcJetpackDeathBranchesApi=const ServerNpcJetpackDeathBranchesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_jetpack_death_think_export[]="SiN_GetServerNpcJetpackDeathThinkApi";
+struct ServerNpcJetpackDeathThinkBindings {
+    ServerNpcGruntGroundDeathBindings ground;
+    void* context;
+    int (__cdecl *time)(void*,float*) noexcept;
+    // Host the original ragdoll motion block, including its RNG and live-time queries.
+    int (__cdecl *motion)(void*,void*,void*,int) noexcept;
+    int (__cdecl *effect_begin)(void*,void*) noexcept;
+    int (__cdecl *terminal_effect)(void*,void*,void*,bool) noexcept; // mode4 selects +1028, others +1000
+    int (__cdecl *effect_end)(void*,void*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+    int (__cdecl *install_think)(void*,void*,std::uint32_t) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+};
+struct ServerNpcJetpackDeathThinkResult {
+    ServerNpcGruntGroundDeathResult ground;
+    float checked_time,scheduled;
+    double elapsed;
+    int motion_mode,terminal_mode;
+    unsigned completed,motion_called,expired,effect_opened,effect_called,effect_closed,aux_removed,cleared,primary_removed,installed,mode_written,death_called,scheduled_called;
+};
+struct ServerNpcJetpackDeathThinkApi {
+    std::uint32_t version,size;
+    // Caller attests invocation of original 22365760; stored damage is live actor+102c.
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,const ServerNpcJetpackDeathThinkBindings*,ServerNpcJetpackDeathThinkResult*) noexcept;
+};
+using GetServerNpcJetpackDeathThinkApi=const ServerNpcJetpackDeathThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
