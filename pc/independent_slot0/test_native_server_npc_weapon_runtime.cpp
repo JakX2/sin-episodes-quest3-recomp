@@ -317,6 +317,35 @@ int main(int argc,char** argv){
     assert(admission->script_gate(f.actor,sizeof(f.actor),10.f,vt,&admission_b,&sg)&&sg.component_called&&sg.value&&sg.changed);
     assert((f.trace==std::vector<int>{213,212}));
     f.put(f.actor,0xc18,0u);
+    auto gcad=reinterpret_cast<GetServerNpcOuterCadenceApi>(GetProcAddress(server,server_npc_outer_cadence_export));
+    assert(gcad&&!GetProcAddress(client,server_npc_outer_cadence_export)&&!gcad(1,0));
+    const auto* cadence=gcad(1,sizeof(ServerNpcOuterCadenceApi));assert(cadence);
+    ServerNpcOuterCadenceBindings cad{};cad.storage=&pb;cad.context=&f;
+    cad.notify_think_flags=[](void* p,void*) noexcept -> int{F::self(p).trace.push_back(214);return 1;};
+    cad.dynamic_mode=[](void*,void*,bool pvs) noexcept -> int{assert(pvs);return 1;};
+    ServerNpcOuterCadenceResult co{};
+    f.trace.clear();f.put(f.actor,0x74,100);f.put(f.actor,0xb8,0u);f.put(f.actor,0x50,0);
+    assert(cadence->set_default(f.actor,sizeof(f.actor),-1.f,.05f,vt,&cad,&co)&&co.tick==-1&&co.flags_changed&&co.tick_written&&(f.get<unsigned>(f.actor,0xb8)&0x400000u));
+    f.put(f.actor,0x868,0);f.put(f.actor,0x85c,3);f.put(f.actor,0x860,1);
+    assert(cadence->finish(f.actor,sizeof(f.actor),10.f,.05f,vt,true,true,&cad,&co)&&co.completed&&co.mode_direct&&co.mode==0&&co.deadline==10.1f&&co.tick==202&&co.flags_changed);
+    assert((f.trace==std::vector<int>{214,214}));
+    cad.optimize_a=cad.optimize_b=true;
+    for(int mode=0;mode<4;++mode)for(int slow=0;slow<2;++slow){
+        f.put(f.actor,0x74,-1);f.put(f.actor,0x85c,mode);f.put(f.actor,0x860,slow);
+        const float expected[]{10.1f,10.2f,10.4f,10.6f};
+        assert(cadence->finish(f.actor,sizeof(f.actor),10.f,.05f,vt,true,true,&cad,&co)&&co.deadline==expected[mode]&&co.tick==(mode&&slow?204:202)&&!co.mode_direct);
+    }
+    f.put(f.actor,0x74,123);f.put(f.actor,0x864,99.f);
+    assert(cadence->finish(f.actor,sizeof(f.actor),10.f,.05f,vt,true,true,&cad,&co)&&!co.unscheduled&&co.deadline_written&&co.deadline==0.f&&co.tick==123);
+    f.put(f.actor,0x74,-1);f.put(f.actor,0x868,2);f.put(f.actor,0x864,99.f);
+    assert(cadence->finish(f.actor,sizeof(f.actor),10.f,.05f,vt,true,false,&cad,&co)&&co.mode_direct&&co.mode==4&&!co.deadline_written&&co.deadline==99.f);
+    f.put(f.actor,0x868,0);
+    // A positive named think tick prevents setting the no-think flag.
+    f.put(f.actor,0x44,0x2222u);f.put(f.actor,0x50,2);f.put(pf.path,8,1);f.put(f.actor,0xb8,0u);
+    assert(cadence->set_default(f.actor,sizeof(f.actor),-1.f,.05f,vt,&cad,&co)&&!co.flags_changed);
+    f.put(pf.path,8,0);f.put(pf.path,24,0);
+    assert(cadence->set_default(f.actor,sizeof(f.actor),-1.f,.05f,vt,&cad,&co)&&co.flags_changed);
+    f.put(f.actor,0x50,0);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

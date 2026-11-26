@@ -180,6 +180,69 @@ int __cdecl outer_script(void* a,unsigned n,float now,std::uint32_t vt,const Ser
     if(rd<std::uint8_t>(a,0xc10)!=value){if(!dirty(a,*b->storage))return 0;wr<std::uint8_t>(a,0xc10,value);out->changed=1;}
     out->completed=1;return 1;
 }
+bool set_tick(void* a,float time,float interval,const ServerNpcOuterCadenceBindings& b,ServerNpcOuterCadenceResult& o) noexcept {
+    int tick=-1;
+    if(time!=-1.f){
+        const double q=std::trunc(double(time)/double(interval)+.5);
+        if(!std::isfinite(q)||q<double(std::numeric_limits<int>::min())||q>double(std::numeric_limits<int>::max()))return false;
+        tick=static_cast<int>(q);
+    }
+    // All reviewed +c0 targets are 22001740 RET, no callback needed.
+    if(rd<int>(a,0x74)!=tick){wr<int>(a,0x74,tick);o.tick_written=1;}
+    o.tick=tick;o.next_time=time;
+    const auto flags=rd<unsigned>(a,0xb8);
+    auto changed=[&](unsigned value){
+        if(!b.notify_think_flags)return false;
+        wr<unsigned>(a,0xb8,value);o.flags_changed=o.notify_called=1;
+        return b.notify_think_flags(b.context,a)!=0;
+    };
+    if(flags&0x400000u){
+        if(tick!=-1&&!changed(flags&~0x400000u))return false;
+    }else if(tick==-1){
+        // 2214bf00 checks strictly positive ticks, including named contexts.
+        const int count=rd<int>(a,0x50);
+        if(count>4096)return false;
+        bool scheduled=false;
+        if(count>0){
+            void* rows=nullptr;
+            if(!b.storage||!resolve(*b.storage,rd<unsigned>(a,0x44),16u*static_cast<unsigned>(count),&rows))return false;
+            for(int i=0;i<count;++i)if(rd<int>(rows,16u*static_cast<unsigned>(i)+8)>0){scheduled=true;break;}
+        }
+        if(!scheduled&&!changed(flags|0x400000u))return false;
+    }
+    return true;
+}
+int __cdecl cadence_set(void* a,unsigned n,float time,float interval,std::uint32_t vt,const ServerNpcOuterCadenceBindings* b,ServerNpcOuterCadenceResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!a||!b||!outer_class(vt,n)||!std::isfinite(time)||!std::isfinite(interval)||interval<=0)return 0;
+    if(!set_tick(a,time,interval,*b,*out))return 0;out->completed=1;return 1;
+}
+int __cdecl cadence_finish(void* a,unsigned n,float now,float interval,std::uint32_t vt,bool pvs,bool think_called,const ServerNpcOuterCadenceBindings* b,ServerNpcOuterCadenceResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!a||!b||!outer_class(vt,n)||!std::isfinite(now)||!std::isfinite(interval)||interval<=0)return 0;
+    out->unscheduled=rd<int>(a,0x74)==-1;wr<std::uint8_t>(a,0x7c1,out->unscheduled!=0);
+    out->mode_called=1;
+    // 2203aa90 direct mode branches; mode callback is explicitly bounded.
+    if(rd<int>(a,0x868)!=0){wr<int>(a,0x85c,4);out->mode_direct=1;}
+    else if(!b->optimize_a||!b->optimize_b){wr<int>(a,0x85c,0);wr<int>(a,0x860,0);out->mode_direct=1;}
+    else if(!b->dynamic_mode||!b->dynamic_mode(b->context,a,pvs))return 0;
+    out->mode=rd<int>(a,0x85c);
+    // Original rereads +7c1 after +4d4.
+    if(!rd<std::uint8_t>(a,0x7c1)){
+        wr<float>(a,0x864,0.f);out->deadline_written=1;out->deadline=0.f;out->tick=rd<int>(a,0x74);
+    }else{
+        if(think_called){
+            constexpr float delay[]{.1f,.2f,.4f,.6f}; // 224dc174
+            if(out->mode<0||out->mode>=4)return 0;
+            out->deadline=static_cast<float>(double(now)+double(delay[out->mode]));if(!std::isfinite(out->deadline))return 0;
+            wr<float>(a,0x864,out->deadline);out->deadline_written=1;
+        }else out->deadline=rd<float>(a,0x864);
+        const float next=static_cast<float>(double(now)+(rd<int>(a,0x860)&&out->mode?.2:.1));
+        if(!std::isfinite(next)||!set_tick(a,next,interval,*b,*out))return 0;
+    }
+    out->completed=1;return 1;
+}
+const ServerNpcOuterCadenceApi cadence_api{1,sizeof(ServerNpcOuterCadenceApi),&cadence_set,&cadence_finish};
 const ServerNpcOuterAdmissionApi admission_api{1,sizeof(ServerNpcOuterAdmissionApi),&outer_admit,&outer_script};
 const ServerNpcActivePostAnimationApi post_api{1,sizeof(ServerNpcActivePostAnimationApi),&post,&ground_post,&jet_post};
 const ServerNpcActiveWeaponStepApi api{1,sizeof(ServerNpcActiveWeaponStepApi),&run};
@@ -204,4 +267,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterAdmissionApi=_SiN_GetServerNpcOuterAdmissionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcOuterAdmissionApi* __cdecl SiN_GetServerNpcOuterAdmissionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcOuterAdmissionApi)?&admission_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterCadenceApi=_SiN_GetServerNpcOuterCadenceApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcOuterCadenceApi* __cdecl SiN_GetServerNpcOuterCadenceApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcOuterCadenceApi)?&cadence_api:nullptr;
 }
