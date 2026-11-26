@@ -271,9 +271,10 @@ struct CaseResult {
 };
 struct BranchBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const RelayQueueBindings* native_queue;
 };
 struct BranchResult {
-    unsigned completed,handled,changed,fired,queued,output_offset,value;
+    unsigned completed,handled,changed,fired,queued,output_offset,value,native_output_queued;
 };
 struct TimerBindings {
     void* context;
@@ -286,10 +287,12 @@ struct TimerBindings {
     const native_weapon_tables::ServerNpcOuterCadenceBindings* cadence;
     const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
     const float* tick_interval;
+    const RelayQueueBindings* native_queue;
 };
 struct TimerResult {
     unsigned completed,handled,suppressed,scheduled,randomized,fired,queued,output_offset,clamped,changed;
     float interval,next_think;
+    unsigned native_output_queued;
 };
 struct TimerPrimaryBindings {
     const TimerBindings* behavior;

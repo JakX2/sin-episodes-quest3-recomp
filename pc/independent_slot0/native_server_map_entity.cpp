@@ -1270,14 +1270,22 @@ int __cdecl timer_spawn(void* a,unsigned n,const TimerBindings* b,TimerResult* o
     if(!(enabled?timer_enable(a,*b,*o):timer_disable(a,*b,*o)))return 0;
     o->handled=o->completed=1;return 1;
 }
+bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
 bool timer_fire(void* a,unsigned n,const TimerBindings& b,TimerResult& o) noexcept {
     if(read_field<int>(a,0x3dc)){o.suppressed=1;return true;}
     const bool oscillate=(read_field<unsigned>(a,0xb4)&1u)!=0;
     const unsigned off=oscillate?(read_field<unsigned char>(a,0x3e4)?0x3ac:0x3c4):0x394;
     using namespace sin_port::native_weapon_tables;
     const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));ServerEntityVoidOutputResult r{};
-    if(!fire||!b.output||!fire->fire(static_cast<unsigned char*>(a)+off,0x18,a,a,n,0.f,b.output,&r))return false;
-    o.output_offset=off;o.fired=1;o.queued=r.queued;
+    if(!fire||!b.output)return false;
+    if(b.native_queue){
+        if(!native_named_output(a,n,a,off,false,b.output,b.native_queue,o.queued))return false;
+        o.native_output_queued=o.queued;
+    }else{
+        if(!fire->fire(static_cast<unsigned char*>(a)+off,0x18,a,a,n,0.f,b.output,&r))return false;
+        o.queued=r.queued;
+    }
+    o.output_offset=off;o.fired=1;
     if(oscillate)write_field(a,0x3e4,static_cast<unsigned char>(!read_field<unsigned char>(a,0x3e4)));
     return timer_reschedule(a,b,o);
 }
@@ -1348,8 +1356,15 @@ int __cdecl branch_input(void* a,unsigned n,const char* name,void* activator,uns
         const auto* api=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
         ServerEntityVoidOutputResult result{};
         o->output_offset=next?0x398:0x3b0;
-        if(!api||!b->output||!api->fire(static_cast<unsigned char*>(a)+o->output_offset,0x18,activator,a,n,0.f,b->output,&result))return 0;
-        o->fired=1;o->queued=result.queued;
+        if(!api||!b->output)return 0;
+        if(b->native_queue){
+            if(!native_named_output(a,n,activator,o->output_offset,false,b->output,b->native_queue,o->queued))return 0;
+            o->native_output_queued=o->queued;
+        }else{
+            if(!api->fire(static_cast<unsigned char*>(a)+o->output_offset,0x18,activator,a,n,0.f,b->output,&result))return 0;
+            o->queued=result.queued;
+        }
+        o->fired=1;
     }
     o->completed=1;return 1;
 }
@@ -1405,7 +1420,6 @@ bool case_variant_text(const CaseBindings& b,const void* variant,char (&buffer)[
     }
     *text="No conversion to string";return true;
 }
-bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
 // Original CLogicCase 2217ab00 and 22178cb0. Numbered match is
 // first populated case in ascending order, regardless of action count.
 // Random instead scans actual action lists, regardless of case token.
