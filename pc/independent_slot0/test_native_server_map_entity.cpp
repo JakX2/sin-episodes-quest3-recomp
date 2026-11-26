@@ -294,6 +294,41 @@ int main(int argc,char** argv){
     co.now=20.f;
     assert(fire_api->fire(outfield,0x18,co.actor,co.actor,0x6a0,.25f,&fire_bind,&connected_fire_result)&&connected_fire_result.queued==1&&!connected_fire_result.removed);
     assert(service_at(22.25f)&&es.events==1&&co.ids[2]==unlimited_id&&co.delivered==3&&co.released==3&&!co.locked&&!word(co.root,0x30));
+    // CLogicRelay original input leaves, with the same native output parser.
+    alignas(4) unsigned char relay[relay_extent]{};
+    put(relay,0,relay_vtable);relay[0x3ad]=1;
+    assert(api->key_value(relay,"StartDisabled","-2",&kb,&kr)&&kr.handled&&relay[0x3ac]==1&&relay[0x3ad]==1);
+    assert(api->key_value(relay,"m_bWaitForRefire","0",&kb,&kr)&&kr.foreign&&!kr.handled&&relay[0x3ad]==1);
+    assert(api->key_value(relay,"StartDisabled","0",&kb,&kr)&&!relay[0x3ac]&&relay[0x3ad]);
+    assert(api->key_value(relay,"OnTrigger","relay,Trigger,,10,1",&kb,&kr));
+    assert(api->key_value(relay,"OnTrigger#2","relay,Trigger,,2,-1",&kb,&kr));
+    struct RelayFixture {ActionPool* pool;void* actor;void* activator;unsigned queued=0,released=0,removed=0,canceled=0,refires=0;float delay=0;} rf{&pool,relay,co.actor};
+    nw::ServerEntityVoidOutputBindings ro{};ro.context=&rf;
+    ro.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<RelayFixture*>(p);
+        for(unsigned i=6;i<8;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+    };
+    ro.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction*) noexcept ->int{
+        auto& f=*static_cast<RelayFixture*>(p);assert(a==f.activator&&c==f.actor);++f.queued;return 1;
+    };
+    ro.release=[](void* p,unsigned,void* row) noexcept ->int{auto& f=*static_cast<RelayFixture*>(p);assert(row==f.pool->rows[6]);++f.released;return 1;};
+    RelayBindings rb{};rb.context=&rf;rb.output=&ro;
+    rb.remove=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<RelayFixture*>(p);assert(a==f.actor);++f.removed;return 1;};
+    rb.cancel=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<RelayFixture*>(p);assert(a==f.actor);++f.canceled;return 1;};
+    rb.refire=[](void* p,void* a,float d) noexcept ->int{auto& f=*static_cast<RelayFixture*>(p);assert(a==f.actor);++f.refires;f.delay=d;return 1;};
+    RelayResult rr{};
+    auto input=[&](const char* name){return api->relay_input(relay,sizeof(relay),name,co.actor,&rb,&rr);};
+    assert(input("Trigger")&&rr.suppressed&&!rf.queued);
+    assert(input("EnableRefire")&&!relay[0x3ad]);
+    assert(input("Disable")&&relay[0x3ac]);
+    assert(input("Trigger")&&rr.suppressed);
+    assert(input("Toggle")&&!relay[0x3ac]);
+    assert(input("tRiGgEr")&&rr.fired&&rr.queued==2&&rr.actions==1&&rr.maximum_delay==2.f&&rr.refire_delay==static_cast<float>(2.001)&&rf.delay==rr.refire_delay&&rf.released==1&&relay[0x3ad]);
+    assert(input("Trigger")&&rr.suppressed&&rf.queued==2);
+    assert(input("CancelPending")&&rr.canceled&&rf.canceled==1&&!relay[0x3ad]);
+    put(relay,0xb4,2);assert(input("Trigger")&&rr.fired&&!rr.refire&&!relay[0x3ad]&&rf.queued==3);
+    put(relay,0xb4,3);assert(input("Trigger")&&rr.removed&&rf.removed==1&&rf.queued==4&&rf.refires==1);
+    assert(input("Enable")&&!relay[0x3ac]);assert(input("Unknown")&&!rr.handled);
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
     struct PipelineFixture {

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_dynamic_resupply.h"
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; }
 namespace sin_port::native_map {
 inline constexpr char export_name[]="SiN_GetServerMapEntityApi";
 inline constexpr unsigned token_capacity=2048;
@@ -129,6 +130,20 @@ struct PipelineResult {
     Result parse;
     SpawnResult spawn;
 };
+inline constexpr unsigned relay_vtable=0x224228cc,relay_extent=0x3b0,relay_output=0x394;
+struct RelayBindings {
+    void* context;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    int (__cdecl *remove)(void*,void*) noexcept;
+    int (__cdecl *cancel)(void*,void*) noexcept;
+    // Original direct void queue route: target, activator, caller = relay;
+    // input EnableRefire, action ID zero. Owner resolves handles and clock.
+    int (__cdecl *refire)(void*,void*,float) noexcept;
+};
+struct RelayResult {
+    unsigned completed,handled,suppressed,fired,queued,removed,canceled,refire,actions;
+    float maximum_delay,refire_delay;
+};
 struct Api {
     std::uint32_t version,size;
     int (__cdecl *token)(const char*,unsigned,unsigned,Token*) noexcept;
@@ -142,6 +157,7 @@ struct Api {
     int (__cdecl *dispatch_spawn)(void*,const SpawnBindings*,DispatchResult*) noexcept;
     int (__cdecl *key_value)(void*,const char*,const char*,const KeyBindings*,KeyResult*) noexcept;
     int (__cdecl *parse_all)(const char*,unsigned,bool,const PipelineBindings*,PipelineResult*) noexcept;
+    int (__cdecl *relay_input)(void*,unsigned,const char*,void*,const RelayBindings*,RelayResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

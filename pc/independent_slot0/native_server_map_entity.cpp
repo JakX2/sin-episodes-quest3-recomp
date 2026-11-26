@@ -1,4 +1,6 @@
 #include "native_server_map_entity.h"
+#include "native_server_npc_active_weapon_step.h"
+#include <cmath>
 #include "server_fixed_difficulty_service.h"
 extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
@@ -6,6 +8,7 @@ extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalS
 #include <cerrno>
 #include <climits>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_map {
 namespace {
 bool delim(char c) noexcept {return c=='{'||c=='}'||c=='('||c==')'||c=='\'';}
@@ -140,7 +143,7 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
 template<class T>void write_field(void* a,unsigned off,T v) noexcept {std::memcpy(static_cast<unsigned char*>(a)+off,&v,sizeof(v));}
 unsigned entity_vtable(void* a) noexcept {unsigned vt=0;std::memcpy(&vt,a,4);return vt;}
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -213,13 +216,16 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     constexpr Spec canister[]{
         {"Percent",0x628,1},{"ContainerFlags",0x62c,5},{"OnExplode",0x66c,11}
     };
+    constexpr Spec relay[]{
+        {"StartDisabled",0x3ac,6},{"OnTrigger",0x394,11}
+    };
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);
     if(!spec){match(common);if(spec)o->base_field=1;}
     if(!spec)return foreign(name);
     o->offset=spec->offset;o->field_type=spec->type;
-    if(bytes<o->offset+4)return 0;
+    if(bytes<o->offset+(spec->type==6?1u:4u))return 0;
     if(spec->type==2){
         unsigned token=0;if(!b->intern||!b->intern(b->context,value,&token))return 0;
         write_field(actor,o->offset,token);o->interned=1;
@@ -227,12 +233,13 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         // Original atof -> float, accepts numeric prefix and empty->0.
         const float scalar=static_cast<float>(std::strtod(value,nullptr));
         write_field(actor,o->offset,scalar);o->scalar=1;
-    }else if(spec->type==5){
+    }else if(spec->type==5||spec->type==6){
         // MSVCRT atoi overflow is not a portable C++ contract. Bound the
         // conversion rather than relying on host undefined behavior.
         errno=0;const long long scalar=std::strtoll(value,nullptr,10);
         if(errno==ERANGE||scalar<INT_MIN||scalar>INT_MAX)return 0;
-        write_field(actor,o->offset,static_cast<int>(scalar));o->scalar=1;
+        if(spec->type==6)write_field(actor,o->offset,static_cast<unsigned char>(scalar!=0));
+        else write_field(actor,o->offset,static_cast<int>(scalar));o->scalar=1;
     }else{
         auto* output=static_cast<unsigned char*>(actor)+o->offset;
         if(b->native_output){if(bytes-o->offset<0x18||!attach_output(output,value,b))return 0;}
@@ -556,7 +563,51 @@ int __cdecl parse_all(const char* s,unsigned n,bool activate,const PipelineBindi
     if(ok)ok=spawn_ordinary(p.rows,p.ordinary,activate,b->spawn,&o->spawn)!=0;
     const bool closed=pipeline_scope(p,outer,false);o->completed=ok&&closed;return int(o->completed);
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all};
+// 2217ded0..2217dfca: six original CLogicRelay input leaves.
+int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activator,const RelayBindings* b,RelayResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!actor||bytes<relay_extent||!name||entity_vtable(actor)!=relay_vtable||!b)return 0;
+    auto* a=static_cast<unsigned char*>(actor);
+    auto done=[&](){o->completed=1;return 1;};
+    o->handled=1;
+    if(equal_class(name,"Enable")){a[0x3ac]=0;return done();}
+    if(equal_class(name,"Disable")){a[0x3ac]=1;return done();}
+    if(equal_class(name,"Toggle")){a[0x3ac]=!a[0x3ac];return done();}
+    if(equal_class(name,"EnableRefire")){a[0x3ad]=0;return done();}
+    if(equal_class(name,"CancelPending")){
+        if(!b->cancel||!b->cancel(b->context,actor))return 0;
+        a[0x3ad]=0;o->canceled=1;return done();
+    }
+    if(!equal_class(name,"Trigger")){o->handled=0;return done();}
+    if(a[0x3ac]||a[0x3ad]){o->suppressed=1;return done();}
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    ServerEntityVoidOutputResult fr{};
+    if(!fire||!b->output||!fire->fire(a+relay_output,0x18,activator,actor,bytes,0.f,b->output,&fr))return 0;
+    o->fired=1;o->queued=fr.queued;
+    unsigned flags=0;std::memcpy(&flags,a+0xb4,4);
+    if(flags&1){if(!b->remove||!b->remove(b->context,actor))return 0;o->removed=1;return done();}
+    if(flags&2)return done();
+    // Original sets the latch BEFORE computing the maximum of the surviving
+    // action list. Finite rows already removed by fire must not count.
+    a[0x3ad]=1;
+    unsigned token=0,seen[256]{};
+    std::memcpy(&token,a+relay_output+0x14,4);
+    while(token){
+        if(o->actions==256)return 0;
+        for(unsigned i=0;i<o->actions;++i)if(seen[i]==token)return 0;
+        seen[o->actions++]=token;
+        void* row=nullptr;unsigned n=0;
+        if(!b->output->resolve||!b->output->resolve(b->output->context,token,&row,&n)||!row||n<0x1c)return 0;
+        float delay=0;std::memcpy(&delay,static_cast<unsigned char*>(row)+0xc,4);
+        if(!std::isfinite(delay))return 0;if(delay>o->maximum_delay)o->maximum_delay=delay;
+        std::memcpy(&token,static_cast<unsigned char*>(row)+0x18,4);
+    }
+    o->refire_delay=static_cast<float>(double(o->maximum_delay)+0.001);
+    if(!b->refire||!b->refire(b->context,actor,o->refire_delay))return 0;
+    o->refire=1;return done();
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
