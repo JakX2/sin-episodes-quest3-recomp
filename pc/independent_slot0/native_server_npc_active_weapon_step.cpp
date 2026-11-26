@@ -659,10 +659,31 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                     }
                     bound.logic_compare=&compare;
                 }
+                sin_port::native_map::BranchBindings branch{};
                 sin_port::native_map::TimerBindings timer{};
+                sin_port::native_map::RelayQueueBindings trigger_queue{};
+                auto bind_trigger_queue=[&](const sin_port::native_map::RelayQueueBindings* route){
+                    trigger_queue=*route;
+                    if(trigger_queue.root!=sentinel||trigger_queue.root_token!=root)return false;
+                    trigger_queue.root_bytes=n;trigger_queue.entries=b->entities.entries;trigger_queue.entry_count=b->entities.count;
+                    trigger_queue.now=b->live_now?b->live_now:&bound.now;
+                    trigger_queue.protected_node=&dispatch_token;return true;
+                };
+                if(vt==sin_port::native_map::branch_vtable&&bound.branch){
+                    branch=*bound.branch;
+                    if(branch.native_queue){
+                        if(!bind_trigger_queue(branch.native_queue))return false;
+                        branch.native_queue=&trigger_queue;
+                    }
+                    bound.branch=&branch;
+                }
                 if(vt==sin_port::native_map::timer_vtable&&bound.timer){
                     timer=*bound.timer;timer.now=b->live_now?b->live_now:&bound.now;
                     if(timer.cadence){timer.entries=b->entities.entries;timer.entry_count=b->entities.count;}
+                    if(timer.native_queue){
+                        if(!bind_trigger_queue(timer.native_queue))return false;
+                        timer.native_queue=&trigger_queue;
+                    }
                     bound.timer=&timer;
                 }
                 ServerEntityAcceptInputResult result{};

@@ -2618,5 +2618,6 @@ int main(int argc,char** argv){
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==2&&es.native_inputs==2&&!es.rejected_inputs&&co.released==2&&target[0x3ac]==1&&f.fired==1);
         assert(word(co.rows[1],0x14)==43&&!word(co.rows[1],0x2c));
     }
+#include "test_native_logic_trigger_chain.inc"
     FreeLibrary(server);FreeLibrary(client);
 }
