@@ -4349,6 +4349,8 @@ int main(int argc,char** argv){
             alignas(4) unsigned char a[0x1085]{},owner[0x48]{},behavior[0x18]{},records[3][0x34]{};
             unsigned warnings=0,last_format=0,special=0,resets=0,changes=0,shared=0,tails=0;
             int last_id=-1;std::uint8_t guard=0;
+            alignas(4) unsigned char auxiliary[0xca8]{};
+            bool speech=true,prob=true,blocked=true;int combat=77;
             static AcquireFixture& self(void* p){return *static_cast<AcquireFixture*>(p);}
             static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
         } q;
@@ -4422,6 +4424,34 @@ int main(int argc,char** argv){
         f.put(q.a,0xc18,0x10db8u);f.put(q.a,0x798,11u);f.put(q.a,0x7a0,0);f.put(q.a,0x7b0,9);f.put(q.a,0x7bc,16);
         assert(fail()&&z.current_schedule==16&&z.current_task==0&&z.failure_reason==9&&z.failure_marker_set&&z.failure_marker_cleared&&z.failure_shared&&z.requested==16&&z.marker_used&&!z.deactivated&&z.acquisition.schedule_token==10);
         f.put(q.a,0x7bc,0);assert(fail()&&z.failure_shared&&z.requested==79&&z.acquisition.fallback&&!z.deactivated);
+
+        auto tg=reinterpret_cast<GetServerNpcGruntSelectorTailApi>(GetProcAddress(s,server_npc_grunt_selector_tail_export));
+        assert(tg&&!GetProcAddress(c,server_npc_grunt_selector_tail_export)&&!tg(0,sizeof(ServerNpcGruntSelectorTailApi))&&!tg(1,0));
+        const auto* tail=tg(1,sizeof(ServerNpcGruntSelectorTailApi));assert(tail);
+        ServerNpcGruntSelectorTailBindings tb{};tb.request=&rb;tb.context=&q;
+        tb.auxiliary=[](void* x,std::uint32_t token,void** v,unsigned* n) noexcept -> int{auto& q=AcquireFixture::self(x);assert(token==99);*v=q.auxiliary;*n=sizeof(q.auxiliary);return 1;};
+        tb.speech_gate=[](void* x,void*,bool* yes) noexcept -> int{*yes=AcquireFixture::self(x).speech;return 1;};
+        tb.probability=[](void* x,float p,bool* yes) noexcept -> int{assert(p==1||p==4);*yes=AcquireFixture::self(x).prob;return 1;};
+        tb.combat_schedule=[](void* x,void*,int* id) noexcept -> int{*id=AcquireFixture::self(x).combat;return 1;};
+        tb.navigation_blocked=[](void* x,void*,bool* yes) noexcept -> int{*yes=AcquireFixture::self(x).blocked;return 1;};
+        ServerNpcGruntSelectorTailResult tr{};
+        auto run_tail=[&](int id){assert(tail->tail(q.a,sizeof(q.a),10,&tb,&tr)&&tr.completed&&tr.schedule==id);};
+        f.put(q.a,0x850,2);f.put(q.a,0x7d4,(1u<<9)|(1u<<7));f.put(q.a,0xca8,99u);f.put(q.auxiliary,0xca4,1u);f.put(q.auxiliary,0x8a8,123u);
+        run_tail(113);assert(tr.auxiliary_reset&&tr.condition_clears==2&&!AcquireFixture::rd(q.a,0x7d4)&&!AcquireFixture::rd(q.a,0xca8)&&!AcquireFixture::rd(q.auxiliary,0xca4)&&AcquireFixture::rd(q.auxiliary,0x8a8)==0xffffffffu);
+        f.put(q.a,0x7d4,1u<<7);run_tail(107);f.put(q.a,0x850,4);run_tail(0);
+        f.put(q.a,0x7d4,1u<<11);run_tail(110);f.put(q.a,0x7d4,0u);
+        f.put(q.a,0x850,3);run_tail(85);assert(tr.speech_gate_called&&tr.probability_called&&tr.probability_argument==1);
+        f.put(q.a,0x7d4,1u<<13);run_tail(85);assert(tr.probability_argument==4);f.put(q.a,0x7d4,0u);
+        q.prob=false;run_tail(77);assert(tr.combat_called);
+        q.a[0xca0]=1;run_tail(77);assert(!tr.speech_gate_called);q.a[0xca0]=0;
+        ab.actor_vtable=0x2248df04;run_tail(77);assert(!tr.speech_gate_called);ab.actor_vtable=0x2249aaa4;
+        f.put(q.a,0x850,1);q.a[0xc65]=1;run_tail(100);q.a[0xc65]=0;
+        f.put(q.a,0x850,2);f.put(q.a,0x7cc,1u<<16);run_tail(28);assert(tr.navigation_called);
+        q.blocked=false;run_tail(0);assert(tr.navigation_called);
+        f.put(q.a,0x7cc,0u);f.put(q.a,0x7d4,1u<<4);run_tail(100);f.put(q.a,0xdd4,2u);run_tail(0);
+        f.put(q.a,0xdd4,0u);f.put(q.a,0x7d4,1u<<9);f.put(q.a,0xc18,0u);rb.normal_tail=nullptr;
+        assert(tail->choose(q.a,sizeof(q.a),10,&tb,&z,&tr)&&z.tail_called&&tr.completed&&tr.schedule==113&&z.requested==113&&z.acquisition.fallback);
+
 
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
