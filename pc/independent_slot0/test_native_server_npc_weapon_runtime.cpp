@@ -436,6 +436,47 @@ int main(int argc,char** argv){
     f.put(wake_f.sounds[1],0x18,std::int16_t{0});
     assert(!wake->run(f.actor,sizeof(f.actor),vt,false,&wb,&wo)&&!wo.completed);
     f.put(f.actor,0xb4,1u);assert(wake->run(f.actor,sizeof(f.actor),vt,false,&wb,&wo)&&!wo.sounds_visited);
+    auto gtWake=reinterpret_cast<GetServerNpcWakeTransitionApi>(GetProcAddress(server,server_npc_wake_transition_export));
+    assert(gtWake&&!GetProcAddress(client,server_npc_wake_transition_export)&&!gtWake(1,0));
+    const auto* transition_wake=gtWake(1,sizeof(ServerNpcWakeTransitionApi));assert(transition_wake);
+    struct WakeTransitionFixture {F* f;alignas(4) unsigned char member[0xfd8]{},dead[0xfd8]{};} wt{&f};
+    sin_independent::EntityHandleEntry wake_slots[2]{};
+    wake_slots[1].serial=7;wake_slots[1].entity=reinterpret_cast<CBaseEntity*>(wt.member);
+    ServerNpcWakeTransitionBindings wtb{};wtb.storage=&pb;wtb.context=&wt;wtb.entities.entries=wake_slots;wtb.entities.count=2;
+    wtb.extent=[](void* p,void* e,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<WakeTransitionFixture*>(p);if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.member||e==q.dead)*n=sizeof(q.member);else return 0;return 1;
+    };
+    wtb.refresh_entity=[](void* p,void* e) noexcept -> int{
+        auto& q=*static_cast<WakeTransitionFixture*>(p);assert(!q.f->get<int>(e,0x868));q.f->trace.push_back(e==q.f->actor?220:221);return 1;
+    };
+    wtb.output=[](void* p,void* e,unsigned off) noexcept -> int{
+        auto& q=*static_cast<WakeTransitionFixture*>(p);assert(off==0xbc8);q.f->trace.push_back(e==q.f->actor?222:223);return 1;
+    };
+    wtb.squad_next=[](void* p,std::uint32_t token,int* cursor,void** e) noexcept -> int{
+        auto& q=*static_cast<WakeTransitionFixture*>(p);assert(token==444u);++*cursor;
+        *e=*cursor==0?q.f->actor:*cursor==1?q.dead:*cursor==2?q.member:nullptr;return 1;
+    };
+    wtb.jet_prepare=[](void* p,void* e) noexcept -> int{auto& q=*static_cast<WakeTransitionFixture*>(p);assert(e==q.f->actor);q.f->trace.push_back(224);return 1;};
+    wtb.jet_attachment=[](void* p,std::uint32_t token) noexcept -> int{assert(token==123u);static_cast<WakeTransitionFixture*>(p)->f->trace.push_back(225);return 1;};
+    ServerNpcWakeTransitionResult wto{};
+    constexpr unsigned ground_vt=0x2249aaa4u;
+    f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x24u);f.actor[0x870]=1;f.actor[0x1f0]=0;pf.dirty=0;
+    f.put(f.actor,0x9c4,444u);
+    f.put(wt.member,0,ground_vt);f.put(wt.member,0x868,1);wt.member[0x870]=1;f.put(wt.member,0x9c4,444u);
+    f.put(wt.dead,0,ground_vt);f.put(wt.dead,0x8c,1);f.put(wt.dead,0x868,1);wt.dead[0x870]=1;
+    f.trace.clear();
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&wtb,&wto)&&wto.completed&&wto.transitions==2&&wto.flags_changed==1&&wto.squad_visited==3&&wto.squad_woken==1&&wto.outputs==1);
+    assert(f.get<unsigned>(f.actor,0x78)==4&&pf.dirty==1&&!wt.member[0x870]&&wt.dead[0x870]&&f.get<int>(wt.dead,0x868)==1);
+    assert((f.trace==std::vector<int>{220,221,223}));
+    f.trace.clear();assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&wtb,&wto)&&!wto.transitions&&f.trace.empty());
+    f.put(f.actor,0x868,1);f.put(f.actor,0x1024,0x7001u);f.put(f.actor,0x218,123u);f.actor[0x870]=0;f.actor[0x1f0]=1;
+    f.put(f.actor,0x78,0x20u);f.actor[0x200]=0;f.put(wt.member,0x868,1);
+    assert(transition_wake->run(f.actor,sizeof(f.actor),vt,true,&wtb,&wto)&&wto.transitions==2&&wto.jet_prepared==1&&wto.jet_linked==1&&wto.jet_attachment==1&&wto.outputs==2&&f.actor[0x200]);
+    assert((f.trace==std::vector<int>{224,221,223,225,220,222}));
+    // Invalid linked handle fails after preparation but before base transition.
+    f.trace.clear();f.put(f.actor,0x868,1);f.put(f.actor,0x1024,0x8001u);
+    assert(!transition_wake->run(f.actor,sizeof(f.actor),vt,true,&wtb,&wto)&&wto.jet_prepared==1&&!wto.transitions&&f.get<int>(f.actor,0x868)==1);
+    assert((f.trace==std::vector<int>{224}));
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

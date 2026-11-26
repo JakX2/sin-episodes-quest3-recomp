@@ -184,4 +184,27 @@ struct ServerNpcWakePolicyApi {
 };
 using GetServerNpcWakePolicyApi=const ServerNpcWakePolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char server_npc_wake_transition_export[]="SiN_GetServerNpcWakeTransitionApi";
+struct ServerNpcWakeTransitionBindings {
+    const ServerNpcActivePostAnimationBindings* storage;
+    ServerWeaponActivityBindings entities;
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *refresh_entity)(void*,void*) noexcept; // +58 (2213c980)
+    int (__cdecl *output)(void*,void*,unsigned) noexcept; // 22156900, +bc8
+    // Original filtered squad iterator 220a9300/220a93c0. Cursor starts at -1.
+    int (__cdecl *squad_next)(void*,std::uint32_t,int*,void**) noexcept;
+    int (__cdecl *external_wake)(void*,void*,bool) noexcept;
+    int (__cdecl *jet_prepare)(void*,void*) noexcept; // 22366a20 creates/reuses attachments
+    int (__cdecl *jet_attachment)(void*,std::uint32_t) noexcept; // +218 virtual +8
+};
+struct ServerNpcWakeTransitionResult {
+    unsigned completed,transitions,flags_changed,refreshed,outputs,squad_visited,squad_woken,external_woken,jet_prepared,jet_linked,jet_attachment;
+};
+struct ServerNpcWakeTransitionApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
+};
+using GetServerNpcWakeTransitionApi=const ServerNpcWakeTransitionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }

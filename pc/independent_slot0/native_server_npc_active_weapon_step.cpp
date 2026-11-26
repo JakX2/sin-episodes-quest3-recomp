@@ -370,6 +370,63 @@ int __cdecl wake_policy(void* a,unsigned n,std::uint32_t vt,bool pvs,const Serve
     }
     return done();
 }
+bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept;
+bool wake_member(void* e,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept {
+    unsigned n=0;
+    if(!e||!b.extent||!b.extent(b.context,e,&n)||n<4)return false;
+    const auto vt=rd<std::uint32_t>(e,0);
+    if(outer_class(vt,n))return wake_transition_impl(e,n,vt,output,b,o,depth);
+    // Known class with insufficient extent is invalid, not an external class.
+    const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
+    unsigned family=0;if(!cls||cls->classify(vt,&family))return false;
+    if(!b.external_wake||!b.external_wake(b.context,e,output))return false;
+    ++o.external_woken;return true;
+}
+bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept {
+    if(!a||!outer_class(vt,n)||depth>=16)return false;
+    if(!rd<int>(a,0x868))return true;
+    const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
+    unsigned family=0;if(!cls||!cls->classify(vt,&family))return false;
+    if(family==NpcSubclassJetpack){
+        // 22366e60 prepares attachments before resolving the linked NPC.
+        if(!b.jet_prepare||!b.jet_prepare(b.context,a))return false;++o.jet_prepared;
+        if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
+        void* linked=sin_independent::EntityHandleView(b.entities.entries,b.entities.count).Resolve(rd<unsigned>(a,0x1024));
+        if(!linked||linked==a||!wake_member(linked,true,b,o,depth+1))return false;
+        ++o.jet_linked;
+        const auto token=rd<unsigned>(a,0x218);
+        if(!token||!b.jet_attachment||!b.jet_attachment(b.context,token))return false;++o.jet_attachment;
+    }
+    // 22040ea0 rechecks sleep after the Jetpack-specific prefix.
+    if(!rd<int>(a,0x868))return true;
+    wr<int>(a,0x868,0);++o.transitions;
+    const auto flags=rd<unsigned>(a,0x78);
+    if(flags&0x20u){
+        if(!b.storage||!dirty(a,*b.storage))return false;
+        wr<unsigned>(a,0x78,flags&~0x20u);++o.flags_changed;
+    }
+    if(!b.refresh_entity||!b.refresh_entity(b.context,a))return false;++o.refreshed;
+    if(output){if(!b.output||!b.output(b.context,a,0xbc8u))return false;++o.outputs;}
+    if(!rd<std::uint8_t>(a,0x870)||!rd<unsigned>(a,0x9c4))return true;
+    int cursor=-1;
+    for(unsigned i=0;i<17;++i){
+        void* member=nullptr;const int prior=cursor;
+        if(!b.squad_next||!b.squad_next(b.context,rd<unsigned>(a,0x9c4),&cursor,&member))return false;
+        if(!member)return true;
+        if(i==16||cursor<=prior||cursor<0||cursor>=16)return false;
+        ++o.squad_visited;
+        unsigned bytes=0;if(!b.extent||!b.extent(b.context,member,&bytes)||bytes<0x871)return false;
+        if(member==a||rd<int>(member,0x8c)!=0)continue;
+        wr<std::uint8_t>(member,0x870,0);
+        if(!wake_member(member,true,b,o,depth+1))return false;
+        ++o.squad_woken;
+    }
+    return false;
+}
+int __cdecl wake_transition(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings* b,ServerNpcWakeTransitionResult* o) noexcept {
+    if(!o)return 0;*o={};if(!b||!wake_transition_impl(a,n,vt,output,*b,*o,0))return 0;o->completed=1;return 1;
+}
+const ServerNpcWakeTransitionApi wake_transition_api{1,sizeof(ServerNpcWakeTransitionApi),&wake_transition};
 const ServerNpcWakePolicyApi wake_api{1,sizeof(ServerNpcWakePolicyApi),&wake_policy};
 const ServerNpcOuterUpdateApi outer_api{1,sizeof(ServerNpcOuterUpdateApi),&outer_ground,&outer_jet};
 const ServerNpcOuterCadenceApi cadence_api{1,sizeof(ServerNpcOuterCadenceApi),&cadence_set,&cadence_finish};
@@ -412,4 +469,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcWakePolicyApi=_SiN_GetServerNpcWakePolicyApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWakePolicyApi* __cdecl SiN_GetServerNpcWakePolicyApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcWakePolicyApi)?&wake_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcWakeTransitionApi=_SiN_GetServerNpcWakeTransitionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWakeTransitionApi* __cdecl SiN_GetServerNpcWakeTransitionApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcWakeTransitionApi)?&wake_transition_api:nullptr;
 }
