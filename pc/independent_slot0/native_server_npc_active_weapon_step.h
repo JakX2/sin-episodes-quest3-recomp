@@ -409,6 +409,11 @@ struct ServerEntityNativeOutputQueueBindings {
     std::uint32_t sentinel_token;
 };
 using ServerNpcHealthOutputQueueBindings=ServerEntityNativeOutputQueueBindings;
+// Optional initial unnamed death-think installation from scripted damage.
+struct ServerNpcInputJetThinkScheduleBindings {
+    const ServerNpcOuterCadenceBindings* cadence;
+    float interval;
+};
 struct ServerNpcInputHealthDispatchBindings {
     void* context;
     bool defer_damage;
@@ -424,6 +429,7 @@ struct ServerNpcInputHealthDispatchBindings {
     // live AcceptInput life/registry bindings override the nested life copy.
     const ServerNpcGruntEliteLifeBindings* subclass_death;
     ServerNpcGruntEliteLifeResult* subclass_result;
+    const ServerNpcInputJetThinkScheduleBindings* jet_think;
 };
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
@@ -474,6 +480,8 @@ struct ServerEntityAcceptInputResult {
     unsigned health_outputs,health_output_actions,health_output_removed,health_output_enqueued;
     unsigned health_ground_route,health_ground_death;
     unsigned health_elite_route,health_jet_route,health_subclass_death;
+    unsigned health_jet_think_installed,health_jet_think_scheduled;
+    ServerNpcOuterCadenceResult health_jet_cadence;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
