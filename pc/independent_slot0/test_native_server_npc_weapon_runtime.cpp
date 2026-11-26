@@ -977,6 +977,10 @@ int main(int argc,char** argv){
     scripted.input.storage=&scripted.storage;scripted.input.context=&scripted;
     scripted.input.entities.entries=script_slots;scripted.input.entities.count=3;
     scripted.input.name_equal=inp.bindings.name_equal;
+    scripted.input.native_npc_datamaps=true;
+    // Refuse every synthetic datamap resolution: the inherited Wake row
+    // is supplied by the complete native NPC input projection instead.
+    scripted.storage.resolve=[](void*,unsigned,void**,unsigned*) noexcept -> int{return 0;};
     scripted.input.wake=&scripted.wake;scripted.input.wake_result=&scripted.wake_result;
     // Neither a general input handler nor a hosted wake transition/output
     // is required for this unconnected recipient.
@@ -1009,7 +1013,7 @@ int main(int argc,char** argv){
     assert(f.get<int>(f.actor,0x868)==0&&f.get<int>(wt.member,0x868)==2);
     assert(service->service(outf.queue_root,sizeof(outf.queue_root),root_token,20.f,false,&steps,&script_service,&sr)&&sr.future_stopped&&!sr.events);
     assert(service->service(outf.queue_root,sizeof(outf.queue_root),root_token,20.25f,false,&steps,&script_service,&sr)&&sr.completed&&sr.events==1&&sr.deliveries==1&&sr.removed==1);
-    assert(scripted.input_result.accepted&&scripted.input_result.native_wake&&scripted.input_result.map==0x224dbd9cu&&scripted.input_result.row==126&&scripted.input_result.handler==0x220320b0u);
+    assert(scripted.input_result.accepted&&scripted.input_result.native_wake&&scripted.input_result.native_maps==2&&scripted.input_result.map==0x224dbd9cu&&scripted.input_result.row==126&&scripted.input_result.handler==0x220320b0u);
     assert(scripted.wake_result.completed&&scripted.wake_result.transitions==1&&scripted.wake_result.outputs==1&&scripted.wake_result.flags_changed==1);
     assert(f.get<int>(wt.member,0x868)==0&&f.get<unsigned>(wt.member,0x78)==0&&wt.member[0x200]&&!outf.service_locked);check_queue({});
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
@@ -1109,6 +1113,67 @@ int main(int argc,char** argv){
     assert(run_input(603u,13u,123u)&&inp.result.accepted&&inp.result.converted&&inp.result.actual_type==13&&inp.last_type==13&&inp.last_value==123u);
     script_slots[1].serial=7;
     f.put(f.actor,0x378,saved_handle);
+    // Every input descriptor recovered from the original NPC maps is
+    // reachable with no datamap backing storage. The next inherited map
+    // (CBaseCombatCharacter) remains an explicit storage boundary.
+    struct CatalogCase {unsigned vt,map,index,type,name,handler,maps;};
+    const CatalogCase catalog[]{
+        {ground_vt,0x224dbd9c,121,2,0x223db450,0x22031f90,2},
+        {ground_vt,0x224dbd9c,122,5,0x223db434,0x22037a30,2},
+        {ground_vt,0x224dbd9c,123,0,0x223db414,0x22031fe0,2},
+        {ground_vt,0x224dbd9c,124,0,0x223db3f4,0x22031ff0,2},
+        {ground_vt,0x224dbd9c,125,2,0x223db3d8,0x22032000,2},
+        {ground_vt,0x224dbd9c,126,0,0x223db3c4,0x220320b0,2},
+        {ground_vt,0x224dbd9c,127,2,0x223db3a0,0x2203f1f0,2},
+        {ground_vt,0x224dbd9c,128,1,0x223db374,0x220320c0,2},
+        {ground_vt,0x224dbd9c,129,0,0x223db360,0x220424a0,2},
+        {ground_vt,0x224dbd9c,130,0,0x223db33c,0x2202e7d0,2},
+        {ground_vt,0x224dbd9c,131,0,0x223db318,0x2202e7e0,2},
+        {ground_vt,0x224dbd9c,132,0,0x223db2fc,0x22044d80,2},
+        {ground_vt,0x224dbd9c,133,0,0x223db2d8,0x22042c00,2},
+        {ground_vt,0x224dbd9c,134,2,0x223db2b8,0x22032120,2},
+        {ground_vt,0x22534da4,31,0,0x22490f34,0x2235f260,1},
+        {ground_vt,0x22534da4,32,0,0x22490f20,0x2235ddc0,1},
+        {ground_vt,0x22534da4,33,0,0x22485b74,0x22357e30,1},
+        {ground_vt,0x22534da4,34,0,0x22485b50,0x22357e40,1},
+        {ground_vt,0x22534da4,35,2,0x223f5624,0x22357e50,1},
+        {ground_vt,0x22534da4,36,6,0x22490eec,0x22357ea0,1},
+        {vt,0x22535b28,19,2,0x22498948,0x22365fe0,1},
+        {vt,0x22535b28,20,0,0x22498914,0x22363b80,1},
+        {vt,0x22535b28,21,0,0x224988dc,0x22363580,1},
+        {vt,0x22535b28,22,0,0x224988b8,0x22367470,1},
+        {vt,0x22535b28,23,0,0x22498894,0x22366110,1},
+        {vt,0x22535b28,24,0,0x2249886c,0x22363be0,1},
+        {vt,0x22535b28,25,0,0x22498840,0x22363c40,1}
+    };
+    struct CatalogFixture {const CatalogCase* expected;unsigned calls{},fallback{};unsigned char parent[0x10]{};} catalog_f{};
+    ServerNpcActivePostAnimationBindings catalog_storage{};catalog_storage.context=&catalog_f;
+    catalog_storage.resolve=[](void* p,unsigned token,void** data,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<CatalogFixture*>(p);assert(token==0x2251f258u);++q.fallback;
+        *data=q.parent;*n=sizeof(q.parent);return 1;
+    };
+    ServerEntityAcceptInputBindings catalog_b{};catalog_b.storage=&catalog_storage;catalog_b.context=&catalog_f;catalog_b.native_npc_datamaps=true;
+    catalog_b.name_equal=[](void*,unsigned a,unsigned b,bool* same) noexcept -> int{*same=a==b;return 1;};
+    catalog_b.handler=[](void* p,void*,unsigned handler,const ServerEntityInputData* d) noexcept -> int{
+        auto& q=*static_cast<CatalogFixture*>(p);unsigned type=0;std::memcpy(&type,d->variant+0x10,4);
+        assert(handler==q.expected->handler&&type==q.expected->type);++q.calls;return 1;
+    };
+    ServerEntityAcceptInputResult catalog_o{};
+    for(const auto& item:catalog){
+        catalog_f.expected=&item;std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0x10,item.type);
+        assert(accept->run(f.actor,sizeof(f.actor),item.vt,item.name,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&catalog_b,&catalog_o));
+        assert(catalog_o.accepted&&catalog_o.native_maps==item.maps&&catalog_o.map==item.map&&catalog_o.row==item.index&&catalog_o.handler==item.handler&&catalog_o.expected_type==item.type);
+    }
+    assert(catalog_f.calls==27&&!catalog_f.fallback);
+    // Elite has no local input rows; inherits all six Grunt descriptors.
+    catalog_f.expected=&catalog[16];std::memset(inp.variant,0,sizeof(inp.variant));
+    assert(accept->run(f.actor,sizeof(f.actor),0x2248df04u,catalog[16].name,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&catalog_b,&catalog_o)&&catalog_o.accepted&&catalog_o.native_maps==2&&catalog_o.map==0x22534da4u);
+    // Native projection uses its original literal name for alias matching.
+    catalog_b.name_equal=nullptr;catalog_b.string_text=[](void*,unsigned token,const char** str,unsigned* n) noexcept -> int{
+        assert(token==901u||token==902u);*str=token==901u?"sTaRtPaTrOlLiNg":"NotAnInput";*n=static_cast<unsigned>(std::strlen(*str)+1);return 1;
+    };
+    assert(accept->run(f.actor,sizeof(f.actor),ground_vt,901u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&catalog_b,&catalog_o)&&catalog_o.accepted&&catalog_o.row==33);
+    assert(accept->run(f.actor,sizeof(f.actor),ground_vt,902u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&catalog_b,&catalog_o)&&catalog_o.completed&&!catalog_o.accepted&&catalog_o.reason==EntityInputUnknown&&catalog_o.native_maps==2&&catalog_f.fallback==1);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
