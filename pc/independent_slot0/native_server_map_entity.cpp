@@ -1732,7 +1732,23 @@ int __cdecl autosave_input(void* a,unsigned n,const char* name,const AutosaveBin
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input};
+// Inherited CBaseEntity::InputKill 2213cdc0. The virtual attachment
+// effects and deferred removal owner are explicit; no immediate free.
+int __cdecl autosave_kill(void* a,unsigned n,const sin_independent::EntityHandleEntry* entries,unsigned count,const AutosaveBindings* b,AutosaveResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<autosave_extent||entity_vtable(a)!=autosave_vtable||!b||!b->remove||
+       count>sin_independent::kEntityHandleCapacity||(!entries&&count))return 0;
+    o->handled=1;
+    auto* attached=sin_independent::EntityHandleView(entries,count).Resolve(read_field<unsigned>(a,0x20c));
+    if(attached){
+        if(!b->attachment_notice||!b->clear_attachment||!b->attachment_notice(b->context,attached,a))return 0;
+        o->attachment_notified=1;
+        if(!b->clear_attachment(b->context,a))return 0;o->attachment_cleared=1;
+    }
+    if(!b->remove(b->context,a))return 0;
+    o->remove_requested=o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

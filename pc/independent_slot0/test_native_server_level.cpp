@@ -128,6 +128,51 @@ int main(int argc,char** argv){
     assert(service->service(qf.root,sizeof(qf.root),10,10.99f,false,&steps,&sb,&sr)&&sr.future_stopped&&!qf.delivered);
     assert(service->service(qf.root,sizeof(qf.root),10,11.f,false,&steps,&sb,&sr)&&sr.direct==1&&qf.delivered==1&&qf.released==1&&sr.future_stopped&&!qf.locks);
     assert(service->service(qf.root,sizeof(qf.root),10,11.1f,false,&steps,&sb,&sr)&&sr.completed&&sr.direct==1&&qf.delivered==2&&qf.released==2&&!word(qf.root,0x30)&&!qf.locks);
+    // Repeat actual LevelInit saved-level path with native Save AND
+    // inherited Kill, no foreign AcceptInput callback.
+    Fixture native_saved;native_saved.load=true;qf={};qf.target=native_saved.actor;
+    namespace navmap=sin_port::native_map;
+    put(native_saved.actor,0,navmap::autosave_vtable);put(native_saved.actor,0x378,0x2000u);
+    put(native_saved.actor,0x20c,0xffffffffu);native_saved.actor[0x394]=1;native_saved.actor[0x1f0]=1;
+    entries[0].entity=reinterpret_cast<CBaseEntity*>(native_saved.actor);now=10.f;
+    b=native_saved.bind();b.queue_direct=nullptr;b.native_queue=&dq;a={native_saved.map,"entities","SE1_intro03","landmark",true,false};
+    assert(level(&native_saved.state,&a,&b,&o)&&o.queued==2&&qf.alloc==2);
+    struct SaveFixture {QueueFixture* queue;void* actor;void* attachment=nullptr;unsigned char gate=0;std::string calls;} sf{&qf,native_saved.actor};
+    navmap::AutosaveBindings behavior{};behavior.context=&sf;
+    behavior.new_level_unit=[](void* p) noexcept ->int{auto& f=*static_cast<SaveFixture*>(p);assert(f.queue->locks==1);f.calls+='N';return 1;};
+    behavior.difficulty_gate=[](void* p,unsigned char* gate) noexcept ->int{auto& f=*static_cast<SaveFixture*>(p);assert(f.queue->locks==1);f.calls+='G';*gate=f.gate;return 1;};
+    behavior.server_command=[](void* p,const char* command) noexcept ->int{auto& f=*static_cast<SaveFixture*>(p);assert(f.queue->locks==1&&!std::strcmp(command,"autosave\n"));f.calls+='S';return 1;};
+    behavior.attachment_notice=[](void* p,void* attachment,void* actor) noexcept ->int{auto& f=*static_cast<SaveFixture*>(p);assert(attachment==f.attachment&&actor==f.actor);f.calls+='A';return 1;};
+    behavior.clear_attachment=[](void* p,void* actor) noexcept ->int{auto& f=*static_cast<SaveFixture*>(p);assert(actor==f.actor);f.calls+='C';put(actor,0x20c,0xffffffffu);return 1;};
+    behavior.remove=[](void* p,void* actor) noexcept ->int{auto& f=*static_cast<SaveFixture*>(p);assert(actor==f.actor);f.calls+='K';put(actor,0xb8,1u);return 1;};
+    ServerNpcActivePostAnimationBindings storage{};
+    ServerEntityAcceptInputBindings input{};input.storage=&storage;input.logic_autosave=&behavior;
+    input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+        *text=token==31||token==0x22420850?"Save":token==32||token==0x2240b624?"Kill":nullptr;
+        if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    ServerEntitySearchBindings search{};search.context=&sf;
+    search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<SaveFixture*>(p);*bytes=a==f.actor?navmap::autosave_extent:0;return *bytes!=0;};
+    sb.native_input=&input;sb.native_search=&search;sb.accept=nullptr;sb.live_now=&now;
+    now=10.99f;
+    assert(service->service(qf.root,sizeof(qf.root),10,now,false,&steps,&sb,&sr)&&sr.future_stopped&&sf.calls.empty());
+    now=11.f;
+    assert(service->service(qf.root,sizeof(qf.root),10,now,false,&steps,&sb,&sr)&&sr.direct==1&&sr.native_inputs==1&&sr.future_stopped&&sf.calls=="NGS"&&qf.released==1&&native_saved.actor[0x200]&&!word(native_saved.actor,0xb8));
+    now=11.1f;
+    assert(service->service(qf.root,sizeof(qf.root),10,now,false,&steps,&sb,&sr)&&sr.direct==1&&sr.native_inputs==1&&sf.calls=="NGSK"&&qf.released==2&&word(native_saved.actor,0xb8)==1&&!word(qf.root,0x30)&&!qf.locks);
+    // Actual inherited base row78 with a live attachment, then stale
+    // serial. Owner receives the exact virtual effects before removal.
+    alignas(4) unsigned char attachment[4]{};
+    sf.attachment=attachment;sin_independent::EntityHandleEntry attached[2]{};
+    attached[0]=entries[0];attached[1].serial=3;attached[1].entity=reinterpret_cast<CBaseEntity*>(attachment);
+    input.entities.entries=attached;input.entities.count=2;
+    auto accept_get=reinterpret_cast<GetServerEntityAcceptInputApi>(GetProcAddress(server,server_entity_accept_input_export));assert(accept_get);
+    auto* accept=accept_get(1,sizeof(ServerEntityAcceptInputApi));assert(accept);
+    unsigned payload[5]{0,0,0,0xffffffffu,0};ServerEntityAcceptInputResult accepted{};
+    put(native_saved.actor,0x20c,0x3001u);put(native_saved.actor,0xb8,0);
+    assert(accept->run(native_saved.actor,sizeof(native_saved.actor),navmap::autosave_vtable,32,nullptr,nullptr,payload,sizeof(payload),0,&input,&accepted)&&accepted.native_handler&&accepted.map==0x224f0350&&accepted.row==78&&sf.calls=="NGSKACK"&&word(native_saved.actor,0x20c)==0xffffffffu);
+    put(native_saved.actor,0x20c,0x4001u);put(native_saved.actor,0xb8,0);
+    assert(accept->run(native_saved.actor,sizeof(native_saved.actor),navmap::autosave_vtable,32,nullptr,nullptr,payload,sizeof(payload),0,&input,&accepted)&&accepted.native_handler&&sf.calls=="NGSKACKK"&&word(native_saved.actor,0x20c)==0x4001u);
     // Native map pipeline is reachable from actual LevelInit slot2,
     // with no hosted parse_entities callback.
     namespace nm=sin_port::native_map;
