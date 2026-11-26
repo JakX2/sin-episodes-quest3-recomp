@@ -1447,11 +1447,38 @@ int main(int argc,char** argv){
         assert(api->join(q.actors[1],sizeof(q.actors[1]),91,77,0x2002u,100,&jb,&jr)&&jr.completed&&jr.detached&&jr.previous.cleared&&jr.appended&&jr.owner_written&&jr.first_resolved&&jr.index==1&&jr.count==2&&jr.reports==1&&jr.updated==1&&!jr.last_report.firsthand&&jr.dialogue.refind_calls==1&&jr.dialogue.refind_request.submitted&&q.requests==1&&q.submitted==1);
         assert(!q.records[1][0x35]&&JoinFixture::rd(q.records[1],4)==JoinFixture::rd(q.records[0],4)&&JoinFixture::rd(q.groups[0],0x4c)==77&&JoinFixture::rd(q.actors[1],0x9c8)==123);
         assert(api->join(q.actors[1],sizeof(q.actors[1]),91,77,0x2002u,100,&jb,&jr)&&jr.already_member&&!jr.appended);
+        auto gr=reinterpret_cast<GetServerNpcGruntSquadReportApi>(GetProcAddress(s,server_npc_grunt_squad_report_export));
+        assert(gr&&!GetProcAddress(c,server_npc_grunt_squad_report_export)&&!gr(0,sizeof(ServerNpcGruntSquadReportApi))&&!gr(1,0));
+        const auto* reports=gr(1,sizeof(ServerNpcGruntSquadReportApi));assert(reports);
+        struct ReportContext {
+            JoinFixture* q;
+            ServerNpcGruntMemoryReportBindings bound;
+        } ctx{&q,jb.report};
+        ctx.bound.original_vtable=0x2249aaa4;ctx.bound.mutation.entries=q.slots;ctx.bound.mutation.count=4;
+        ctx.bound.mutation.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& q=JoinFixture::self(p);
+            if(token>=91&&token<=92){*out=q.groups[token-91];*n=0x58;return 1;}
+            if(token>=201&&token<=202){*out=q.memory[token-201];*n=0x40;return 1;}
+            if(token>=211&&token<=212){*out=q.nodes[token-211];*n=12;return 1;}
+            if(token>=221&&token<=222){*out=q.records[token-221];*n=0x38;return 1;}
+            return 0;
+        };
+        ServerNpcGruntSquadReportBindings srb{};srb.context=&ctx;srb.perception.dialogue.sentence=sb;srb.perception.dialogue.request=rb;
+        srb.member_report=[](void* p,void* a,std::uint32_t* vt,unsigned* n,ServerNpcGruntMemoryReportBindings* out) noexcept -> int{
+            auto& ctx=*static_cast<ReportContext*>(p);assert(a==ctx.q->actors[1]);*vt=0x2248df04;*n=0xdb2;*out=ctx.bound;return 1;
+        };
+        float pos[]{60,0,0};q.records[1][0x35]=1;
+        ServerNpcGruntMemoryReportResult rr{};ServerNpcGruntSquadReportResult stats{};
+        assert(reports->report(q.actors[0],sizeof(q.actors[0]),q.actors[2],pos,nullptr,110,&ctx.bound,&srb,&rr,&stats)&&rr.firsthand&&rr.mutation.updated&&rr.forwarded==1&&stats.native_reports==1&&stats.forwarded==1&&stats.updated==1&&!stats.last_member.firsthand&&stats.last_member.refind_cue&&stats.last_dialogue.refind_request.submitted&&q.requests==2&&q.submitted==2);
+        assert(JoinFixture::rd(q.records[0],4)==JoinFixture::rd(q.records[1],4)&&!q.records[1][0x35]);
+        q.actors[1][0xb6]=1;
+        assert(reports->report(q.actors[0],sizeof(q.actors[0]),q.actors[2],pos,nullptr,111,&ctx.bound,&srb,&rr,&stats)&&stats.forwarded==1&&stats.blocked==1&&!stats.updated&&q.requests==2);
+        q.actors[1][0xb6]=0;
         // Full-group eviction only removes the last array slot, NOT its owner linkage.
         for(unsigned i=0;i<15;++i)f.put(q.groups[0],8+4*i,0x1001u);
         f.put(q.groups[0],8+15*4,0x2002u);f.put(q.groups[0],0x48,16);
         q.actors[2][0xb6]=1;
-        assert(api->join(q.actors[2],sizeof(q.actors[2]),91,77,0x3003u,101,&jb,&jr)&&jr.completed&&jr.evicted&&jr.evicted_handle==0x2002u&&jr.count==16&&jr.index==15&&jr.last_report.blocked&&q.requests==1&&JoinFixture::rd(q.actors[1],0x9c4)==91&&JoinFixture::rd(q.actors[1],0x9c8)==123);
+        assert(api->join(q.actors[2],sizeof(q.actors[2]),91,77,0x3003u,101,&jb,&jr)&&jr.completed&&jr.evicted&&jr.evicted_handle==0x2002u&&jr.count==16&&jr.index==15&&jr.last_report.blocked&&q.requests==2&&JoinFixture::rd(q.actors[1],0x9c4)==91&&JoinFixture::rd(q.actors[1],0x9c8)==123);
         ServerNpcGruntSquadLeaveResult lr{};
         assert(api->detach(q.actors[1],sizeof(q.actors[1]),0x2002u,102,&jb.group,&lr)&&lr.completed&&lr.missing&&!lr.cleared&&JoinFixture::rd(q.actors[1],0x9c4)==0&&JoinFixture::rd(q.actors[1],0x9c8)==123);
     }
