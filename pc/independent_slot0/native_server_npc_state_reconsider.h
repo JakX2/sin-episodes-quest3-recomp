@@ -1735,4 +1735,33 @@ struct ServerNpcGruntDamageNativeChainApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageNativeChainBindings*,ServerNpcGruntDamageNativeChainResult*) noexcept;
 };
 using GetServerNpcGruntDamageNativeChainApi=const ServerNpcGruntDamageNativeChainApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_death_selector_export[]="SiN_GetServerNpcGruntDeathSelectorApi";
+struct ServerNpcGruntDeathSelectorBindings {
+    void* context;
+    int (__cdecl *model_available)(void*,void*,bool*) noexcept; // 220eb8a0, second lookup
+    int (__cdecl *refresh_origin)(void*,void*) noexcept; // 2213fa60
+    int (__cdecl *normalize)(void*,float*) noexcept; // original imported vector normalize
+};
+struct ServerNpcGruntDeathSelectorResult {
+    float direction[3],forward[3],right[3];
+    double forward_dot,right_dot;
+    int selection;
+    std::uint32_t auxiliary,hitgroup;
+    unsigned completed,model_available,refreshed,normalized,right_dominant;
+};
+struct ServerNpcGruntDeathSelectedBindings {
+    ServerNpcGruntCombatDeathBindings combat;
+    ServerNpcGruntDeathSelectorBindings selector;
+};
+struct ServerNpcGruntDeathSelectedResult {
+    ServerNpcGruntCombatDeathResult combat;
+    ServerNpcGruntDeathSelectorResult selector;
+};
+struct ServerNpcGruntDeathSelectorApi {
+    std::uint32_t version,size;
+    int (__cdecl *select)(void*,unsigned,const void*,unsigned,std::uint32_t,const ServerNpcGruntDeathSelectorBindings*,ServerNpcGruntDeathSelectorResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntDeathSelectedBindings*,ServerNpcGruntDeathSelectedResult*) noexcept;
+};
+using GetServerNpcGruntDeathSelectorApi=const ServerNpcGruntDeathSelectorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

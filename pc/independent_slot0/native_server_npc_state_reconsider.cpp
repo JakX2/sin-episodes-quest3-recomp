@@ -3479,13 +3479,47 @@ int __cdecl grunt_state_signal(void* a,unsigned n,int value,const ServerNpcGrunt
 }
 const ServerNpcGruntStateSignalApi state_signal_api{1,sizeof(ServerNpcGruntStateSignalApi),&grunt_state_signal};
 
-int __cdecl grunt_death_prepare(void* a,unsigned n,void* damage,unsigned dn,const ServerNpcGruntDeathPrepareBindings* b,ServerNpcGruntDeathPrepareResult* out) noexcept{
+
+int __cdecl grunt_death_select(void* a,unsigned n,const void* damage,unsigned dn,std::uint32_t hitgroup,const ServerNpcGruntDeathSelectorBindings* b,ServerNpcGruntDeathSelectorResult* out) noexcept{
+    if(!out)return 0;*out={};out->selection=-1;out->hitgroup=hitgroup;
+    if(!a||n<0x298||!damage||dn<12||!b||!b->model_available)return 0;
+    bool available=false;if(!b->model_available(b->context,a,&available))return 0;
+    out->model_available=available;
+    if(!available){out->completed=1;return 1;}
+    if(read<unsigned>(a,0xb8)&0x800u){
+        if(!b->refresh_origin||!b->refresh_origin(b->context,a))return 0;
+        out->refreshed=1;
+    }
+    // All supported +1dc slots point to 22141910: matrix column 0,
+    // negated column 1; the unused up-vector output is null.
+    for(unsigned i=0;i<3;++i){
+        out->forward[i]=read<float>(a,0x268+16*i);
+        out->right[i]=-read<float>(a,0x26c+16*i);
+        out->direction[i]=-read<float>(damage,4*i);
+    }
+    if(!finite_vec(out->forward)||!finite_vec(out->right)||!finite_vec(out->direction)||!b->normalize||!b->normalize(b->context,out->direction)||!finite_vec(out->direction))return 0;
+    out->normalized=1;
+    auto dot=[&](const float* v){return static_cast<double>(v[2])*out->direction[2]+static_cast<double>(v[1])*out->direction[1]+static_cast<double>(v[0])*out->direction[0];};
+    out->forward_dot=dot(out->forward);out->right_dot=dot(out->right);
+    if(!std::isfinite(out->forward_dot)||!std::isfinite(out->right_dot))return 0;
+    out->right_dominant=std::abs(out->right_dot)>std::abs(out->forward_dot);
+    out->selection=out->right_dominant?(out->right_dot<0?0x1a7:0x1a5):(out->forward_dot<0?0x1a6:0x1a4);
+    constexpr unsigned groups[]{1,2,2,3,4,5,6};
+    out->auxiliary=hitgroup>=1&&hitgroup<=7?groups[hitgroup-1]:1;
+    out->completed=1;return 1;
+}
+struct DeathSelectorRoute {const ServerNpcGruntDeathSelectorBindings* bindings;ServerNpcGruntDeathSelectorResult* result;};
+
+int grunt_death_prepare_impl(void* a,unsigned n,void* damage,unsigned dn,const ServerNpcGruntDeathPrepareBindings* b,ServerNpcGruntDeathPrepareResult* out,const DeathSelectorRoute* selector) noexcept{
     if(!out)return 0;*out={};out->selection=out->activity=-1;
     if(!a||n<0x898||!damage||dn<0x3c||!b||!b->model_available)return 0;
     bool available=false;if(!b->model_available(b->context,a,&available))return 0;
     out->model_available=available;
     if(!available){out->completed=1;return 1;}
-    if(!b->select||!b->select(b->context,a,damage,read<unsigned>(a,0x630),&out->selection,&out->auxiliary))return 0;
+    if(selector){
+        if(!grunt_death_select(a,n,damage,dn,read<unsigned>(a,0x630),selector->bindings,selector->result))return 0;
+        out->selection=selector->result->selection;out->auxiliary=selector->result->auxiliary;
+    }else if(!b->select||!b->select(b->context,a,damage,read<unsigned>(a,0x630),&out->selection,&out->auxiliary))return 0;
     out->selected=1;
     if(out->selection!=-1){
         if(!b->activity_lookup||!b->activity_lookup(b->context,a,out->selection,&out->activity))return 0;
@@ -3501,12 +3535,16 @@ int __cdecl grunt_death_prepare(void* a,unsigned n,void* damage,unsigned dn,cons
     }
     out->completed=1;return 1;
 }
+int __cdecl grunt_death_prepare(void* a,unsigned n,void* damage,unsigned dn,const ServerNpcGruntDeathPrepareBindings* b,ServerNpcGruntDeathPrepareResult* out) noexcept{
+    return grunt_death_prepare_impl(a,n,damage,dn,b,out,nullptr);
+}
 struct DeathPrepareRoute {
     const ServerNpcGruntDeathPrepareBindings* bindings;
     ServerNpcGruntDeathPrepareResult* result;
     unsigned* life_local;
     unsigned* life_external;
     const StateSignalRoute* signal=nullptr;
+    const DeathSelectorRoute* selector=nullptr;
 };
 
 int grunt_death_prefix_impl(void* a,unsigned n,std::uint32_t handle,void* damage,unsigned dn,float now,const ServerNpcGruntDeathPrefixBindings* b,ServerNpcGruntDeathPrefixResult* out,const DeathPrepareRoute* route) noexcept{
@@ -3530,7 +3568,7 @@ int grunt_death_prefix_impl(void* a,unsigned n,std::uint32_t handle,void* damage
     }else if(!b->state_signal||!b->state_signal(b->context,a,0))return 0;
     out->signal_called=1;
     if(route){
-        if(!grunt_death_prepare(a,n,damage,dn,route->bindings,route->result))return 0;
+        if(!grunt_death_prepare_impl(a,n,damage,dn,route->bindings,route->result,route->selector))return 0;
     }else if(!b->prepare||!b->prepare(b->context,a,damage))return 0;
     out->prepared=1;
     if(read<int>(a,0x8c)!=1){
@@ -3627,6 +3665,20 @@ int __cdecl grunt_combat_death(void* a,unsigned n,std::uint32_t handle,void* dam
     return grunt_death_event_impl(a,n,handle,damage,dn,now,&b->death.event,&d.event,&route);
 }
 const ServerNpcGruntCombatReactionsApi combat_reactions_api{1,sizeof(ServerNpcGruntCombatReactionsApi),&grunt_combat_damage,&grunt_combat_death};
+int __cdecl grunt_death_selected(void* a,unsigned n,std::uint32_t handle,void* damage,unsigned dn,float now,const ServerNpcGruntDeathSelectedBindings* b,ServerNpcGruntDeathSelectedResult* out) noexcept{
+    if(!out)return 0;
+    out->selector={};out->selector.selection=-1;
+    auto& d=out->combat.death;
+    d.prepare={};d.prepare.selection=d.prepare.activity=-1;
+    d.life_local_dirty=d.life_external_dirty=0;out->combat.signal={};
+    if(!b)return 0;
+    const StateSignalRoute signal{&b->combat.signal,&out->combat.signal};
+    const DeathSelectorRoute selector{&b->selector,&out->selector};
+    const DeathPrepareRoute route{&b->combat.death.prepare,&d.prepare,&d.life_local_dirty,&d.life_external_dirty,&signal,&selector};
+    return grunt_death_event_impl(a,n,handle,damage,dn,now,&b->combat.death.event,&d.event,&route);
+}
+const ServerNpcGruntDeathSelectorApi death_selector_api{1,sizeof(ServerNpcGruntDeathSelectorApi),&grunt_death_select,&grunt_death_selected};
+
 bool damage_group_eligible(void* npc,unsigned n,const ServerNpcGruntDamageOutputBindings& b,bool& yes) noexcept{
     yes=false;
     if(!npc||n<0x9c8)return false;
@@ -4639,4 +4691,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageNativeChainApi=_SiN_GetServerNpcGruntDamageNativeChainApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageNativeChainApi* __cdecl SiN_GetServerNpcGruntDamageNativeChainApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageNativeChainApi)?&damage_native_chain_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDeathSelectorApi=_SiN_GetServerNpcGruntDeathSelectorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDeathSelectorApi* __cdecl SiN_GetServerNpcGruntDeathSelectorApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDeathSelectorApi)?&death_selector_api:nullptr;
 }
