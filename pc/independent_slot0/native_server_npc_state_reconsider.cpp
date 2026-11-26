@@ -833,10 +833,16 @@ int __cdecl relation_matrix_row(void* context,int source,const void** row,unsign
     *row=static_cast<ServerNpcRelationCell*>(context)+15*source;*bytes=240;return 1;
 }
 const ServerNpcRelationMatrixApi matrix_api{1,sizeof(ServerNpcRelationMatrixApi),&initialize_relation_matrix,&set_relation_matrix,&relation_matrix_row};
+struct SquadReportRoute {
+    const ServerNpcGruntSquadReportBindings& bindings;
+    ServerNpcGruntSquadReportResult& out;
+};
+void reset_perception_speech(ServerNpcGruntPerceptionSpeechResult&) noexcept;
 struct PerceptionSpeechRoute {
     const ServerNpcGruntPerceptionSpeechBindings& bindings;
     ServerNpcGruntPerceptionSpeechResult& out;
     const SquadReleaseRoute* slots=nullptr;
+    const SquadReportRoute* reports=nullptr;
 };
 int __cdecl sentence_dispatch_request(void*,unsigned,float,const char*,int,unsigned,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntSentenceResult*,ServerNpcGruntSentenceRequestResult*) noexcept;
 int __cdecl grunt_speak_request(void*,unsigned,unsigned,float,const ServerNpcGruntSpeechBindings*,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntRequestSpeechResult*) noexcept;
@@ -888,7 +894,25 @@ int grunt_memory_report_impl(void* actor,unsigned bytes,void* target,const float
         ++out->squad_members;void* member=registry.Resolve(read<unsigned>(squad_bytes,8+4*i));
         if(member==actor)continue;
         // Retail dereferences an invalid member; bounded adapter rejects it.
-        if(!member||!b->forward||!b->forward(b->context,member,target,position,actor))return 0;
+        if(!member)return 0;
+        if(speech&&speech->reports){
+            const auto& route=*speech->reports;auto& stats=route.out;const auto& rb=route.bindings;
+            unsigned vt=0,extent=0;ServerNpcGruntMemoryReportBindings bound{};
+            if(!rb.member_report||!rb.member_report(rb.context,member,&vt,&extent,&bound))return 0;
+            if(relation_grunt_class(vt)){
+                bound.original_vtable=vt;bound.mutation.entries=mb.entries;bound.mutation.count=mb.count;
+                reset_perception_speech(stats.last_dialogue);
+                // A recipient gets the original sender as informer. No nested forwarding.
+                const PerceptionSpeechRoute recipient{rb.perception.dialogue,stats.last_dialogue};
+                ++stats.native_reports;
+                if(!grunt_memory_report_impl(member,extent,target,position,actor,now,&bound,&stats.last_member,&recipient))return 0;
+                stats.created+=stats.last_member.mutation.created;stats.updated+=stats.last_member.mutation.updated;stats.blocked+=stats.last_member.blocked;
+            }else{
+                ++stats.external_reports;
+                if(!rb.other_report||!rb.other_report(rb.context,member,target,position,actor))return 0;
+            }
+            ++stats.forwarded;
+        }else if(!b->forward||!b->forward(b->context,member,target,position,actor))return 0;
         ++out->forwarded;
     }
     return 1;
@@ -2948,6 +2972,27 @@ int __cdecl slots_perception_gather(void* a,unsigned n,float now,const ServerNpc
     const SquadReleaseRoute release{slots->slots,*result};const PerceptionSpeechRoute route{slots->dialogue,result->dialogue,&release};
     return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route);
 }
+void reset_squad_report(ServerNpcGruntSquadReportResult& out) noexcept{
+    out={};reset_perception_slots(out.perception);reset_perception_speech(out.last_dialogue);
+}
+int __cdecl squad_report(void* a,unsigned n,void* target,const float* pos,void* informer,float now,const ServerNpcGruntMemoryReportBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntMemoryReportResult* out,ServerNpcGruntSquadReportResult* result) noexcept{
+    if(!reports||!result)return 0;reset_squad_report(*result);
+    const SquadReportRoute forward{*reports,*result};const PerceptionSpeechRoute route{reports->perception.dialogue,result->perception.dialogue,nullptr,&forward};
+    return grunt_memory_report_impl(a,n,target,pos,informer,now,b,out,&route);
+}
+int __cdecl squad_report_update(void* a,unsigned n,float now,const ServerNpcGruntConditionUpdateBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntConditionUpdateResult* out,ServerNpcGruntSquadReportResult* result) noexcept{
+    if(!reports||!result)return 0;reset_squad_report(*result);
+    const SquadReleaseRoute release{reports->perception.slots,result->perception};const SquadReportRoute forward{*reports,*result};
+    const PerceptionSpeechRoute route{reports->perception.dialogue,result->perception.dialogue,&release,&forward};
+    return grunt_condition_update_impl(a,n,now,b,out,&route);
+}
+int __cdecl squad_report_gather(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntSquadReportResult* result) noexcept{
+    if(!reports||!result||!out||!b)return 0;reset_squad_report(*result);out->gather={};out->point={};out->object={};out->object.selected_handle=0xffffffffu;
+    const SquadReleaseRoute release{reports->perception.slots,result->perception};const SquadReportRoute forward{*reports,*result};
+    const PerceptionSpeechRoute route{reports->perception.dialogue,result->perception.dialogue,&release,&forward};
+    return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route);
+}
+const ServerNpcGruntSquadReportApi squad_report_api{1,sizeof(ServerNpcGruntSquadReportApi),&squad_report,&squad_report_update,&squad_report_gather};
 const ServerNpcGruntPerceptionSlotsApi perception_slots_api{1,sizeof(ServerNpcGruntPerceptionSlotsApi),&slots_set_enemy,&slots_enemy_switch,&slots_perception_update,&slots_perception_gather};
 const ServerNpcGruntSquadSlotsApi squad_slots_api{1,sizeof(ServerNpcGruntSquadSlotsApi),&slots_read,&slots_bit,&slots_reserve,&slots_occupied,&slots_release};
 const ServerNpcGruntSquadDestroyApi squad_destroy_api{1,sizeof(ServerNpcGruntSquadDestroyApi),&squad_destroy};
@@ -3363,4 +3408,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPerceptionSlotsApi=_SiN_GetServerNpcGruntPerceptionSlotsApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSlotsApi* __cdecl SiN_GetServerNpcGruntPerceptionSlotsApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPerceptionSlotsApi)?&perception_slots_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadReportApi=_SiN_GetServerNpcGruntSquadReportApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadReportApi* __cdecl SiN_GetServerNpcGruntSquadReportApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadReportApi)?&squad_report_api:nullptr;
 }

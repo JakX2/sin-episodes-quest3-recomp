@@ -1164,4 +1164,26 @@ struct ServerNpcGruntPerceptionSlotsApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntPerceptionSlotsBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntPerceptionSlotsResult*) noexcept;
 };
 using GetServerNpcGruntPerceptionSlotsApi=const ServerNpcGruntPerceptionSlotsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_report_export[]="SiN_GetServerNpcGruntSquadReportApi";
+struct ServerNpcGruntSquadReportBindings {
+    ServerNpcGruntPerceptionSlotsBindings perception;
+    void* context;
+    // Bind recipient's memory pool, original class, and extent. Class identity
+    // must be original PE32 table, not the replacement DLL's virtual pointer.
+    int (__cdecl *member_report)(void*,void*,std::uint32_t*,unsigned*,ServerNpcGruntMemoryReportBindings*) noexcept;
+    int (__cdecl *other_report)(void*,void*,void*,const float*,void*) noexcept;
+};
+struct ServerNpcGruntSquadReportResult {
+    ServerNpcGruntPerceptionSlotsResult perception;
+    ServerNpcGruntMemoryReportResult last_member;
+    ServerNpcGruntPerceptionSpeechResult last_dialogue;
+    unsigned forwarded,native_reports,external_reports,created,updated,blocked;
+};
+struct ServerNpcGruntSquadReportApi {
+    std::uint32_t version,size;
+    int (__cdecl *report)(void*,unsigned,void*,const float*,void*,float,const ServerNpcGruntMemoryReportBindings*,const ServerNpcGruntSquadReportBindings*,ServerNpcGruntMemoryReportResult*,ServerNpcGruntSquadReportResult*) noexcept;
+    int (__cdecl *update)(void*,unsigned,float,const ServerNpcGruntConditionUpdateBindings*,const ServerNpcGruntSquadReportBindings*,ServerNpcGruntConditionUpdateResult*,ServerNpcGruntSquadReportResult*) noexcept;
+    int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntSquadReportBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntSquadReportResult*) noexcept;
+};
+using GetServerNpcGruntSquadReportApi=const ServerNpcGruntSquadReportApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
