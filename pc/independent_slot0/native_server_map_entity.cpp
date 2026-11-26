@@ -1850,6 +1850,52 @@ bool schedule_multicompare(void* a,void* activator,unsigned id,const RelayQueueB
     ServerEntityNamedEventQueueResult q{};
     return api&&api->enqueue_direct(b.root,b.root_bytes,b.root_token,now,self,input,source,self,variant,sizeof(variant),0.f,id,b.queue,&q);
 }
+// Route original COutputEvent (22156900 -> 22156680) to the live
+// named event queue without an owner enqueue callback. The owner still
+// resolves action records, handles, and supplies release/debug effects.
+bool multicompare_fire(void* a,unsigned n,void* activator,unsigned off,const MultiCompareBindings& b,MultiCompareResult& o) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    if(!fire||!b.output)return false;
+    auto* out=static_cast<unsigned char*>(a)+off;
+    ServerEntityVoidOutputResult r{};
+    if(!b.native_outputs){
+        if(!fire->fire(out,0x18,activator,a,n,0.f,b.output,&r))return false;
+        o.queued=r.queued;return true;
+    }
+    const auto* q=b.native_queue;
+    if(!q||!valid_relay_queue(*q)||!q->now||!q->handle||!std::isfinite(*q->now))return false;
+    const sin_independent::EntityHandleView registry(q->entries,q->entry_count);
+    struct Route {
+        const ServerEntityVoidOutputBindings* owner;
+        const RelayQueueBindings* queue;
+        void* actor;
+        void* activator;
+        unsigned self=0xffffffffu,source=0xffffffffu;
+    } ctx{b.output,q,a,activator};
+    if(!q->handle(q->context,a,&ctx.self)||registry.Resolve(ctx.self)!=a)return false;
+    if(activator&&(!q->handle(q->context,activator,&ctx.source)||registry.Resolve(ctx.source)!=activator))return false;
+    ServerEntityVoidOutputBindings bound{};
+    bound.context=&ctx;
+    bound.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        const auto& s=*static_cast<Route*>(p);return s.owner->resolve&&s.owner->resolve(s.owner->context,token,row,bytes);
+    };
+    bound.release=[](void* p,unsigned token,void* row) noexcept ->int{
+        const auto& s=*static_cast<Route*>(p);return s.owner->release&&s.owner->release(s.owner->context,token,row);
+    };
+    bound.debug_action=[](void* p,void* caller,const ServerEntityVoidOutputAction* action) noexcept ->int{
+        const auto& s=*static_cast<Route*>(p);return s.owner->debug_action&&s.owner->debug_action(s.owner->context,caller,action);
+    };
+    bound.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* action) noexcept ->int{
+        const auto& s=*static_cast<Route*>(p);const auto& q=*s.queue;
+        if(activator!=s.activator||caller!=s.actor)return 0;
+        const auto* api=SiN_GetServerEntityNamedEventQueueApi(1,sizeof(ServerEntityNamedEventQueueApi));
+        ServerEntityNamedEventQueueResult r{};
+        return api&&api->enqueue(q.root,q.root_bytes,q.root_token,*q.now,s.source,s.self,action,q.queue,&r);
+    };
+    if(!fire->fire(out,0x18,activator,a,n,0.f,&bound,&r))return false;
+    o.queued=o.native_output_queued=r.queued;return true;
+}
 int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activator,const void* variant,unsigned vn,unsigned id,const MultiCompareBindings* b,MultiCompareResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!a||n<multicompare_extent||entity_vtable(a)!=multicompare_vtable||!name||!b)return 0;
@@ -1908,11 +1954,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
         if(!read_field<unsigned>(a,0x3c8)&&o->visited)reference=integer(rows[0]);
         bool equal=true;for(unsigned i=0;i<o->visited;++i)if(integer(rows[i])!=reference){equal=false;break;}
         o->compared=1;o->equal=equal;o->output_offset=equal?0x394:0x3ac;
-        using namespace sin_port::native_weapon_tables;
-        const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
-        ServerEntityVoidOutputResult r{};
-        if(!fire||!b->output||!fire->fire(static_cast<unsigned char*>(a)+o->output_offset,0x18,activator,a,n,0.f,b->output,&r))return 0;
-        o->queued=r.queued;
+        if(!multicompare_fire(a,n,activator,o->output_offset,*b,*o))return 0;
     }
     o->completed=1;return 1;
 }

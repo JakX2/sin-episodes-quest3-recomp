@@ -2064,5 +2064,100 @@ int main(int argc,char** argv){
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&f.removes==2&&co.released==2&&!word(co.root,0x30));
         assert(word(actor,0x20c)==0x2000u&&word(actor,0x3cc)==2&&f.kill_order==2);
     }
+    {
+        // Original InputValue -> explicit CompareValues -> named relay
+        // delivery. No owner output enqueue; both output branches use the
+        // active service queue. ForceRecompare remains an unknown name.
+        alignas(4) unsigned char actor[multicompare_extent]{},target[relay_extent]{};
+        put(actor,0,multicompare_vtable);put(actor,0x378,0x4001u);actor[0x1f0]=1;actor[0xa8]=0x10;
+        put(target,0,relay_vtable);put(target,0x378,0x3000u);target[0x1f0]=1;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=multicompare_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            if(!std::strcmp(text,"target"))*token=201;
+            else if(!std::strcmp(text,"Disable"))*token=0x223edce8;
+            else if(!std::strcmp(text,"Enable"))*token=0x223edd00;
+            else return 0;return 1;
+        };
+        assert(api->key_value(actor,"IntegerValue","5",&keys,&kr));
+        assert(api->key_value(actor,"ShouldComparetoValue","1",&keys,&kr));
+        assert(api->key_value(actor,"OnEqual","target,Disable,,0,1",&keys,&kr));
+        assert(api->key_value(actor,"OnNotEqual","target,Enable,,0,1",&keys,&kr));
+        struct Chain {ConnectedOutput* queue;ActionPool* pool;void* actor;void* target;alignas(4) unsigned char row[0x1c]{},base[0x10]{};unsigned alloc=0,debug=0,rejected=0;} f{&co,&pool,actor,target};
+        MultiCompareBindings behavior{};behavior.context=&f;behavior.native_outputs=true;
+        behavior.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);if(token!=1||!f.alloc)return 0;*row=f.row;*bytes=0x1c;return 1;
+        };
+        behavior.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);if(f.alloc)return 0;++f.alloc;*token=1;*row=f.row;*bytes=0x1c;return 1;
+        };
+        behavior.resolve_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==401?" +4294967301 trailing":token==402?" -4294967290 trailing":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);for(unsigned i=0;i<2;++i)if(token==ptrword(f.pool->rows[i])){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.debug_action=[](void* p,void* caller,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);assert(caller==f.actor&&action->action_id==41+f.debug&&action->target==201&&!action->variant_type&&!action->delay);++f.debug;return 1;
+        };
+        fire.release=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);assert(token==ptrword(row)&&row==f.pool->rows[f.pool->released]&&!word(row,0x10));++f.pool->released;return 1;
+        };
+        behavior.output=&fire; // intentionally no enqueue callback
+        RelayQueueBindings direct{};direct.context=&f;direct.root=co.root;direct.root_bytes=sizeof(co.root);direct.root_token=99;direct.queue=&co.queue;
+        direct.handle=[](void* p,void* actor,unsigned* handle) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);if(actor==f.actor)*handle=0x4001u;else if(actor==f.target)*handle=0x3000u;else return 0;return 1;
+        };
+        direct.intern=[](void*,const char* text,unsigned* token) noexcept ->int{if(std::strcmp(text,"ForceRecompare"))return 0;*token=0x2241f628u;return 1;};
+        behavior.native_queue=&direct;
+        RelayBindings relay_behavior{};
+        nw::ServerNpcActivePostAnimationBindings storage{};storage.context=&f;
+        storage.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);if(token!=0x224f0350u)return 0;*row=f.base;*bytes=sizeof(f.base);return 1;
+        };
+        nw::ServerEntityAcceptInputBindings input{};input.context=&f;input.storage=&storage;input.logic_multicompare=&behavior;input.relay=&relay_behavior;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            switch(token){
+                case 0x2241ffb8u:*text="InputValue";break;
+                case 0x2241ff14u:*text="CompareValues";break;
+                case 0x2241f628u:*text="ForceRecompare";break;
+                case 0x223edce8u:*text="Disable";break;
+                case 0x223edd00u:*text="Enable";break;
+                default:return 0;
+            }
+            *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        input.diagnostic=[](void* p,void* actor,void* caller,unsigned name,unsigned,const void*) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);assert(actor==f.actor&&caller==f.actor&&name==0x2241f628u);++f.rejected;return 1;
+        };
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(target);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        nw::ServerEntitySearchBindings search{};search.context=&f;
+        search.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);*bytes=actor==f.actor?multicompare_extent:actor==f.target?relay_extent:0;return *bytes!=0;
+        };
+        nw::ServerEntityEventServiceBindings delivery{};delivery.context=&f;delivery.entities.entries=entries;delivery.entities.count=2;delivery.native_input=&input;delivery.native_search=&search;delivery.live_now=&co.now;
+        delivery.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<Chain*>(p)->queue;return q.queue.resolve(q.queue.context,token,row,bytes);};
+        delivery.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<Chain*>(p)->queue;assert(q.locked!=enter);q.locked=enter;return 1;};
+        delivery.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** out) noexcept ->int{
+            auto& f=*static_cast<Chain*>(p);assert(f.queue->locked&&name==201&&a==f.target&&c==f.actor);*out=prev?nullptr:f.target;return 1;
+        };
+        delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<Chain*>(p)->queue;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
+        for(unsigned i=0;i<2;++i){
+            std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=170.f+i;
+            co.queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};
+            unsigned incoming[5]{401+i,0,0,0xffffffffu,2},v[5]{0,0,0,0xffffffffu,0};
+            assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2241ffb8u,0x3000,0x3000,incoming,sizeof(incoming),0.f,17,&co.queue,&cancel_qr));
+            assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2241ff14u,0x3000,0x3000,v,sizeof(v),.25f,18,&co.queue,&cancel_qr));
+            assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==2&&es.native_inputs==2&&es.rejected_inputs==1&&es.future_stopped&&f.rejected==i+1&&f.alloc==1&&word(f.row,0)==5+i&&word(f.row,0x14)==17);
+            co.now+=.25f;
+            assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==2&&es.native_inputs==2&&!es.rejected_inputs&&f.debug==i+1&&pool.released==i+1&&co.released==4&&!word(co.root,0x30));
+            assert(target[0x3ac]==(i?0:1)&&!word(actor,0x3d0)&&!word(actor,i?0x3c0:0x3a8));
+            assert(word(co.rows[3],4)==201&&word(co.rows[3],8)==(i?0x223edd00u:0x223edce8u)&&word(co.rows[3],0xc)==0x3000u&&word(co.rows[3],0x10)==0x4001u&&word(co.rows[3],0x14)==41+i&&!word(co.rows[3],0x2c));
+        }
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
