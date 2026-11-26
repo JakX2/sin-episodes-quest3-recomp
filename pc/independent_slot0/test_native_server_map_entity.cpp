@@ -1,5 +1,6 @@
 #include "native_server_map_entity.h"
 #include "native_server_npc_active_weapon_step.h"
+#include "native_server_activity_assignment.h"
 #include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX

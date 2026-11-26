@@ -1329,3 +1329,75 @@
         assert(factory_destroy(f.seq,sizeof(f.seq),f.seq+0x160,&owner)&&f.factory_releases==1);
         assert(api->destroy_logic(f.seq,sizeof(f.seq),1,&destroy,&out)&&out.completed&&out.outputs==10&&out.actions==11&&out.released==11&&out.base_called&&out.freed&&f.order=="NBDF");
     }
+
+
+    // Original animation-start path calls the real native NPC direct
+    // activity assignment; no owner substitutes animation assignment.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct AnimationSequenceFixture {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},successor[scripted_sequence_extent]{},action[0x1c]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            unsigned lookups=0,activities=0,warnings=0,assignments=0,finishes=0,outputs=0;
+            unsigned last_token=0;int last_sequence=-1;
+            std::string order;
+        } f;
+        const auto start=reinterpret_cast<StartScriptedSequenceAnimation>(GetProcAddress(server,scripted_sequence_start_export));
+        const auto done=reinterpret_cast<CompleteScriptedSequencePlay>(GetProcAddress(server,scripted_sequence_play_done_export));
+        assert(start&&done&&!GetProcAddress(client,scripted_sequence_start_export)&&!GetProcAddress(client,scripted_sequence_play_done_export));
+        put(f.seq,0,scripted_sequence_vtable);put(f.npc,0,0x224954a4u);put(f.successor,0,scripted_sequence_vtable);
+        put(f.seq,0x378,0x3000u);put(f.npc,0x378,0x4001u);put(f.successor,0x378,0x5002u);
+        put(f.seq,0x3d4,0xffffffffu);put(f.npc,0x908,0x5678u);put(f.npc,0x78c,0xffffffffu);
+        put(f.npc,0x3ec,-1);f.npc[0x1f0]=1;put(f.npc,0x880,777);
+        void* actors[]{f.seq,f.npc,f.successor};
+        for(unsigned i=0;i<3;++i){f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;}
+        ScriptedSequenceControlBindings control{};control.context=&f;control.entries=f.entries;control.entry_count=3;
+        control.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);*bytes=a==f.npc?sizeof(f.npc):a==f.seq||a==f.successor?sizeof(f.seq):0;return *bytes!=0;
+        };
+        nw::ServerEventDictionaryEntry er[4]{};nw::ServerEventDictionary events{er,4,0,1,0};
+        nw::ServerNpcActivityAssignmentBindings assignment{};assignment.context=&f;assignment.translation.actor_class=nw::NpcActivityGrunt;
+        assignment.reset.context=&f;assignment.dictionary.context=&f;assignment.dictionary.dictionary=&events;
+        assignment.reset.duration=[](void*,void*,int,double* v) noexcept ->int{*v=2.;return 1;};
+        assignment.reset.distance=[](void*,void*,int,double* v) noexcept ->int{*v=100.;return 1;};
+        assignment.reset.flags=[](void*,void*,int,unsigned* v) noexcept ->int{*v=0;return 1;};
+        assignment.dictionary.descriptor=[](void*,void*,int,void**,unsigned*,unsigned*) noexcept ->int{return 0;};
+        assignment.capabilities=[](void*,void*,unsigned* v) noexcept ->int{*v=0;return 1;};
+        assignment.component_notify=[](void* p,void* a,unsigned component) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc&&component==0x5678u&&f.seq[0x3cd]);++f.assignments;f.order+='A';return 1;
+        };
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);if(token!=1)return 0;*row=f.action;*bytes=0x1c;return 1;
+        };
+        fire.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(!activator&&caller==f.seq&&action->target==21&&action->input==22);++f.outputs;f.order+='O';return 1;
+        };
+        put(f.seq,0x3f8+0x14,1u);put(f.action,0,21u);put(f.action,4,22u);put(f.action,0x10,0xffffffffu);
+        ScriptedSequenceEventBindings output{&fire,nullptr};
+        ScriptedSequenceAnimationBindings b{&control,&output,&assignment,&f};
+        b.lookup=[](void* p,void* npc,unsigned token,int* index) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(npc==f.npc&&f.seq[0x3cd]);++f.lookups;f.last_token=token;*index=token==21?2:token==22?3:-1;return 1;
+        };
+        b.activity=[](void* p,void* npc,int index,int* act) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(npc==f.npc);++f.activities;f.last_sequence=index;*act=index==2?7:index==3?8:-1;return 1;
+        };
+        b.missing_sequence=[](void* p,void* npc,unsigned token) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(npc==f.npc&&(token==99||token==0x223d47a8u));++f.warnings;f.order+='W';return 1;
+        };
+        b.finish=[](void* p,void* a,void* npc) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.seq&&npc==f.npc);++f.finishes;f.order+='F';return 1;
+        };
+        ScriptedSequenceAnimationResult o{};
+        assert(start(f.seq,sizeof(f.seq),f.npc,21,false,&b,&o)&&o.started&&o.assigned&&o.sequence==2&&o.activity==7&&word(f.npc,0x3ec)==2&&word(f.npc,0x878)==7&&word(f.npc,0x880)==777&&f.order=="A");
+        assert(start(f.seq,sizeof(f.seq),f.npc,99,false,&b,&o)&&o.missing&&o.activity_fallback&&o.sequence==0&&o.activity==1&&word(f.npc,0x3ec)==0&&f.order=="AWA");
+        assert(start(f.seq,sizeof(f.seq),f.npc,0,false,&b,&o)&&o.started&&o.missing&&f.last_token==0x223d47a8u&&f.warnings==2&&f.order=="AWAWA");
+        put(f.seq,0x39c,22u);f.seq[0x3cd]=0;
+        assert(start(f.seq,sizeof(f.seq),f.npc,0,true,&b,&o)&&o.empty_completed&&!o.started&&o.post_idle&&o.post_idle_started&&o.assigned&&o.output_called&&o.queued==1&&word(f.npc,0x96c)==2&&word(f.npc,0x3ec)==3&&f.order=="AWAWAAO");
+        put(f.seq,0x3d4,0x5002u);
+        assert(done(f.seq,sizeof(f.seq),f.npc,&b,&o)&&o.finish_called&&!o.post_idle&&!o.assigned&&o.output_called&&f.order=="AWAWAAOFO");
+        put(f.seq,0x3d4,0x6002u); // stale successor serial
+        assert(done(f.seq,sizeof(f.seq),f.npc,&b,&o)&&o.post_idle&&o.post_idle_started&&o.output_called&&f.order=="AWAWAAOFOAO");
+        put(f.seq,0x39c,0u);
+        assert(done(f.seq,sizeof(f.seq),f.npc,&b,&o)&&o.finish_called&&o.output_called&&f.order=="AWAWAAOFOAOFO"&&f.assignments==5&&f.finishes==2&&f.outputs==4);
+    }
