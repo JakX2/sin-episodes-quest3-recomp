@@ -889,3 +889,62 @@
         assert(emit(f.actor,sizeof(f.actor),9,nullptr,&result)&&result.completed&&!result.output_called&&f.calls==8);
         assert(!emit(f.actor,sizeof(f.actor)-1,1,&b,&result)&&f.calls==8);
     }
+
+// ScriptedSequence input ordering and native NPC permission, including
+// live current/next sequence policy and original default think cadence.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct ControlFixture {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x974]{},current[scripted_sequence_extent]{},next[scripted_sequence_extent]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            unsigned possess=0,notify=0,warnings=0,reason=0,cancels=0,cancel_warn=0,expected_wait=0;
+            float now=10.25f,interval=.125f;
+        } f;
+        const auto control=reinterpret_cast<ControlScriptedSequence>(GetProcAddress(server,scripted_sequence_control_export));
+        assert(control&&!GetProcAddress(client,scripted_sequence_control_export));
+        put(f.seq,0,scripted_sequence_vtable);put(f.seq,0x3d0,0xffffffffu);put(f.seq,0x74,0xffffffffu);put(f.seq,0xb8,0x400000u);
+        put(f.npc,0,0x224954a4u);put(f.npc,0x970,0xffffffffu);
+        put(f.current,0,scripted_sequence_vtable);put(f.current,0x3d4,0xffffffffu);
+        put(f.next,0,scripted_sequence_vtable);
+        void* actors[]{f.npc,f.current,f.next};for(unsigned i=0;i<3;++i){f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;}
+        nw::ServerNpcOuterCadenceBindings cadence{};cadence.context=&f;
+        cadence.notify_think_flags=[](void* p,void* actor) noexcept ->int{
+            auto& f=*static_cast<ControlFixture*>(p);assert(actor==f.seq&&!f.seq[0x3c0]&&f.seq[0x3d8]);++f.notify;return 1;
+        };
+        ScriptedSequenceControlBindings b{};b.context=&f;b.entries=f.entries;b.entry_count=3;b.now=&f.now;b.interval=&f.interval;b.cadence=&cadence;
+        b.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<ControlFixture*>(p);*bytes=actor==f.npc?sizeof(f.npc):actor==f.current||actor==f.next?sizeof(f.current):0;return *bytes!=0;
+        };
+        b.possess=[](void* p,void* actor) noexcept ->int{
+            auto& f=*static_cast<ControlFixture*>(p);assert(actor==f.seq&&f.seq[0x3c0]==f.expected_wait);++f.possess;return 1;
+        };
+        b.linked_warning=[](void* p,void* next,unsigned reason) noexcept ->int{
+            auto& f=*static_cast<ControlFixture*>(p);assert(next==f.next);++f.warnings;f.reason=reason;return 1;
+        };
+        b.cancel_warning=[](void* p,unsigned token) noexcept ->int{
+            auto& f=*static_cast<ControlFixture*>(p);assert(token==7&&f.seq[0x3d8]);++f.cancel_warn;return 1;
+        };
+        b.cancel_group=[](void* p,void* actor) noexcept ->int{
+            auto& f=*static_cast<ControlFixture*>(p);assert(actor==f.seq&&!f.seq[0x3d8]&&f.cancel_warn==1);++f.cancels;return 1;
+        };
+        using I=ScriptedSequenceInput;ScriptedSequenceControlResult o{};
+        assert(control(f.seq,sizeof(f.seq),I::MoveToPosition,&b,&o)&&o.think_installed&&o.tick_scheduled&&o.due_tick==82&&f.seq[0x3c0]&&f.notify==1&&word(f.seq,8)==0x221afc90u&&word(f.seq,0x74)==82);
+        put(f.seq,0x3d0,0x3000u);put(f.npc,0x96c,1);
+        assert(control(f.seq,sizeof(f.seq),I::BeginSequence,&b,&o)&&o.state_blocked&&!f.seq[0x3c0]&&!f.possess);
+        put(f.npc,0x96c,2);put(f.npc,0x850,4);
+        assert(control(f.seq,sizeof(f.seq),I::MoveToPosition,&b,&o)&&o.permission_blocked&&!f.seq[0x3c0]&&!f.possess);
+        put(f.seq,0xb4,0x40u);
+        assert(control(f.seq,sizeof(f.seq),I::MoveToPosition,&b,&o)&&o.possessed&&o.permission==1&&f.seq[0x3c0]&&f.possess==1);
+        put(f.npc,0x970,0x4001u);put(f.current,0x3d4,0x5002u);put(f.current,0x3a4,9u);
+        assert(control(f.seq,sizeof(f.seq),I::BeginSequence,&b,&o)&&o.linked_blocked&&f.warnings==1&&f.reason==1&&!f.seq[0x3c0]);
+        put(f.current,0x3a4,0u);put(f.next,0xb4,0x200u);
+        assert(control(f.seq,sizeof(f.seq),I::BeginSequence,&b,&o)&&o.linked_blocked&&f.warnings==2&&f.reason==2);
+        put(f.next,0xb4,0u);
+        assert(control(f.seq,sizeof(f.seq),I::BeginSequence,&b,&o)&&o.possessed&&o.permission==2&&f.possess==2);
+        put(f.npc,0x8c,1);
+        assert(control(f.seq,sizeof(f.seq),I::BeginSequence,&b,&o)&&o.permission_blocked&&f.possess==2);
+        put(f.seq,0x398,7u);f.seq[0x3d9]=1;
+        assert(control(f.seq,sizeof(f.seq),I::CancelSequence,&b,&o)&&o.suppressed&&!f.cancels);
+        f.seq[0x3d9]=0;
+        assert(control(f.seq,sizeof(f.seq),I::CancelSequence,&b,&o)&&o.think_cleared&&o.cancelled&&f.cancels==1&&!word(f.seq,8)&&word(f.seq,0x74)==82);
+    }

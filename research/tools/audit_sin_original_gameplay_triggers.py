@@ -71,6 +71,13 @@ ORIGINAL_METHODS={
   "sequence_construct":(0x221b01f0,186,"63ea7f6a0b665f294a7b5afd05fdf73de0bf9015a12e3df6744bcedd3e0f0685"),
   "sequence_datamap_getter":(0x221ade90,6,"4725fcea4951ab15a4c353095f4b9ac3df933d1460d1130074dbf1e2fcb3fe31"),
   "sequence_datamap_init":(0x221b05d0,1542,"f9b3f1f7e67490ca4f1cff22736397fe552b4973a16a39a75dcbe7f0de1653bb"),
+  "sequence_move_input":(0x221b0430,204,"8597b8b37c16d3107b4519ab220ec897ae7386771836aff10d83dec2e25af75c"),
+  "sequence_begin_input":(0x221b0500,197,"5e247dff62d1b99839a4cfb9a1941e90dd20c9bdaadc1495fce6e3b6aa8bbeeb"),
+  "sequence_cancel_input":(0x221af970,86,"aa5e777a8bc17a4dce8001ecc169dbd0fc345f44429bcc42e8d8847af76e26c2"),
+  "sequence_install_think":(0x221b0410,29,"8291389d71c181925f8a90ac96c69cf7b22dc6984072d03e8fdddae231bfecb6"),
+  "sequence_npc_true":(0x22044210,3,"e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619"),
+  "sequence_permission":(0x2203e690,167,"ac5cee4d2cc4274f7097e65b2f64b4df306264b8f55a206f9aa0fe9493740571"),
+  "sequence_default_tick":(0x2214d7b0,179,"a197b8c975179097a8db85aef03d98e0c062077a83b2c326365b0eb3ad756cb9"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
@@ -292,7 +299,9 @@ FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x
 SEQUENCE_WORDS={
     0x223bd498:0x2242ee1c,0x223bd49d:0x22505008,0x22505008:0x2242ee70,0x2242ee70:0x221b0190,
     0x2242f668:0x224c1b4c,0x224c1b4c:0,0x224c1b50:0,0x224c1b58:0x22505014,
-    0x2242f66c+8:0x22001b00,0x2242f66c+0x34:0x221ade90,0x2242f66c+0x90:0x22141400,
+    0x2242f66c+8:0x22001b00,0x2242f66c+0x34:0x221ade90,0x2242f66c+0x90:0x22141400,0x2242f66c+0xc0:0x22001740,
+    **{vt+off:target for vt in (0x2248df04,0x224954a4,0x2249aaa4,0x224a416c,0x2248c514,0x2248e83c,0x2249964c,0x224a4a4c)
+        for off,target in ((0xf4,0x22044210),(0x574,0x2203e690))},
 }
 SEQUENCE_KEYS=(
     (2,0x394,0x2242fc74,"m_iszIdle"),(2,0x398,0x2242fc68,"m_iszPlay"),
