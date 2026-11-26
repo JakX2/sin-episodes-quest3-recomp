@@ -7513,7 +7513,7 @@ int __cdecl schedule_line_normal(void* a,unsigned n,float now,const ServerNpcGru
 }
 const ServerNpcGruntScheduleLineApi schedule_line_api{1,sizeof(ServerNpcGruntScheduleLineApi),&schedule_body_point,&schedule_line_acquire,&schedule_line_normal};
 
-int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
+int schedule_request_failure_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntScheduleLineServices* line=nullptr) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
     o->current_schedule=o->current_task=0;
@@ -7563,8 +7563,12 @@ int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNp
     }
     if(!consumed){id=read<int>(a,0x7bc);if(!id)id=79;o->failure_shared=1;}
     o->requested=id;
-    if(!schedule_acquire_impl(a,n,id,now,ac,o->acquisition,o->translation))return 0;o->acquisition.completed=1;
+    const auto* scene=line?line->scene:nullptr;const auto* p=scene?scene->policy:nullptr;
+    if(!schedule_acquire_impl(a,n,id,now,ac,o->acquisition,o->translation,p?p->memory:nullptr,p,scene,line))return 0;o->acquisition.completed=1;
     return schedule_request_finish(a,n,now,*b,*o)?1:0;
+}
+int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
+    return schedule_request_failure_impl(a,n,now,b,o);
 }
 const ServerNpcGruntScheduleRequestApi schedule_request_api{1,sizeof(ServerNpcGruntScheduleRequestApi),&schedule_request_choose,&schedule_request_failure};
 
@@ -8846,6 +8850,10 @@ int __cdecl notify_enemy_change(void* context,void* actor) noexcept{
 const ServerNpcEnemyNotifyApi notify_api{1,sizeof(ServerNpcEnemyNotifyApi),&notify_enemy_change};
 const ServerNpcEnemyStateApi enemy_state_api{1,sizeof(ServerNpcEnemyStateApi),&set_enemy,&clear_combat_conditions};
 const ServerNpcStateApi api{1,sizeof(ServerNpcStateApi),&should_reconsider,&choose_ideal,&apply};
+}
+// Synchronous internal entry, not a new retail engine virtual or ABI.
+int grunt_schedule_line_failure_internal(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o) noexcept{
+    return schedule_request_failure_impl(a,n,now,b,o,line);
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcStateReconsiderApi=_SiN_GetServerNpcStateReconsiderApi")

@@ -83,6 +83,31 @@ struct ServerNpcSubclassSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerNpcSubclassSchedulerBindings*,ServerNpcSubclassSchedulerResult*) noexcept;
 };
 using GetServerNpcSubclassSchedulerApi=const ServerNpcSubclassSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// New ground-Grunt path connecting original +494/+498 requests to actual task maintenance.
+inline constexpr char server_npc_native_request_scheduler_export[]="SiN_GetServerNpcNativeRequestSchedulerApi";
+struct ServerGruntHelperTaskBindings;
+struct ServerGruntCombatSchedulerStats;
+struct ServerGruntFullTaskStats;
+struct ServerNpcNativeRequestSchedulerBindings {
+    ServerNpcSubclassSchedulerBindings scheduler;
+    const ServerNpcGruntSpecialCombatBindings* selector;
+    const ServerNpcGruntScheduleLineServices* line;
+    const ServerGruntHelperTaskBindings* full_tasks; // optional composed 26/11 custom task routes
+};
+struct ServerNpcNativeRequestSchedulerResult {
+    ServerNpcSubclassSchedulerResult scheduler;
+    ServerNpcGruntScheduleRequestResult request;
+    ServerNpcGruntSelectorTailResult tail;
+    ServerNpcGruntCombatSelectorResult combat;
+    ServerNpcGruntSpecialCombatResult special;
+    unsigned requests,failure_requests;
+};
+struct ServerNpcNativeRequestSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerNpcNativeRequestSchedulerBindings*,ServerNpcNativeRequestSchedulerResult*,ServerGruntCombatSchedulerStats*,ServerGruntFullTaskStats*) noexcept;
+};
+using GetServerNpcNativeRequestSchedulerApi=const ServerNpcNativeRequestSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_npc_gather_scheduler_export[]="SiN_GetServerNpcGatherSchedulerApi";
 struct ServerNpcGatherSchedulerBindings {
     ServerNpcSubclassSchedulerBindings scheduler;
