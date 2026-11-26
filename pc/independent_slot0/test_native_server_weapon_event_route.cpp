@@ -100,5 +100,20 @@ int main(int argc,char** argv){
     f.put(f.actor,0x78c,0x8001u);
     assert(run_parent(3015)==1&&pr.recognized&&!pr.live&&f.trace.empty());
     assert(run_parent(3002)==1&&pr.recognized&&!pr.live&&f.trace.empty());
+    f.put(f.actor,0x78c,0x7001u);b.combat_owner=nullptr;b.is_player=nullptr;
+    b.extent=[](void* p,void* e,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);if(e==f.actor)*n=sizeof(f.actor);else if(e==f.weapon)*n=sizeof(f.weapon);else return 0;return 1;
+    };
+    for(unsigned vt:{0x2245222cu,0x224aec3cu}){
+        f.put(f.actor,0,vt);assert(run(WeaponActivityBase,3200)&&out.owner_live&&out.player_owner&&(f.trace==std::vector<int>{8}));
+        assert(run(WeaponActivityGrenade,3005)&&out.grenade_consumed&&(f.trace==std::vector<int>{3005,5,6}));
+    }
+    f.put(f.actor,0,0x2249aaa4u);
+    assert(run(WeaponActivityBase,3200)&&out.owner_live&&!out.player_owner&&f.trace.empty());
+    assert(!run(WeaponActivityGrenade,3005)&&out.owner_live&&!out.player_owner&&f.trace.empty());
+    f.put(f.actor,0,0x2247ab9cu);
+    assert(run(WeaponActivityBase,3200)&&!out.owner_live&&f.trace.empty());
+    f.put(f.actor,0,0xdeadbeefu);
+    assert(!run(WeaponActivityBase,3200)&&f.trace.empty());
     FreeLibrary(server);FreeLibrary(client);std::puts("PASS original eight weapon event routes and native state writes");
 }

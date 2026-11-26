@@ -1,3 +1,4 @@
+#include "native_server_combat_owner.h"
 #include "native_server_weapon_event_route.h"
 #include <cmath>
 #include <cstring>
@@ -29,12 +30,11 @@ bool owner(void* w,const ServerWeaponEventRouteBindings& b,ServerWeaponEventRout
     *combat=*player=nullptr;out.owner_live=out.player_owner=0;
     void* entity=resolve(b,read<std::uint32_t>(w,0x494));
     if(!entity)return true;
-    if(!b.combat_owner)return false;
-    const int status=b.combat_owner(b.context,entity,combat);
+    const int status=b.combat_owner?b.combat_owner(b.context,entity,combat):native_combat_owner(b.context,entity,b.extent,combat);
     if(status<0||(status>0&&!*combat))return false;
     if(!status){*combat=nullptr;return true;}
     bool is_player=false;
-    if(!b.is_player||!b.is_player(b.context,*combat,&is_player))return false;
+    if(!(b.is_player?b.is_player(b.context,*combat,&is_player):native_combat_is_player(b.context,*combat,b.extent,&is_player)))return false;
     out.owner_live=1;out.player_owner=is_player;
     if(is_player)*player=*combat;
     return true;
@@ -82,8 +82,7 @@ int __cdecl handle(void* w,unsigned bytes,unsigned kind,void* receiver,const Ser
             // Original re-resolves combat owner after the grenade helpers.
             combat=resolve(*b,read<std::uint32_t>(w,0x494));
             if(combat){
-                if(!b->combat_owner)return 0;
-                void* actual=nullptr;const int status=b->combat_owner(b->context,combat,&actual);
+                void* actual=nullptr;const int status=b->combat_owner?b->combat_owner(b->context,combat,&actual):native_combat_owner(b->context,combat,b->extent,&actual);
                 if(status<0||(status>0&&!actual))return 0;
                 if(status>0&&(!b->grenade_danger||!b->grenade_danger(b->context,w,actual)))return 0;
             }

@@ -12,8 +12,8 @@ struct ServerWeaponPostFrameBindings {
     void* context;
     // Original 222ad370: serial owner +494 then virtual +fc.
     // Return 0 absent/noncombat, 1 resolved, negative failure.
-    int (__cdecl *combat_owner)(void*,void* entity,void**) noexcept;
-    int (__cdecl *is_player)(void*,void* owner,bool*) noexcept;
+    int (__cdecl *combat_owner)(void*,void* entity,void**) noexcept; // optional for authenticated primary vtables
+    int (__cdecl *is_player)(void*,void* owner,bool*) noexcept; // optional for authenticated primary vtables
     int (__cdecl *extent)(void*,void* entity,unsigned*) noexcept;
     // Original weapon +2c0 forwards viewmodel event through +4c0
     // only after fresh combat-owner and player checks.

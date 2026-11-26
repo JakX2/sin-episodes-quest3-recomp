@@ -1,3 +1,4 @@
+#include "native_server_combat_owner.h"
 #include "native_server_npc_state_reconsider.h"
 #include "native_server_npc_weapon_range_math.h"
 #include "native_server_npc_cone_distance_math.h"
@@ -1583,13 +1584,7 @@ int __cdecl weapon_ammo_query(void* w,unsigned slot,const ServerNpcGruntAssaultA
         // (return this). The reviewed weapon classes use 220017a0 (return null).
         // Preserve an explicitly supplied binding for old/adjusted foreign owners.
         if(b->combat_owner){if(!b->combat_owner(b->context,owner,&combat))return 0;}
-        else{
-            unsigned owner_bytes=0;
-            if(!ab->extent(ab->context,owner,&owner_bytes)||owner_bytes<4)return 0;
-            const auto vt=read<unsigned>(owner,0);
-            if(relation_grunt_class(vt)||vt==0x2245222cu||vt==0x224aec3cu)combat=owner;
-            else{unsigned unused=0;if(!line_weapon_caps(owner,*ab,unused))return 0;}
-        }
+        else if(native_combat_owner(ab->context,owner,ab->extent,&combat)<0)return 0;
     }
     if(!combat){
         if(primary){o->reserve=read<int>(w,0x4cc);o->reserve_read=1;return done(o->reserve>0);}
