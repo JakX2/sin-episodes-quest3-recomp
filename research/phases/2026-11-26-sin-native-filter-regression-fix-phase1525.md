@@ -1,0 +1,1 @@
+Phase 1525: both 1523 and 1524 independent Windows builds failed at the same ambiguous Api type in the new lifecycle fixture (C2872 line 774). Fully qualify sin_port::native_map::Api; no production behavior or assertions changed. Phase 1522 passed all four workflows. Runtime retest pending.
