@@ -76,6 +76,9 @@ extern "C" const sin_port::native_server_startup::Api* __cdecl SiN_GetServerStar
 extern "C" const sin_port::native_game_frame::Api* __cdecl SiN_GetServerGameFrameApi(std::uint32_t,std::uint32_t) noexcept;
 int __cdecl SinGameFrameWithSequencesInternal(bool,const sin_port::native_game_frame::State*,const sin_port::native_game_frame::Bindings*,sin_port::native_game_frame::Result*,
     const sin_port::native_game_frame::ScriptedSequenceFrameBindings*,sin_port::native_game_frame::ScriptedSequenceFrameResult*) noexcept;
+int __cdecl SinGameFrameWithSequenceRemovalInternal(bool,const sin_port::native_game_frame::State*,const sin_port::native_game_frame::Bindings*,sin_port::native_game_frame::Result*,
+    const sin_port::native_game_frame::ScriptedSequenceFrameBindings*,sin_port::native_game_frame::ScriptedSequenceFrameResult*,
+    const sin_port::native_map::ScriptedSequenceRemovalThinkBindings*,sin_port::native_game_frame::ScriptedSequenceFrameRemovalResult*) noexcept;
 int __cdecl SinGameFrameWithFiltersInternal(bool,const sin_port::native_game_frame::State*,const sin_port::native_game_frame::Bindings*,
     sin_port::native_game_frame::Result*,const sin_port::native_map::CampaignFilterInputBindings*,sin_port::native_weapon_tables::CampaignFilterServiceSummary*) noexcept;
 #endif
@@ -1234,6 +1237,8 @@ struct FrameInvocation {
     sin_port::native_weapon_tables::CampaignFilterServiceSummary* filter_summary=nullptr;
     const sin_port::native_game_frame::ScriptedSequenceFrameBindings* sequences=nullptr;
     sin_port::native_game_frame::ScriptedSequenceFrameResult* sequence_result=nullptr;
+    const sin_port::native_map::ScriptedSequenceRemovalThinkBindings* sequence_removal=nullptr;
+    sin_port::native_game_frame::ScriptedSequenceFrameRemovalResult* sequence_removed=nullptr;
 };
 static thread_local FrameInvocation* g_frame_invocation=nullptr;
 struct StartupInvocation {
@@ -1395,7 +1400,9 @@ public:
         if(invocation&&!invocation->entered){
             invocation->entered=true;
             const auto* api=SiN_GetServerGameFrameApi(1,sizeof(sin_port::native_game_frame::Api));
-            if(invocation->sequences)
+            if(invocation->sequence_removal)
+                invocation->success=SinGameFrameWithSequenceRemovalInternal(simulating,invocation->state,invocation->bindings,invocation->result,invocation->sequences,invocation->sequence_result,invocation->sequence_removal,invocation->sequence_removed);
+            else if(invocation->sequences)
                 invocation->success=SinGameFrameWithSequencesInternal(simulating,invocation->state,invocation->bindings,invocation->result,invocation->sequences,invocation->sequence_result);
             else if(invocation->filters)
                 invocation->success=SinGameFrameWithFiltersInternal(simulating,invocation->state,invocation->bindings,invocation->result,invocation->filters,invocation->filter_summary);
@@ -1832,6 +1839,20 @@ extern "C" int __cdecl SiN_InvokeServerGameFrameWithScriptedSequences(bool simul
     if(result)*result={};if(sr)*sr={};
     if(!state||!bindings||!result||!sequences||!sr||g_frame_invocation||g_startup_invocation||g_gameinit_invocation||g_level_invocation)return 0;
     FrameInvocation invocation{state,bindings,result};invocation.sequences=sequences;invocation.sequence_result=sr;g_frame_invocation=&invocation;
+    using Slot=void (__thiscall *)(void*,bool) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    reinterpret_cast<Slot>(table[sin_port::native_game_frame::original_slot])(&instance,simulating);
+    g_frame_invocation=nullptr;return invocation.entered&&invocation.success;
+}
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameWithScriptedSequenceRemoval=_SiN_InvokeServerGameFrameWithScriptedSequenceRemoval")
+extern "C" int __cdecl SiN_InvokeServerGameFrameWithScriptedSequenceRemoval(bool simulating,const sin_port::native_game_frame::State* state,
+    const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result,
+    const sin_port::native_game_frame::ScriptedSequenceFrameBindings* sequences,sin_port::native_game_frame::ScriptedSequenceFrameResult* sr,
+    const sin_port::native_map::ScriptedSequenceRemovalThinkBindings* removal,sin_port::native_game_frame::ScriptedSequenceFrameRemovalResult* removed) noexcept {
+    if(result)*result={};if(sr)*sr={};if(removed)*removed={};
+    if(!state||!bindings||!result||!sequences||!sr||!removal||!removed||g_frame_invocation||g_startup_invocation||g_gameinit_invocation||g_level_invocation)return 0;
+    FrameInvocation invocation{state,bindings,result};invocation.sequences=sequences;invocation.sequence_result=sr;
+    invocation.sequence_removal=removal;invocation.sequence_removed=removed;g_frame_invocation=&invocation;
     using Slot=void (__thiscall *)(void*,bool) noexcept;
     auto** table=*reinterpret_cast<void***>(&instance);
     reinterpret_cast<Slot>(table[sin_port::native_game_frame::original_slot])(&instance,simulating);

@@ -109,4 +109,12 @@ struct ScriptedSequenceFrameResult {
 inline constexpr char sequence_boundary_export[]="SiN_InvokeServerGameFrameWithScriptedSequences";
 using InvokeSequenceBoundary=int (__cdecl *)(bool,const State*,const Bindings*,Result*,
     const ScriptedSequenceFrameBindings*,ScriptedSequenceFrameResult*) noexcept;
+struct ScriptedSequenceFrameRemovalResult {
+    unsigned completed,removal_thinks,queued;
+    native_map::ScriptedSequenceRemovalThinkResult last;
+};
+inline constexpr char sequence_removal_boundary_export[]="SiN_InvokeServerGameFrameWithScriptedSequenceRemoval";
+using InvokeSequenceRemovalBoundary=int (__cdecl *)(bool,const State*,const Bindings*,Result*,
+    const ScriptedSequenceFrameBindings*,ScriptedSequenceFrameResult*,
+    const native_map::ScriptedSequenceRemovalThinkBindings*,ScriptedSequenceFrameRemovalResult*) noexcept;
 }
