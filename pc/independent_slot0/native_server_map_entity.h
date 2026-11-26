@@ -126,6 +126,16 @@ inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
 // factory's owner networkable-release boundary.
 inline constexpr unsigned multicompare_vtable=0x22420b84,multicompare_extent=0x3d4;
 struct RelayQueueBindings;
+// Shared CBaseEntity::InputKill owner effects. Removal is deferred.
+struct EntityKillBindings {
+    void* context;
+    int (__cdecl *attachment_notice)(void*,void* attachment,void* actor) noexcept;
+    int (__cdecl *clear_attachment)(void*,void* actor) noexcept;
+    int (__cdecl *remove)(void*,void* actor) noexcept;
+};
+struct EntityKillResult {
+    unsigned completed,handled,attachment_notified,attachment_cleared,remove_requested;
+};
 struct MultiCompareBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -136,6 +146,7 @@ struct MultiCompareBindings {
     // incoming activator and output ID, exact literal ForceRecompare.
     int (__cdecl *schedule)(void*,void*,void*,void*,const char*,float,unsigned) noexcept;
     const RelayQueueBindings* native_queue;
+    const EntityKillBindings* kill;
 };
 struct MultiCompareResult {
     unsigned completed,handled,converted,rejected,visited,inserted,replaced,scheduled,compared,equal,output_offset,queued,native_scheduled;
@@ -426,6 +437,7 @@ struct Api {
     int (__cdecl *multicompare_input)(void*,unsigned,const char*,void*,const void*,unsigned,unsigned,const MultiCompareBindings*,MultiCompareResult*) noexcept;
     int (__cdecl *register_multicompare)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_multicompare)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *multicompare_kill)(void*,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const EntityKillBindings*,EntityKillResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

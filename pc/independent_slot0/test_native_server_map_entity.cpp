@@ -1991,7 +1991,7 @@ int main(int argc,char** argv){
         ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
         auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=multicompare_extent;return 1;};
         assert(api->key_value(actor,"OnEqual","relay,Trigger,,0,-1",&keys,&kr));
-        struct MultiQueue {ConnectedOutput* queue;ActionPool* pool;void* actor;void* activator;alignas(4) unsigned char records[2][0x1c]{},base[0x10]{};unsigned alloc=0,fired=0,rejected=0;} f{&co,&pool,actor,timer};
+        struct MultiQueue {ConnectedOutput* queue;ActionPool* pool;void* actor;void* activator;alignas(4) unsigned char records[2][0x1c]{},base[0x10]{};unsigned alloc=0,fired=0,rejected=0,kill_order=0,removes=0;} f{&co,&pool,actor,timer};
         std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=160.f;
         co.queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};
         MultiCompareBindings behavior{};behavior.context=&f;
@@ -2006,6 +2006,17 @@ int main(int argc,char** argv){
         direct.handle=[](void* p,void* a,unsigned* handle) noexcept ->int{auto& f=*static_cast<MultiQueue*>(p);if(a==f.actor)*handle=0x4001u;else if(a==f.activator)*handle=0x3000u;else return 0;return 1;};
         direct.intern=[](void*,const char* text,unsigned* token) noexcept ->int{assert(!std::strcmp(text,"ForceRecompare"));*token=0x2241f628u;return 1;};
         behavior.native_queue=&direct; // service supplies authoritative live time and handles.
+        EntityKillBindings kill{};kill.context=&f;
+        kill.attachment_notice=[](void* p,void* attached,void* actor) noexcept ->int{
+            auto& f=*static_cast<MultiQueue*>(p);assert(attached==f.activator&&actor==f.actor&&!f.kill_order);f.kill_order=1;return 1;
+        };
+        kill.clear_attachment=[](void* p,void* actor) noexcept ->int{
+            auto& f=*static_cast<MultiQueue*>(p);assert(actor==f.actor&&f.kill_order==1);put(actor,0x20c,0xffffffffu);f.kill_order=2;return 1;
+        };
+        kill.remove=[](void* p,void* actor) noexcept ->int{
+            auto& f=*static_cast<MultiQueue*>(p);assert(actor==f.actor&&f.kill_order==2);++f.removes;return 1;
+        };
+        behavior.kill=&kill;
         nw::ServerNpcActivePostAnimationBindings storage{};storage.context=&f;
         storage.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
             // Empty hosted inherited-map fixture: it does not invent an alias.
@@ -2013,7 +2024,7 @@ int main(int argc,char** argv){
         };
         nw::ServerEntityAcceptInputBindings input{};input.storage=&storage;input.context=&f;input.logic_multicompare=&behavior;
         input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
-            *text=token==0x2241ffb8u?"InputValue":token==0x2241ff14u?"CompareValues":token==0x2241f628u?"ForceRecompare":nullptr;
+            *text=token==0x2241ffb8u?"InputValue":token==0x2241ff14u?"CompareValues":token==0x2241f628u?"ForceRecompare":token==0x2240b624u?"Kill":token==402?"kIlL":nullptr;
             if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
         };
         input.diagnostic=[](void* p,void* a,void* c,unsigned token,unsigned,const void*) noexcept ->int{
@@ -2037,6 +2048,21 @@ int main(int argc,char** argv){
         assert(word(f.records[0],0)==5&&word(f.records[1],0)==5&&word(f.records[0],0x14)==17&&word(f.records[1],0x14)==18);
         co.now=160.25f;
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&f.fired==1&&co.released==4&&!word(co.root,0x30)&&!word(actor,0x3d0));
+        // A fresh queue follows the comparison. Kill requests removal, not
+        // immediate destruction: comparison/output owner pools remain live.
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;
+        put(actor,0x20c,0x3000u);
+        EntityKillResult krill{};
+        assert(!api->multicompare_kill(actor,multicompare_extent-1,entries,2,&kill,&krill)&&!krill.completed&&!f.kill_order);
+        assert(!api->multicompare_kill(timer,timer_extent,entries,2,&kill,&krill)&&!krill.completed&&!f.kill_order);
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2240b624u,0x3000,0x3000,v,sizeof(v),0.f,20,&co.queue,&cancel_qr));
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,402,0x3000,0x3000,v,sizeof(v),.25f,21,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&es.future_stopped&&f.kill_order==2&&f.removes==1&&co.released==1);
+        assert(word(actor,0x20c)==0xffffffffu&&word(actor,0x3cc)==2&&f.alloc==2&&word(actor,0x3a8)==ptrword(pool.rows[0]));
+        // Stale serial must not notify or clear the unrelated attachment.
+        put(actor,0x20c,0x2000u);co.now+=.25f;
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&f.removes==2&&co.released==2&&!word(co.root,0x30));
+        assert(word(actor,0x20c)==0x2000u&&word(actor,0x3cc)==2&&f.kill_order==2);
     }
     FreeLibrary(server);FreeLibrary(client);
 }
