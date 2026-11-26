@@ -836,11 +836,21 @@ int main(int argc,char** argv){
     f.put(f.actor,0x8ec,0x20000u);f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);f.put(f.actor,0x920,0);
     f.put(f.goal_path,0x44,2u);f.put(f.goal_path,0x10,0x8002u);global_deadline=0;
     ServerNpcGruntGoalRefreshResult goals[2]{};
-    assert(cgoal->gather(f.actor,sizeof(f.actor),f.enemy,580,&ccb,&goal_bindings,&ccr,goals)&&ccr.completed&&ccr.attack_called&&ccr.nav_calls==2&&goals[0].retargeted&&goals[1].skipped_type&&f.goal_target==f.enemy);
+    auto cycle_getter=reinterpret_cast<GetServerNpcGruntNativeLineCycleApi>(GetProcAddress(s,server_npc_grunt_native_line_cycle_export));
+    assert(cycle_getter&&!GetProcAddress(c,server_npc_grunt_native_line_cycle_export)&&!cycle_getter(0,sizeof(ServerNpcGruntNativeLineCycleApi))&&!cycle_getter(1,0));
+    const auto* line_cycle=cycle_getter(1,sizeof(ServerNpcGruntNativeLineCycleApi));assert(line_cycle);
+    ServerNpcGruntAssaultAdmissionBindings cycle_admission{};
+    ServerNpcGruntCombatLineBindings cycle_line{};cycle_line.admission=&cycle_admission;cycle_line.context=&f;
+    cycle_line.point_blocker=[](void* p,void* actor,const float*,unsigned mask,void** out) noexcept -> int{
+        assert(actor==F::self(p).actor&&mask==0x46004003u);*out=nullptr;return 1;
+    };
+    ServerNpcGruntNativeLineAttackResult cycle_attack{};
+    auto cycle_combat=ccb;cycle_combat.attack.line=nullptr;cycle_combat.attack.weapon_caps=nullptr;
+    assert(line_cycle->combat(f.actor,sizeof(f.actor),f.enemy,580,&cycle_combat,&goal_bindings,&cycle_line,&ccr,goals,&cycle_attack)&&ccr.completed&&ccr.attack_called&&ccr.nav_calls==2&&goals[0].retargeted&&goals[1].skipped_type&&f.goal_target==f.enemy&&cycle_attack.lines[0].point_called&&cycle_attack.attack.line_clear&&ccr.attack.conditions[0]==20);
     f.put(f.goal_path,0x10,0x7001u);f.put(f.goal_path,0x34,400.f);
     assert(cgoal->gather(f.actor,sizeof(f.actor),f.enemy,581,&ccb,&goal_bindings,&ccr,goals)&&ccr.completed&&goals[0].refreshed&&goals[0].deadline_written&&goals[1].skipped_type);
     f.put(f.enemy,0x8c,1);
-    assert(cgoal->gather(f.actor,sizeof(f.actor),f.enemy,582,&ccb,&goal_bindings,&ccr,goals)&&ccr.range.dead&&!ccr.nav_calls&&!goals[0].refreshed&&!goals[1].skipped_type);
+    assert(line_cycle->combat(f.actor,sizeof(f.actor),f.enemy,582,&cycle_combat,&goal_bindings,&cycle_line,&ccr,goals,&cycle_attack)&&ccr.range.dead&&!ccr.nav_calls&&!goals[0].refreshed&&!goals[1].skipped_type&&!cycle_attack.attack.line_calls&&!cycle_attack.lines[0].completed);
     f.put(f.enemy,0x8c,0);
     {
         auto get_search=reinterpret_cast<GetServerNpcGruntWeaponSearchApi>(GetProcAddress(s,server_npc_grunt_weapon_search_export));
@@ -929,6 +939,11 @@ int main(int argc,char** argv){
         for(unsigned i=0;i<8;++i)f.put(f.actor,0x82c+4*i,0xffffffffu);
         ServerNpcGruntPostUpdateResult post_result;
         assert(post->update(f.actor,sizeof(f.actor),621,true,&post_bindings,&post_result)&&post_result.completed&&post_result.search.cooldown_blocked&&post_result.new_enemy_condition&&post_result.combat_called&&post_result.target.target_visible&&post_result.snapshot.snapshot&&f.get<float>(0x9a0)==621);
+        // Native post cycle with active attack gate and no hosted line callback.
+        auto native_post=post_bindings;native_post.combat.attack.line=nullptr;
+        f.put(f.combat_nav,0xc,0);f.put(f.actor,0x8ec,0x20000u);
+        assert(line_cycle->post(f.actor,sizeof(f.actor),621.5f,true,&native_post,&cycle_line,&post_result,&cycle_attack)&&post_result.completed&&post_result.combat_called&&post_result.combat.attack_called&&cycle_attack.lines[0].point_called&&cycle_attack.attack.line_clear);
+        f.put(f.combat_nav,0xc,1);f.put(f.actor,0x8ec,0u);
         f.put(f.actor,0xb4,0x10u);f.condition(7);f.condition(48);
         assert(post->update(f.actor,sizeof(f.actor),622,false,&post_bindings,&post_result)&&post_result.completed&&post_result.skipped_perception&&post_result.cleared_sense_conditions>=2&&post_result.enemy_cleared&&!post_result.combat_called&&f.get<unsigned>(0x8a0)==0xffffffffu);
         f.put(f.actor,0x850,7);f.condition(1);
@@ -979,7 +994,7 @@ int main(int argc,char** argv){
         full_bindings.post.search.relation=rb;
         f.put(f.actor,0x850,7);f.condition(1);
         ServerNpcGruntConditionUpdateResult full_result;
-        assert(full->update(f.actor,sizeof(f.actor),630,&full_bindings,&full_result)&&full_result.completed&&full_result.gate.inactive&&!full_result.perception_called&&full_result.post.skipped_state&&full_result.post.snapshot.snapshot);
+        assert(line_cycle->update(f.actor,sizeof(f.actor),630,&full_bindings,&cycle_line,&full_result,&cycle_attack)&&full_result.completed&&full_result.gate.inactive&&!full_result.perception_called&&full_result.post.skipped_state&&full_result.post.snapshot.snapshot&&!cycle_attack.attack.line_calls);
         f.put(f.actor,0x850,1);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0xffffffffu);f.put(f.actor,0x798,0u);
         f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x988,0u);f.put(f.actor,0x9a4,700.f);f.put(f.actor,0xb4,0u);f.actor[0x84c]=0;
         f.put(f.actor,0x7cc,0u);f.put(f.actor,0x7d0,0u);f.condition(7);
@@ -1150,7 +1165,7 @@ int main(int argc,char** argv){
         f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);f.put(f.replacement,0xb4,0u);
         f.put(current_record,8,0.f);
         ServerNpcGruntGatherNativeResult native_result;
-        assert(native_gather->gather(f.actor,sizeof(f.actor),660,&all_bindings,&native_result)&&native_result.gather.completed&&native_result.gather.search_called&&native_result.object.found&&native_result.gather.object_condition&&native_result.gather.point_condition&&native_result.point.accepted);
+        assert(line_cycle->gather(f.actor,sizeof(f.actor),660,&all_bindings,&cycle_line,&native_result,&cycle_attack)&&native_result.gather.completed&&native_result.gather.search_called&&native_result.object.found&&native_result.gather.object_condition&&native_result.gather.point_condition&&native_result.point.accepted&&!cycle_attack.attack.line_calls);
         assert(f.get<unsigned>(0xcb4)==0x8002u&&f.get<float>(0xc58)==40);
         f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);
         assert(native_gather->gather(f.actor,sizeof(f.actor),660.1f,&all_bindings,&native_result)&&!native_result.gather.search_called&&native_result.gather.object_condition&&!native_result.gather.point_condition&&native_result.point.cooldown_blocked);
