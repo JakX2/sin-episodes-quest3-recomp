@@ -9,6 +9,8 @@ extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi*
 extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t,std::uint32_t) noexcept;
 int __cdecl SinParseMapWithEventsInternal(const char*,unsigned,bool,const sin_port::native_map::PipelineBindings*,
     sin_port::native_map::PipelineResult*,void*) noexcept;
+int __cdecl SinParseMapWithFiltersInternal(const char*,unsigned,bool,const sin_port::native_map::PipelineBindings*,
+    sin_port::native_map::PipelineResult*,void*,const sin_port::native_map::CampaignFilterFactoryBindings*) noexcept;
 int __cdecl SinPublishMapEventInternal(void*,int,const char*,const char*) noexcept;
 int __cdecl SinPublishActivationHealthInternal(void*,const void*,unsigned,int) noexcept;
 int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
@@ -92,7 +94,8 @@ bool map_event(const Bindings& b,void* manager,int descriptor,const char* map,co
     if(manager)return event_completed(SinPublishMapEventInternal(manager,descriptor,map,filename));
     return b.map_event&&b.map_event(b.context,descriptor,map,filename);
 }
-int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void* event_manager) noexcept {
+int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void* event_manager,
+    const native_map::CampaignFilterFactoryBindings* filters=nullptr) noexcept {
     if(!o)return 0;*o={};
     if(!ready(s,b,o)||!a||!a->map||s->level_ready||!b->scope)return 0;
     s->busy=true;
@@ -114,7 +117,9 @@ int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void
             if(!a->entities||!b->native_map_pipeline||!b->entity_text_bytes)return false;
             const auto* api=SiN_GetServerMapEntityApi(1,sizeof(native_map::Api));
             if(event_manager){
-                if(!SinParseMapWithEventsInternal(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline,event_manager))return false;
+                if(filters){
+                    if(!SinParseMapWithFiltersInternal(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline,event_manager,filters))return false;
+                }else if(!SinParseMapWithEventsInternal(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline,event_manager))return false;
             }else if(!api||!api->parse_all(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline))return false;
         }
         o->parsed=1;return true;
@@ -236,4 +241,9 @@ int __cdecl SinServerActivateWithCampaignFiltersInternal(sin_port::native_level:
     sin_port::native_level::Result* o,void* manager,const sin_port::native_map::CampaignFilterActivationBindings* filters,
     sin_port::native_level::CampaignFilterActivationSummary* summary) noexcept {
     return manager&&filters&&summary&&sin_port::native_level::server_activate_impl(s,b,o,manager,filters,summary);
+}
+
+int __cdecl SinLevelInitWithFiltersInternal(sin_port::native_level::State* s,const sin_port::native_level::LevelArgs* a,
+    const sin_port::native_level::Bindings* b,sin_port::native_level::Result* o,void* manager,const sin_port::native_map::CampaignFilterFactoryBindings* filters) noexcept {
+    return manager&&filters&&b&&!b->parse_entities&&sin_port::native_level::level_init_impl(s,a,b,o,manager,filters);
 }

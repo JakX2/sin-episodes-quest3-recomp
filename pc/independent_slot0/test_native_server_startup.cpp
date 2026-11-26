@@ -225,7 +225,7 @@ int main(int argc,char** argv){
         alignas(4) unsigned char actor[nm::dynamic_trigger_extent]{};
         alignas(4) unsigned char player[0x37c]{};
         alignas(4) unsigned char named_filter[0x3cc]{};
-        unsigned removed=0,base_activations=0;
+        unsigned removed=0,base_activations=0,filter_alloc=0,trigger_alloc=0,filter_spawn=0;
     } m;
     const unsigned player_vt=0x224aec3cu,handle=0x5002u;const int hp=43;
     std::memcpy(m.player,&player_vt,4);std::memcpy(m.player+0x378,&handle,4);std::memcpy(m.player+0x9c,&hp,4);
@@ -263,13 +263,48 @@ int main(int argc,char** argv){
     assert(resolve_player(&session,&player)&&!player&&network.calls==1&&edict_queries==6);
     network.actor=m.player;
     assert(resolve_player(&session,&player)&&player==m.player&&network.calls==2&&edict_queries==7);
-    nm::Bindings mp{};mp.context=&m;
-    mp.create=[](void* p,const char* cls,void** actor) noexcept ->int{assert(!std::strcmp(cls,"trigger_secret"));*actor=static_cast<Map*>(p)->actor;return 1;};
+    const auto map_get=reinterpret_cast<nm::GetApi>(GetProcAddress(server,nm::export_name));assert(map_get);
+    const auto* map_api=map_get(1,sizeof(nm::Api));assert(map_api);
+    nm::FactoryDictionary dictionary{};assert(map_api->register_factories(&dictionary)&&map_api->register_campaign_triggers(&dictionary));
+    nm::TriggerFactoryBindings trigger_factory{};trigger_factory.context=&m;
+    trigger_factory.allocate=[](void* p,unsigned n,void** actor,unsigned* bytes) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);assert(n==nm::secret_trigger_extent&&!m.trigger_alloc);++m.trigger_alloc;*actor=m.actor;*bytes=n;return 1;
+    };
+    trigger_factory.base_construct=[](void*,void*) noexcept ->int{return 1;};
+    trigger_factory.initialize=[](void*,void*,const char* cls) noexcept ->int{return !std::strcmp(cls,"trigger_secret");};
+    nm::FactoryBindings native_factory{};native_factory.dictionary=&dictionary;native_factory.campaign_triggers=&trigger_factory;
+    nm::RelayFactoryBindings filter_owner{};filter_owner.context=&m;
+    filter_owner.allocate=[](void* p,unsigned n,void** actor,unsigned* bytes) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);assert(n==sizeof(m.named_filter)&&!m.filter_alloc);++m.filter_alloc;*actor=m.named_filter;*bytes=n;return 1;
+    };
+    filter_owner.base_construct=[](void*,void*,int arg) noexcept ->int{return arg==1;};
+    filter_owner.initialize=[](void* p,void* actor,const char* cls) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);assert(actor==m.named_filter&&!std::strcmp(cls,"filter_activator_name"));
+        const unsigned handle=0x7000;std::memcpy(m.named_filter+0x378,&handle,4);return 1;
+    };
+    nm::CampaignFilterFactoryBindings filter_factory{};filter_factory.owner=&filter_owner;
+    auto map_extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);*bytes=actor==m.actor?nm::secret_trigger_extent:actor==m.named_filter?sizeof(m.named_filter):0;return *bytes!=0;
+    };
+    nm::KeyBindings keys{};keys.context=&m;keys.extent=map_extent;
+    keys.intern=[](void*,const char* value,unsigned* token) noexcept ->int{
+        if(!std::strcmp(value,"secret"))*token=1;
+        else if(!std::strcmp(value,"named_filter"))*token=31;
+        else if(!std::strcmp(value,"hero"))*token=32;
+        else if(!std::strcmp(value,"trigger_secret"))*token=33;
+        else if(!std::strcmp(value,"filter_activator_name"))*token=34;
+        else return 0;return 1;
+    };
+    nm::Bindings mp{};mp.context=&m;mp.native_factory=&native_factory;mp.native_keys=&keys;
     mp.clear_factory_global=[](void*) noexcept ->int{return 1;};
-    mp.key_value=[](void*,void*,const char*,const char*) noexcept ->int{return 1;};
     nm::SpawnBindings ms{};ms.context=&m;ms.campaign_triggers=&tr;
-    ms.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{assert(actor==static_cast<Map*>(p)->actor);*bytes=nm::secret_trigger_extent;return 1;};
-    ms.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="trigger_secret";return 1;};
+    ms.extent=map_extent;
+    ms.classname=[](void* p,void* actor,const char** cls) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);*cls=actor==m.actor?"trigger_secret":actor==m.named_filter?"filter_activator_name":nullptr;return *cls!=nullptr;
+    };
+    ms.spawn=[](void* p,void* actor,int* code) noexcept ->int{
+        auto& m=*static_cast<Map*>(p);assert(actor==m.named_filter);++m.filter_spawn;*code=0;return 1;
+    };
     ms.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
     ms.debug_enabled=[](void*,bool* yes) noexcept ->int{*yes=false;return 1;};
     ms.native_spawn_begin=[](void*,void*,bool* proceed) noexcept ->int{*proceed=true;return 1;};
@@ -280,7 +315,7 @@ int main(int argc,char** argv){
     bool transition=false,finalize=false;int load_kind=-1;unsigned words[4]{};const char* current="SE1_intro01";
     nl::State ls{};ls.startup=&started.state;ls.transition=&transition;ls.restore_finalize=&finalize;ls.load_kind=&load_kind;ls.current_map=&current;ls.map_pair_words=words;
     nl::Bindings lb{};lb.native_map_pipeline=&pipeline;
-    const char lump[]="{ classname trigger_secret }";lb.entity_text_bytes=sizeof(lump);
+    const char lump[]="{ classname trigger_secret targetname secret filtername named_filter } { classname filter_activator_name targetname named_filter filtername hero }";lb.entity_text_bytes=sizeof(lump);
     lb.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
     lb.pre_level=lb.post_level=lb.motd=lb.cleanup=[](void*) noexcept ->int{return 1;};
     lb.chapter=[](void*,const char*) noexcept ->int{return 1;};
@@ -302,7 +337,14 @@ int main(int argc,char** argv){
     assert(!level_events(&ls,&la,&lb,&lr,&wrong)&&!ls.level_ready&&!started.events.creates);
     wrong=session;wrong.thread=0;
     assert(!level_events(&ls,&la,&lb,&lr,&wrong)&&!ls.level_ready);
-    assert(level_events(&ls,&la,&lb,&lr,&session)&&lr.completed&&lr.map_event&&lr.map_pipeline.spawn.native_spawns==1&&started.events.fires==2&&started.events.creates==2);
+    const auto level_filters=reinterpret_cast<nl::InvokeLevelWithCampaignFilters>(GetProcAddress(server,nl::campaign_filters_level_export));
+    assert(level_filters&&!GetProcAddress(client,nl::campaign_filters_level_export));
+    assert(level_filters(&ls,&la,&lb,&lr,&session,&filter_factory)&&lr.completed&&lr.map_event&&lr.map_pipeline.spawn.native_spawns==1&&
+        lr.map_pipeline.parse.native_creates==2&&lr.map_pipeline.spawn.spawned==2&&m.filter_alloc==1&&m.trigger_alloc==1&&m.filter_spawn==1&&
+        started.events.fires==2&&started.events.creates==2);
+    unsigned parsed_name=0,parsed_pattern=0,parsed_filter=0;
+    std::memcpy(&parsed_name,m.named_filter+0xc0,4);std::memcpy(&parsed_pattern,m.named_filter+0x3c8,4);std::memcpy(&parsed_filter,m.actor+0x40c,4);
+    assert(parsed_name==31&&parsed_pattern==32&&parsed_filter==31);
     const auto contact=reinterpret_cast<nl::DispatchCampaignContact>(GetProcAddress(server,nl::campaign_contact_export));
     assert(contact&&!GetProcAddress(client,nl::campaign_contact_export));
     nl::CampaignContactBindings cb{};cb.campaign=&tr;cb.context=&m;
@@ -427,9 +469,9 @@ int main(int argc,char** argv){
         auto& m=*static_cast<Map*>(p);
         *bytes=actor==m.actor?sizeof(m.actor):actor==m.named_filter?sizeof(m.named_filter):actor==m.player?sizeof(m.player):0;return *bytes!=0;
     };
-    const unsigned named_vt=nm::name_filter_vtable,named_name=31,named_handle=0x7000;
-    std::memcpy(m.named_filter,&named_vt,4);std::memcpy(m.named_filter+0xc0,&named_name,4);std::memcpy(m.named_filter+0x378,&named_handle,4);
-    put(0x40c,named_name);put(0x410,0xffffffffu);
+    // Use the filter and name tokens created by slot2, not manual
+    // reconstruction of the map entity at activation.
+    put(0x410,0xffffffffu);
     sin_independent::EntityHandleEntry named_entry{};
     named_entry.entity=reinterpret_cast<CBaseEntity*>(m.named_filter);named_entry.serial=7;
     nw::ServerEntitySearchBindings search{};search.context=&m;search.head=&named_entry;search.entities.entries=&named_entry;search.entities.count=1;search.extent=af.extent;
