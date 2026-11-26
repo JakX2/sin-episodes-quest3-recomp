@@ -5,6 +5,8 @@
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t,std::uint32_t) noexcept;
+int __cdecl SinParseMapWithEventsInternal(const char*,unsigned,bool,const sin_port::native_map::PipelineBindings*,
+    sin_port::native_map::PipelineResult*,void*) noexcept;
 namespace sin_port::native_level {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -77,7 +79,7 @@ bool queue_autosave(const Bindings& b,Result& o,void* target,const char* input,f
     }
     ++o.queued;return true;
 }
-int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) noexcept {
+int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void* event_manager) noexcept {
     if(!o)return 0;*o={};
     if(!ready(s,b,o)||!a||!a->map||s->level_ready||!b->scope)return 0;
     s->busy=true;
@@ -98,7 +100,9 @@ int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) 
         else{
             if(!a->entities||!b->native_map_pipeline||!b->entity_text_bytes)return false;
             const auto* api=SiN_GetServerMapEntityApi(1,sizeof(native_map::Api));
-            if(!api||!api->parse_all(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline))return false;
+            if(event_manager){
+                if(!SinParseMapWithEventsInternal(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline,event_manager))return false;
+            }else if(!api||!api->parse_all(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline))return false;
         }
         o->parsed=1;return true;
     };
@@ -125,6 +129,9 @@ int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) 
     s->map_pair_words[0]=s->map_pair_words[2]=0;s->map_pair_words[1]=s->map_pair_words[3]=0xffffffffu;
     *s->restore_finalize=false;o->reset_words=1;
     return finish(true);
+}
+int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) noexcept {
+    return level_init_impl(s,a,b,o,nullptr);
 }
 int __cdecl server_activate(State* s,const Bindings* b,Result* o) noexcept {
     if(!o)return 0;*o={};
@@ -177,4 +184,9 @@ const Api api{1,sizeof(Api),&level_init,&server_activate,&unlock_chapter};
 #pragma comment(linker,"/EXPORT:SiN_GetServerLevelApi=_SiN_GetServerLevelApi")
 extern "C" __declspec(dllexport) const sin_port::native_level::Api* __cdecl SiN_GetServerLevelApi(std::uint32_t v,std::uint32_t n) noexcept {
     using namespace sin_port::native_level;return v==1&&n==sizeof(Api)?&api:nullptr;
+}
+
+int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State* s,const sin_port::native_level::LevelArgs* a,
+    const sin_port::native_level::Bindings* b,sin_port::native_level::Result* o,void* manager) noexcept {
+    return manager&&b&&!b->parse_entities&&sin_port::native_level::level_init_impl(s,a,b,o,manager);
 }

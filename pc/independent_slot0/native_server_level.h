@@ -107,4 +107,9 @@ struct Api {
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 using InvokeLevel=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*) noexcept;
 using InvokeActivate=int (__cdecl *)(State*,void*,int,int,const Bindings*,Result*) noexcept;
+inline constexpr char engine_events_level_export[]="SiN_InvokeServerLevelInitWithEngineEvents";
+inline constexpr char engine_events_touch_export[]="SiN_TouchStartedCampaignTrigger";
+using InvokeLevelWithEvents=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*,const native_server_startup::EngineEventSession*) noexcept;
+using TouchStartedTrigger=int (__cdecl *)(const native_server_startup::EngineEventSession*,void*,unsigned,void*,
+    const native_map::CampaignTriggerBindings*,native_map::CampaignTriggerResult*,int*) noexcept;
 }

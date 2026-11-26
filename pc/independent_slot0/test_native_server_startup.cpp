@@ -1,4 +1,6 @@
 #include "native_server_startup.h"
+#include "native_server_level.h"
+#include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -9,12 +11,29 @@
 #include <cstring>
 using namespace sin_port::native_server_startup;
 struct Events {
-    unsigned calls=0;
+    struct Event {
+        virtual ~Event()=default;
+        virtual void s1(){} virtual void s2(){} virtual void s3(){} virtual void s4(){}
+        virtual void s5(){} virtual void s6(){} virtual void s7(){} virtual void s8(){} virtual void s9(){}
+        virtual void integer(const char* key,int value){
+            const char* keys[]{"descriptor","owner","subject"};assert(fields<3&&!std::strcmp(key,keys[fields]));
+            assert(value==(fields?-1:descriptor));++fields;
+        }
+        virtual void real(const char*,float){assert(false);}
+        virtual void string(const char* key,const char* value){assert(fields==3&&!std::strcmp(key,"name")&&!std::strcmp(value,"secret"));++fields;}
+        unsigned fields=0;int descriptor=11;
+    } event;
+    unsigned calls=0,creates=0,fires=0,frees=0;bool live=false;
     virtual void unused() noexcept {assert(false);}
     virtual int load(const char* name) noexcept {
         assert(!std::strcmp(name,calls?"resource/ModEvents.res":"resource/gameevents.res"));
         return calls++?0:-7;
     }
+    virtual void s2(){} virtual void s3(){} virtual void s4(){} virtual void s5(){}
+    virtual void* create(const char* name,bool force){assert(calls==2&&!live&&!force&&!std::strcmp(name,"game"));++creates;live=true;event.fields=0;return &event;}
+    virtual bool fire(void* object,bool no_broadcast){assert(live&&object==&event&&!no_broadcast&&event.fields==4);++fires;live=false;return true;}
+    virtual void s8(){} virtual void s9(){}
+    virtual void release(void* object){assert(live&&object==&event);++frees;live=false;}
 };
 static void* __cdecl factory(const char* name,int* status) {
     assert(!status&&!std::strcmp(name,"VDebugOverlay003"));return nullptr;
@@ -140,5 +159,64 @@ int main(int argc,char** argv){
     assert(invoke(&another.state,&b,&bo));
     reset.vector=&allocated[0];reset.vector_cache=nullptr;reset.vector_capacity=8;reset.vector_grow=-1;reset.vector_count=7;reset.allocation_count=0;
     assert(gameinit(&another.state,&gb,&go)&&go.completed&&!go.vector_released&&!go.default_initialized&&reset.vector==&allocated[0]&&reset.vector_cache==reset.vector&&reset.vector_capacity==8&&!reset.vector_count&&engine_executes==2);
+    // Real interface slot0 factory acquisition -> slot1 GameInit -> slot2
+    // native map pipeline -> secret Spawn -> borrowed engine event manager.
+    namespace nl=sin_port::native_level;namespace nm=sin_port::native_map;namespace fs=sin_port::fixed_service;
+    const auto init_events=reinterpret_cast<InvokeEventSession>(GetProcAddress(server,event_session_export));
+    const auto level_events=reinterpret_cast<nl::InvokeLevelWithEvents>(GetProcAddress(server,nl::engine_events_level_export));
+    const auto touch_events=reinterpret_cast<nl::TouchStartedTrigger>(GetProcAddress(server,nl::engine_events_touch_export));
+    assert(init_events&&level_events&&touch_events&&!GetProcAddress(client,event_session_export)&&!GetProcAddress(client,nl::engine_events_level_export));
+    Fixture started(api);active=&started;b=started.bindings();b.engine=&engine_factory;b.filesystem=&filesystem_factory;
+    b.event_manager=&reject.events;queries=sound_calls=0;
+    EngineEventSession session{};
+    assert(init_events(&started.state,&b,&bo,&session)&&session.startup==&started.state&&session.manager==&started.events&&session.thread==GetCurrentThreadId());
+    assert(!reject.events.calls&&started.events.calls==2);
+    struct Map {
+        alignas(4) unsigned char actor[nm::secret_trigger_extent]{};
+        unsigned player=0,removed=0;
+    } m;
+    auto put=[&](unsigned off,unsigned value){std::memcpy(m.actor+off,&value,4);};
+    put(0,nm::secret_trigger_vtable);put(0xc0,1);m.actor[0x120]=8;
+    nm::CampaignTriggerBindings tr{};tr.context=&m;
+    tr.spawn_gate=[](void*,bool* suppress) noexcept ->int{*suppress=false;return 1;};
+    tr.base_spawn=[](void*,void*) noexcept ->int{return 1;};
+    tr.string_text=[](void*,unsigned token,const char** name,unsigned* bytes) noexcept ->int{assert(token==1);*name="secret";*bytes=7;return 1;};
+    tr.is_player=[](void* p,void* other,bool* yes) noexcept ->int{*yes=other==&static_cast<Map*>(p)->player;return 1;};
+    tr.remove=[](void* p,void*) noexcept ->int{++static_cast<Map*>(p)->removed;return 1;};
+    nm::CampaignTriggerResult cr{};int publication=999;
+    assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==nm::engine_event_not_attempted);
+    assert(gameinit(&started.state,&gb,&go));
+    nm::Bindings mp{};mp.context=&m;
+    mp.create=[](void* p,const char* cls,void** actor) noexcept ->int{assert(!std::strcmp(cls,"trigger_secret"));*actor=static_cast<Map*>(p)->actor;return 1;};
+    mp.clear_factory_global=[](void*) noexcept ->int{return 1;};
+    mp.key_value=[](void*,void*,const char*,const char*) noexcept ->int{return 1;};
+    nm::SpawnBindings ms{};ms.context=&m;ms.campaign_triggers=&tr;
+    ms.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{assert(actor==static_cast<Map*>(p)->actor);*bytes=nm::secret_trigger_extent;return 1;};
+    ms.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="trigger_secret";return 1;};
+    ms.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    ms.debug_enabled=[](void*,bool* yes) noexcept ->int{*yes=false;return 1;};
+    ms.native_spawn_begin=[](void*,void*,bool* proceed) noexcept ->int{*proceed=true;return 1;};
+    ms.native_spawn_end=[](void*,void*,int* code) noexcept ->int{*code=0;return 1;};
+    nm::PipelineBindings pipeline{};pipeline.parse=&mp;pipeline.spawn=&ms;
+    pipeline.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    pipeline.classify=[](void*,void*,nm::Category* category) noexcept ->int{*category=nm::Category::Ordinary;return 1;};
+    bool transition=false,finalize=false;int load_kind=-1;unsigned words[4]{};const char* current="SE1_intro01";
+    nl::State ls{};ls.startup=&started.state;ls.transition=&transition;ls.restore_finalize=&finalize;ls.load_kind=&load_kind;ls.current_map=&current;ls.map_pair_words=words;
+    nl::Bindings lb{};lb.native_map_pipeline=&pipeline;
+    const char lump[]="{ classname trigger_secret }";lb.entity_text_bytes=sizeof(lump);
+    lb.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+    lb.pre_level=lb.post_level=lb.motd=lb.cleanup=[](void*) noexcept ->int{return 1;};
+    lb.chapter=[](void*,const char*) noexcept ->int{return 1;};
+    lb.filename=[](void*,char* name,unsigned) noexcept ->int{*name=0;return 1;};
+    lb.map_event=[](void*,int,const char*,const char*) noexcept ->int{return 1;};
+    nl::LevelArgs la{current,lump,nullptr,nullptr,false,false};nl::Result lr{};
+    auto wrong=session;wrong.startup=&live.state;
+    assert(!level_events(&ls,&la,&lb,&lr,&wrong)&&!ls.level_ready&&!started.events.creates);
+    wrong=session;wrong.thread=0;
+    assert(!level_events(&ls,&la,&lb,&lr,&wrong)&&!ls.level_ready);
+    assert(level_events(&ls,&la,&lb,&lr,&session)&&lr.completed&&lr.map_pipeline.spawn.native_spawns==1&&started.events.fires==1&&started.events.creates==1);
+    started.events.event.descriptor=12;
+    assert(touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&cr.removed&&m.removed==1&&started.events.fires==2&&!started.events.frees);
+    session={};assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&m.removed==1);
     FreeLibrary(server);FreeLibrary(client);
 }

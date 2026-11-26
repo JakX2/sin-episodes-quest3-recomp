@@ -111,4 +111,13 @@ using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct BoundaryResult {unsigned entered,acquired,sound_connected,original_return;Result tail;};
 using InvokeBoundary=int (__cdecl *)(State*,const Bindings*,BoundaryResult*) noexcept;
 using InvokeGameInit=int (__cdecl *)(State*,const GameInitBindings*,GameInitResult*) noexcept;
+// Caller-owned borrowed engine lifetime. Clear this record before engine
+// shutdown, replacement or unloading the owning DLL. No global retention.
+struct EngineEventSession {
+    const State* startup=nullptr;
+    void* manager=nullptr;
+    unsigned thread=0;
+};
+inline constexpr char event_session_export[]="SiN_InvokeServerDllInitWithEngineEvents";
+using InvokeEventSession=int (__cdecl *)(State*,const Bindings*,BoundaryResult*,EngineEventSession*) noexcept;
 }

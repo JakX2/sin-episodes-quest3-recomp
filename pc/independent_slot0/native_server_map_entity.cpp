@@ -967,9 +967,9 @@ int __cdecl campaign_trigger_spawn(void* a,unsigned n,const CampaignTriggerBindi
 int __cdecl campaign_trigger_touch(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
     return campaign_trigger_touch_impl(a,n,other,b,o,nullptr,nullptr);
 }
-bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) noexcept {
+bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native,void* manager) noexcept {
     const auto vt=read_field<unsigned>(a,0);
-    if((vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)&&b.campaign_triggers){native=true;CampaignTriggerResult r{};return campaign_trigger_spawn(a,n,b.campaign_triggers,&r)!=0;}
+    if((vt==dynamic_trigger_vtable||vt==secret_trigger_vtable)&&b.campaign_triggers){native=true;CampaignTriggerResult r{};int publication=engine_event_not_attempted;return campaign_trigger_spawn_impl(a,n,b.campaign_triggers,&r,manager,&publication)!=0;}
     if(vt==timer_vtable&&b.logic_timer){native=true;TimerResult r{};return timer_spawn(a,n,b.logic_timer,&r)!=0;}
     if(vt==counter_vtable&&b.native_math_counter){native=true;CounterResult r{};return counter_spawn(a,n,&r)!=0;}
     if(vt==remap_vtable&&b.native_math_remap){native=true;RemapResult r{};return remap_spawn(a,n,&r)!=0;}
@@ -982,7 +982,7 @@ bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) n
     if(vt==antigen_vtable){AntigenInteractionResult r{};return api->antigen_spawn(a,n,b.dispenser,&r)!=0;}
     CanisterResult r{};return api->canister_spawn(a,n,b.canister,&r)!=0;
 }
-int __cdecl dispatch_spawn(void* a,const SpawnBindings* b,DispatchResult* o) noexcept {
+int dispatch_spawn_impl(void* a,const SpawnBindings* b,DispatchResult* o,void* manager) noexcept {
     if(!o)return 0;*o={};o->global_index=-1;
     if(!a){o->completed=1;return 1;}
     if(!b||!b->native_dispatch)return 0;
@@ -992,7 +992,7 @@ int __cdecl dispatch_spawn(void* a,const SpawnBindings* b,DispatchResult* o) noe
     if(!d.scope(d.context,true))return 0;o->entered=1;
     auto finish=[&](bool ok){const bool closed=d.scope(d.context,false)!=0;o->closed=closed;o->completed=ok&&closed;return int(o->completed);};
     o->captured_handle=read_field<unsigned>(a,0x378);
-    bool native=false;if(!native_spawn_leaf(*b,a,n,native))return finish(false);
+    bool native=false;if(!native_spawn_leaf(*b,a,n,native,manager))return finish(false);
     o->spawn_called=1;o->native_spawn=native;
     // Original checks captured serial after Spawn. Independent storage
     // additionally requires the resolved pointer to remain the same.
@@ -1034,10 +1034,13 @@ int __cdecl dispatch_spawn(void* a,const SpawnBindings* b,DispatchResult* o) noe
     }
     return finish(true);
 }
-bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexcept {
+int __cdecl dispatch_spawn(void* a,const SpawnBindings* b,DispatchResult* o) noexcept {
+    return dispatch_spawn_impl(a,b,o,nullptr);
+}
+bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code,void* manager) noexcept {
     if(b.native_dispatch){
         ++o.native_dispatches;
-        if(!dispatch_spawn(a,&b,&o.dispatch))return false;
+        if(!dispatch_spawn_impl(a,&b,&o.dispatch,manager))return false;
         code=o.dispatch.native_result;o.native_spawns+=o.dispatch.native_spawn;return true;
     }
     unsigned n=0;if(!extent_ok(b,a,4,n))return false;
@@ -1047,7 +1050,7 @@ bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexce
     if(!b.native_spawn_begin||!b.native_spawn_end)return false;
     bool proceed=false;if(!b.native_spawn_begin(b.context,a,&proceed))return false;
     if(proceed){
-        if(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable){CampaignTriggerResult r{};if(!campaign_trigger_spawn(a,n,b.campaign_triggers,&r))return false;}
+        if(vt==dynamic_trigger_vtable||vt==secret_trigger_vtable){CampaignTriggerResult r{};int publication=engine_event_not_attempted;if(!campaign_trigger_spawn_impl(a,n,b.campaign_triggers,&r,manager,&publication))return false;}
         else if(vt==menu_vtable){MenuResult r{};if(!menu_listen(a,n,false,b.logic_menu,&r))return false;}
         else if(vt==counter_vtable){CounterResult r{};if(!counter_spawn(a,n,&r))return false;}
         else if(vt==remap_vtable){RemapResult r{};if(!remap_spawn(a,n,&r))return false;}
@@ -1181,7 +1184,7 @@ int __cdecl auto_primary_run(void* a,unsigned n,int tick,float interval,const Au
     o->last_tick=static_cast<int>(last);write_field(a,0x34,o->last_tick);
     o->native_result=(read_field<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
 }
-int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const SpawnBindings* b,SpawnResult* o) noexcept {
+int spawn_ordinary_impl(SpawnRow* rows,unsigned count,bool activate,const SpawnBindings* b,SpawnResult* o,void* manager) noexcept {
     if(!o)return 0;*o={};
     if(!b||count>4096||(count&&!rows)||!b->extent||!b->classname||!b->scope||!b->debug_enabled)return 0;
     for(unsigned i=0;i<count;++i){
@@ -1227,7 +1230,7 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
         if(!scope(name,true))return 0;
         bool ok=true;
         if(rows[i].actor){
-            int result=0;ok=spawn_actor(*b,*o,rows[i].actor,result);
+            int result=0;ok=spawn_actor(*b,*o,rows[i].actor,result,manager);
             if(ok&&result<0){
                 ++o->failed;
                 // Original dispatch marks dependent actors for deletion.
@@ -1264,8 +1267,11 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
     }
     o->completed=1;return 1;
 }
+int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const SpawnBindings* b,SpawnResult* o) noexcept {
+    return spawn_ordinary_impl(rows,count,activate,b,o,nullptr);
+}
 struct Pipeline {
-    const PipelineBindings& b;PipelineResult& o;
+    const PipelineBindings& b;PipelineResult& o;void* manager;
     SpawnRow rows[4096]{};
     EntitySlice slices[4096]{};
     void* templates[4096]{};
@@ -1281,7 +1287,7 @@ bool pipeline_cleanup(Pipeline& p,void* a,bool remove) noexcept {
 }
 bool pipeline_spawn(Pipeline& p,void* a,int& code) noexcept {
     SpawnResult result{};
-    if(!spawn_actor(*p.b.spawn,result,a,code))return false;
+    if(!spawn_actor(*p.b.spawn,result,a,code,p.manager))return false;
     ++p.o.immediate_spawns;if(code<0)++p.o.immediate_failures;return true;
 }
 int __cdecl collect_entity(void* q,void* actor,const char* s,unsigned n,const EntitySlice* e) noexcept {
@@ -1315,10 +1321,10 @@ int __cdecl collect_entity(void* q,void* actor,const char* s,unsigned n,const En
     if(ok&&!world&&code<0)ok=pipeline_cleanup(p,actor,false);
     const bool closed=pipeline_scope(p,scope,false);return ok&&closed;
 }
-int __cdecl parse_all(const char* s,unsigned n,bool activate,const PipelineBindings* b,PipelineResult* o) noexcept {
+int parse_all_impl(const char* s,unsigned n,bool activate,const PipelineBindings* b,PipelineResult* o,void* manager) noexcept {
     if(!o)return 0;*o={};
     if(!s||!b||!b->parse||!b->spawn||!b->classify||!b->scope)return 0;
-    Pipeline p{*b,*o};constexpr char outer[]="MapEntity_ParseAllEntities",templates[]="MapEntity_ParseAllEntities_SpawnTemplates";
+    Pipeline p{*b,*o,manager};constexpr char outer[]="MapEntity_ParseAllEntities",templates[]="MapEntity_ParseAllEntities_SpawnTemplates";
     if(!pipeline_scope(p,outer,true))return 0;
     bool ok=parse_impl(s,n,b->parse,&o->parse,&collect_entity,&p)!=0;
     for(unsigned i=0;i<p.template_count&&ok;++i){
@@ -1343,8 +1349,11 @@ int __cdecl parse_all(const char* s,unsigned n,bool activate,const PipelineBindi
         }
         const bool closed=pipeline_scope(p,templates,false);ok=ok&&closed;
     }
-    if(ok)ok=spawn_ordinary(p.rows,p.ordinary,activate,b->spawn,&o->spawn)!=0;
+    if(ok)ok=spawn_ordinary_impl(p.rows,p.ordinary,activate,b->spawn,&o->spawn,manager)!=0;
     const bool closed=pipeline_scope(p,outer,false);o->completed=ok&&closed;return int(o->completed);
+}
+int __cdecl parse_all(const char* s,unsigned n,bool activate,const PipelineBindings* b,PipelineResult* o) noexcept {
+    return parse_all_impl(s,n,activate,b,o,nullptr);
 }
 template<class T>T read_map_field(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
 bool valid_relay_queue(const RelayQueueBindings& b) noexcept {
@@ -2792,4 +2801,9 @@ extern "C" int __cdecl SiN_TouchCampaignTriggerWithEngineEvents(void* a,unsigned
     if(o)*o={};
     if(!manager||!publication)return 0;
     return sin_port::native_map::campaign_trigger_touch_impl(a,n,other,b,o,manager,publication);
+}
+
+int __cdecl SinParseMapWithEventsInternal(const char* text,unsigned bytes,bool activate,
+    const sin_port::native_map::PipelineBindings* b,sin_port::native_map::PipelineResult* o,void* manager) noexcept {
+    return manager&&sin_port::native_map::parse_all_impl(text,bytes,activate,b,o,manager);
 }
