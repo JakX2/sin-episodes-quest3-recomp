@@ -1,5 +1,6 @@
 #include "native_server_npc_state_reconsider.h"
 #include "native_server_npc_cone_distance_math.h"
+#include "native_server_npc_cone_angle_table.h"
 #include <cstring>
 #include <cmath>
 #include <limits>
@@ -6514,10 +6515,10 @@ int __cdecl grunt_spread_threshold(void* actor,unsigned n,void* weapon,float now
     o->completed=0;
     if(o->vector[0]<=.13053f){o->threshold=.99145f;o->clamped=1;}
     else{
-        if(o->vector[0]>1.f||!b->angle_table||b->angle_count!=256)return 0;
+        if(o->vector[0]>1.f||(b->angle_table?b->angle_count!=256:b->angle_count!=0))return 0;
         const float encoded=static_cast<float>(std::asin(static_cast<double>(o->vector[0]))*40.743663787841796875+12582976.);
         std::uint32_t bits=0;std::memcpy(&bits,&encoded,4);o->angle_index=bits&255u;
-        o->threshold=b->angle_table[o->angle_index];
+        o->threshold=b->angle_table?b->angle_table[o->angle_index]:cone_distance_math::sine_lookup(o->angle_index);
         if(!std::isfinite(o->threshold))return 0;
         o->table_called=1;
     }

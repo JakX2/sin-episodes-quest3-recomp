@@ -3145,8 +3145,8 @@ struct ServerNpcGruntAdaptiveSpreadBindings {
     int (__cdecl *base_spread)(void*,void*,void*,void*,float*) noexcept; // 222a4b60, engine +f4
     float duration; // 22547488 +28
     float multiplier; // 22547440 +28
-    const float* angle_table; // 225818a8, live initialized 256-entry table
-    unsigned angle_count;
+    const float* angle_table; // Optional 225818a8 live table override; null + count 0 selects reconstructed table.
+    unsigned angle_count; // 256 for explicit override, 0 for native table
 };
 struct ServerNpcGruntAdaptiveSpreadResult {
     ServerNpcEnemyMemoryLookup lookup;
