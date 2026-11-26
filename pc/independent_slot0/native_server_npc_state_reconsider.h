@@ -1430,4 +1430,25 @@ struct ServerNpcGruntDeathEventApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntDeathEventBindings*,ServerNpcGruntDeathEventResult*) noexcept;
 };
 using GetServerNpcGruntDeathEventApi=const ServerNpcGruntDeathEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_behavior_switch_export[]="SiN_GetServerNpcGruntBehaviorSwitchApi";
+struct ServerNpcGruntBehaviorSwitchBindings {
+    ServerNpcGruntSquadSlotsBindings slots;
+    std::uint32_t original_vtable;
+    std::uint8_t* activation_guard; // original 2254c0a0, shared per runtime
+    void* context;
+    int (__cdecl *begin)(void*,std::uint32_t) noexcept; // component +1c
+    int (__cdecl *activate)(void*,std::uint32_t) noexcept; // live component +24
+    int (__cdecl *end)(void*,std::uint32_t) noexcept; // old component +20
+};
+struct ServerNpcGruntBehaviorSwitchResult {
+    ServerNpcGruntSquadSlotsResult release;
+    std::uint32_t previous,requested,activated;
+    unsigned completed,changed,began,activated_called,ended,slot_released;
+};
+struct ServerNpcGruntBehaviorSwitchApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,float,const ServerNpcGruntBehaviorSwitchBindings*,ServerNpcGruntBehaviorSwitchResult*) noexcept;
+};
+using GetServerNpcGruntBehaviorSwitchApi=const ServerNpcGruntBehaviorSwitchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
