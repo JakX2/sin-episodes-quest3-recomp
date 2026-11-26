@@ -2468,6 +2468,10 @@ bool __cdecl SinReadCampaignTouchMarkerInternal(const void* actor,unsigned* mark
     if(!marker||!memory::Readable(actor,4))return false;
     std::memcpy(marker,actor,4);return true;
 }
+bool __cdecl SinReadCampaignHandleInternal(const void* actor,unsigned bytes,unsigned* handle) noexcept {
+    if(!handle||bytes<0x37c||!memory::Readable(actor,0x37c))return false;
+    std::memcpy(handle,static_cast<const unsigned char*>(actor)+0x378,4);return true;
+}
 bool __cdecl SinReadCampaignContactFieldsInternal(const void* actor,unsigned bytes,unsigned* marker,unsigned char* flags) noexcept {
     if(!marker||!flags||bytes<0xb9||!memory::Readable(actor,0xb9))return false;
     std::memcpy(marker,actor,4);

@@ -132,4 +132,8 @@ struct CampaignContactResult {
 inline constexpr char campaign_contact_export[]="SiN_DispatchStartedCampaignContact";
 using DispatchCampaignContact=int (__cdecl *)(const native_server_startup::EngineEventSession*,
     void*,unsigned,void*,unsigned,CampaignContactKind,const CampaignContactBindings*,CampaignContactResult*) noexcept;
+inline constexpr char campaign_contact_output_export[]="SiN_DispatchStartedCampaignContactWithOutput";
+using DispatchCampaignContactWithOutput=int (__cdecl *)(const native_server_startup::EngineEventSession*,
+    void*,unsigned,void*,unsigned,CampaignContactKind,const CampaignContactBindings*,CampaignContactResult*,
+    const native_map::CampaignStartTouchBindings*,native_map::CampaignStartTouchResult*) noexcept;
 }
