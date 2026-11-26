@@ -1,6 +1,7 @@
 #pragma once
 #include "native_server_startup.h"
 #include "native_server_dynamic_resupply.h"
+#include "native_server_npc_active_weapon_step.h"
 namespace sin_port::native_level {
 inline constexpr char export_name[]="SiN_GetServerLevelApi";
 inline constexpr char level_export[]="SiN_InvokeServerLevelInitBoundary",activate_export[]="SiN_InvokeServerActivateBoundary";
@@ -38,6 +39,14 @@ struct State {
     unsigned* map_pair_words; // 224e2b34..40
     bool busy=false,level_ready=false,activation_attempted=false,activated=false,failed=false;
 };
+struct DirectQueue {
+    void* sentinel;unsigned bytes,token;
+    const float* now;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    const native_weapon_tables::ServerEntityNamedEventQueueBindings* queue;
+    int (__cdecl *intern)(void*,const char*,unsigned*) noexcept;
+    void* context;
+};
 struct Bindings {
     void* context;
     int (__cdecl *scope)(void*,const char*,bool) noexcept;
@@ -73,6 +82,7 @@ struct Bindings {
     int (__cdecl *manager_activate)(void*) noexcept;
     const native_resupply::LifecycleBindings* resupply;
     const ChapterBindings* native_chapter;
+    const DirectQueue* native_queue;
 };
 struct Result {
     unsigned completed,scope_entered,scope_closed,pre_level,chapter,map_event,transition_reset,transition_released,
@@ -82,6 +92,7 @@ struct Result {
     int descriptor,load_kind;
     native_resupply::LifecycleResult resupply;
     ChapterResult chapter_result;
+    native_weapon_tables::ServerEntityNamedEventQueueResult save_event,kill_event;
 };
 struct Api {
     std::uint32_t version,size;
