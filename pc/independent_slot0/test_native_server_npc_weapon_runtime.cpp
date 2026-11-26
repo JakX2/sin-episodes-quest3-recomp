@@ -636,6 +636,11 @@ int main(int argc,char** argv){
         std::vector<unsigned> order;
         ServerEntityVoidOutputBindings bindings{};
         ServerEntityVoidOutputResult result{};
+        const ServerEntityNamedEventQueueApi* queue_api{};
+        alignas(4) unsigned char queue_root[0x38]{},queue_rows[8][0x38]{};
+        unsigned queue_allocated{};
+        ServerEntityNamedEventQueueBindings queue_bindings{};
+        ServerEntityNamedEventQueueResult queue_result{};
     } outf{&f,void_output};
     outf.bindings.context=&outf;
     outf.bindings.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
@@ -697,6 +702,77 @@ int main(int argc,char** argv){
     // Idempotent wake does not re-fire remaining actions.
     assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&connected,&wto)&&!wto.outputs&&outf.actions.size()==4);
     f.put(f.actor,0xbdc,0u);
+    // Native PE32 named event queue: allocation, normalized target/input,
+    // void/string variants, absolute deadlines and stable doubly linked order.
+    auto get_named_queue=reinterpret_cast<GetServerEntityNamedEventQueueApi>(GetProcAddress(server,server_entity_named_event_queue_export));
+    assert(get_named_queue&&!GetProcAddress(client,server_entity_named_event_queue_export)&&!get_named_queue(0,sizeof(ServerEntityNamedEventQueueApi))&&!get_named_queue(1,0));
+    outf.queue_api=get_named_queue(1,sizeof(ServerEntityNamedEventQueueApi));assert(outf.queue_api);
+    constexpr unsigned root_token=99u;
+    outf.queue_bindings.context=&outf;
+    outf.queue_bindings.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);
+        if(!token||token>q.queue_allocated)return 0;*out=q.queue_rows[token-1];*n=0x38;return 1;
+    };
+    outf.queue_bindings.allocate=[](void* p,unsigned* token,void** row,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);
+        if(q.queue_allocated==8)return 0;*row=q.queue_rows[q.queue_allocated];*token=++q.queue_allocated;*n=0x38;
+        std::memset(*row,0xcc,*n);return 1;
+    };
+    outf.queue_bindings.string_nonempty=[](void*,unsigned token,bool* nonempty) noexcept -> int{
+        if(token==999u)return 0;*nonempty=token!=666u;return 1;
+    };
+    auto reset_queue=[&](){std::memset(outf.queue_root,0,sizeof(outf.queue_root));std::memset(outf.queue_rows,0,sizeof(outf.queue_rows));outf.queue_allocated=0;};
+    auto enqueue_named=[&](const ServerEntityVoidOutputAction& a,float now){
+        return outf.queue_api->enqueue(outf.queue_root,sizeof(outf.queue_root),root_token,now,0x3000u,0x4001u,&a,&outf.queue_bindings,&outf.queue_result);
+    };
+    auto check_queue=[&](std::initializer_list<unsigned> expected){
+        unsigned prev=root_token,next=f.get<unsigned>(outf.queue_root,0x30);
+        for(unsigned token:expected){
+            assert(next==token&&token&&token<=outf.queue_allocated);
+            auto* row=outf.queue_rows[token-1];assert(f.get<unsigned>(row,0x34)==prev);
+            prev=token;next=f.get<unsigned>(row,0x30);
+        }
+        assert(!next);
+    };
+    reset_queue();
+    const ServerEntityVoidOutputAction events_to_queue[]{
+        {500u,600u,0u,0u,10u,2.f},
+        {666u,600u,777u,2u,11u,1.f},
+        {500u,666u,0u,0u,12u,3.f},
+        {0u,0u,0u,0u,13u,1.f}
+    };
+    for(const auto& a:events_to_queue)assert(enqueue_named(a,10.f)&&outf.queue_result.completed&&outf.queue_result.inserted);
+    check_queue({2,4,1,3});
+    for(unsigned i=0;i<4;++i){
+        auto* row=outf.queue_rows[i];const auto& a=events_to_queue[i];
+        assert(f.get<float>(row,0)==10.f+a.delay&&f.get<unsigned>(row,4)==(a.target==666u?0u:a.target)&&f.get<unsigned>(row,8)==(a.input==666u?0u:a.input));
+        assert(f.get<unsigned>(row,0xc)==0x3000u&&f.get<unsigned>(row,0x10)==0x4001u&&f.get<unsigned>(row,0x14)==a.action_id);
+        assert(f.get<unsigned>(row,0x18)==0xffffffffu&&f.get<unsigned>(row,0x1c)==a.parameter&&f.get<unsigned>(row,0x28)==0xffffffffu&&f.get<unsigned>(row,0x2c)==a.variant_type);
+    }
+    auto bad=events_to_queue[0];bad.target=999u;
+    assert(!enqueue_named(bad,10.f)&&!outf.queue_result.allocated&&outf.queue_allocated==4);check_queue({2,4,1,3});
+    // Corrupt a traversed predecessor link and reject before allocating.
+    f.put(outf.queue_rows[1],0x34,1u);
+    assert(!enqueue_named(events_to_queue[0],10.f)&&!outf.queue_result.allocated&&outf.queue_allocated==4);
+    f.put(outf.queue_rows[1],0x34,root_token);check_queue({2,4,1,3});
+    // Compose real OnWake traversal with native named queue insertion.
+    // Known Grunt +8 virtual returns actor+378 (22001b00).
+    reset_queue();seed_outputs();
+    const auto saved_handle=f.get<unsigned>(f.actor,0x378);f.put(f.actor,0x378,0x3000u);
+    outf.bindings.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* a) noexcept -> int{
+        auto& q=*static_cast<OutputFixture*>(p);assert(activator==q.f->actor&&caller==q.f->actor);
+        return q.queue_api->enqueue(q.queue_root,sizeof(q.queue_root),99u,20.f,q.f->get<unsigned>(activator,0x378),q.f->get<unsigned>(caller,0x378),a,&q.queue_bindings,&q.queue_result);
+    };
+    f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&connected,&wto)&&wto.completed&&wto.outputs==1&&outf.result.queued==4&&outf.result.removed==2&&outf.queue_allocated==4);
+    check_queue({1,2,3,4});
+    for(unsigned i=0;i<4;++i){
+        assert(f.get<float>(outf.queue_rows[i],0)==20.f+.25f*(i+1)&&f.get<unsigned>(outf.queue_rows[i],0xc)==0x3000u&&f.get<unsigned>(outf.queue_rows[i],0x10)==0x3000u);
+        assert(f.get<unsigned>(outf.queue_rows[i],0x14)==10u+i&&f.get<unsigned>(outf.queue_rows[i],0x1c)==(i==1?777u:0u));
+    }
+    assert((outf.order==std::vector<unsigned>{201,203})&&f.get<unsigned>(f.actor,0xbdc)==2);
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&connected,&wto)&&!wto.outputs&&outf.queue_allocated==4);
+    f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

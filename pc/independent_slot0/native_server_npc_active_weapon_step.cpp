@@ -419,6 +419,49 @@ int __cdecl fire_void_output(void* output,unsigned n,void* activator,void* calle
     o->completed=1;return 1;
 }
 const ServerEntityVoidOutputApi void_output_api{1,sizeof(ServerEntityVoidOutputApi),&fire_void_output};
+// Named event queue records from 22155300, stable sorted link insertion from
+// 22154600. The independent allocator supplies a unique zero-free token.
+int __cdecl enqueue_named_event(void* sentinel,unsigned n,std::uint32_t root,float now,std::uint32_t activator,std::uint32_t caller,const ServerEntityVoidOutputAction* action,const ServerEntityNamedEventQueueBindings* b,ServerEntityNamedEventQueueResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!sentinel||n<0x38||!root||!action||!b||!b->allocate||!std::isfinite(now)||!std::isfinite(action->delay))return 0;
+    if(action->variant_type!=(action->parameter?2u:0u))return 0;
+    o->fire_time=static_cast<float>(double(now)+action->delay);
+    if(!std::isfinite(o->fire_time))return 0;
+    auto normalize=[&](unsigned token,unsigned& value){
+        value=0;if(!token)return true;
+        bool nonempty=false;if(!b->string_nonempty||!b->string_nonempty(b->context,token,&nonempty))return false;
+        if(nonempty)value=token;return true;
+    };
+    unsigned target=0,input=0;
+    if(!normalize(action->target,target)||!normalize(action->input,input))return 0;
+    void* previous=sentinel;unsigned prev_token=root,next=rd<unsigned>(sentinel,0x30),seen[512]{};
+    void* successor=nullptr;
+    while(next){
+        if(next==root||o->visited>=512)return 0;
+        for(unsigned i=0;i<o->visited;++i)if(seen[i]==next)return 0;
+        seen[o->visited++]=next;
+        unsigned bytes=0;
+        if(!b->resolve||!b->resolve(b->context,next,&successor,&bytes)||!successor||bytes<0x38||successor==sentinel||rd<unsigned>(successor,0x34)!=prev_token)return 0;
+        const float at=rd<float>(successor,0);if(!std::isfinite(at))return 0;
+        // Equal deadlines remain in original insertion order.
+        if(at>o->fire_time)break;
+        previous=successor;prev_token=next;next=rd<unsigned>(successor,0x30);successor=nullptr;
+    }
+    void* row=nullptr;unsigned token=0,bytes=0;
+    if(!b->allocate(b->context,&token,&row,&bytes)||!row||bytes<0x38||!token||token==root||row==sentinel||row==previous||row==successor)return 0;
+    for(unsigned i=0;i<o->visited;++i)if(seen[i]==token)return 0;
+    o->allocated=1;o->node=token;o->previous=prev_token;o->next=next;
+    wr<float>(row,0,o->fire_time);wr<unsigned>(row,4,target);wr<unsigned>(row,8,input);
+    wr<unsigned>(row,0xc,activator);wr<unsigned>(row,0x10,caller);wr<unsigned>(row,0x14,action->action_id);
+    wr<unsigned>(row,0x18,0xffffffffu);wr<unsigned>(row,0x1c,action->parameter);
+    // Unused void/string variant payload words are deterministic zero in
+    // independent storage; they have no semantic content for these types.
+    wr<unsigned>(row,0x20,0u);wr<unsigned>(row,0x24,0u);wr<unsigned>(row,0x28,0xffffffffu);wr<unsigned>(row,0x2c,action->variant_type);
+    wr<unsigned>(row,0x30,next);wr<unsigned>(row,0x34,prev_token);
+    wr<unsigned>(previous,0x30,token);if(successor)wr<unsigned>(successor,0x34,token);
+    o->inserted=o->completed=1;return 1;
+}
+const ServerEntityNamedEventQueueApi named_event_queue_api{1,sizeof(ServerEntityNamedEventQueueApi),&enqueue_named_event};
 bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept;
 // 2213c980. All authenticated Grunt primary +18/+1c virtuals
 // are 22001bc0 (read +38) and 22001af0 (copy +240).
@@ -610,4 +653,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerEntityVoidOutputApi=_SiN_GetServerEntityVoidOutputApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntityVoidOutputApi)?&void_output_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerEntityNamedEventQueueApi=_SiN_GetServerEntityNamedEventQueueApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntityNamedEventQueueApi)?&named_event_queue_api:nullptr;
 }
