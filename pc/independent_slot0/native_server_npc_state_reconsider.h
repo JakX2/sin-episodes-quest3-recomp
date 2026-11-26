@@ -3241,7 +3241,7 @@ struct ServerWeaponScriptView;
 struct ServerNpcWeaponAmmoBindings {
     const ServerWeaponScriptView* scripts;
     void* context;
-    int (__cdecl *combat_owner)(void*,void*,void**) noexcept; // owner +fc
+    int (__cdecl *combat_owner)(void*,void*,void**) noexcept; // optional for authenticated Grunt/player/weapon primary vtables // owner +fc
     int (__cdecl *max_carry)(void*,int,int*) noexcept; // optional live ammo definition override
 };
 struct ServerNpcWeaponAmmoResult {
