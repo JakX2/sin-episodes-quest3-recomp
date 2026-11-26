@@ -545,6 +545,23 @@ int main(int argc,char** argv){
     assert(req_run.requests.requests==1&&!req_run.requests.failure_requests&&req_run.requests.request.requested==26&&req_run.requests.request.acquisition.translated==94&&req_run.requests.request.acquisition.schedule_token==find(94));
     assert(req_run.requests.scheduler.maintenance.state.schedule==find(94)&&req_run.requests.scheduler.maintenance.started==1&&req_run.think.think.think.squad.cycle.preschedule.think.completed);
     int fail_id=0;std::memcpy(&fail_id,f.actor+0x7bc,4);assert(fail_id==95);
+    // The original toss-grenade-cover schedule ends in TASK_SET_SCHEDULE(25).
+    // It must use the native policy, even with the legacy resolution callback disabled.
+    ServerNpcGruntSchedulePolicyServices req_policy{};req_scene.policy=&req_policy;
+    unsigned task_rolls=0;req_policy.context=&task_rolls;
+    req_policy.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{
+        assert(lo==0&&hi==1);++*static_cast<unsigned*>(p);*v=0;return 1;
+    };
+    install_at(97,2);f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
+    assert(request_think->run(f.actor,sizeof(f.actor),69.4965f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
+    const auto& switch_stats=req_run.think.think.think.squad.cycle.preschedule.think.scheduler.scheduler.sound_cover.observation.cue.movement.animation.facing.attack.shared.shared;
+    assert(!req_run.requests.requests&&task_rolls==1&&switch_stats.last.task==87&&switch_stats.last.schedule_set&&switch_stats.last.resolution.requested==25&&switch_stats.last.resolution.translated==93);
+    assert(req_run.requests.scheduler.maintenance.state.schedule==find(93)&&req_run.requests.scheduler.maintenance.state.index==0);
+    int owner_ideal=0;std::memcpy(&owner_ideal,f.actor+0x79c,4);assert(owner_ideal==global+125);
+    // Missing native service fails closed, without silently delegating to legacy translate.
+    req_policy.random_int=nullptr;install_at(97,2);f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
+    assert(!request_think->run(f.actor,sizeof(f.actor),69.4966f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
+    assert(req_run.requests.scheduler.maintenance.state.schedule==find(97)&&task_rolls==1);
     selection.translate=old_trans;selection.fail_select=old_fail;selection.special_select=old_special;
     req_acquire.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
     unsigned char before[sizeof(f.actor)];std::memcpy(before,f.actor,sizeof(before));

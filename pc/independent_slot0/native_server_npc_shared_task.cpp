@@ -17,8 +17,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRequestSpeechApi* __cdecl SiN_GetServerNpcGruntRequestSpeechApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntReactionSpeechApi* __cdecl SiN_GetServerNpcGruntReactionSpeechApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEventSpeechApi* __cdecl SiN_GetServerNpcGruntEventSpeechApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleLineApi* __cdecl SiN_GetServerNpcGruntScheduleLineApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
+struct NativeSetScheduleRoute {
+    const ServerNpcGruntScheduleAcquireBindings* acquisition;
+    const ServerNpcGruntScheduleLineServices* line;
+};
 template<class T>T rd(const void* p,unsigned off) noexcept{T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
 template<class T>void wr(void* p,unsigned off,T v) noexcept{std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
 bool integer(double v,int& out) noexcept{
@@ -204,7 +209,7 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverResult* = nullptr,const ServerNpcSharedEnemyRefreshBindings* = nullptr,ServerNpcSharedEnemyRefreshResult* = nullptr) noexcept;
+int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverResult* = nullptr,const ServerNpcSharedEnemyRefreshBindings* = nullptr,ServerNpcSharedEnemyRefreshResult* = nullptr,const NativeSetScheduleRoute* = nullptr) noexcept;
 bool movement_supports(int id,bool running) noexcept{
     if(running)return id==116||id==121||id==122;
     return id==43||id==44||id==89||id==90||id==116||id==121||id==122;
@@ -574,7 +579,7 @@ int enemy_refresh135(void* a,unsigned n,float now,const ServerNpcSharedTaskBindi
     }
     return complete();
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcSharedTacticalCoverResult* tactical_out,const ServerNpcSharedEnemyRefreshBindings* refresh,ServerNpcSharedEnemyRefreshResult* refresh_out) noexcept{
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcSharedTacticalCoverResult* tactical_out,const ServerNpcSharedEnemyRefreshBindings* refresh,ServerNpcSharedEnemyRefreshResult* refresh_out,const NativeSetScheduleRoute* native_set) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -666,7 +671,17 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         const auto* api=SiN_GetServerNpcScheduleResolutionApi(1,sizeof(ServerNpcScheduleResolutionApi));
         const auto* ns=SiN_GetServerNpcScheduleNamespaceApi(1,sizeof(ServerNpcScheduleNamespaceApi));
         const auto* state=SiN_GetServerNpcScheduleStateApi(1,sizeof(ServerNpcScheduleStateApi));
-        if(!api||!ns||!state||!api->find(a,n,value,b->resolution,&out->resolution))return 0;
+        if(!ns||!state)return 0;
+        if(native_set){
+            const auto* native=SiN_GetServerNpcGruntScheduleLineApi(1,sizeof(ServerNpcGruntScheduleLineApi));
+            ServerNpcGruntScheduleAcquireResult acquired{};ServerNpcGruntAssaultArbitrationResult translation{};
+            if(!native||!native_set->acquisition||!native_set->line||
+               !native->acquire(a,n,value,now,native_set->acquisition,native_set->line,&acquired,&translation))return 0;
+            out->resolution.requested=acquired.requested;out->resolution.translated=acquired.translated;
+            out->resolution.global=acquired.lookup_id;out->resolution.token=acquired.schedule_token;
+            out->resolution.visited=acquired.records;out->resolution.fallback=acquired.fallback;
+            out->resolution.component_hit=acquired.behavior_lookup&&!acquired.owner_lookup&&acquired.schedule_token;
+        }else if(!api||!api->find(a,n,value,b->resolution,&out->resolution))return 0;
         if(!out->resolution.token){out->failed_code=5;return life->fail(a,n,now,5,&b->lifecycle,&out->lifecycle);}
         const auto& sb=b->resolution->grunt.schedule;int ideal=-1;
         if(!ns->to_global(a,value,&sb.conditions,&ideal))return 0;
@@ -834,7 +849,14 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
             }
         }
         auto& st=*q.stats;++st.calls;
-        const int ok=api.execute(a,q.bytes,t,running,q.now,&q.shared,&st.last);
+        const NativeSetScheduleRoute native_set{q.native_acquire,q.native_line};
+        // Run the same task body (including active behavior delegation) with native
+        // acquisition only on StartTask87. No high-level schedule-selection side effects.
+        const int ok=(!running&&t->id==87&&q.native_acquire)?
+            execute_impl(a,q.bytes,t,running,q.now,&q.shared,&st.last,
+                         nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,
+                         nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&native_set):
+            api.execute(a,q.bytes,t,running,q.now,&q.shared,&st.last);
         st.native+=st.last.native;st.component_handled+=st.last.component_handled;
         st.special+=st.last.special_called;st.parent+=st.last.parent_called;
         return ok;

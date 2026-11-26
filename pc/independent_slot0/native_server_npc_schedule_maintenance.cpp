@@ -439,6 +439,10 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
     if(shared){
         ServerGruntTaskBindings forwarded{};
         if(!shared_stats||!bind_shared_parent_internal(a,bytes,now,&binding.grunt,&m.selection,shared,shared_stats,&shared_session,&forwarded,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats,sound_cover,sound_cover_stats,tactical,tactical_stats))return 0;
+        if(request){
+            shared_session.native_acquire=&request_session.acquire;
+            shared_session.native_line=request->line;
+        }
         if(native_gather&&native_gather->speech_tasks){
             if(!native_gather->speech_stats)return 0;
             speech_bound=*native_gather->speech_tasks;
