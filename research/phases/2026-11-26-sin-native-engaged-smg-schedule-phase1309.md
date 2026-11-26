@@ -1,0 +1,3 @@
+# Phase 1309: Enemy-engaged complete SMG think/task cycle
+
+Authentic owner DLL RTTI COL names: 2247875c = CWeaponMagnum, 2247ab9c = CWeaponSMG. Use the latter for the retained original SCHED_GRUNT_RANGE_ATTACK1 (91) descriptor at task67, with its matching SMG inventory classifier and loaded ammunition. Exercise complete exported weapon-policy think at 70,70.5,71,72 with visible enemy, live memory record, native combat decisions and existing native SMG task execution. Check 4-round burst setup, .9-second shared wait completion, transition to task140 and no unnecessary second gather/reselection. Perception is intentionally gated off in fixture state1; no actual projectile firing or engine animation parity claimed. CI pending.
