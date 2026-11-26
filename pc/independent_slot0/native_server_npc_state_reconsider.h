@@ -2544,4 +2544,32 @@ struct ServerNpcGruntFollowSearchApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntFollowSearchBindings*,ServerNpcGruntFollowSearchResult*) noexcept;
 };
 using GetServerNpcGruntFollowSearchApi=const ServerNpcGruntFollowSearchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_assault_event_export[]="SiN_GetServerNpcGruntAssaultEventApi";
+struct ServerNpcGruntAssaultEventBindings {
+    ServerNpcGruntFollowSearchBindings events;
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *origin)(void*,void*,float*) noexcept;
+    int (__cdecl *orientation)(void*,void*,float*) noexcept;
+    int (__cdecl *goal)(void*,void*,void*,const float*,int,float,int,bool*) noexcept; // primary -1/mode0, fallback 5/256/mode1
+    int (__cdecl *goal_orientation)(void*,void*,const float*) noexcept; // 22073fd0
+    int (__cdecl *output)(void*,void*,unsigned,void*) noexcept; // 22156900, target output offset +3a4 or +3bc, owner argument
+    int (__cdecl *script)(void*,void*,std::uint32_t) noexcept; // 22031030(...,0)
+    int (__cdecl *advance_node)(void*,void*) noexcept; // 220ce5b0
+    int (__cdecl *sequence_lookup)(void*,void*,std::uint32_t,int*) noexcept; // 220ecb90
+    int (__cdecl *sequence_apply)(void*,void*,int) noexcept; // 220f2300
+};
+struct ServerNpcGruntAssaultEventResult {
+    ServerNpcGruntFollowSearchResult events;
+    ServerNpcConditionResult condition;
+    std::uint32_t handle,request_value,sequence_token;
+    float point[3],angles[3],duration,deadline;
+    int mode,submode,sequence,event;
+    unsigned entered,completed,lookups,linked_valid,request_called,goal_calls,primary_goal,fallback_goal,condition_checked,condition_cleared,goal_orientation_called,nav_written,finish_turn,signal_ignored,flag_written,output_called,script_called,advance_called,reset_called,mode_written,duration_called,sequence_called,sequence_applied,activity_called,synthetic_called,deadline_written;
+};
+struct ServerNpcGruntAssaultEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntAssaultEventBindings*,ServerNpcGruntAssaultEventResult*) noexcept;
+};
+using GetServerNpcGruntAssaultEventApi=const ServerNpcGruntAssaultEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
