@@ -996,3 +996,61 @@
         put(f.seq,0x3d0,0x9001u);
         assert(callback(&b,f.seq)&&possess(f.seq,sizeof(f.seq),&b,&o)&&o.missing&&!o.claimed&&!o.queued);
     }
+
+    // Original name-first selection, fallback permission 2, strict radius
+    // and class-search mode. Full packed handles including serial bits.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct AcquireFixture {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[3][0x974]{},old[scripted_sequence_extent]{};
+            sin_independent::EntityHandleEntry entries[5]{};
+            unsigned warnings=0,refresh=0;
+        } f;
+        const auto acquire=reinterpret_cast<AcquireScriptedSequenceNpc>(GetProcAddress(server,scripted_sequence_acquire_export));
+        assert(acquire&&!GetProcAddress(client,scripted_sequence_acquire_export));
+        void* actors[]{f.npc[0],f.npc[1],f.npc[2],f.old,f.seq};
+        for(unsigned i=0;i<5;++i){
+            f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;
+            put(actors[i],0x378,((3+i)<<12)|i);
+            if(i)f.entries[i].previous=&f.entries[i-1];if(i<4)f.entries[i].next=&f.entries[i+1];
+        }
+        put(f.seq,0,scripted_sequence_vtable);put(f.old,0,scripted_sequence_vtable);
+        put(f.seq,0x3a8,21u);put(f.seq,0x3dc,0xffffffffu);put(f.old,0x3d4,0xffffffffu);
+        for(unsigned i=0;i<3;++i){
+            put(f.npc[i],0,0x224954a4u);put(f.npc[i],0xc,22u);put(f.npc[i],0xc0,21u);
+            put(f.npc[i],0x970,0x6003u);put(f.npc[i],0x16c,1u);put(f.npc[i],0x2bc,float(i+1));
+        }
+        put(f.npc[2],0x970,0xffffffffu);
+        auto extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<AcquireFixture*>(p);*bytes=actor==f.seq||actor==f.old?sizeof(f.seq):
+                actor==f.npc[0]||actor==f.npc[1]||actor==f.npc[2]?sizeof(f.npc[0]):0;return *bytes!=0;
+        };
+        nw::ServerEntitySearchBindings search{};search.context=&f;search.head=f.entries;search.extent=extent;
+        search.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==21?"target":token==22?"npc_sintek_grunt":token==0?"":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        ScriptedSequenceControlBindings c{};c.context=&f;c.entries=f.entries;c.entry_count=5;c.extent=extent;
+        ScriptedSequenceAcquireBindings b{&c,&search,&f};
+        b.denied_warning=[](void* p,unsigned) noexcept ->int{++static_cast<AcquireFixture*>(p)->warnings;return 1;};
+        b.refresh_origin=[](void* p,void*) noexcept ->int{++static_cast<AcquireFixture*>(p)->refresh;return 1;};
+        ScriptedSequenceAcquireResult o{};
+        assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&o.named_path&&o.preferred&&o.fallback_candidates==2&&o.actor==f.npc[2]&&o.handle==0x5002u);
+        put(f.npc[2],0x8c,1);
+        assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&!o.preferred&&o.denied==1&&o.actor==f.npc[1]&&f.warnings==1);
+        // Radius exactly 2 excludes the second at distance 2, and
+        // skips non-edict first before considering any class fallback.
+        put(f.seq,0x3b0,2.f);put(f.seq,0xb8,0x800u);put(f.npc[0],0xb8,0x800u);
+        assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&o.actor==f.npc[0]&&o.radius_skips==2&&f.refresh>=2);
+        put(f.npc[0],0x16c,0u);
+        assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&o.class_path&&!o.found&&word(f.seq,0x3d0)==0xffffffffu);
+        // Targetname miss -> classname; activity 2 allowed only by
+        // mode >=1 (named route), unless force is set.
+        put(f.seq,0xb8,0u);put(f.seq,0x3b0,0.f);put(f.seq,0x3a8,22u);
+        put(f.npc[0],0x850,2);put(f.npc[1],0x850,2);put(f.npc[2],0x8c,0);put(f.npc[2],0x850,2);
+        assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&o.class_path&&o.denied==3&&!o.found);
+        put(f.seq,0xb4,0x440u);
+        assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&o.class_path&&o.preferred&&o.cached&&word(f.seq,0x3dc)==0x5002u);
+        // Starting after cached candidate, no wrap to earlier rows.
+        assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&!o.found&&word(f.seq,0x3dc)==0xffffffffu);
+    }
