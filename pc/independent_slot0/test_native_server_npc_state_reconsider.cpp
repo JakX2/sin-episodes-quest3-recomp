@@ -1393,5 +1393,67 @@ int main(int argc,char** argv){
         assert(api->leave(q.actor[1],sizeof(q.actor[1]),91,0x2002u,true,102,&lb,&lr)&&lr.missing&&!lr.cleared&&SquadFixture::rd(q.actor[1],0x9c4)==91);
         assert(api->leave(q.actor[2],sizeof(q.actor[2]),91,0x3003u,false,102,&lb,&lr)&&lr.completed&&lr.remaining==1&&!lr.notifications&&lr.cleared&&q.requests==2);
     }
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntSquadJoinApi>(GetProcAddress(s,server_npc_grunt_squad_join_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_squad_join_export)&&!g(0,sizeof(ServerNpcGruntSquadJoinApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntSquadJoinApi));assert(api);
+        struct JoinFixture {
+            alignas(4) unsigned char actors[3][0xdb2]{},groups[2][0x58]{},memory[2][0x40]{},nodes[2][12]{},records[2][0x38]{};
+            sin_independent::EntityHandleEntry slots[4]{};
+            unsigned requests=0,submitted=0;
+            static JoinFixture& self(void* p){return *static_cast<JoinFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        for(unsigned i=0;i<3;++i){
+            q.slots[i+1].serial=i+1;q.slots[i+1].entity=reinterpret_cast<CBaseEntity*>(q.actors[i]);
+            f.put(q.actors[i],0x204,1);f.put(q.actors[i],0x850,1);f.put(q.actors[i],0x16c,i+1);f.put(q.actors[i],0xccc,-1);
+        }
+        for(unsigned i=0;i<2;++i){
+            f.put(q.actors[i],0x984,201u+i);f.put(q.actors[i],0x9c4,91u+i);f.put(q.actors[i],0x9c8,123u+i);
+            f.put(q.groups[i],4,123u+i);f.put(q.groups[i],8,(i+1)*0x1001u);f.put(q.groups[i],0x48,1);
+            f.put(q.memory[i],0,0x22068d70u);f.put(q.memory[i],4,211u+i);f.put(q.memory[i],8,1u);f.put(q.memory[i],0x18,0x22068b40u);
+            q.memory[i][0x10]=0;q.memory[i][0x11]=1;q.memory[i][0x12]=255;q.memory[i][0x13]=1;
+            f.put(q.memory[i],0x1c,1.75f);f.put(q.memory[i],0x20,60.f);
+            q.nodes[i][0]=q.nodes[i][1]=q.nodes[i][2]=255;q.nodes[i][3]=1;f.put(q.nodes[i],4,1000u);f.put(q.nodes[i],8,221u+i);
+            f.put(q.records[i],0,0x3003u);f.put(q.records[i],0x1c,40.f);f.put(q.records[i],0x30,40.f);
+        }
+        f.put(q.records[0],4,30.f);q.records[1][0x35]=1;
+        ServerNpcGruntSquadJoinBindings jb{};auto& sb=jb.group.sentence;auto& rb=jb.group.request;
+        jb.group.context=&q;sb.speech.context=&q;rb.context=&q;sb.speech.original_vtable=0x2249aaa4;sb.entries=q.slots;sb.count=4;sb.speech.volume=1;sb.speech.level=75;
+        sb.speech.squad_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& q=JoinFixture::self(p);if(token<91||token>92)return 0;*out=q.groups[token-91];*n=sizeof(q.groups[0]);return 1;};
+        jb.group.member_class=[](void* p,void* a,std::uint32_t* vt,unsigned* n) noexcept -> int{assert(a==JoinFixture::self(p).actors[0]);*vt=0x2248df04;*n=0xdb2;return 1;};
+        sb.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xdb2;return 1;};
+        sb.entity_rejected=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        sb.speech.random_float=[](void*,float lo,float hi,float* out) noexcept -> int{assert(lo==1.5f&&hi==2);*out=1.5f;return 1;};
+        rb.manager_ready=true;
+        rb.group_index=[](void* p,const char* name,int* id) noexcept -> int{auto& q=JoinFixture::self(p);assert(!std::strcmp(name,"GRUNT_REFIND_ENEMY")&&JoinFixture::rd(q.actors[1],0x9c4)==91&&JoinFixture::rd(q.groups[0],0x48)==2&&JoinFixture::rd(q.groups[1],0x48)==0&&q.records[1][0x35]);++q.requests;*id=4;return 1;};
+        rb.pick_name=[](void*,int id,char* name,unsigned n,int* out) noexcept -> int{assert(id==4&&n==64);std::memcpy(name,"!TEST",6);*out=0;return 1;};
+        rb.name_index=[](void*,const char* name,int* id) noexcept -> int{assert(!std::strcmp(name,"TEST"));*id=19;return 1;};
+        rb.submit=[](void* p,std::uint32_t token,int index,float volume,int level,int zero,std::uint32_t extra) noexcept -> int{assert(token==2&&index==19&&volume==1&&level==75&&!zero&&!extra);++JoinFixture::self(p).submitted;return 1;};
+        jb.source_memory.context=&q;
+        jb.source_memory.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& q=JoinFixture::self(p);
+            if(token>=201&&token<=202){*out=q.memory[token-201];*n=0x40;return 1;}
+            if(token>=211&&token<=212){*out=q.nodes[token-211];*n=12;return 1;}
+            if(token>=221&&token<=222){*out=q.records[token-221];*n=0x38;return 1;}
+            return 0;
+        };
+        jb.report.mutation.storage=jb.source_memory;jb.report.mutation.context=&q;
+        jb.report.mutation.entity_key=[](void* p,void* e,std::uint32_t* key) noexcept -> int{assert(e==JoinFixture::self(p).actors[2]);*key=1000;return 1;};
+        ServerNpcGruntSquadJoinResult jr{};
+        f.put(q.actors[1],0x8c,1);
+        assert(api->join(q.actors[1],sizeof(q.actors[1]),91,77,0x2002u,100,&jb,&jr)&&jr.blocked&&!jr.detached);
+        f.put(q.actors[1],0x8c,0);
+        assert(api->join(q.actors[1],sizeof(q.actors[1]),91,77,0x2002u,100,&jb,&jr)&&jr.completed&&jr.detached&&jr.previous.cleared&&jr.appended&&jr.owner_written&&jr.first_resolved&&jr.index==1&&jr.count==2&&jr.reports==1&&jr.updated==1&&!jr.last_report.firsthand&&jr.dialogue.refind_calls==1&&jr.dialogue.refind_request.submitted&&q.requests==1&&q.submitted==1);
+        assert(!q.records[1][0x35]&&JoinFixture::rd(q.records[1],4)==JoinFixture::rd(q.records[0],4)&&JoinFixture::rd(q.groups[0],0x4c)==77&&JoinFixture::rd(q.actors[1],0x9c8)==123);
+        assert(api->join(q.actors[1],sizeof(q.actors[1]),91,77,0x2002u,100,&jb,&jr)&&jr.already_member&&!jr.appended);
+        // Full-group eviction only removes the last array slot, NOT its owner linkage.
+        for(unsigned i=0;i<15;++i)f.put(q.groups[0],8+4*i,0x1001u);
+        f.put(q.groups[0],8+15*4,0x2002u);f.put(q.groups[0],0x48,16);
+        q.actors[2][0xb6]=1;
+        assert(api->join(q.actors[2],sizeof(q.actors[2]),91,77,0x3003u,101,&jb,&jr)&&jr.completed&&jr.evicted&&jr.evicted_handle==0x2002u&&jr.count==16&&jr.index==15&&jr.last_report.blocked&&q.requests==1&&JoinFixture::rd(q.actors[1],0x9c4)==91&&JoinFixture::rd(q.actors[1],0x9c8)==123);
+        ServerNpcGruntSquadLeaveResult lr{};
+        assert(api->detach(q.actors[1],sizeof(q.actors[1]),0x2002u,102,&jb.group,&lr)&&lr.completed&&lr.missing&&!lr.cleared&&JoinFixture::rd(q.actors[1],0x9c4)==0&&JoinFixture::rd(q.actors[1],0x9c8)==123);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

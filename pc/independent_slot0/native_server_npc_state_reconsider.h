@@ -1055,4 +1055,28 @@ struct ServerNpcGruntSquadLeaveApi {
     int (__cdecl *leave)(void*,unsigned,std::uint32_t,std::uint32_t,bool,float,const ServerNpcGruntSquadLeaveBindings*,ServerNpcGruntSquadLeaveResult*) noexcept;
 };
 using GetServerNpcGruntSquadLeaveApi=const ServerNpcGruntSquadLeaveApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_join_export[]="SiN_GetServerNpcGruntSquadJoinApi";
+struct ServerNpcGruntSquadJoinBindings {
+    ServerNpcGruntSquadLeaveBindings group;
+    ServerNpcEnemyMemoryBindings source_memory;
+    ServerNpcGruntMemoryReportBindings report;
+    // Non-Grunt first member +670, if required; known Grunts read +984.
+    int (__cdecl *other_memory)(void*,void*,std::uint32_t*) noexcept;
+};
+struct ServerNpcGruntSquadJoinResult {
+    ServerNpcGruntSquadLeaveResult previous;
+    ServerNpcGruntMemoryReportResult last_report;
+    ServerNpcGruntPerceptionSpeechResult dialogue;
+    unsigned completed,blocked,already_member,detached,evicted,appended,owner_written,first_resolved,records,stale,reports,created,updated;
+    std::uint32_t evicted_handle;
+    int index,count;
+};
+struct ServerNpcGruntSquadJoinApi {
+    std::uint32_t version,size;
+    // group_array_token is the independent representation of group+8, written at +4c.
+    int (__cdecl *join)(void*,unsigned,std::uint32_t,std::uint32_t,std::uint32_t,float,const ServerNpcGruntSquadJoinBindings*,ServerNpcGruntSquadJoinResult*) noexcept;
+    // Original owner wrapper 22054d10 clears +9c4 even after missing membership.
+    int (__cdecl *detach)(void*,unsigned,std::uint32_t,float,const ServerNpcGruntSquadLeaveBindings*,ServerNpcGruntSquadLeaveResult*) noexcept;
+};
+using GetServerNpcGruntSquadJoinApi=const ServerNpcGruntSquadJoinApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
