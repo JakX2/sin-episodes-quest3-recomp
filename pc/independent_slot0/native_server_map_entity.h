@@ -359,6 +359,18 @@ struct NavigationBindings;
 // Original game-event manager +18 CreateEvent, event setters +28/+2c/+30,
 // and manager +1c FireEvent. A successful create with null event is the
 // retail unavailable-event branch; transport refusal is distinct.
+struct TriggerControlBindings {
+    void* context;
+    // Original 22201900 receives embedded collision member +fc and
+    // requested 16-bit solid flags. Owner must perform all side effects.
+    int (__cdecl *solid_flags)(void*,void*,unsigned) noexcept;
+    // Original 2213c490(actor,0), engine touch notification boundary.
+    int (__cdecl *refresh)(void*,void*,int) noexcept;
+};
+struct TriggerControlResult {
+    unsigned completed,handled,changed,disabled_written,solid_called,refreshed;
+    unsigned prior_flags,requested_flags,disabled;
+};
 struct CampaignTriggerBindings {
     void* context;
     int (__cdecl *spawn_gate)(void*,bool*) noexcept;
@@ -675,6 +687,7 @@ struct Api {
     int (__cdecl *campaign_trigger_spawn)(void*,unsigned,const CampaignTriggerBindings*,CampaignTriggerResult*) noexcept;
     int (__cdecl *campaign_trigger_touch)(void*,unsigned,void*,const CampaignTriggerBindings*,CampaignTriggerResult*) noexcept;
     int (__cdecl *destroy_trigger_members)(void*,unsigned,unsigned,const TriggerDestroyBindings*,LogicDestroyResult*) noexcept;
+    int (__cdecl *trigger_control)(void*,unsigned,const char*,const TriggerControlBindings*,TriggerControlResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
