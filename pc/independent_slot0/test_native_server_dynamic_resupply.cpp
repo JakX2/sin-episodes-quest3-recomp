@@ -240,5 +240,51 @@ int main(int argc,char** argv){
     FallbackBindings native_fb=fb;native_fb.has_weapon=nullptr;native_fb.native_inventory=&iv;
     float native_wants[count]{0,0,0,.5f,0,0};ff.draw=.5f;
     assert(api->fallback(4,native_wants,count,&native_fb,&fr)&&fr.ownership_native==6&&fr.eligible==1&&fr.selected==3);
+    // Original resupply lifecycle, independent of original engine pointers.
+    struct LifeFixture{
+        alignas(4) unsigned char actor[0x3b0]{},other[0x3b0]{};
+        unsigned base=0,marks=0,precache=0,draws=0,clocks=0,schedules=0,activations=0,handles=0,warnings=0,removes=0;
+        float now=.5f,scheduled=0;bool defer=false,existing=false,has_edict=true;
+        static unsigned rd(const void* a,unsigned off){unsigned v;std::memcpy(&v,static_cast<const unsigned char*>(a)+off,4);return v;}
+        static void wr(void* a,unsigned off,unsigned v){std::memcpy(static_cast<unsigned char*>(a)+off,&v,4);}
+    } lf;
+    LifecycleBindings lb{};lb.context=&lf;
+    lb.base_construct=[](void* p,void* a,int n) noexcept ->int{
+        auto& q=*static_cast<LifeFixture*>(p);assert(a==q.actor&&n==0);++q.base;
+        LifeFixture::wr(a,0xb4,q.existing?1u:8u);LifeFixture::wr(a,0x1f0,q.defer?1u:0u);
+        LifeFixture::wr(a,0x16c,q.has_edict?0x1234u:0u);return 1;
+    };
+    lb.mark_edict=[](void* p,unsigned token,unsigned bits) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);assert(token==0x1234u&&bits==1);++q.marks;return 1;};
+    lb.precache=[](void* p,const char* name,int flag) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);unsigned i=q.precache++%7;assert(flag==0&&!std::strcmp(name,i?ammo_types[i-1].classname:health_classname));return 1;};
+    lb.random_float=[](void* p,float lo,float hi,float* v) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);assert(lo==.2f&&hi==.4f);++q.draws;*v=.25f;return 1;};
+    lb.now=[](void* p,float* v) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);++q.clocks;*v=q.now;return 1;};
+    lb.schedule=[](void* p,void* a,float when) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);assert(a==q.actor&&LifeFixture::rd(a,8)==0);++q.schedules;q.scheduled=when;return 1;};
+    lb.base_activate=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);assert(a==q.actor);++q.activations;return 1;};
+    lb.entity_handle=[](void* p,void* a,unsigned* handle) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);assert(a==q.actor);++q.handles;*handle=0x3000u;return 1;};
+    lb.warning=[](void* p,const char* msg) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);assert(std::strstr(msg,"no item_dynamic_resupply master exists."));++q.warnings;return 1;};
+    lb.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LifeFixture*>(p);assert(a==q.actor);++q.removes;return 1;};
+    sin_independent::EntityHandleEntry master_entries[2]{};
+    master_entries[0].serial=3;master_entries[0].entity=reinterpret_cast<CBaseEntity*>(lf.actor);
+    master_entries[1].serial=4;master_entries[1].entity=reinterpret_cast<CBaseEntity*>(lf.other);
+    unsigned master_handle=0xffffffffu;lb.entries=master_entries;lb.entry_count=2;lb.master_handle=&master_handle;
+    LifecycleResult lr{};
+    assert(api->construct(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.completed&&lr.base_called&&lr.flag_added&&lr.edict_marked&&lr.defaults_written==7&&LifeFixture::rd(lf.actor,0)==resupply_vtable&&LifeFixture::rd(lf.actor,0xb4)==9);
+    for(unsigned i=0;i<7;++i)assert(LifeFixture::rd(lf.actor,0x394+4*i)==0x3f800000u);
+    lf.defer=true;assert(api->construct(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.deferred_dirty&&!lr.edict_marked&&(LifeFixture::rd(lf.actor,0x200)&255)==1);
+    lf.existing=true;assert(api->construct(lf.actor,sizeof(lf.actor),&lb,&lr)&&!lr.flag_added&&!lr.deferred_dirty&&!lr.edict_marked);
+    lf.existing=false;lf.defer=false;lf.has_edict=false;assert(api->construct(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.flag_added&&!lr.edict_marked);
+    assert(api->spawn(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.completed&&lr.precached==7&&lr.random_called&&lr.scheduled&&lr.think_installed&&lr.next_time==.75f&&LifeFixture::rd(lf.actor,8)==check_pvs_think);
+    LifeFixture::wr(lf.actor,0xb4,3);LifeFixture::wr(lf.actor,8,0xabcdefu);
+    assert(api->spawn(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.manual&&lr.precached==7&&!lr.random_called&&!lr.scheduled&&LifeFixture::rd(lf.actor,8)==0xabcdefu);
+    assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_assigned&&master_handle==0x3000u&&lr.warning_called);
+    master_handle=0x4001u;assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_retained&&!lr.master_assigned&&lr.warning_called);
+    master_handle=0x5001u;lf.now=1.f;assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_assigned&&!lr.warning_called);
+    LifeFixture::wr(lf.actor,0xb4,1);master_handle=0xffffffffu;lf.now=.5f;
+    assert(api->activate(lf.actor,sizeof(lf.actor),&lb,&lr)&&!lr.master_assigned&&!lr.warning_called);
+    master_handle=0x4001u;
+    assert(api->become_master(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.master_assigned&&lr.think_cleared&&master_handle==0x3000u&&!LifeFixture::rd(lf.actor,8));
+    LifeFixture::wr(lf.actor,8,123);
+    assert(api->kill(lf.actor,sizeof(lf.actor),&lb,&lr)&&lr.removed&&!lr.think_cleared&&LifeFixture::rd(lf.actor,8)==123&&master_handle==0x3000u);
+    assert(!api->spawn(lf.actor,sizeof(lf.actor)-1,&lb,&lr)&&!lr.completed);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
