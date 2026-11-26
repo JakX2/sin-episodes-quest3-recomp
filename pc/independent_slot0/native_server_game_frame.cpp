@@ -14,28 +14,73 @@ bool scope(const Bindings& b,Result& o,const char* name,bool enter) noexcept {
 bool stage(const Bindings& b,int (__cdecl *fn)(void*) noexcept,unsigned& count) noexcept {
     if(!fn||!fn(b.context))return false;++count;return true;
 }
-bool actor(void* a,const State& s,const Bindings& b,Result& o) noexcept {
-    if(!a){++o.nulls;return true;}++o.visited;
-    unsigned bytes=0;
-    if(!b.extent||!b.extent(b.context,a,&bytes)||bytes<0x170)return false;
-    // 2221c1c0: actors with an edict have additional simulation and
-    // prediction logic. Do not silently substitute default think.
-    if(read<unsigned>(a,0x16c)){if(!b.edict_simulate||!b.edict_simulate(b.context,a))return false;++o.edict_calls;return true;}
+template<class T>void write(void* a,unsigned off,T v) noexcept {std::memcpy(static_cast<unsigned char*>(a)+off,&v,sizeof(v));}
+unsigned known_kind(void* a,unsigned bytes,const Bindings& b) noexcept {
     using namespace native_resupply;
     const auto vt=read<unsigned>(a,0);
-    if(vt==resupply_vtable&&b.resupply&&bytes>=0x3b0){
+    if(vt==resupply_vtable&&b.resupply&&bytes>=0x3b0)return 1;
+    if(b.antigen&&((vt==antigen_vtable&&bytes>=antigen_extent)||
+        (vt==antigen_canister_vtable&&bytes>=antigen_canister_extent)||
+        (vt==antigen_gas_vtable&&bytes>=antigen_gas_extent&&read<int>(a,0x398)==1)))return 2;
+    return 0;
+}
+bool native_think(void* a,unsigned bytes,unsigned kind,const State& s,const Bindings& b,Result& o) noexcept {
+    if(kind==1){
         const auto* api=SiN_GetServerResupplyPrimaryThinkApi(1,sizeof(ServerResupplyPrimaryThinkApi));
         if(!api||!api->run(a,bytes,read<unsigned>(a,0x378),s.globals->tick,s.globals->interval,b.resupply,&o.resupply))return false;
         ++o.native_resupply;return true;
     }
-    const bool antigen_class=(vt==antigen_vtable&&bytes>=antigen_extent)||
-        (vt==antigen_canister_vtable&&bytes>=antigen_canister_extent)||
-        (vt==antigen_gas_vtable&&bytes>=antigen_gas_extent&&read<int>(a,0x398)==1);
-    if(antigen_class&&b.antigen){
-        const auto* api=SiN_GetServerAntigenPrimaryThinkApi(1,sizeof(ServerAntigenPrimaryThinkApi));
-        if(!api||!api->run(a,bytes,read<unsigned>(a,0x378),s.globals->tick,s.globals->interval,b.antigen,&o.antigen))return false;
-        ++o.native_antigen;return true;
+    const auto* api=SiN_GetServerAntigenPrimaryThinkApi(1,sizeof(ServerAntigenPrimaryThinkApi));
+    if(!api||!api->run(a,bytes,read<unsigned>(a,0x378),s.globals->tick,s.globals->interval,b.antigen,&o.antigen))return false;
+    ++o.native_antigen;return true;
+}
+bool stationary(void* a,unsigned bytes,unsigned kind,const State& s,const Bindings& b,Result& o) noexcept {
+    if(!b.edict_scope(b.context,true))return false;++o.edict_scopes_entered;
+    constexpr char outer[]="pEntity->PhysicsSimulate",inner[]="CBaseEntity::PhysicsSimulate",none[]="CBaseEntity::PhysicsNone";
+    bool ok=scope(b,o,outer,true);
+    if(ok){
+        ok=scope(b,o,inner,true);
+        if(ok){
+            ++o.stationary_calls;
+            if(read<int>(a,0xb0)==s.globals->tick)++o.stationary_deduplicated;
+            else{
+                write(a,0xb0,s.globals->tick);
+                ok=scope(b,o,none,true);
+                if(ok){ok=native_think(a,bytes,kind,s,b,o);const bool closed=scope(b,o,none,false);ok=ok&&closed;}
+            }
+            const bool closed=scope(b,o,inner,false);ok=ok&&closed;
+        }
+        const bool closed=scope(b,o,outer,false);ok=ok&&closed;
     }
+    const bool closed=b.edict_scope(b.context,false)!=0;if(closed)++o.edict_scopes_closed;
+    return ok&&closed;
+}
+bool actor(void* a,const State& s,const Bindings& b,Result& o) noexcept {
+    if(!a){++o.nulls;return true;}++o.visited;
+    unsigned bytes=0;
+    if(!b.extent||!b.extent(b.context,a,&bytes)||bytes<0x170)return false;
+    const auto kind=known_kind(a,bytes,b);
+    // Full 22222c30 iterates named contexts after the default one.
+    // These are not implemented by the primary API.
+    const bool named=kind&&read<int>(a,0x50)>0;
+    if(named)++o.named_context_fallbacks;
+    if(read<unsigned>(a,0x16c)){
+        // 2221c1c0 +388 is the prediction branch, +3c nonzero the
+        // player-simulation branch; leave both with the full owner path.
+        if(kind&&!named&&b.edict_scope&&!read<unsigned char>(a,0x388)&&!read<unsigned>(a,0x3c)){
+            const auto& entities=kind==1?b.resupply->entities:b.antigen->entities;
+            if(entities.count>sin_independent::kEntityHandleCapacity||(!entities.entries&&entities.count))return false;
+            const sin_independent::EntityHandleView registry(entities.entries,entities.count);
+            if(registry.Resolve(read<unsigned>(a,0x378))!=a)return false;
+            const int move=read<int>(a,0x204);
+            // 22223110 selects PhysicsNone for move==0 && parent null,
+            // or move==6 irrespective of parent. Do not emulate other moves.
+            if(move==6||(move==0&&!registry.Resolve(read<unsigned>(a,0xf0))))
+                return stationary(a,bytes,kind,s,b,o);
+        }
+        if(!b.edict_simulate||!b.edict_simulate(b.context,a))return false;++o.edict_calls;return true;
+    }
+    if(kind&&!named)return native_think(a,bytes,kind,s,b,o);
     if(!b.other_think||!b.other_think(b.context,a))return false;++o.foreign_thinks;return true;
 }
 bool actors(bool simulating,const State& s,const Bindings& b,Result& o) noexcept {
