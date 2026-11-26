@@ -688,6 +688,7 @@ struct Api {
     int (__cdecl *campaign_trigger_touch)(void*,unsigned,void*,const CampaignTriggerBindings*,CampaignTriggerResult*) noexcept;
     int (__cdecl *destroy_trigger_members)(void*,unsigned,unsigned,const TriggerDestroyBindings*,LogicDestroyResult*) noexcept;
     int (__cdecl *trigger_control)(void*,unsigned,const char*,const TriggerControlBindings*,TriggerControlResult*) noexcept;
+    int (__cdecl *trigger_kill)(void*,unsigned,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const EntityKillBindings*,EntityKillResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

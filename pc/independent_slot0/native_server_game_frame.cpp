@@ -34,6 +34,7 @@ bool coherent_removal(const Bindings& b) noexcept {
     if(b.queue&&b.queue->bindings&&b.queue->bindings->native_input){
         const auto& input=*b.queue->bindings->native_input;
         if(input.logic_kill&&!match(input.logic_kill->deferred))return false;
+        if(input.campaign_trigger_kill&&!match(input.campaign_trigger_kill->deferred))return false;
         if(input.relay&&!match(input.relay->deferred))return false;
         if(input.logic_autosave&&!match(input.logic_autosave->deferred))return false;
         if(input.logic_multicompare&&input.logic_multicompare->kill&&!match(input.logic_multicompare->kill->deferred))return false;
@@ -173,7 +174,7 @@ bool events(const State& s,const Bindings& b,Result& o) noexcept {
             // Bind timer input cadence to the same live frame interval as
             // actor dispatch. Service itself supplies registry and clock.
             ServerEntityAcceptInputBindings input{};native_map::TimerBindings timer{};
-            native_map::EntityKillBindings kill{},multi_kill{};native_map::MultiCompareBindings multi{};
+            native_map::EntityKillBindings kill{},multi_kill{},trigger_kill{};native_map::MultiCompareBindings multi{};
             native_map::RelayBindings relay{};native_map::AutosaveBindings autosave{};
             if(bindings.native_input){
                 input=*bindings.native_input;
@@ -185,6 +186,9 @@ bool events(const State& s,const Bindings& b,Result& o) noexcept {
                 }
                 if(b.deferred&&input.logic_autosave&&input.logic_autosave->deferred){
                     autosave=*input.logic_autosave;autosave.deferred=b.deferred;input.logic_autosave=&autosave;
+                }
+                if(b.deferred&&input.campaign_trigger_kill&&input.campaign_trigger_kill->deferred){
+                    trigger_kill=*input.campaign_trigger_kill;trigger_kill.deferred=b.deferred;input.campaign_trigger_kill=&trigger_kill;
                 }
                 if(b.deferred&&input.logic_kill&&input.logic_kill->deferred){
                     kill=*input.logic_kill;kill.deferred=b.deferred;input.logic_kill=&kill;

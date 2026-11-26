@@ -806,8 +806,12 @@ bool search_equal(const char* a,const char* b) noexcept {
     while(*a&&search_lower(static_cast<unsigned char>(*a))==search_lower(static_cast<unsigned char>(*b))){++a;++b;}
     return search_lower(static_cast<unsigned char>(*a))==search_lower(static_cast<unsigned char>(*b));
 }
+bool campaign_trigger_class(unsigned vt) noexcept {
+    return vt==sin_port::native_map::dynamic_trigger_vtable||vt==sin_port::native_map::secret_trigger_vtable;
+}
 int logic_kill_requested(unsigned vt,unsigned input,const ServerEntityAcceptInputBindings& b) noexcept {
-    if(!sin_port::native_map::kill_available(b.logic_kill)||!sin_port::native_map::logic_kill_extent(vt))return 0;
+    const auto* binding=campaign_trigger_class(vt)?b.campaign_trigger_kill:b.logic_kill;
+    if(!sin_port::native_map::kill_available(binding)||!sin_port::native_map::removal_entity_extent(vt))return 0;
     bool same=false;
     if(b.name_equal){
         if(!input_name_equal(b,0x2240b624u,input,same))return -1;
@@ -2430,6 +2434,8 @@ constexpr NativeInputRow trigger_control_inputs[]{
 constexpr NativeInputMap dynamic_trigger_map{0x2250b374u,0x2250b17cu,3,nullptr,0};
 constexpr NativeInputMap secret_trigger_map{0x2250b38cu,0x2250b17cu,1,nullptr,0};
 constexpr NativeInputMap trigger_control_map{0x2250b17cu,0x22508b14u,9,trigger_control_inputs,3};
+// All 15 CBaseToggle rows are saved fields, no input descriptors.
+constexpr NativeInputMap trigger_toggle_base_map{0x22508b14u,0x224f0350u,15,nullptr,0};
 int native_trigger_control_input(void* a,unsigned n,unsigned handler,const ServerEntityAcceptInputBindings& b) noexcept {
     if(!b.campaign_trigger_control)return -1;
     const char* text=nullptr;
@@ -2572,6 +2578,8 @@ const NativeInputMap* shared_kill_map(unsigned vt) noexcept {
     case multicompare_vtable:return &multicompare_map;
     case remap_vtable:return &remap_map;
     case colorblend_vtable:return &colorblend_map;
+    case dynamic_trigger_vtable:return &dynamic_trigger_map;
+    case secret_trigger_vtable:return &secret_trigger_map;
     default:return nullptr;
     }
 }
@@ -2580,7 +2588,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
     const int shared_kill=b?logic_kill_requested(vt,input,*b):0;
     if(shared_kill<0)return 0;
     const auto* kill_map=shared_kill?shared_kill_map(vt):nullptr;
-    if(shared_kill&&(!kill_map||!a||n<sin_port::native_map::logic_kill_extent(vt)||rd<unsigned>(a,0)!=vt))return 0;
+    if(shared_kill&&(!kill_map||!a||n<sin_port::native_map::removal_entity_extent(vt)||rd<unsigned>(a,0)!=vt))return 0;
     unsigned token=kill_map?kill_map->token:
         vt==sin_port::native_map::dynamic_trigger_vtable&&b&&b->campaign_trigger_control?dynamic_trigger_map.token:
         vt==sin_port::native_map::secret_trigger_vtable&&b&&b->campaign_trigger_control?secret_trigger_map.token:
@@ -2640,7 +2648,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             kill_map&&token==kill_map->token?kill_map:
             token==dynamic_trigger_map.token&&b->campaign_trigger_control?&dynamic_trigger_map:
             token==secret_trigger_map.token&&b->campaign_trigger_control?&secret_trigger_map:
-            token==trigger_control_map.token&&b->campaign_trigger_control?&trigger_control_map:
+            token==trigger_control_map.token&&(b->campaign_trigger_control||(shared_kill&&campaign_trigger_class(vt)))?&trigger_control_map:
+            token==trigger_toggle_base_map.token&&shared_kill&&campaign_trigger_class(vt)?&trigger_toggle_base_map:
             token==colorblend_map.token&&b->math_colorblend?&colorblend_map:
             token==remap_map.token&&b->math_remap?&remap_map:
             token==multicompare_map.token&&b->logic_multicompare?&multicompare_map:
@@ -2719,7 +2728,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(shared_kill&&base_kill&&o->handler==0x2213cdc0u){
                     const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
                     sin_port::native_map::EntityKillResult result{};
-                    shared_status=api&&api->logic_kill(a,n,vt,b->entities.entries,b->entities.count,b->logic_kill,&result)&&result.completed&&result.handled?1:0;
+                    shared_status=api&&(campaign_trigger_class(vt)?api->trigger_kill(a,n,vt,b->entities.entries,b->entities.count,b->campaign_trigger_kill,&result):api->logic_kill(a,n,vt,b->entities.entries,b->entities.count,b->logic_kill,&result))&&result.completed&&result.handled?1:0;
                 }
                 const int status=shared_status>=0?shared_status:
                     (vt==sin_port::native_map::dynamic_trigger_vtable||vt==sin_port::native_map::secret_trigger_vtable)?native_trigger_control_input(a,n,o->handler,*b):
