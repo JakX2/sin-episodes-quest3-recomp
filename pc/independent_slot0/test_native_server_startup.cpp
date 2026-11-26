@@ -53,6 +53,11 @@ static constexpr const char* names[]{
 static Fixture* active=nullptr;
 static unsigned queries=0,sound_calls=0,miss=99;
 static bool sound_ok=true;
+static unsigned engine_commands=0,engine_executes=0;
+static void __fastcall queue_command(void*,void*,const char* command){assert(!std::strcmp(command,"exec game.cfg\n"));++engine_commands;}
+static void __fastcall execute_command(void*,void*){assert(engine_commands==engine_executes+1);++engine_executes;}
+static void* engine_vtable[38]{};
+static void** engine_object=engine_vtable;
 static void* __cdecl engine_factory(const char*,int*);
 struct Sound {
     virtual bool connect(sin_independent::StartupFactory factory) noexcept {
@@ -62,6 +67,7 @@ struct Sound {
 static void* __cdecl engine_factory(const char* name,int* status){
     assert(active&&!status&&queries<17&&queries!=10&&!std::strcmp(name,names[queries]));
     const unsigned i=queries++;if(i==miss||i==16)return nullptr;
+    if(i==0)return &engine_object;
     if(i==2)return &active->objects[2];
     if(i==11)return &active->events;
     if(i==13)return &sound;
@@ -112,5 +118,27 @@ int main(int argc,char** argv){
     auto** vt=*reinterpret_cast<void***>(object);
     using Init=bool (__thiscall *)(void*,sin_independent::StartupFactory,sin_independent::StartupFactory,sin_independent::StartupFactory,void*);
     assert(!reinterpret_cast<Init>(vt[0])(object,&engine_factory,&factory,&filesystem_factory,&unbound.objects[13])&&queries==16&&!sound_calls&&!unbound.state.attempted);
+    const auto gameinit=reinterpret_cast<InvokeGameInit>(GetProcAddress(server,gameinit_export));
+    assert(gameinit&&!GetProcAddress(client,gameinit_export));
+    engine_vtable[36]=reinterpret_cast<void*>(&queue_command);engine_vtable[37]=reinterpret_cast<void*>(&execute_command);
+    unsigned char records[36];std::memset(records,0x55,sizeof(records));unsigned flags=0;std::uint16_t defaults[4]{};
+    unsigned allocated[3]{};void* pointers[]{&allocated[1],&allocated[2]};
+    ResetState reset{&allocated[0],8,0,3,&allocated[0],records,sizeof(records),3,1,2,2,&flags,defaults,pointers,2,2};
+    struct Release {unsigned calls=0;unsigned* allocated;bool fail=false;} release{0,allocated};
+    GameInitBindings gb{&release,&reset,[](void* p,void* a) noexcept ->int{auto& r=*static_cast<Release*>(p);assert(a==&r.allocated[r.calls]);++r.calls;return !r.fail;}};
+    GameInitResult go{};
+    assert(!gameinit(&badcheats.state,&gb,&go)&&!release.calls);
+    assert(gameinit(&live.state,&gb,&go)&&go.completed&&go.vector_released&&go.index_rebuilt&&go.default_initialized&&go.allocations_released==2&&go.command_queued&&go.command_executed&&release.calls==3&&engine_commands==1&&engine_executes==1);
+    assert(!reset.vector&&!reset.vector_cache&&!reset.vector_capacity&&!reset.vector_count&&!reset.allocation_count&&reset.index_first==0xffff&&!reset.index_used&&!reset.index_free&&flags==1&&defaults[0]==0xffff&&defaults[3]==1);
+    for(unsigned i=0;i<3;++i){std::uint16_t index=0,next=0;std::memcpy(&index,records+12*i,2);std::memcpy(&next,records+12*i+2,2);assert(index==i&&next==(i==2?0xffff:i+1));assert(records[12*i+4]==0x55);}
+    assert(!gameinit(&live.state,&gb,&go)&&engine_commands==1);
+    using InitGame=bool (__thiscall *)(void*);
+    assert(!reinterpret_cast<InitGame>(vt[1])(object)&&engine_commands==1);
+    // External vector allocation survives reset; existing default flag
+    // remains intact. Native slot refuses retry after release failure.
+    Fixture another(api);active=&another;b=another.bindings();b.engine=&engine_factory;b.filesystem=&filesystem_factory;queries=sound_calls=0;
+    assert(invoke(&another.state,&b,&bo));
+    reset.vector=&allocated[0];reset.vector_cache=nullptr;reset.vector_capacity=8;reset.vector_grow=-1;reset.vector_count=7;reset.allocation_count=0;
+    assert(gameinit(&another.state,&gb,&go)&&go.completed&&!go.vector_released&&!go.default_initialized&&reset.vector==&allocated[0]&&reset.vector_cache==reset.vector&&reset.vector_capacity==8&&!reset.vector_count&&engine_executes==2);
     FreeLibrary(server);FreeLibrary(client);
 }
