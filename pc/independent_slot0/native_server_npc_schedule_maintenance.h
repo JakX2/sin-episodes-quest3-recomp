@@ -169,5 +169,6 @@ struct ServerNpcNativeGatherRoute {
     ServerNpcNativeRequestSchedulerResult* request_result=nullptr;
     const ServerNpcGruntJetSelectorBindings* jet_request_selector=nullptr;
     ServerNpcNativeJetRequestSchedulerResult* jet_request_result=nullptr;
+    const ServerNpcGruntScheduleConeServices* request_cone=nullptr;
 };
 }

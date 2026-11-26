@@ -7702,7 +7702,7 @@ int __cdecl schedule_cone_acquire(void* a,unsigned n,int id,float now,const Serv
 }
 const ServerNpcGruntScheduleConeApi schedule_cone_api{1,sizeof(ServerNpcGruntScheduleConeApi),&schedule_cone_predicate,&schedule_cone_filter,&schedule_cone_acquire};
 
-int schedule_request_failure_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntScheduleLineServices* line=nullptr) noexcept{
+int schedule_request_failure_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntScheduleLineServices* line=nullptr,const ServerNpcGruntScheduleConeServices* cone=nullptr) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
     o->current_schedule=o->current_task=0;
@@ -7753,7 +7753,7 @@ int schedule_request_failure_impl(void* a,unsigned n,float now,const ServerNpcGr
     if(!consumed){id=read<int>(a,0x7bc);if(!id)id=79;o->failure_shared=1;}
     o->requested=id;
     const auto* scene=line?line->scene:nullptr;const auto* p=scene?scene->policy:nullptr;
-    if(!schedule_acquire_impl(a,n,id,now,ac,o->acquisition,o->translation,p?p->memory:nullptr,p,scene,line))return 0;o->acquisition.completed=1;
+    if(!schedule_acquire_impl(a,n,id,now,ac,o->acquisition,o->translation,p?p->memory:nullptr,p,scene,line,cone))return 0;o->acquisition.completed=1;
     return schedule_request_finish(a,n,now,*b,*o)?1:0;
 }
 int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
@@ -9041,15 +9041,22 @@ const ServerNpcEnemyStateApi enemy_state_api{1,sizeof(ServerNpcEnemyStateApi),&s
 const ServerNpcStateApi api{1,sizeof(ServerNpcStateApi),&should_reconsider,&choose_ideal,&apply};
 }
 // Synchronous internal entry, not a new retail engine virtual or ABI.
-int grunt_schedule_line_jet_internal(void* a,unsigned n,float now,const ServerNpcGruntJetSelectorBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntJetSelectorResult* jt,ServerNpcGruntJetSelectorResult* js) noexcept{
+int grunt_schedule_cone_normal_internal(void* a,unsigned n,float now,const ServerNpcGruntSpecialCombatBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntSpecialCombatResult* special,const ServerNpcGruntScheduleConeServices* cone) noexcept{
+    if(!tail||!combat||!special)return 0;*tail={};*combat={};*special={};
+    if(!b||!b->combat||!b->combat->tail)return 0;
+    const auto* scene=line?line->scene:nullptr;const auto* p=scene?scene->policy:nullptr;
+    const SpecialCombatRoute sp{b,special};const CombatSelectorRoute route{b->combat,combat,nullptr,&sp};
+    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route,p?p->memory:nullptr,p,scene,line,cone);
+}
+int grunt_schedule_line_jet_internal(void* a,unsigned n,float now,const ServerNpcGruntJetSelectorBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntJetSelectorResult* jt,ServerNpcGruntJetSelectorResult* js,const ServerNpcGruntScheduleConeServices* cone) noexcept{
     if(!tail||!combat||!jt||!js)return 0;*tail={};*combat={};*jt={};*js={};
     if(!b||!b->combat||!b->combat->tail)return 0;
     const auto* scene=line?line->scene:nullptr;const auto* p=scene?scene->policy:nullptr;
     const JetSelectorRoute jet{b,jt,js};const CombatSelectorRoute route{b->combat,combat,&jet};
-    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route,p?p->memory:nullptr,p,scene,line);
+    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route,p?p->memory:nullptr,p,scene,line,cone);
 }
-int grunt_schedule_line_failure_internal(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o) noexcept{
-    return schedule_request_failure_impl(a,n,now,b,o,line);
+int grunt_schedule_line_failure_internal(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntScheduleConeServices* cone) noexcept{
+    return schedule_request_failure_impl(a,n,now,b,o,line,cone);
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcStateReconsiderApi=_SiN_GetServerNpcStateReconsiderApi")

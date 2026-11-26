@@ -18,11 +18,13 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntReactionSpeechApi* __cdecl SiN_GetServerNpcGruntReactionSpeechApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEventSpeechApi* __cdecl SiN_GetServerNpcGruntEventSpeechApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleLineApi* __cdecl SiN_GetServerNpcGruntScheduleLineApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleConeApi* __cdecl SiN_GetServerNpcGruntScheduleConeApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 struct NativeSetScheduleRoute {
     const ServerNpcGruntScheduleAcquireBindings* acquisition;
     const ServerNpcGruntScheduleLineServices* line;
+    const ServerNpcGruntScheduleConeServices* cone;
 };
 template<class T>T rd(const void* p,unsigned off) noexcept{T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
 template<class T>void wr(void* p,unsigned off,T v) noexcept{std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
@@ -675,8 +677,11 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         if(native_set){
             const auto* native=SiN_GetServerNpcGruntScheduleLineApi(1,sizeof(ServerNpcGruntScheduleLineApi));
             ServerNpcGruntScheduleAcquireResult acquired{};ServerNpcGruntAssaultArbitrationResult translation{};
-            if(!native||!native_set->acquisition||!native_set->line||
-               !native->acquire(a,n,value,now,native_set->acquisition,native_set->line,&acquired,&translation))return 0;
+            if(!native_set->acquisition||!native_set->line)return 0;
+            if(native_set->cone){
+                const auto* api=SiN_GetServerNpcGruntScheduleConeApi(1,sizeof(ServerNpcGruntScheduleConeApi));
+                if(!api||native_set->cone->line!=native_set->line||!api->acquire(a,n,value,now,native_set->acquisition,native_set->cone,&acquired,&translation))return 0;
+            }else if(!native||!native->acquire(a,n,value,now,native_set->acquisition,native_set->line,&acquired,&translation))return 0;
             out->resolution.requested=acquired.requested;out->resolution.translated=acquired.translated;
             out->resolution.global=acquired.lookup_id;out->resolution.token=acquired.schedule_token;
             out->resolution.visited=acquired.records;out->resolution.fallback=acquired.fallback;
@@ -849,7 +854,7 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
             }
         }
         auto& st=*q.stats;++st.calls;
-        const NativeSetScheduleRoute native_set{q.native_acquire,q.native_line};
+        const NativeSetScheduleRoute native_set{q.native_acquire,q.native_line,q.native_cone};
         // Run the same task body (including active behavior delegation) with native
         // acquisition only on StartTask87. No high-level schedule-selection side effects.
         const int ok=(!running&&t->id==87&&q.native_acquire)?

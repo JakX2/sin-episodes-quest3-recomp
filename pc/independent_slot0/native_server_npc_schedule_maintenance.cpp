@@ -42,6 +42,7 @@ struct NativeRequestRoute {
     ServerNpcNativeRequestSchedulerResult* result;
     const ServerNpcGruntJetSelectorBindings* jet=nullptr;
     ServerNpcNativeJetRequestSchedulerResult* jet_result=nullptr;
+    const ServerNpcGruntScheduleConeServices* cone=nullptr;
 };
 struct GatherRoute {
     const ServerNpcGruntGatherConditionsBindings* bindings;
@@ -191,8 +192,9 @@ struct Call {
             if(!api||!cb||!cb->tail)return false;
             ++r.requests;if(failed)++r.failure_requests;
             if(request->jet_result){request->jet_result->tail={};request->jet_result->special={};}
-            const int ok=failed?grunt_schedule_line_failure_internal(a,bytes,now,cb->tail->request,request->line,&r.request):
-                request->jet?grunt_schedule_line_jet_internal(a,bytes,now,request->jet,request->line,&r.request,&r.tail,&r.combat,&request->jet_result->tail,&request->jet_result->special):
+            const int ok=failed?grunt_schedule_line_failure_internal(a,bytes,now,cb->tail->request,request->line,&r.request,request->cone):
+                request->jet?grunt_schedule_line_jet_internal(a,bytes,now,request->jet,request->line,&r.request,&r.tail,&r.combat,&request->jet_result->tail,&request->jet_result->special,request->cone):
+                request->cone?grunt_schedule_cone_normal_internal(a,bytes,now,request->selector,request->line,&r.request,&r.tail,&r.combat,&r.special,request->cone):
                 api->choose_normal(a,bytes,now,request->selector,request->line,&r.request,&r.tail,&r.combat,&r.special);
             if(!ok)return false;
             // Report the same installed descriptor in the legacy maintenance result; do not retranslate.
@@ -378,6 +380,7 @@ struct NativeRequestSession {
     bool prepare(const NativeRequestRoute& input,const ServerNpcSubclassSchedulerBindings& b) noexcept {
         if(!input.result||!input.line||bool(input.selector)==bool(input.jet)||bool(input.jet)!=bool(input.jet_result))return false;
         if(input.jet_result&&input.result!=&input.jet_result->base)return false;
+        if(input.cone&&input.cone->line!=input.line)return false;
         const auto* cb=input.jet?input.jet->combat:input.selector->combat;
         if(!cb||!cb->tail)return false;
         const auto* req=cb->tail->request;
@@ -398,10 +401,10 @@ struct NativeRequestSession {
         combat=*cb;combat.tail=&tail;
         if(input.jet){
             jet=*input.jet;jet.combat=&combat;
-            route={nullptr,input.line,input.result,&jet,input.jet_result};
+            route={nullptr,input.line,input.result,&jet,input.jet_result,input.cone};
         }else{
             selector=*input.selector;selector.combat=&combat;
-            route={&selector,input.line,input.result};
+            route={&selector,input.line,input.result,nullptr,nullptr,input.cone};
         }
         return true;
     }
@@ -422,7 +425,7 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
     NativeRequestRoute from_gather{};
     if(native_gather&&native_gather->request_result){
         if(request)return 0;
-        from_gather={native_gather->request_selector,native_gather->request_line,native_gather->request_result,native_gather->jet_request_selector,native_gather->jet_request_result};
+        from_gather={native_gather->request_selector,native_gather->request_line,native_gather->request_result,native_gather->jet_request_selector,native_gather->jet_request_result,native_gather->request_cone};
         request=&from_gather;
     }
     if(request){
@@ -457,6 +460,7 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
         if(request){
             shared_session.native_acquire=&request_session.acquire;
             shared_session.native_line=request->line;
+            shared_session.native_cone=request->cone;
         }
         if(native_gather&&native_gather->speech_tasks){
             if(!native_gather->speech_stats)return 0;

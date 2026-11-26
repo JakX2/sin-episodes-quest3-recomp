@@ -314,6 +314,18 @@ struct ServerNpcNativeRequestThinkApi {
 };
 using GetServerNpcNativeRequestThinkApi=const ServerNpcNativeRequestThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char server_npc_native_cone_request_think_export[]="SiN_GetServerNpcNativeConeRequestThinkApi";
+struct ServerNpcNativeConeRequestThinkBindings {
+    ServerNpcNativeSquadTaskThinkBindings think;
+    const ServerNpcGruntSpecialCombatBindings* selector;
+    const ServerNpcGruntScheduleConeServices* cone;
+};
+struct ServerNpcNativeConeRequestThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativeConeRequestThinkBindings*,ServerNpcNativeRequestThinkResult*) noexcept;
+};
+using GetServerNpcNativeConeRequestThinkApi=const ServerNpcNativeConeRequestThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_native_jet_request_think_export[]="SiN_GetServerNpcNativeJetRequestThinkApi";
 struct ServerNpcNativeJetRequestThinkBindings {
     ServerNpcNativeSquadTaskThinkBindings think;
@@ -329,4 +341,16 @@ struct ServerNpcNativeJetRequestThinkApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativeJetRequestThinkBindings*,ServerNpcNativeJetRequestThinkResult*) noexcept;
 };
 using GetServerNpcNativeJetRequestThinkApi=const ServerNpcNativeJetRequestThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_native_jet_cone_request_think_export[]="SiN_GetServerNpcNativeJetConeRequestThinkApi";
+struct ServerNpcNativeJetConeRequestThinkBindings {
+    ServerNpcNativeSquadTaskThinkBindings think;
+    const ServerNpcGruntJetSelectorBindings* selector;
+    const ServerNpcGruntScheduleConeServices* cone;
+};
+struct ServerNpcNativeJetConeRequestThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcNativeJetConeRequestThinkBindings*,ServerNpcNativeJetRequestThinkResult*) noexcept;
+};
+using GetServerNpcNativeJetConeRequestThinkApi=const ServerNpcNativeJetConeRequestThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
