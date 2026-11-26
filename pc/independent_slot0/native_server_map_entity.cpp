@@ -1829,6 +1829,20 @@ bool multi_integer(unsigned (&value)[5],const MultiCompareBindings& b,bool& acce
 bool multi_row(const MultiCompareBindings& b,unsigned token,void** row) noexcept {
     unsigned bytes=0;return b.resolve&&b.resolve(b.context,token,row,&bytes)&&*row&&bytes>=0x1c;
 }
+bool schedule_multicompare(void* a,void* activator,unsigned id,const RelayQueueBindings& b) noexcept {
+    if(!valid_relay_queue(b)||!b.now||!b.handle||!b.intern)return false;
+    const sin_independent::EntityHandleView registry(b.entries,b.entry_count);
+    unsigned self=0xffffffffu,source=0xffffffffu,input=0;
+    if(!b.handle(b.context,a,&self)||registry.Resolve(self)!=a)return false;
+    if(activator&&(!b.handle(b.context,activator,&source)||registry.Resolve(source)!=activator))return false;
+    if(!b.intern(b.context,"ForceRecompare",&input)||!input)return false;
+    const float now=*b.now;if(!std::isfinite(now))return false;
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerEntityNamedEventQueueApi(1,sizeof(ServerEntityNamedEventQueueApi));
+    unsigned variant[5]{0,0,0,0xffffffffu,0};
+    ServerEntityNamedEventQueueResult q{};
+    return api&&api->enqueue_direct(b.root,b.root_bytes,b.root_token,now,self,input,source,self,variant,sizeof(variant),0.f,id,b.queue,&q);
+}
 int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activator,const void* variant,unsigned vn,unsigned id,const MultiCompareBindings* b,MultiCompareResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!a||n<multicompare_extent||entity_vtable(a)!=multicompare_vtable||!name||!b)return 0;
@@ -1876,7 +1890,8 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
             write_field(a,0x3cc,new_token);o->inserted=1;
         }
         if(!read_field<unsigned>(a,0x3d0)){
-            if(!b->schedule||!b->schedule(b->context,a,activator,a,"ForceRecompare",0.f,id))return 0;
+            if(b->native_queue){if(!schedule_multicompare(a,activator,id,*b->native_queue))return 0;o->native_scheduled=1;}
+            else if(!b->schedule||!b->schedule(b->context,a,activator,a,"ForceRecompare",0.f,id))return 0;
             write_field(a,0x3d0,1u);o->scheduled=1;
         }
     }else{

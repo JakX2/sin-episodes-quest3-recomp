@@ -1985,5 +1985,58 @@ int main(int argc,char** argv){
         const unsigned expected[]{2,1,3,4,5};assert(!std::memcmp(f.order,expected,sizeof(expected)));
         assert(word(f.storage,0x3cc)==3&&word(f.storage,0x3c0)==4&&word(f.storage,0x3a8)==5);
     }
+    {
+        alignas(4) unsigned char actor[multicompare_extent]{};
+        put(actor,0,multicompare_vtable);put(actor,0x378,0x4001u);actor[0x1f0]=1;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=multicompare_extent;return 1;};
+        assert(api->key_value(actor,"OnEqual","relay,Trigger,,0,-1",&keys,&kr));
+        struct MultiQueue {ConnectedOutput* queue;ActionPool* pool;void* actor;void* activator;alignas(4) unsigned char records[2][0x1c]{},base[0x10]{};unsigned alloc=0,fired=0,rejected=0;} f{&co,&pool,actor,timer};
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=160.f;
+        co.queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};
+        MultiCompareBindings behavior{};behavior.context=&f;
+        behavior.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& f=*static_cast<MultiQueue*>(p);if(!token||token>f.alloc)return 0;*row=f.records[token-1];*bytes=0x1c;return 1;};
+        behavior.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{auto& f=*static_cast<MultiQueue*>(p);if(f.alloc==2)return 0;*row=f.records[f.alloc];*token=++f.alloc;*bytes=0x1c;return 1;};
+        behavior.resolve_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{if(token!=401)return 0;*text="5 units";*bytes=8;return 1;};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& f=*static_cast<MultiQueue*>(p);if(token!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[0])))return 0;*row=f.pool->rows[0];*bytes=0x1c;return 1;};
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{auto& f=*static_cast<MultiQueue*>(p);assert(a==f.activator&&c==f.actor&&action->action_id==41&&!action->variant_type);++f.fired;return 1;};
+        behavior.output=&fire;
+        RelayQueueBindings direct{};direct.context=&f;direct.root=co.root;direct.root_bytes=sizeof(co.root);direct.root_token=99;direct.queue=&co.queue;
+        direct.handle=[](void* p,void* a,unsigned* handle) noexcept ->int{auto& f=*static_cast<MultiQueue*>(p);if(a==f.actor)*handle=0x4001u;else if(a==f.activator)*handle=0x3000u;else return 0;return 1;};
+        direct.intern=[](void*,const char* text,unsigned* token) noexcept ->int{assert(!std::strcmp(text,"ForceRecompare"));*token=0x2241f628u;return 1;};
+        behavior.native_queue=&direct; // service supplies authoritative live time and handles.
+        nw::ServerNpcActivePostAnimationBindings storage{};storage.context=&f;
+        storage.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            // Empty hosted inherited-map fixture: it does not invent an alias.
+            auto& f=*static_cast<MultiQueue*>(p);if(token!=0x224f0350u)return 0;*row=f.base;*bytes=sizeof(f.base);return 1;
+        };
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&storage;input.context=&f;input.logic_multicompare=&behavior;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==0x2241ffb8u?"InputValue":token==0x2241ff14u?"CompareValues":token==0x2241f628u?"ForceRecompare":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        input.diagnostic=[](void* p,void* a,void* c,unsigned token,unsigned,const void*) noexcept ->int{
+            auto& f=*static_cast<MultiQueue*>(p);assert(a==f.actor&&c==f.actor&&token==0x2241f628u);++f.rejected;return 1;
+        };
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(timer);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        nw::ServerEntitySearchBindings search{};search.context=&f;
+        search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{*bytes=a==static_cast<MultiQueue*>(p)->actor?multicompare_extent:0;return *bytes!=0;};
+        nw::ServerEntityEventServiceBindings delivery{};delivery.context=&f;delivery.entities.entries=entries;delivery.entities.count=2;delivery.native_input=&input;delivery.native_search=&search;delivery.live_now=&co.now;
+        delivery.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<MultiQueue*>(p)->queue;return q.queue.resolve(q.queue.context,token,row,bytes);};
+        delivery.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<MultiQueue*>(p)->queue;assert(q.locked!=enter);q.locked=enter;return 1;};
+        delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<MultiQueue*>(p)->queue;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
+        unsigned a[5]{401,0,0,0xffffffffu,2},b[5]{0x40b00000u,0,0,0xffffffffu,1},v[5]{0,0,0,0xffffffffu,0};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2241ffb8u,0x3000,0x3000,a,sizeof(a),0.f,17,&co.queue,&cancel_qr));
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2241ffb8u,0x3000,0x3000,b,sizeof(b),0.f,18,&co.queue,&cancel_qr));
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2241ff14u,0x3000,0x3000,v,sizeof(v),.25f,19,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==3&&es.rejected_inputs==1&&es.future_stopped&&f.rejected==1&&f.alloc==2&&co.alloc==4&&co.released==3&&!f.fired&&word(actor,0x3d0)==1);
+        assert(word(co.rows[3],8)==0x2241f628u&&word(co.rows[3],0x18)==0x4001u&&word(co.rows[3],0xc)==0x3000u&&word(co.rows[3],0x10)==0x4001u&&word(co.rows[3],0x14)==17&&!word(co.rows[3],0x2c));
+        assert(word(f.records[0],0)==5&&word(f.records[1],0)==5&&word(f.records[0],0x14)==17&&word(f.records[1],0x14)==18);
+        co.now=160.25f;
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&f.fired==1&&co.released==4&&!word(co.root,0x30)&&!word(actor,0x3d0));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
