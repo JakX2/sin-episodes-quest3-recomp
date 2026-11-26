@@ -572,6 +572,14 @@ bool search_pattern(const char* name,const char* pattern) noexcept {
     while(*name&&*pattern&&search_lower(static_cast<unsigned char>(*name))==search_lower(static_cast<unsigned char>(*pattern))){++name;++pattern;}
     return (!*name&&!*pattern)||*pattern=='*';
 }
+bool search_handle(void* entity,const ServerEntitySearchBindings& b,unsigned& handle) noexcept {
+    unsigned bytes=0;
+    if(!b.extent||!b.extent(b.context,entity,&bytes)||bytes<4)return false;
+    if(input_datamap(rd<unsigned>(entity,0))){
+        if(bytes<0x37c)return false;handle=rd<unsigned>(entity,0x378);return true;
+    }
+    return b.foreign_handle&&b.foreign_handle(b.context,entity,&handle)!=0;
+}
 int search_entities(void* previous,unsigned token,void* activator,void* caller,bool classname,const ServerEntitySearchBindings* b,ServerEntitySearchResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!b||b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
@@ -602,11 +610,7 @@ int search_entities(void* previous,unsigned token,void* activator,void* caller,b
     const sin_independent::EntityHandleView registry(entries,b->entities.count);
     const sin_independent::EntityHandleEntry* row=b->head;
     if(previous){
-        unsigned bytes=0,handle=0;
-        if(!b->extent||!b->extent(b->context,previous,&bytes)||bytes<4)return 0;
-        if(input_datamap(rd<unsigned>(previous,0))){
-            if(bytes<0x37c)return 0;handle=rd<unsigned>(previous,0x378);
-        }else if(!b->foreign_handle||!b->foreign_handle(b->context,previous,&handle))return 0;
+        unsigned handle=0;if(!search_handle(previous,*b,handle))return 0;
         if(registry.Resolve(handle)!=previous)return 0;
         row=entries[sin_independent::SplitEntityHandle(handle).entry].next;
     }
@@ -666,6 +670,28 @@ bool input_convert(void* v,unsigned wanted,const ServerEntityAcceptInputBindings
         const unsigned value=input_decimal(text);
         if(wanted==5u)wr<unsigned>(v,0,value);else wr<std::uint8_t>(v,0,value!=0);
         wr<unsigned>(v,0x10,wanted);return true;
+    }
+    if(type==2u&&wanted==13u&&b.search&&!b.convert){
+        // 22156118 -> 221619e0 with null previous/activator/caller;
+        // 2228f8e0 stores the matched entity's handle or -1.
+        auto search=*b.search;search.entities=b.entities;
+        ServerEntitySearchResult result{};
+        const unsigned token=rd<unsigned>(v,0);
+        if(token&&!search_named(nullptr,token,nullptr,nullptr,&search,&result))return false;
+        unsigned handle=0xffffffffu;
+        if(result.entity&&!search_handle(result.entity,search,handle))return false;
+        wr<unsigned>(v,0xc,handle);wr<unsigned>(v,0x10,13u);return true;
+    }
+    if(type==13u&&wanted==2u&&b.search&&!b.convert){
+        // 22156140 returns true for an invalid/stale handle without
+        // changing the payload or type. A live handle yields targetname.
+        if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
+        void* entity=sin_independent::EntityHandleView(b.entities.entries,b.entities.count).Resolve(rd<unsigned>(v,0xc));
+        if(entity){
+            unsigned bytes=0;if(!b.search->extent||!b.search->extent(b.search->context,entity,&bytes)||bytes<0xc4)return false;
+            wr<unsigned>(v,0,rd<unsigned>(entity,0xc0));wr<unsigned>(v,0x10,2u);
+        }
+        return true;
     }
     if(type==2u&&(wanted==1u||wanted==5u||wanted==6u||wanted==3u||wanted==9u||wanted==13u)){
         if(!b.convert)return false;return b.convert(b.context,v,wanted,&ok)!=0;
