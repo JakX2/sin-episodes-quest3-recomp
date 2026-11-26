@@ -2063,6 +2063,21 @@ int main(int argc,char** argv){
         f.put(q.actor,0x890,-1);f.put(q.actor,0x894,0u);q.dirty=0x20;
         static ServerNpcGruntCombatDeathResult co;
         assert(combat->death(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),31,&cb,&co)&&co.death.event.completed&&co.death.prepare.completed&&co.signal.completed&&co.signal.state_cleared&&co.signal.flag_cleared&&co.signal.external_dirty==1&&!co.signal.output_called&&co.death.life_external_dirty==1&&q.dirty==0x21);
+        auto gs=reinterpret_cast<GetServerNpcGruntDeathSelectorApi>(GetProcAddress(s,server_npc_grunt_death_selector_export));
+        assert(gs);const auto* selected=gs(1,sizeof(ServerNpcGruntDeathSelectorApi));assert(selected);
+        static ServerNpcGruntDeathSelectedBindings sc;
+        sc.combat=cb;sc.combat.death.prepare.select=nullptr;
+        sc.selector.context=&q;sc.selector.model_available=b.model_available;
+        sc.selector.normalize=[](void* p,float* v) noexcept -> int{
+            auto& q=PrepFixture::self(p);assert(v[0]==0&&v[1]==1&&v[2]==0&&q.calls==2);++q.calls;return 1;};
+        sc.combat.death.prepare.activity_lookup=[](void* p,void* a,int selection,int* v) noexcept -> int{
+            auto& q=PrepFixture::self(p);assert(a==q.actor&&selection==0x1a7&&q.calls==3);++q.calls;*v=42;return 1;};
+        q.actor[0xa44]=0;f.put(q.actor,0x8c,0);f.put(q.actor,0x868,1);f.put(q.actor,0x78,0x20u);
+        f.put(q.actor,0x890,-1);f.put(q.actor,0x894,0u);q.dirty=0x20;q.calls=0;
+        f.put(q.actor,0x630,7u);f.put(q.actor,0x268,1.f);f.put(q.actor,0x27c,1.f);f.put(q.damage,4,-1.f);
+        static ServerNpcGruntDeathSelectedResult sr;
+        assert(selected->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),32,&sc,&sr)&&sr.combat.death.event.completed&&sr.combat.signal.state_cleared&&sr.selector.completed&&sr.selector.right_dominant&&sr.selector.selection==0x1a7&&sr.selector.auxiliary==6&&sr.combat.death.prepare.activity==42&&sr.combat.death.prepare.auxiliary==6&&PrepFixture::rd(q.actor,0x894)==6&&q.calls==4);
+
 
     }
 
