@@ -35,6 +35,10 @@ struct ServerNpcScheduleImageApi {
     int (__cdecl *storage)(const ServerScheduleImage*,std::uint32_t,const void**,unsigned*) noexcept;
 };
 using GetServerNpcScheduleImageApi=const ServerNpcScheduleImageApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Opt-in inherited reload schedules occupy existing spare image slots.
+// Same structure/ABI, token interval, namespace checks and transactional build.
+inline constexpr char server_npc_reload_schedule_image_export[]="SiN_GetServerNpcReloadScheduleImageApi";
+using GetServerNpcReloadScheduleImageApi=GetServerNpcScheduleImageApi;
 inline constexpr char server_npc_catalog_scheduler_export[]="SiN_GetServerNpcCatalogSchedulerApi";
 struct ServerNpcCatalogSchedulerResult {
     ServerNpcScheduleServicesResult runtime;

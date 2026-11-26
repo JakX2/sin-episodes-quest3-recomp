@@ -23,7 +23,23 @@ bool private_activity(const ServerGruntRegistration* r,int index,float& value) n
     int id=-1;if(!api->lookup(r->activity_owner,names[index],&id)||id<0||id!=r->activities[index]||id>16777216)return false;
     value=static_cast<float>(id);return true;
 }
-int __cdecl build(void* actor,unsigned family,std::uint32_t base,std::uint32_t fallback,const ServerScheduleImageBindings* b,ServerScheduleImage* out,ServerScheduleImageResult* result) noexcept{
+// Original inherited schedule names: 2205e00a -> 48, 2205e025 -> 49.
+// Parser loads source pointers from 224dee44/48 at 2205e9d2/2205e9f4.
+constexpr ServerScheduleCatalogTask inherited_hide_reload[]{
+    {116,ScheduleArgumentScalar,0.f},{88,ScheduleArgumentSchedule,49.f},
+    {98,ScheduleArgumentScalar,0.f},{43,ScheduleArgumentScalar,0.f},
+    {121,ScheduleArgumentScalar,0.f},{119,ScheduleArgumentMemory,2.f},
+    {60,ScheduleArgumentScalar,0.f},{87,ScheduleArgumentSchedule,49.f}
+};
+constexpr ServerScheduleCatalogTask inherited_reload[]{
+    {116,ScheduleArgumentScalar,0.f},{71,ScheduleArgumentScalar,0.f}
+};
+constexpr int inherited_reload_interrupts[]{48};
+constexpr ServerScheduleCatalogEntry reload_rows[]{
+    {NpcSubclassGround,48,"SCHED_HIDE_AND_RELOAD",0x223e45a0u,0x2205e9d2u,inherited_hide_reload,8,inherited_reload_interrupts,1},
+    {NpcSubclassGround,49,"SCHED_RELOAD",0x223e4538u,0x2205e9f4u,inherited_reload,2,inherited_reload_interrupts,1}
+};
+int build_impl(void* actor,unsigned family,std::uint32_t base,std::uint32_t fallback,const ServerScheduleImageBindings* b,ServerScheduleImage* out,ServerScheduleImageResult* result,bool with_reload) noexcept{
     if(!result)return 0;*result={};result->failed_schedule=result->failed_task=result->failed_condition=-1;
     if(!actor||family>NpcSubclassJetpack||!base||base>0xffffffffu-137u||(fallback>=base&&fallback-base<138u)||!b||!out)return 0;
     const auto* cat=SiN_GetServerNpcScheduleCatalogApi(1,sizeof(ServerNpcScheduleCatalogApi));
@@ -33,10 +49,13 @@ int __cdecl build(void* actor,unsigned family,std::uint32_t base,std::uint32_t f
     if(!cat||!ns||!cond||!cat->all(&entries,&count)||count!=46)return 0;
     ServerScheduleImage staged{};staged.family=family;staged.token_base=base;staged.head=staged.fallback_head=fallback;
     // Base initializes first, then subclass. Parser prepends new descriptors.
-    for(unsigned pass=0;pass<(family==NpcSubclassGround?1u:2u);++pass){
-        const unsigned wanted=pass?family:static_cast<unsigned>(NpcSubclassGround);
-        for(unsigned i=0;i<count;++i){
-            const auto& e=entries[i];if(e.family!=wanted)continue;
+    // Inherited descriptors are loaded before Grunt and subclass schedules.
+    for(int pass=with_reload?-1:0;pass<(family==NpcSubclassGround?1:2);++pass){
+        const unsigned wanted=pass>0?family:static_cast<unsigned>(NpcSubclassGround);
+        const auto* table=pass<0?reload_rows:entries;
+        const unsigned table_count=pass<0?2u:count;
+        for(unsigned i=0;i<table_count;++i){
+            const auto& e=table[i];if(e.family!=wanted)continue;
             result->failed_schedule=e.local_schedule;result->failed_task=result->failed_condition=-1;
             if(staged.row_count>=46||e.task_count>270-staged.task_count)return 0;
             int global=-1;if(!ns->to_global(actor,e.local_schedule,&b->namespace_map,&global)||global<npc_global_condition_base)return 0;
@@ -80,6 +99,12 @@ int __cdecl build(void* actor,unsigned family,std::uint32_t base,std::uint32_t f
     if(staged.activity_owner&&staged.activity_owner->names.generation!=staged.activity_generation)return 0;
     result->failed_schedule=result->failed_task=result->failed_condition=-1;
     *out=staged;return 1;
+}
+int __cdecl build(void* actor,unsigned family,std::uint32_t base,std::uint32_t fallback,const ServerScheduleImageBindings* b,ServerScheduleImage* out,ServerScheduleImageResult* result) noexcept{
+    return build_impl(actor,family,base,fallback,b,out,result,false);
+}
+int __cdecl build_reload(void* actor,unsigned family,std::uint32_t base,std::uint32_t fallback,const ServerScheduleImageBindings* b,ServerScheduleImage* out,ServerScheduleImageResult* result) noexcept{
+    return build_impl(actor,family,base,fallback,b,out,result,true);
 }
 int __cdecl storage(const ServerScheduleImage* image,std::uint32_t token,const void** out,unsigned* bytes) noexcept{
     if(!out||!bytes)return 0;*out=nullptr;*bytes=0;
@@ -570,6 +595,7 @@ const ServerNpcFullCatalogSchedulerApi full_catalog_api{1,sizeof(ServerNpcFullCa
 const ServerNpcCombatCatalogSchedulerApi combat_catalog_api{1,sizeof(ServerNpcCombatCatalogSchedulerApi),&run_combat};
 const ServerNpcCatalogSchedulerApi catalog_scheduler_api{1,sizeof(ServerNpcCatalogSchedulerApi),&run_catalog};
 const ServerNpcScheduleImageApi api{1,sizeof(ServerNpcScheduleImageApi),&build,&storage};
+const ServerNpcScheduleImageApi reload_image_api{1,sizeof(ServerNpcScheduleImageApi),&build_reload,&storage};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcScheduleImageApi=_SiN_GetServerNpcScheduleImageApi")
@@ -722,4 +748,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativeJetWeaponPolicyThinkApi=_SiN_GetServerNpcNativeJetWeaponPolicyThinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeJetWeaponPolicyThinkApi* __cdecl SiN_GetServerNpcNativeJetWeaponPolicyThinkApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcNativeJetWeaponPolicyThinkApi)?&native_jet_weapon_policy_think_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcReloadScheduleImageApi=_SiN_GetServerNpcReloadScheduleImageApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleImageApi* __cdecl SiN_GetServerNpcReloadScheduleImageApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcScheduleImageApi)?&reload_image_api:nullptr;
 }
