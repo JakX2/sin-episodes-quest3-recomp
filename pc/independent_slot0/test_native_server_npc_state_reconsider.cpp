@@ -2260,6 +2260,20 @@ int main(int argc,char** argv){
         f.put(q.actor,0x994,16.f);f.put(q.actor,0x9c,80);f.put(q.damage,0x44,0);
         static ServerNpcGruntDamageNativeChainResult ncr;
         assert(native->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),16,&nc,&ncr)&&ncr.detail.damage.completed&&ncr.detail.damage.base_called&&ncr.detail.damage.native_result==1&&ncr.detail.right.completed&&ncr.detail.left.completed&&ncr.report_called==1&&ncr.report.mutation.updated&&ncr.notify.completed&&q.reports==old_reports&&q.notifications==old_notifications);
+        auto ga=reinterpret_cast<GetServerNpcGruntAliveDamageApi>(GetProcAddress(s,server_npc_grunt_alive_damage_export));
+        assert(ga&&!GetProcAddress(c,server_npc_grunt_alive_damage_export)&&!ga(0,sizeof(ServerNpcGruntAliveDamageApi))&&!ga(1,0));
+        const auto* alive=ga(1,sizeof(ServerNpcGruntAliveDamageApi));assert(alive);
+        static ServerNpcGruntAliveDamageBindings ac;ac.chain=nc;
+        ac.chain.detail.damage.base.chain.prefix.damage.base_damage=nullptr;
+        float live_direction[3]={99,99,99};ac.life.shared_direction=live_direction;ac.life.default_direction[0]=1;
+        // Deliberately different old fallback; native report must consume the just-published live vector.
+        ac.chain.detail.damage.base.tail.fallback_vector[0]=0;
+        f.put(q.actor,0x634,0.f);f.put(q.actor,0x9c,80);f.put(q.damage,0x2c,0.5f);f.put(q.damage,0x24,0xffffffffu);
+        static ServerNpcGruntAliveDamageResult ar;
+        assert(alive->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),17,&ac,&ar)&&ar.chain.detail.damage.completed&&ar.life.completed&&!ar.life.native_result&&ar.life.health_after==80&&ar.life.fraction_after==0.5f&&!ar.chain.report_called&&live_direction[0]==1);
+        f.put(q.actor,0x994,18.f);
+        assert(alive->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),18,&ac,&ar)&&ar.chain.detail.damage.completed&&ar.life.native_result&&ar.life.health_after==79&&ar.life.fraction_after==0&&ar.chain.report_called==1&&ar.chain.detail.damage.base.tail.position[0]==65&&ar.chain.notify.completed);
+
 
     }
 
@@ -2472,6 +2486,9 @@ int main(int argc,char** argv){
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageAlive,&b,&o)&&o.health_after==75&&o.reaction_called&&q.reactions==1);
         f.put(q.actor,0x94,1);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageAlive,&b,&o)&&o.health_after==75&&!o.fraction_written&&o.reaction_called&&q.reactions==2);
+        b.original_vtable=0x2248c514;b.reaction=nullptr;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageAlive,&b,&o)&&o.native_result&&!o.reaction_called&&q.reactions==2);
+        b.original_vtable=0x2249aaa4;
         f.put(q.actor,0x94,0);f.put(q.actor,0x9c,-490);f.put(q.damage,0x2c,10.f);q.damage[0x3b]=2;
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageDying,&b,&o)&&o.native_result&&o.health_after==-500&&!o.removed&&!o.direction_written);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),NpcDamageDying,&b,&o)&&o.health_after==-510&&o.removed&&q.removed==1);
