@@ -564,6 +564,59 @@ int main(int argc,char** argv){
     assert(req_run.requests.requests==1&&!req_run.requests.failure_requests&&req_run.requests.request.requested==26&&req_run.requests.request.acquisition.translated==94&&req_run.requests.request.acquisition.schedule_token==find(94));
     assert(req_run.requests.scheduler.maintenance.state.schedule==find(94)&&req_run.requests.scheduler.maintenance.started==1&&req_run.think.think.think.squad.cycle.preschedule.think.completed);
     int fail_id=0;std::memcpy(&fail_id,f.actor+0x7bc,4);assert(fail_id==95);
+
+    // Active, equipped NPC with no enemy: native ammo must run at both +420
+    // call sites. Deliberately stop after the second gather at ideal-state query.
+    {
+        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{};unsigned queries=0;} equipped{&f};
+        sin_independent::EntityHandleEntry equipped_entries[2]{};
+        equipped_entries[0].serial=3;equipped_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
+        equipped_entries[1].serial=7;equipped_entries[1].entity=reinterpret_cast<CBaseEntity*>(equipped.weapon);
+        const auto previous_entities=selection.state.entities;
+        const auto previous_admission=req_schedule.admission;
+        const auto previous_query=selection.state.state_query;
+        const auto previous_context=selection.state.context;
+        selection.state.entities.entries=equipped_entries;selection.state.entities.count=2;
+        selection.state.context=&equipped;
+        selection.state.state_query=[](void* p,void*,int current,int*) noexcept -> int{
+            assert(current==1);++static_cast<EquippedThinkFixture*>(p)->queries;return 0;
+        };
+        auto extent=[](void* p,void* e,unsigned* n) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);
+            if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.weapon)*n=sizeof(q.weapon);else return 0;return 1;
+        };
+        req_schedule.admission.context=&equipped;req_schedule.admission.extent=extent;
+        auto active=combat_bind;
+        auto& gather=active.think.think.think.preschedule.think.gather.gather;
+        gather.base.gate.context=&f;gather.base.gate.storage.context=&f;
+        gather.base.gate.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            if(token!=88)return 0;auto& q=F::self(p);*out=q.motor;*n=sizeof(q.motor);return 1;
+        };
+        gather.base.gate.pvs_index=[](void*,unsigned,bool* yes) noexcept -> int{*yes=false;return 1;};
+        gather.base.post.aux.visibility.context=&equipped;gather.base.post.aux.visibility.extent=extent;
+        gather.base.post.aux.weapon_predicate=nullptr;
+        unsigned char script[0x168]{};f.put(script,0x160,8);f.put(script,0x164,1);
+        ServerWeaponScriptView scripts{};scripts.fallback=script;scripts.fallback_bytes=sizeof(script);
+        ServerNpcWeaponAmmoBindings ammo{};ammo.scripts=&scripts;ammo.context=&equipped;
+        ammo.combat_owner=[](void* p,void* owner,void** out) noexcept -> int{assert(owner==static_cast<EquippedThinkFixture*>(p)->f->actor);*out=owner;return 1;};
+        const ServerNpcWeaponPolicyBindings policy{&ammo,&weapon_melee};
+        std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);
+        f.put(f.actor,0x908,88u);f.put(f.motor,0x14,0.f);f.put(f.actor,0xccc,-1);
+        f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0xffffffffu);
+        f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x650,3);
+        f.put(equipped.weapon,0,0x2247875cu);f.put(equipped.weapon,0x494,0x3000u);
+        f.put(equipped.weapon,0x4e4,1);f.put(equipped.weapon,0x4e8,2);
+        f.put(equipped.weapon,0x51c,static_cast<std::uint16_t>(0xffff));
+        assert(!weapon_think->run(f.actor,sizeof(f.actor),69.4961f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&active,&req_run,&outer_line,&inner_line,&policy,&outer_weapon,&inner_weapon));
+        const auto& cycle=req_run.think.think.think.squad.cycle.preschedule.think;
+        assert(cycle.outer_gather.gather.completed&&cycle.outer_gather.gather.base.post.ammo.secondary_empty);
+        assert(cycle.maintenance_called&&cycle.scheduler.gather_calls==1&&cycle.scheduler.gather.gather.completed&&equipped.queries==1);
+        assert(outer_weapon.primary.reserve==3&&inner_weapon.primary.reserve==3&&outer_weapon.primary.available&&inner_weapon.primary.available);
+        assert(outer_weapon.secondary.completed&&inner_weapon.secondary.completed&&!outer_weapon.secondary.available&&!inner_weapon.secondary.available);
+        selection.state.entities=previous_entities;selection.state.state_query=previous_query;selection.state.context=previous_context;
+        req_schedule.admission=previous_admission;
+    }
+
     // The original toss-grenade-cover schedule ends in TASK_SET_SCHEDULE(25).
     // It must use the native policy, even with the legacy resolution callback disabled.
     ServerNpcGruntSchedulePolicyServices req_policy{};req_scene.policy=&req_policy;
