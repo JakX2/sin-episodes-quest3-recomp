@@ -2722,4 +2722,31 @@ struct ServerNpcGruntAssaultTaskApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntAssaultTaskBindings*,ServerNpcGruntAssaultTaskResult*,ServerNpcGruntAssaultNodeResult*,ServerNpcGruntRappelScheduleResult*) noexcept; // 220cf770
 };
 using GetServerNpcGruntAssaultTaskApi=const ServerNpcGruntAssaultTaskApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_rally_export[]="SiN_GetServerNpcGruntAssaultRallyApi";
+struct ServerNpcGruntAssaultRallyBindings {
+    ServerNpcGruntAssaultResetBindings reset;
+    void* context;
+    int (__cdecl *cast_rally)(void*,void*,void**) noexcept; // typed RTTI cast for direct selection
+    int (__cdecl *next_named)(void*,std::uint32_t,void*,void**) noexcept; // find + cast; null terminates
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept; // virtual +8
+    int (__cdecl *origin)(void*,void*,float*) noexcept; // refresh dirty origin then copy
+    int (__cdecl *warning)(void*,std::uint32_t,std::uint32_t) noexcept; // format token, optional argument token
+};
+struct ServerNpcGruntAssaultRallyResult {
+    ServerNpcGruntAssaultResetResult reset;
+    std::uint32_t name_token,selected_handle,owner_handle,reservation,warning_token;
+    int priority,mode;
+    unsigned completed,identity_valid,cast_called,search_calls,candidates,locked,priority_updates,tie_checks,
+        origin_calls,selected,handle_written,claim_called,claimed,claim_blocked,mode_written,warning_called,
+        mode_cleared,class_called,monk_exception,schedule_cleared,primary_reset;
+    double previous_distance;
+    float candidate_distance;
+};
+struct ServerNpcGruntAssaultRallyApi {
+    std::uint32_t version,size;
+    int (__cdecl *direct)(void*,unsigned,void*,int,const ServerNpcGruntAssaultRallyBindings*,ServerNpcGruntAssaultRallyResult*) noexcept; // 220cfac0
+    int (__cdecl *named)(void*,unsigned,std::uint32_t,int,const ServerNpcGruntAssaultRallyBindings*,ServerNpcGruntAssaultRallyResult*) noexcept; // 220cfc00
+};
+using GetServerNpcGruntAssaultRallyApi=const ServerNpcGruntAssaultRallyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
