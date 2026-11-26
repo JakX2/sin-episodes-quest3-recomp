@@ -610,7 +610,7 @@ int main(int argc,char** argv){
         if(token!=601)return 0;auto& q=*static_cast<ConeThinkFixture*>(p);*out=q.memory;*n=sizeof(q.memory);return 1;
     };
     high_spread.base_spread=[](void* p,void* a,void* w,void* target,float* out) noexcept -> int{
-        auto& q=*static_cast<ConeThinkFixture*>(p);assert(a==q.f->actor&&w==q.weapon&&!target);++q.spreads;out[0]=out[1]=out[2]=.125f;return 1;
+        auto& q=*static_cast<ConeThinkFixture*>(p);assert(a==q.f->actor&&w==q.weapon&&!target);++q.spreads;out[0]=out[1]=out[2]=.25f;return 1; // exercises reconstructed sine table, not clamp
     };
     req_cone.spread=&high_spread;req_cone.context=&high;
     req_cone.player_count=[](void*,int* count) noexcept -> int{*count=1;return 1;};

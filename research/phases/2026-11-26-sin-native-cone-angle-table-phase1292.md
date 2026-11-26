@@ -1,0 +1,9 @@
+# Phase 1292: Recover original sine-table initializer and remove mandatory hosted table
+
+Parent 4a07b40672a0cad68502b2c773044be6189ec45f. Authenticated server SHA256 568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650. At 2226de24 math initialization calls 22268910, which loops exactly 256 times: FILD i, FMUL qword 22454578 (raw 3f9921fb54442d18 = 2*pi/256), FSIN, FSTP float [225818a4+4*(i+1)]. The only two direct base readers are 2202e97d and 2203c3c8. The apparent table in on-disk relocation bytes is not initialized data.
+
+Local x86-64 instruction replay of this loop: all 256 values equal across x87 0x027f and 0x037f on this host; 255/256 equal std::sin(double(i)*step) cast to float. Index128 differs (original replay 250d3000 vs host libm 250d3132); preserve the positive residual. Quarter-wave plus sign reconstruction with this special case matches all 256 outputs exactly. Word-wise digest ccd98925, little-endian bytes SHA256 34177ed8439028efead23a34eda7b4281aef4de3206dbb821134c18d8747468c. This is reconstruction from the initializer, not copying retail table bytes. CPU-specific FSIN differences and live table memory remain unmeasured.
+
+Exhaustive local comparison of every binary32 value in (.13053f,1] (24,794,712) between 53-bit x87 replay of 223a6158..223a6164 plus 2203c3ae..2203c3be and portable std::asin+float index expression: zero index differences. Endpoint pi/2 replayed using FLDPI / 2; this does not execute the CRT exception handlers or the original PE32 process.
+
+Native threshold uses recovered table when angle_table=nullptr and angle_count=0; explicit 256-entry override remains for differential fixtures and live witnesses; malformed bindings fail closed in table branch. Existing ABI sizes unchanged. Added exact threshold bit tests and changed full high-capability think test to hit recovered table, not the clamp. Base spread is still the engine +f4 service (22572914); not fabricated. CI pending.

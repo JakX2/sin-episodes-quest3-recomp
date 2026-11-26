@@ -4888,6 +4888,14 @@ int main(int argc,char** argv){
         assert(spread->threshold(q.a,sizeof(q.a),nullptr,10,nullptr,&spread_result)&&spread_result.no_weapon&&spread_result.threshold==.92f&&!spread_result.base_called);
         sf.base[0]=.5f;sbind.angle_count=255;
         assert(!spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&!spread_result.completed);
+        // Recovered original 22268910 initializer, no supplied table.
+        sbind.angle_table=nullptr;sbind.angle_count=0;
+        auto threshold_word=[&](){std::uint32_t bits=0;std::memcpy(&bits,&spread_result.threshold,4);return bits;};
+        sf.base[0]=.25f;assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.angle_index==74&&spread_result.table_called&&threshold_word()==0x3f7853f8u);
+        sf.base[0]=.5f;assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.angle_index==85&&threshold_word()==0x3f5ebe05u);
+        sf.base[0]=1.f;assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.angle_index==128&&threshold_word()==0x250d3000u);
+        sbind.angle_count=256;assert(!spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&!spread_result.completed);
+        sbind.angle_table=sf.table;sbind.angle_count=0;assert(!spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&!spread_result.completed);
         sf.base[0]=1.25f;sbind.angle_count=256;
         assert(!spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&!spread_result.completed);
         assert(!spread->spread(q.a,0x987,q.weapon,q.enemy,10,&sbind,&spread_result));
