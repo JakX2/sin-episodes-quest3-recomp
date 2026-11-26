@@ -6437,7 +6437,59 @@ bool schedule_request_condition(void* a,unsigned n,int id,const ServerNpcGruntSc
 }
 
 
-int __cdecl grunt_combat_select(void* a,unsigned n,float now,const ServerNpcGruntCombatSelectorBindings* b,ServerNpcGruntCombatSelectorResult* o) noexcept{
+
+struct JetSelectorRoute {const ServerNpcGruntJetSelectorBindings* bindings;ServerNpcGruntJetSelectorResult* tail;ServerNpcGruntJetSelectorResult* special;};
+bool jet_selector_init(void* a,unsigned n,float now,const ServerNpcGruntJetSelectorBindings* b,ServerNpcGruntJetSelectorResult* o) noexcept{
+    if(!o)return false;*o={};o->condition.global=o->condition.bit=-1;
+    if(!a||n<0x1085||!std::isfinite(now)||!b||!b->combat||!b->combat->tail||!b->combat->tail->request||!b->combat->tail->request->acquisition)return false;
+    const auto* arb=b->combat->tail->request->acquisition->arbitration;
+    if(!arb||!arb->activation||!arb->activation->schedule)return false;
+    const auto& ab=arb->activation->schedule->admission;const auto vt=ab.actor_vtable;
+    return (vt==0x2248c514||vt==0x2248e83c||vt==0x2249964c||vt==0x224a4a4c)&&ab.count<=sin_independent::kEntityHandleCapacity&&(!ab.count||ab.entries);
+}
+int __cdecl grunt_jet_special(void* a,unsigned n,float now,const ServerNpcGruntJetSelectorBindings* b,ServerNpcGruntJetSelectorResult* o) noexcept{
+    if(!jet_selector_init(a,n,now,b,o))return 0;
+    const auto& ac=*b->combat->tail->request->acquisition;
+    const auto& ab=ac.arbitration->activation->schedule->admission;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](int id){o->schedule=id;o->completed=1;return 1;};
+    auto cond=[&](int id,bool& yes){++o->condition_tests;if(!api->test(a,n,id,NpcConditionCurrent,&ac.schedule.conditions,&o->condition))return false;yes=o->condition.value!=0;return true;};
+    auto target=[&](){++o->target_queries;return assault_owner_target(a,registry);};
+    const float radius=read<float>(a,0xfe0);
+    if(radius>0.f){
+        float own[3]{},enemy[3]{};const auto& cb=*b->combat;
+        if(!cb.position||!cb.position(cb.context,a,false,own))return 0;++o->position_calls;
+        void* e=target();if(!e||!cb.position(cb.context,e,false,enemy))return 0;++o->position_calls;
+        const double x=static_cast<double>(enemy[0])-own[0],y=static_cast<double>(enemy[1])-own[1];
+        o->radius_checked=1;o->distance_squared=y*y+x*x;
+        if(o->distance_squared>static_cast<double>(radius)*radius){o->radius_rejected=1;return done(0);}
+    }
+    bool yes=false;if(!cond(43,yes))return 0;if(!yes&&!cond(12,yes))return 0;
+    if(yes){
+        void* obstacle=registry.Resolve(read<unsigned>(a,0x98c));o->obstacle_valid=obstacle!=nullptr;
+        if(!obstacle)return done(0);
+        unsigned extent=0;const auto& cb=*b->combat;
+        ++o->extent_calls;if(!cb.extent||!cb.extent(cb.context,obstacle,&extent)||extent<0xa0)return 0;
+        if(read<int>(obstacle,0x9c)>0)return done(123);
+        for(auto tok:{0x2244edfcu,0x224059fcu,0x223f01f8u,0x22410428u}){
+            auto name=read<unsigned>(obstacle,0xc);if(!name)name=0x223d47a8u;
+            ++o->class_checks;bool matched=name==tok;
+            if(!matched&&(!b->class_matches||!b->class_matches(b->context,name,tok,&matched)))return 0;
+            if(matched){o->obstacle_class_matched=1;return done(123);}
+        }
+        return done(0);
+    }
+    void* e=target();
+    if(!b->enemy_visible||!b->enemy_visible(b->context,a,e,&yes))return 0;o->visibility_called=1;if(!yes)return done(0);
+    if(!cond(22,yes))return 0;
+    if(!yes&&target()){
+        if(!api->store(a,n,20,NpcConditionCurrent,true,&ac.schedule.conditions,&o->condition))return 0;o->condition_set=1;
+    }
+    return done(41);
+}
+
+int grunt_combat_select_impl(void* a,unsigned n,float now,const ServerNpcGruntCombatSelectorBindings* b,ServerNpcGruntCombatSelectorResult* o,const JetSelectorRoute* jet=nullptr) noexcept{
     if(!o)return 0;*o={};o->roll=o->special_schedule=o->condition.global=o->condition.bit=o->slot.index=o->slot.selected=-1;
     if(!a||n<0xde8||!b||!b->tail||!b->tail->request||!b->tail->request->acquisition||!std::isfinite(now))return 0;
     const auto& ac=*b->tail->request->acquisition;
@@ -6512,7 +6564,10 @@ int __cdecl grunt_combat_select(void* a,unsigned n,float now,const ServerNpcGrun
         if(!b->random_int||!b->random_int(b->context,0,99,&o->roll))return 0;o->random_called=1;
         return done(o->roll<=90&&target()?25:13);
     }
-    if(!b->special_combat||!b->special_combat(b->context,a,o->jet!=0,&o->special_schedule))return 0;o->special_called=1;
+    if(o->jet&&jet){
+        if(!grunt_jet_special(a,n,now,jet->bindings,jet->special))return 0;o->special_schedule=jet->special->schedule;
+    }else if(!b->special_combat||!b->special_combat(b->context,a,o->jet!=0,&o->special_schedule))return 0;
+    o->special_called=1;
     if(o->special_schedule)return done(o->special_schedule);
     if(o->jet)return done(119);
     if(!cond(12,yes))return 0;
@@ -6544,7 +6599,56 @@ int __cdecl grunt_combat_select(void* a,unsigned n,float now,const ServerNpcGrun
     if(yes){if(!slot(0,2,yes))return 0;if(yes)return done(89);}
     if(!b->final_cue||!b->final_cue(b->context,a))return 0;o->final_called=1;return done(87);
 }
-struct CombatSelectorRoute {const ServerNpcGruntCombatSelectorBindings* bindings;ServerNpcGruntCombatSelectorResult* result;};
+
+int __cdecl grunt_combat_select(void* a,unsigned n,float now,const ServerNpcGruntCombatSelectorBindings* b,ServerNpcGruntCombatSelectorResult* o) noexcept{
+    return grunt_combat_select_impl(a,n,now,b,o);
+}
+int __cdecl grunt_jet_tail(void* a,unsigned n,float now,const ServerNpcGruntJetSelectorBindings* b,ServerNpcGruntJetSelectorResult* o,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntJetSelectorResult* special) noexcept{
+    if(!combat||!special)return 0;*combat={};*special={};
+    if(!jet_selector_init(a,n,now,b,o))return 0;
+    const auto& ac=*b->combat->tail->request->acquisition;
+    const auto& ab=ac.arbitration->activation->schedule->admission;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](int id){o->schedule=id;o->completed=1;return 1;};
+    auto cond=[&](int id,bool& yes){++o->condition_tests;if(!api->test(a,n,id,NpcConditionCurrent,&ac.schedule.conditions,&o->condition))return false;yes=o->condition.value!=0;return true;};
+    auto target=[&](){++o->target_queries;return assault_owner_target(a,registry);};
+    auto select_combat=[&](){const JetSelectorRoute route{b,o,special};o->combat_called=1;return grunt_combat_select_impl(a,n,now,b->combat,combat,&route)!=0;};
+    bool yes=false;
+    if(target()){
+        void* e=target();unsigned extent=0;const auto& cb=*b->combat;
+        ++o->extent_calls;if(!e||!cb.extent||!cb.extent(cb.context,e,&extent)||extent<0x90)return 0;
+        if(!read<int>(e,0x8c)){
+            e=target();if(!e||!b->enemy_update||!b->enemy_update(b->context,a,e))return 0;o->enemy_update_called=1;
+            if(!cond(11,yes))return 0;if(yes)return done(118);
+            if(!cond(79,yes))return 0;if(yes)return done(119);
+            if(now<read<float>(a,0x60c))return done(41);
+            if(!cond(22,yes))return 0;if(yes)return done(41);
+            return select_combat()?done(combat->schedule):0;
+        }
+    }
+    // 22363870: live auxiliary handle or any component not ordered equal to invalid vector.
+    o->auxiliary_valid=registry.Resolve(read<unsigned>(a,0x8a8))!=nullptr;
+    if(!o->auxiliary_valid){
+        if(!b->invalid_point)return 0;
+        for(unsigned i=0;i<3;++i)if(read<float>(a,0x100c+4*i)!=b->invalid_point[i]){o->auxiliary_valid=1;break;}
+    }
+    if(o->auxiliary_valid){
+        if(!cond(79,yes))return 0;if(yes)return done(120);
+        if(!b->global_present||!b->global_present(b->context,&yes))return 0;o->global_called=1;if(yes)return done(41);
+        const int mode=read<int>(a,0xfec);if(mode==0||mode==1)return done(118);
+    }
+    const int state=read<int>(a,0x850);
+    if(state==3){if(!select_combat())return 0;if(combat->schedule)return done(combat->schedule);}
+    if(state==2){
+        if(!cond(16,yes))return 0;if(!yes&&!cond(17,yes))return 0;
+        if(yes){if(!b->navigation_blocked||!b->navigation_blocked(b->context,a,&yes))return 0;o->navigation_called=1;if(yes)return done(28);}
+        if(!cond(51,yes))return 0;if(yes)return done(10);
+    }
+    return done(118);
+}
+struct CombatSelectorRoute {const ServerNpcGruntCombatSelectorBindings* bindings;ServerNpcGruntCombatSelectorResult* result;const JetSelectorRoute* jet=nullptr;};
+
 
 int grunt_selector_tail_impl(void* a,unsigned n,float now,const ServerNpcGruntSelectorTailBindings* b,ServerNpcGruntSelectorTailResult* o,const CombatSelectorRoute* combat=nullptr) noexcept{
     if(!o)return 0;*o={};o->slot.index=o->slot.selected=o->condition.global=o->condition.bit=-1;
@@ -6595,7 +6699,7 @@ int grunt_selector_tail_impl(void* a,unsigned n,float now,const ServerNpcGruntSe
             }
         }
         int id=0;
-        if(combat){if(!grunt_combat_select(a,n,now,combat->bindings,combat->result))return 0;id=combat->result->schedule;}
+        if(combat){if(!grunt_combat_select_impl(a,n,now,combat->bindings,combat->result,combat->jet))return 0;id=combat->result->schedule;}
         else if(!b->combat_schedule||!b->combat_schedule(b->context,a,&id))return 0;
         o->combat_called=1;return done(id);
     }
@@ -6643,7 +6747,11 @@ bool schedule_request_highlevel(void* a,unsigned n,float now,const ServerNpcGrun
         if(!cond(70,yes))return false;if(yes)return selected(105);
         if(!arbitrate(yes))return false;if(yes)return dispatch();
         if(read<int>(a,0x850)!=4){
-            int id=0;if(!b.jet_tail||!b.jet_tail(b.context,a,&id)||!id)return false;
+            int id=0;
+            if(combat&&combat->jet){
+                const auto& j=*combat->jet;
+                if(!grunt_jet_tail(a,n,now,j.bindings,j.tail,combat->result,j.special))return false;id=j.tail->schedule;
+            }else if(!b.jet_tail||!b.jet_tail(b.context,a,&id)||!id)return false;
             o.tail_called=1;return selected(id);
         }
         // Jet state4 tailcalls the normal selector.
@@ -6722,6 +6830,13 @@ int __cdecl grunt_combat_choose(void* a,unsigned n,float now,const ServerNpcGrun
     return schedule_request_choose_impl(a,n,now,b->tail->request,o,b->tail,tail,&route);
 }
 const ServerNpcGruntCombatSelectorApi grunt_combat_selector_api{1,sizeof(ServerNpcGruntCombatSelectorApi),&grunt_combat_select,&grunt_combat_choose};
+int __cdecl grunt_jet_choose(void* a,unsigned n,float now,const ServerNpcGruntJetSelectorBindings* b,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntJetSelectorResult* jt,ServerNpcGruntJetSelectorResult* js) noexcept{
+    if(!tail||!combat||!jt||!js)return 0;*tail={};*combat={};*jt={};*js={};
+    if(!b||!b->combat||!b->combat->tail)return 0;
+    const JetSelectorRoute jet{b,jt,js};const CombatSelectorRoute route{b->combat,combat,&jet};
+    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route);
+}
+const ServerNpcGruntJetSelectorApi grunt_jet_selector_api{1,sizeof(ServerNpcGruntJetSelectorApi),&grunt_jet_special,&grunt_jet_tail,&grunt_jet_choose};
 int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
@@ -8712,4 +8827,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntCombatSelectorApi=_SiN_GetServerNpcGruntCombatSelectorApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntCombatSelectorApi* __cdecl SiN_GetServerNpcGruntCombatSelectorApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntCombatSelectorApi)?&grunt_combat_selector_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntJetSelectorApi=_SiN_GetServerNpcGruntJetSelectorApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntJetSelectorApi* __cdecl SiN_GetServerNpcGruntJetSelectorApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntJetSelectorApi)?&grunt_jet_selector_api:nullptr;
 }

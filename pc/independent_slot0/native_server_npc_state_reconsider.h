@@ -2987,4 +2987,31 @@ struct ServerNpcGruntCombatSelectorApi {
     int (__cdecl *choose)(void*,unsigned,float,const ServerNpcGruntCombatSelectorBindings*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*) noexcept;
 };
 using GetServerNpcGruntCombatSelectorApi=const ServerNpcGruntCombatSelectorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_jet_selector_export[]="SiN_GetServerNpcGruntJetSelectorApi";
+struct ServerNpcGruntJetSelectorBindings {
+    const ServerNpcGruntCombatSelectorBindings* combat;
+    void* context;
+    const float* invalid_point; // 225885b8 runtime vector
+    int (__cdecl *class_matches)(void*,std::uint32_t,std::uint32_t,bool*) noexcept;
+    int (__cdecl *enemy_visible)(void*,void*,void*,bool*) noexcept; // +300
+    int (__cdecl *enemy_update)(void*,void*,void*) noexcept; // 22363d50 / 2203e740(1)
+    int (__cdecl *global_present)(void*,bool*) noexcept; // 220330c0
+    int (__cdecl *navigation_blocked)(void*,void*,bool*) noexcept; // original jet-specific nav chain
+};
+struct ServerNpcGruntJetSelectorResult {
+    ServerNpcConditionResult condition;
+    int schedule;
+    unsigned completed,condition_tests,target_queries,extent_calls,position_calls,radius_checked,radius_rejected,
+        visibility_called,condition_set,class_checks,obstacle_valid,obstacle_class_matched,enemy_update_called,
+        auxiliary_valid,global_called,navigation_called,combat_called;
+    double distance_squared;
+};
+struct ServerNpcGruntJetSelectorApi {
+    std::uint32_t version,size;
+    int (__cdecl *special)(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,ServerNpcGruntJetSelectorResult*) noexcept; // 223636e0
+    int (__cdecl *tail)(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept; // 22366172
+    int (__cdecl *choose)(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept;
+};
+using GetServerNpcGruntJetSelectorApi=const ServerNpcGruntJetSelectorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
