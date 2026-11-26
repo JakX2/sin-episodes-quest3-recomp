@@ -944,6 +944,39 @@ int main(int argc,char** argv){
         auto native_post=post_bindings;native_post.combat.attack.line=nullptr;
         f.put(f.combat_nav,0xc,0);f.put(f.actor,0x8ec,0x20000u);
         assert(line_cycle->post(f.actor,sizeof(f.actor),621.5f,true,&native_post,&cycle_line,&post_result,&cycle_attack)&&post_result.completed&&post_result.combat_called&&post_result.combat.attack_called&&cycle_attack.lines[0].point_called&&cycle_attack.attack.line_clear);
+        // Active post: real native base-range +330 and auxiliary +330/+334
+        // share an equipped weapon, authenticated class, and live owner registry.
+        {
+            auto getter=reinterpret_cast<GetServerNpcWeaponPolicyCycleApi>(GetProcAddress(s,server_npc_weapon_policy_cycle_export));
+            assert(getter);const auto* policy=getter(1,sizeof(ServerNpcWeaponPolicyCycleApi));assert(policy);
+            unsigned char actor_before[sizeof(f.actor)],weapon_before[sizeof(f.replacement)];
+            std::memcpy(actor_before,f.actor,sizeof(f.actor));std::memcpy(weapon_before,f.replacement,sizeof(f.replacement));
+            const auto entry_before=f.entries[3];
+            f.entries[3].serial=9;f.entries[3].entity=reinterpret_cast<CBaseEntity*>(f.actor);
+            f.put(f.actor,0x78c,0x8002u);f.put(f.actor,0xb8,0u);f.put(f.actor,0x650,0);f.put(f.actor,0x654,0);
+            f.put(f.replacement,0,0x2247875cu);f.put(f.replacement,0x494,0x9003u);
+            f.put(f.replacement,0x4e4,1);f.put(f.replacement,0x4e8,2);
+            f.put(f.replacement,0x4ec,2);f.put(f.replacement,0x4f0,1);
+            f.put(f.replacement,0x4f8,0.f);f.put(f.replacement,0x500,300.f);
+            f.put(f.replacement,0x51c,static_cast<std::uint16_t>(0xffff));
+            unsigned char script[0x168]{};f.put(script,0x160,8);f.put(script,0x164,1);
+            ServerWeaponScriptView script_view{};script_view.fallback=script;script_view.fallback_bytes=sizeof(script);
+            ServerNpcWeaponAmmoBindings ammo{};ammo.scripts=&script_view;ammo.context=&f;
+            ammo.combat_owner=[](void* p,void* owner,void** out) noexcept -> int{assert(owner==F::self(p).actor);*out=owner;return 1;};
+            ServerNpcWeaponMeleeBindings melee{};ServerNpcWeaponPolicyBindings weapons{&ammo,&melee};ServerNpcWeaponPolicyResult weapon_result{};
+            auto admission=cycle_admission;admission.context=&f;
+            admission.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& f=F::self(p);if(e==f.actor)*n=sizeof(f.actor);else if(e==f.enemy)*n=sizeof(f.enemy);else if(e==f.replacement)*n=sizeof(f.replacement);else return 0;return 1;};
+            ServerNpcGruntScheduleLineServices scene_line{};
+            scene_line.shoot_position=[](void*,void*,float* v) noexcept -> int{v[0]=v[1]=v[2]=0;return 1;};
+            scene_line.line_trace=[](void*,void*,const float*,const float*,unsigned mask,int group,float* fraction,void** hit) noexcept -> int{assert(mask==0x46004003u&&group==6);*fraction=1;*hit=nullptr;return 1;};
+            auto equipped_line=cycle_line;equipped_line.admission=&admission;equipped_line.line=&scene_line;
+            auto equipped_post=native_post;equipped_post.aux.visibility.memory.count=4;
+            equipped_post.aux.weapon_predicate=nullptr;equipped_post.combat.attack.weapon_caps=nullptr;equipped_post.combat.attack.weapon_condition=nullptr;
+            assert(policy->post(f.actor,sizeof(f.actor),621.6f,true,&equipped_post,&equipped_line,&weapons,&post_result,&cycle_attack,&weapon_result)&&post_result.completed&&post_result.combat.attack_called&&cycle_attack.lines[0].weapon_called&&cycle_attack.attack.conditions[0]==20&&weapon_result.primary.clip_positive&&weapon_result.secondary.clip_positive&&!post_result.ammo.primary_empty&&!post_result.ammo.secondary_empty);
+            f.put(f.replacement,0x4ec,0);f.put(f.replacement,0x4f0,0);
+            assert(policy->post(f.actor,sizeof(f.actor),621.7f,true,&equipped_post,&equipped_line,&weapons,&post_result,&cycle_attack,&weapon_result)&&post_result.completed&&post_result.combat.attack_called&&cycle_attack.attack.conditions[0]==4&&weapon_result.primary.combat_live&&weapon_result.secondary.combat_live&&post_result.ammo.primary_empty&&post_result.ammo.secondary_empty);
+            std::memcpy(f.actor,actor_before,sizeof(f.actor));std::memcpy(f.replacement,weapon_before,sizeof(f.replacement));f.entries[3]=entry_before;
+        }
         f.put(f.combat_nav,0xc,1);f.put(f.actor,0x8ec,0u);
         f.put(f.actor,0xb4,0x10u);f.condition(7);f.condition(48);
         assert(post->update(f.actor,sizeof(f.actor),622,false,&post_bindings,&post_result)&&post_result.completed&&post_result.skipped_perception&&post_result.cleared_sense_conditions>=2&&post_result.enemy_cleared&&!post_result.combat_called&&f.get<unsigned>(0x8a0)==0xffffffffu);
