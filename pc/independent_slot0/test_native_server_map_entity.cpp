@@ -1,4 +1,5 @@
 #include "native_server_map_entity.h"
+#include "native_server_npc_active_weapon_step.h"
 #include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -212,11 +213,87 @@ int main(int argc,char** argv){
     nb.context=&outparsed;
     // All non-output classname tokens retain an owner-provided intern result.
     kb.intern=[](void*,const char* value,unsigned* token) noexcept ->int{
-        *token=!std::strcmp(value,"relay")?201u:!std::strcmp(value,"Trigger")?202u:!std::strcmp(value,"Use")?203u:300u;return 1;
+        *token=!std::strcmp(value,"relay")?201u:!std::strcmp(value,"Trigger")?202u:!std::strcmp(value,"Use")?203u:!std::strcmp(value,"param")?204u:300u;return 1;
     };
-    const char outmap[]="{ classname item_antigen_dispenser OnCanisterInserted \"relay,Trigger,,0,1\" OnCanisterInserted#2 \"relay,,,2,-1\" }";
+    const char outmap[]="{ classname item_antigen_dispenser OnCanisterInserted \"relay,Trigger,param,0.5,1\" OnCanisterInserted#2 \"relay,,,2,-1\" }";
     assert(api->parse(outmap,sizeof(outmap),&nb,&r)&&r.completed&&r.native_creates==1);
     assert(word(outparsed.storage[0],0x4b8+0x14)==ptrword(pool.rows[5])&&word(pool.rows[5],0x18)==ptrword(pool.rows[4])&&word(pool.rows[5],4)==203&&word(pool.rows[5],0xc)==0x40000000&&word(pool.rows[4],0x10)==1);
+    // Use the very same map-parsed action rows through native firing,
+    // queue construction and deadline service; no synthetic row reseeding.
+    namespace nw=sin_port::native_weapon_tables;
+    const auto fire_get=reinterpret_cast<nw::GetServerEntityVoidOutputApi>(GetProcAddress(server,nw::server_entity_void_output_export));
+    const auto queue_get=reinterpret_cast<nw::GetServerEntityNamedEventQueueApi>(GetProcAddress(server,nw::server_entity_named_event_queue_export));
+    const auto service_get=reinterpret_cast<nw::GetServerEntityEventServiceApi>(GetProcAddress(server,nw::server_entity_event_service_export));
+    assert(fire_get&&queue_get&&service_get);
+    const auto* fire_api=fire_get(1,sizeof(nw::ServerEntityVoidOutputApi));
+    const auto* queue_api=queue_get(1,sizeof(nw::ServerEntityNamedEventQueueApi));
+    const auto* service_api=service_get(1,sizeof(nw::ServerEntityEventServiceApi));
+    assert(fire_api&&queue_api&&service_api);
+    struct ConnectedOutput {
+        ActionPool* actions;
+        const nw::ServerEntityNamedEventQueueApi* api;
+        void* actor;
+        alignas(4) unsigned char root[0x38]{},rows[4][0x38]{},target[4]{};
+        unsigned alloc=0,delivered=0,released=0;
+        unsigned ids[3]{},inputs[3]{},types[3]{},params[3]{};
+        float now=10.f;bool locked=false;
+        nw::ServerEntityNamedEventQueueBindings queue{};
+    } co{&pool,queue_api,outparsed.storage[0]};
+    co.queue.context=&co;
+    co.queue.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);if(!token||token>f.alloc)return 0;*row=f.rows[token-1];*bytes=0x38;return 1;
+    };
+    co.queue.allocate=[](void* p,unsigned* token,void** row,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);if(f.alloc==4)return 0;*row=f.rows[f.alloc++];*token=f.alloc;*bytes=0x38;return 1;
+    };
+    co.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=201&&token<=204;return 1;};
+    nw::ServerEntityVoidOutputBindings fire_bind{};fire_bind.context=&co;
+    fire_bind.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);
+        for(unsigned i=4;i<6;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.actions->rows[i]))){
+            *row=f.actions->rows[i];*bytes=0x1c;return 1;
+        }return 0;
+    };
+    fire_bind.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* a) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);assert(activator==f.actor&&caller==f.actor);
+        nw::ServerEntityNamedEventQueueResult qr{};
+        return f.api->enqueue(f.root,sizeof(f.root),99,f.now,0x3000u,0x3000u,a,&f.queue,&qr);
+    };
+    fire_bind.release=[](void* p,unsigned token,void* row) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);assert(row==f.actions->rows[4]&&token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(row)));
+        ++f.actions->released;std::memset(row,0xcc,0x1c);return 1;
+    };
+    nw::ServerEntityVoidOutputResult connected_fire_result{};
+    put(outparsed.storage[0],0xa8,0);
+    auto* outfield=outparsed.storage[0]+0x4b8;
+    const unsigned finite_id=word(pool.rows[4],0x14),unlimited_id=word(pool.rows[5],0x14);
+    assert(fire_api->fire(outfield,0x18,co.actor,co.actor,0x6a0,.25f,&fire_bind,&connected_fire_result)&&connected_fire_result.queued==2&&connected_fire_result.parameter_overrides==1&&connected_fire_result.removed==1);
+    assert(pool.released==2&&word(outfield,0x14)==ptrword(pool.rows[5])&&!word(pool.rows[5],0x18)&&word(pool.rows[5],0x10)==0xffffffffu);
+    // Unlimited row is visited first, but finite parameter row has an earlier deadline.
+    assert(co.alloc==2&&word(co.root,0x30)==2&&word(co.rows[1],0x30)==1&&word(co.rows[0],0x34)==2);
+    assert(word(co.rows[0],0)==0x41440000&&word(co.rows[1],0)==0x41280000);
+    sin_independent::EntityHandleEntry entry{};entry.entity=reinterpret_cast<CBaseEntity*>(co.actor);entry.serial=3;
+    nw::ServerEntityEventServiceBindings sb{};sb.context=&co;sb.entities.entries=&entry;sb.entities.count=1;sb.resolve=co.queue.resolve;
+    sb.lock=[](void* p,bool enter) noexcept ->int{auto& f=*static_cast<ConnectedOutput*>(p);assert(f.locked!=enter);f.locked=enter;return 1;};
+    sb.find_named=[](void* p,void* prev,unsigned name,void* activator,void* caller,void** entity) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);assert(f.locked&&name==201&&activator==f.actor&&caller==f.actor);*entity=prev?nullptr:f.target;return 1;
+    };
+    sb.accept=[](void* p,void* target,unsigned input,void* activator,void* caller,const void* variant,unsigned id) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);assert(f.locked&&target==f.target&&activator==f.actor&&caller==f.actor&&f.delivered<3);
+        const unsigned i=f.delivered++;f.ids[i]=id;f.inputs[i]=input;
+        std::memcpy(&f.params[i],variant,4);std::memcpy(&f.types[i],static_cast<const unsigned char*>(variant)+0x10,4);return 1;
+    };
+    sb.release=[](void* p,unsigned token,void* row) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);assert(f.locked&&token&&token<=f.alloc&&row==f.rows[token-1]);++f.released;return 1;
+    };
+    nw::ServerEntityEventServiceResult es{};int budget=0;
+    auto service_at=[&](float now){return service_api->service(co.root,sizeof(co.root),99,now,false,&budget,&sb,&es);};
+    assert(service_at(10.f)&&es.future_stopped&&!es.events);
+    assert(service_at(10.5f)&&es.events==1&&es.future_stopped&&co.ids[0]==finite_id&&co.inputs[0]==202&&co.params[0]==204&&co.types[0]==2);
+    assert(service_at(12.25f)&&es.events==1&&co.ids[1]==unlimited_id&&co.inputs[1]==203&&!co.params[1]&&!co.types[1]&&!word(co.root,0x30));
+    co.now=20.f;
+    assert(fire_api->fire(outfield,0x18,co.actor,co.actor,0x6a0,.25f,&fire_bind,&connected_fire_result)&&connected_fire_result.queued==1&&!connected_fire_result.removed);
+    assert(service_at(22.25f)&&es.events==1&&co.ids[2]==unlimited_id&&co.delivered==3&&co.released==3&&!co.locked&&!word(co.root,0x30));
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
     struct PipelineFixture {
