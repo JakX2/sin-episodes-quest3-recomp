@@ -683,12 +683,12 @@ int main(int argc,char** argv){
         alignas(4) unsigned char player[0x790]{},weapon[0x4ec]{};
         unsigned sounds=0,denied=0,auto_reads=0,tests=0,choices=0,switches=0,marks=0;
         bool auto_on=false,clip=false;
-        const char* sound=nullptr;
+        char sound[64]{};
     } gf;
     sin_independent::EntityHandleEntry ge{};ge.serial=8;ge.entity=reinterpret_cast<CBaseEntity*>(gf.weapon);
     PlayerAmmoBindings gb{};gb.context=&gf;gb.inventory={gf.player,sizeof(gf.player),&ge,1,&gf,
         [](void* p,void* w,unsigned* n) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(w==q.weapon);*n=sizeof(q.weapon);return 1;}};
-    gb.sound=[](void* p,void* a,const char* n) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(a==q.player);++q.sounds;q.sound=n;return 1;};
+    gb.sound=[](void* p,void* a,const char* n) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(a==q.player);++q.sounds;const auto len=std::strlen(n)+1;assert(len<=sizeof(q.sound));std::memcpy(q.sound,n,len);return 1;};
     gb.denied_message=[](void* p,void* a,int i) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(a==q.player&&i==1);++q.denied;return 1;};
     gb.auto_switch_enabled=[](void* p,bool* yes) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);++q.auto_reads;*yes=q.auto_on;return 1;};
     gb.weapon_test=[](void* p,void* w,unsigned off,bool* yes) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(w==q.weapon);++q.tests;*yes=off==0x438||(off==0x330&&q.clip);return 1;};
