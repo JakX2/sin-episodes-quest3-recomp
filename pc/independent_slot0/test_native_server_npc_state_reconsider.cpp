@@ -2220,5 +2220,62 @@ int main(int argc,char** argv){
         f.put(q.actor,0xbc,0x10000000u);f.put(q.actor,0x994,13.f);f.put(q.actor,0x9c,80);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),13,&cb,&cr)&&cr.completed&&cr.native_result&&cr.chain.outputs.stamp_equal&&cr.tail.completed&&!cr.tail.enabled&&!cr.chain.outputs.tail_required);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntDamageOverrideApi>(GetProcAddress(s,server_npc_grunt_damage_override_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_damage_override_export)&&!g(0,sizeof(ServerNpcGruntDamageOverrideApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntDamageOverrideApi));assert(api);
+        struct OverrideFixture{
+            alignas(4) unsigned char actor[0xdb2]{},other[0xdb2]{},damage[0x48]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            const char* cue=nullptr;unsigned speech=0,hits=0,components=0,base=0;bool hit=true,copy=false;float sample=0.5f;
+            static OverrideFixture& self(void* p){return *static_cast<OverrideFixture*>(p);}
+            static unsigned rd(void* p,unsigned o){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+o,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.other);
+        static ServerNpcGruntDamageOverrideBindings b;b.context=&q;
+        auto& reaction=b.base.chain.prefix.damage.reaction;reaction.sentence.entries=q.entries;reaction.sentence.count=2;
+        reaction.sentence.speech.original_vtable=0x2249aaa4;reaction.sentence.speech.volume=1;reaction.sentence.speech.level=75;
+        reaction.request.context=&q;reaction.request.manager_ready=true;
+        reaction.request.group_index=[](void* p,const char* cue,int* out) noexcept -> int{
+            auto& q=OverrideFixture::self(p);assert(q.cue&&!std::strcmp(cue,q.cue));++q.speech;*out=-1;return 1;};
+        b.base.chain.outputs.conditions.context=&q;
+        b.base.chain.outputs.conditions.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept -> int{*out=OverrideFixture::self(p).desc;*n=0x48;return 1;};
+        b.cast_grunt=[](void* p,void* e,void** out,unsigned* n) noexcept -> int{auto& q=OverrideFixture::self(p);assert(e==q.other);*out=e;*n=sizeof(q.other);return 1;};
+        b.impact=[](void* p,void* a,void* d) noexcept -> int{auto& q=OverrideFixture::self(p);assert(a==q.actor&&d==q.damage);return 1;};
+        b.bone_hit=[](void* p,void* a,const char* name,const float* pos,float range,bool* yes) noexcept -> int{
+            auto& q=OverrideFixture::self(p);assert(a==q.actor&&range==10&&pos[0]==1);
+            assert(!std::strcmp(name,q.hits%2?"ValveBiped.Bip01_L_Calf":"ValveBiped.Bip01_R_Calf"));
+            *yes=q.hit&&q.hits%2;++q.hits;return 1;};
+        b.random_float=[](void* p,float lo,float hi,float* v) noexcept -> int{assert(lo==0&&hi==1);*v=OverrideFixture::self(p).sample;return 1;};
+        b.component_damage=[](void* p,std::uint32_t token,void* d,int* result) noexcept -> int{
+            auto& q=OverrideFixture::self(p);assert(token==77);
+            if(q.copy)assert(d!=q.damage&&OverrideFixture::rd(d,0x2c)==0x42480000u);
+            else assert(d==q.damage);
+            ++q.components;*result=7;return 1;};
+        b.base.chain.prefix.damage.context=&q;
+        b.base.chain.prefix.damage.base_damage=[](void* p,void*,void*,int* v) noexcept -> int{++OverrideFixture::self(p).base;*v=0;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.damage,0x28,0x1001u);f.put(q.damage,0xc,1.f);f.put(q.actor,0xccc,17);
+        static ServerNpcGruntDamageOverrideResult o;
+        q.other[0xdb1]=1;q.cue="GRUNT_BERSERK_SQUADMATE";f.put(q.damage,0x38,0x400000u);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.completed&&o.berserk_called&&o.rejected_flags&&!o.base_called&&q.speech==1);
+        q.other[0xdb1]=0;q.cue="GRUNT_COUGH";f.put(q.damage,0x38,0x10000u);f.put(q.actor,0xc94,10.f);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.cough_blocked&&!o.cough_called);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&b,&o)&&o.cough_called&&!o.base_called&&q.speech==2);
+        f.put(q.damage,0x38,0x80u);f.put(q.damage,0x44,1);f.put(q.damage,0x2c,12.f);
+        f.put(q.actor,0x988,0x40u);f.put(q.actor,0xc18,77u);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),12,&b,&o)&&o.impact_called&&o.bit11.mapped&&o.knee_added&&o.knee_total==12&&!o.knee_reset&&o.component_called&&o.native_result==7&&q.hits==2);
+        f.put(q.damage,0x2c,1.f);f.put(q.damage,0x44,0);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),13,&b,&o)&&o.knee_total==13&&o.random_called&&!o.knee_called&&o.knee_reset&&q.hits==4);
+        f.put(q.damage,0x2c,13.f);q.sample=0.51f;q.cue="GRUNT_KNEE";
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),14,&b,&o)&&o.knee_called&&o.bit47.mapped&&o.knee_reset&&q.speech==3);
+        reaction.sentence.speech.original_vtable=0x2248df04;
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),15,&b,&o)&&o.knee_reset&&!o.random_called&&!o.knee_called);
+        reaction.sentence.speech.original_vtable=0x2249aaa4;q.copy=true;q.actor[0xb6]=8;f.put(q.actor,0x9c,50);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),16,&b,&o)&&o.copy_used&&o.copy_amount==50&&o.component_called&&!o.knee_checked&&OverrideFixture::rd(q.damage,0x2c)==0x41500000u);
+        f.put(q.actor,0xc18,0u);
+        assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),17,&b,&o)&&o.copy_used&&o.base_called&&!o.native_result&&q.base==1);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
