@@ -50,6 +50,8 @@
 #if defined(SIN_NATIVE_GAME_FRAME)
 #include "native_server_game_frame.h"
 #include "native_server_startup.h"
+#include "native_server_level.h"
+extern "C" const sin_port::native_level::Api* __cdecl SiN_GetServerLevelApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_server_startup::Api* __cdecl SiN_GetServerStartupApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_game_frame::Api* __cdecl SiN_GetServerGameFrameApi(std::uint32_t,std::uint32_t) noexcept;
 #endif
@@ -1214,6 +1216,13 @@ struct StartupInvocation {
 static thread_local StartupInvocation* g_startup_invocation=nullptr;
 struct GameInitInvocation {sin_port::native_server_startup::State* state;const sin_port::native_server_startup::GameInitBindings* bindings;sin_port::native_server_startup::GameInitResult* result;bool entered=false;};
 static thread_local GameInitInvocation* g_gameinit_invocation=nullptr;
+struct LevelInvocation {
+    sin_port::native_level::State* state;
+    const sin_port::native_level::Bindings* bindings;
+    sin_port::native_level::Result* result;
+    bool activating,entered=false;int success=0;
+};
+static thread_local LevelInvocation* g_level_invocation=nullptr;
 #endif
 class Boundary final {
 public:
@@ -1302,8 +1311,31 @@ public:
     }
     // Original ServerGameDLL003 has 31 entries, not the SDK's 29.
     // Unimplemented slots remain terminal guards; verified methods are typed.
-    SIN_GUARD_SLOT(2, "ServerGameDLL003")
-    SIN_GUARD_SLOT(3, "ServerGameDLL003")
+    // Original slot2 RET18, slot3 RET0c.
+    virtual bool __thiscall LevelInit(const char* map,const char* entities,const char* old_level,const char* landmark,bool load_game,bool background) noexcept {
+#if defined(SIN_NATIVE_GAME_FRAME)
+        if(auto* invocation=g_level_invocation){
+            if(invocation->entered||invocation->activating)return false;invocation->entered=true;
+            const auto* api=SiN_GetServerLevelApi(1,sizeof(sin_port::native_level::Api));
+            const sin_port::native_level::LevelArgs args{map,entities,old_level,landmark,load_game,background};
+            return api&&api->level_init(invocation->state,&args,invocation->bindings,invocation->result);
+        }
+#endif
+        stopUnsupported("ServerGameDLL003.slot2");
+    }
+    virtual void __thiscall ServerActivate(edict_t*,int,int) noexcept {
+#if defined(SIN_NATIVE_GAME_FRAME)
+        if(auto* invocation=g_level_invocation){
+            if(!invocation->entered&&invocation->activating){
+                invocation->entered=true;
+                const auto* api=SiN_GetServerLevelApi(1,sizeof(sin_port::native_level::Api));
+                if(api)invocation->success=api->server_activate(invocation->state,invocation->bindings,invocation->result);
+                return;
+            }
+        }
+#endif
+        stopUnsupported("ServerGameDLL003.slot3");
+    }
     // Authenticated original 221e9080, slot4, RET 4. Typed on every
     // build; only the full independent server has the one-shot adapter.
     virtual void __thiscall GameFrame(bool simulating) noexcept {
@@ -1383,6 +1415,10 @@ static_assert(std::is_same<decltype(&Boundary::DLLInit), ExpectedInit>::value,
               "SDK2004 server DLLInit signature mismatch");
 static_assert(std::is_same<decltype(&Boundary::GameInit), ExpectedSecond>::value,
               "SDK2004 server GameInit signature mismatch");
+using ExpectedLevelInit=bool (__thiscall Boundary::*)(const char*,const char*,const char*,const char*,bool,bool) noexcept;
+using ExpectedServerActivate=void (__thiscall Boundary::*)(edict_t*,int,int) noexcept;
+static_assert(std::is_same<decltype(&Boundary::LevelInit),ExpectedLevelInit>::value,"original LevelInit x86 ABI");
+static_assert(std::is_same<decltype(&Boundary::ServerActivate),ExpectedServerActivate>::value,"original ServerActivate x86 ABI");
 using ExpectedGameFrame=void (__thiscall Boundary::*)(bool) noexcept;
 static_assert(std::is_same<decltype(&Boundary::GameFrame),ExpectedGameFrame>::value,"original server GameFrame x86 ABI");
 
@@ -1456,9 +1492,29 @@ Boundary instance;
 } // namespace
 
 #if defined(SIN_ROLE_server) && defined(SIN_NATIVE_GAME_FRAME)
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerLevelInitBoundary=_SiN_InvokeServerLevelInitBoundary")
+extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerLevelInitBoundary(sin_port::native_level::State* state,const sin_port::native_level::LevelArgs* args,const sin_port::native_level::Bindings* bindings,sin_port::native_level::Result* out) noexcept {
+    if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!args||!bindings)return 0;
+    LevelInvocation invocation{state,bindings,out,false};g_level_invocation=&invocation;
+    using Slot=bool (__thiscall *)(void*,const char*,const char*,const char*,const char*,bool,bool) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    const bool success=reinterpret_cast<Slot>(table[2])(&instance,args->map,args->entities,args->old_level,args->landmark,args->load_game,args->background);
+    g_level_invocation=nullptr;return invocation.entered&&success;
+}
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerActivateBoundary=_SiN_InvokeServerActivateBoundary")
+extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerActivateBoundary(sin_port::native_level::State* state,void* edicts,int count,int clients,const sin_port::native_level::Bindings* bindings,sin_port::native_level::Result* out) noexcept {
+    if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!bindings)return 0;
+    LevelInvocation invocation{state,bindings,out,true};g_level_invocation=&invocation;
+    using Slot=void (__thiscall *)(void*,edict_t*,int,int) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    reinterpret_cast<Slot>(table[3])(&instance,static_cast<edict_t*>(edicts),count,clients);
+    g_level_invocation=nullptr;return invocation.entered&&invocation.success;
+}
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerGameInitBoundary=_SiN_InvokeServerGameInitBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameInitBoundary(sin_port::native_server_startup::State* state,const sin_port::native_server_startup::GameInitBindings* bindings,sin_port::native_server_startup::GameInitResult* out) noexcept {
-    if(!out||g_gameinit_invocation||g_startup_invocation||g_frame_invocation)return 0;*out={};
+    if(!out||g_gameinit_invocation||g_startup_invocation||g_frame_invocation||g_level_invocation)return 0;*out={};
     if(!state||!bindings||!state->complete||state->game_init_attempted||state->busy)return 0;
     GameInitInvocation invocation{state,bindings,out};g_gameinit_invocation=&invocation;
     using Slot=bool (__thiscall *)(void*) noexcept;
@@ -1468,7 +1524,7 @@ extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameInitBoundary(si
 }
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerDllInitBoundary=_SiN_InvokeServerDllInitBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerDllInitBoundary(sin_port::native_server_startup::State* state,const sin_port::native_server_startup::Bindings* bindings,sin_port::native_server_startup::BoundaryResult* out) noexcept {
-    if(!out||g_startup_invocation||g_frame_invocation||g_gameinit_invocation)return 0;*out={};
+    if(!out||g_startup_invocation||g_frame_invocation||g_gameinit_invocation||g_level_invocation)return 0;*out={};
     if(!state||!bindings||state->attempted||state->busy)return 0;
     StartupInvocation invocation{state,bindings,out};g_startup_invocation=&invocation;
     using Slot=bool (__thiscall *)(void*,Factory,Factory,Factory,CGlobalVars*) noexcept;
@@ -1478,7 +1534,7 @@ extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerDllInitBoundary(sin
 }
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameBoundary=_SiN_InvokeServerGameFrameBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(bool simulating,const sin_port::native_game_frame::State* state,const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result) noexcept {
-    if(!result||g_frame_invocation||g_startup_invocation||g_gameinit_invocation)return 0;*result={};
+    if(!result||g_frame_invocation||g_startup_invocation||g_gameinit_invocation||g_level_invocation)return 0;*result={};
     if(!state||!bindings)return 0;
     FrameInvocation invocation{state,bindings,result};
     g_frame_invocation=&invocation;

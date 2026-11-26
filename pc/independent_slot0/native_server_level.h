@@ -3,6 +3,28 @@
 #include "native_server_dynamic_resupply.h"
 namespace sin_port::native_level {
 inline constexpr char export_name[]="SiN_GetServerLevelApi";
+inline constexpr char level_export[]="SiN_InvokeServerLevelInitBoundary",activate_export[]="SiN_InvokeServerActivateBoundary";
+struct ChapterSpec {const char* map;const char* title;};
+inline constexpr ChapterSpec chapters[]{
+    {"SE1_intro01","#SE1_Chapter1_Title"},{"SE1_intro02","#SE1_Chapter1_Title"},{"SE1_intro03","#SE1_Chapter1_Title"},
+    {"SE1_docks01","#SE1_Chapter2_Title"},{"SE1_docks02","#SE1_Chapter2_Title"},{"SE1_docks03","#SE1_Chapter2_Title"},
+    {"SE1_docks04","#SE1_Chapter2_Title"},{"SE1_docks05","#SE1_Chapter2_Title"},
+    {"SE1_U4Lab01","#SE1_Chapter3_Title"},{"SE1_U4Lab02","#SE1_Chapter3_Title"},{"SE1_U4Lab03","#SE1_Chapter3_Title"},
+    {"SE1_U4Lab04","#SE1_Chapter3_Title"},{"SE1_U4Lab05","#SE1_Chapter3_Title"},
+    {"SE1_pit01","#SE1_Chapter4_Title"},{"SE1_pit02","#SE1_Chapter4_Title"},
+    {"SE1_highrise01","#SE1_Chapter5_Title"},{"SE1_highrise02","#SE1_Chapter5_Title"},{"SE1_highrise03","#SE1_Chapter5_Title"},
+    {"SE1_finale01","#SE1_Chapter6_Title"},{"SE1_finale02","#SE1_Chapter6_Title"}
+};
+struct ChapterBindings {
+    void* context;
+    int (__cdecl *game_argument)(void*,const char*,const char*,const char**) noexcept;
+    int (__cdecl *current)(void*,const char**) noexcept;
+    int (__cdecl *set)(void*,const char*) noexcept;
+};
+struct ChapterResult {
+    unsigned completed,matched,match_index,prefix_found,current_read,changed;
+    char title[64],prefix[64],chapter[32];
+};
 using Startup=native_server_startup::State;
 struct LevelArgs {const char* map;const char* entities;const char* old_level;const char* landmark;bool load_game,background;};
 struct State {
@@ -50,6 +72,7 @@ struct Bindings {
     int (__cdecl *activation_cvar_set)(void*,int) noexcept;
     int (__cdecl *manager_activate)(void*) noexcept;
     const native_resupply::LifecycleBindings* resupply;
+    const ChapterBindings* native_chapter;
 };
 struct Result {
     unsigned completed,scope_entered,scope_closed,pre_level,chapter,map_event,transition_reset,transition_released,
@@ -58,11 +81,15 @@ struct Result {
         resupply_activated,systems,entity_scopes,entity_closes,activation_flag,health_event,cvar_set,manager;
     int descriptor,load_kind;
     native_resupply::LifecycleResult resupply;
+    ChapterResult chapter_result;
 };
 struct Api {
     std::uint32_t version,size;
     int (__cdecl *level_init)(State*,const LevelArgs*,const Bindings*,Result*) noexcept;
     int (__cdecl *server_activate)(State*,const Bindings*,Result*) noexcept;
+    int (__cdecl *unlock_chapter)(const char*,const ChapterBindings*,ChapterResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+using InvokeLevel=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*) noexcept;
+using InvokeActivate=int (__cdecl *)(State*,void*,int,int,const Bindings*,Result*) noexcept;
 }
