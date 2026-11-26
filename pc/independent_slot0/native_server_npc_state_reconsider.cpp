@@ -8553,12 +8553,32 @@ int jetpack_branch(void* a,unsigned n,void* damage,unsigned dn,float now,unsigne
     out.completed=1;return 1;
 }
 
+bool elite_local_player(const ServerNpcEliteLocalPlayerBindings& b,void*& player,ServerNpcGruntEliteDeathResult& o) noexcept{
+    player=nullptr;
+    if(!b.max_clients||!b.max_clients(b.context,&o.player_max_clients))return false;
+    o.player_lookup_native=1;
+    // Signed maxClients: original >1 and <1 paths both return null.
+    if(o.player_max_clients!=1)return true;
+    const void* edict=nullptr;unsigned bytes=0;
+    if(!b.edict||!b.edict(b.context,1,&edict,&bytes))return false;
+    o.player_slot_checked=1;
+    if(!edict)return true;
+    if(bytes<4)return false;o.player_edict_found=1;
+    if(read<unsigned>(edict,0)&2u){o.player_edict_free=1;return true;}
+    if(bytes<0x10)return false;
+    const auto unknown=read<unsigned>(edict,0xc);
+    if(!unknown)return true;
+    if(!b.base_entity||!b.base_entity(b.context,unknown,&player))return false;
+    o.player_unknown_called=1;return true;
+}
 int elite_post_impl(void* a,unsigned n,const ServerNpcGruntEliteDeathBindings& b,ServerNpcGruntEliteDeathResult& out) noexcept{
     if(!a||n<0xfe0||!b.rule)return 0;
     bool yes=false;if(!b.rule(b.context,&yes))return 0;
     out.rule_checked=1;out.rule_allowed=yes;
     if(!yes)return 1;
-    void* player=nullptr;if(!b.player||!b.player(b.context,&player))return 0;
+    void* player=nullptr;
+    if(b.native_player){if(!elite_local_player(*b.native_player,player,out))return 0;}
+    else if(!b.player||!b.player(b.context,&player))return 0;
     if(!player)return 1;out.player_found=1;
     void* target=nullptr;if(!b.entity||!b.entity(b.context,player,&target))return 0;
     if(!target)return 1;out.entity_found=1;

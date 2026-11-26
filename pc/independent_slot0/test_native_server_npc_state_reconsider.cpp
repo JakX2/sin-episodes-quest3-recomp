@@ -3042,6 +3042,9 @@ int main(int argc,char** argv){
             alignas(4) unsigned char a[0xfe0]{},player[4]{},target[4]{};
             bool rule=true,player_ok=true,entity_ok=true;unsigned step=0,rng=0,velocity_rng=0;
             bool bad_velocity=false;
+            alignas(4) unsigned char edict[0x10]{};
+            int clients=1;unsigned edict_bytes=0x10,edict_calls=0,unknown_calls=0;
+            bool edict_present=true;
             static ElitePostFixture& self(void* p){return *static_cast<ElitePostFixture*>(p);}
         } q;
         ServerNpcGruntEliteDeathBindings b{};b.context=&q;
@@ -3082,6 +3085,36 @@ int main(int argc,char** argv){
         assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.velocity_native&&o.velocity_randoms==3&&o.random_calls==3&&o.velocity_set&&o.finished&&q.step==6);
         q.step=q.rng=q.velocity_rng=0;q.bad_velocity=true;
         assert(!api->post(q.a,sizeof(q.a),&b,&o)&&o.positioned&&o.oriented&&!o.velocity_native&&!o.velocity_generated&&!o.velocity_set&&!o.finished&&o.velocity_randoms==1&&q.velocity_rng==2&&q.step==3);
+        // Recover 22288a40's engine-facing local-player gate, without
+        // treating a PE32 unknown token as a native executable pointer.
+        ServerNpcEliteLocalPlayerBindings local{};local.context=&q;
+        local.max_clients=[](void* p,int* n) noexcept -> int{*n=ElitePostFixture::self(p).clients;return 1;};
+        local.edict=[](void* p,int i,const void** e,unsigned* bytes) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);assert(i==1);++q.edict_calls;
+            *e=q.edict_present?q.edict:nullptr;*bytes=q.edict_bytes;return 1;
+        };
+        local.base_entity=[](void* p,unsigned token,void** entity) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);assert(token==0x1234u);++q.unknown_calls;
+            *entity=q.player_ok?q.player:nullptr;return 1;
+        };
+        b.native_player=&local;b.player=nullptr;q.bad_velocity=false;q.step=q.rng=q.velocity_rng=0;
+        for(int clients:{-1,0,2,32}){
+            q.clients=clients;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.player_lookup_native&&o.player_max_clients==clients&&!o.player_slot_checked&&!o.player_found&&!q.edict_calls);
+        }
+        q.clients=1;q.edict_present=false;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_slot_checked&&!o.player_edict_found&&!o.player_found&&q.edict_calls==1);
+        q.edict_present=true;q.edict_bytes=4;f.put(q.edict,0,2u);
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_edict_found&&o.player_edict_free&&!o.player_unknown_called&&!o.player_found);
+        f.put(q.edict,0,0u);
+        assert(!api->post(q.a,sizeof(q.a),&b,&o)&&o.player_edict_found&&!o.player_unknown_called&&!o.player_found);
+        q.edict_bytes=0x10;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_edict_found&&!o.player_edict_free&&!o.player_unknown_called&&!o.player_found);
+        f.put(q.edict,0xc,0x1234u);q.player_ok=false;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_unknown_called&&!o.player_found&&q.unknown_calls==1);
+        q.player_ok=true;q.entity_ok=false;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_unknown_called&&o.player_found&&!o.entity_found&&q.unknown_calls==2&&!q.step);
+        q.entity_ok=true;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.player_unknown_called&&o.player_found&&o.entity_found&&o.velocity_native&&o.finished&&q.unknown_calls==3&&q.step==6);
     }
 
     {
