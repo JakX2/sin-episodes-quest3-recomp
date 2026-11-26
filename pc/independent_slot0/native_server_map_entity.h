@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; }
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; struct ServerNpcActivityAssignmentBindings; }
 namespace sin_port::native_map {
 inline constexpr char export_name[]="SiN_GetServerMapEntityApi";
 inline constexpr unsigned token_capacity=2048;
@@ -645,6 +645,27 @@ struct ScriptedSequenceEventBindings {
 struct ScriptedSequenceEventResult {unsigned completed,output_called,offset,queued,native_queued;};
 inline constexpr char scripted_sequence_event_export[]="SiN_FireScriptedSequenceEvent";
 using FireScriptedSequenceEvent=int (__cdecl *)(void*,unsigned,int,const ScriptedSequenceEventBindings*,ScriptedSequenceEventResult*) noexcept;
+// Native StartSequence and play-completion wrapper. The remaining
+// terminal finish leaf (221afa70) is deliberately owner-bound.
+struct ScriptedSequenceAnimationBindings {
+    const ScriptedSequenceControlBindings* control;
+    const ScriptedSequenceEventBindings* events;
+    const native_weapon_tables::ServerNpcActivityAssignmentBindings* assignment;
+    void* context;
+    int (__cdecl *lookup)(void*,void*,unsigned,int*) noexcept; // original 220ecb90
+    int (__cdecl *activity)(void*,void*,int,int*) noexcept; // original 220ebc10
+    int (__cdecl *missing_sequence)(void*,void*,unsigned) noexcept;
+    int (__cdecl *finish)(void*,void*,void*) noexcept; // original 221afa70
+};
+struct ScriptedSequenceAnimationResult {
+    unsigned completed,started,empty_completed,lookup_called,missing,activity_called,activity_fallback,assigned;
+    unsigned post_idle,post_idle_started,finish_called,output_called,queued,native_queued;
+    int sequence,activity;
+};
+inline constexpr char scripted_sequence_start_export[]="SiN_StartScriptedSequenceAnimation";
+inline constexpr char scripted_sequence_play_done_export[]="SiN_CompleteScriptedSequencePlay";
+using StartScriptedSequenceAnimation=int (__cdecl *)(void*,unsigned,void*,unsigned,bool,const ScriptedSequenceAnimationBindings*,ScriptedSequenceAnimationResult*) noexcept;
+using CompleteScriptedSequencePlay=int (__cdecl *)(void*,unsigned,void*,const ScriptedSequenceAnimationBindings*,ScriptedSequenceAnimationResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;

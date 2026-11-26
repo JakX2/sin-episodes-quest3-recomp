@@ -100,6 +100,8 @@ ORIGINAL_METHODS={
   "sequence_deleting_destructor":(0x221b02c0,30,"84f958d98ceec4a02885ba20d3d6f6e7e2410029c48fbf91e35fd23f7e5ea0e5"),
   "sequence_destructor":(0x221b02e0,63,"d9f389c3c9e2c9f92cb7bdef84277eab2d67cdce326c507472fbfa3eca2cdd02"),
   "sequence_update_on_remove":(0x221af950,20,"3dd7303fc511a55b3e40923d53fa5fc40df8833bb8bed3b8b97c03a96e3dd526"),
+  "sequence_start_animation":(0x221aebc0,141,"71179552b2ba336d9b46df465ee2384488a31ab9d77af316c9d3215444ab17a0"),
+  "sequence_play_done":(0x221ae2c0,140,"f6c568e1ea02f0004e3e1d76d8def58c8734afc79148465e20c457a106d32798"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),

@@ -1,5 +1,7 @@
 #include "native_server_map_entity.h"
 #include "native_server_npc_active_weapon_step.h"
+#include "native_server_activity_assignment.h"
+extern "C" const sin_port::native_weapon_tables::ServerNpcActivityAssignmentApi* __cdecl SiN_GetServerNpcActivityAssignmentApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cmath>
 #include "server_fixed_difficulty_service.h"
 int __cdecl SinPublishCampaignEventInternal(void*,const sin_port::fixed_service::NativeTriggerEvent*,
@@ -3626,6 +3628,80 @@ int scripted_sequence_event(void* actor,unsigned bytes,int index,const ScriptedS
     }
     o->output_called=o->completed=1;return 1;
 }
+// 221aebc0 sets the sequence-start latch even for an empty token.
+bool animation_valid(void* a,unsigned n,void* npc,const ScriptedSequenceAnimationBindings* b,unsigned& bytes) noexcept {
+    unsigned vt=0,nv=0;
+    return b&&b->control&&b->control->extent&&n>=scripted_sequence_extent&&
+        SinReadCampaignTouchMarkerInternal(a,&vt)&&vt==scripted_sequence_vtable&&SinCampaignStorageReadableInternal(a,scripted_sequence_extent)&&
+        npc&&b->control->extent(b->control->context,npc,&bytes)&&bytes>=0x974&&
+        SinReadCampaignTouchMarkerInternal(npc,&nv)&&scripted_npc_marker(nv)&&SinCampaignStorageReadableInternal(npc,bytes);
+}
+bool animation_done(void*,unsigned,void*,unsigned,const ScriptedSequenceAnimationBindings&,ScriptedSequenceAnimationResult&) noexcept;
+bool animation_start(void* a,unsigned n,void* npc,unsigned bytes,unsigned token,bool complete_empty,
+    const ScriptedSequenceAnimationBindings& b,ScriptedSequenceAnimationResult& o) noexcept {
+    write_field(a,0x3cd,static_cast<unsigned char>(1));
+    if(!token&&complete_empty){
+        o.empty_completed=1;
+        if(!animation_done(a,n,npc,bytes,b,o))return false;
+        o.started=0; // original AL false, even if post-idle started
+        return true;
+    }
+    const unsigned name=token?token:0x223d47a8u; // original empty string
+    if(!b.lookup||!b.activity||!b.assignment)return false;
+    if(!b.lookup(b.context,npc,name,&o.sequence))return false;o.lookup_called=1;
+    if(o.sequence==-1){
+        if(!b.missing_sequence||!b.missing_sequence(b.context,npc,name))return false;
+        o.missing=1;o.sequence=0;
+    }
+    if(o.sequence<0||!b.activity(b.context,npc,o.sequence,&o.activity))return false;o.activity_called=1;
+    if(o.activity==-1){o.activity=1;o.activity_fallback=1;}
+    // Original 220417d0 receives activity, sequence, activity, activity.
+    // Reuse the native direct assignment, including sequence reset and
+    // event registration, without modifying pending selection fields.
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerNpcActivityAssignmentApi(1,sizeof(ServerNpcActivityAssignmentApi));
+    const ServerNpcActivityAssignmentInput in{o.activity,o.sequence,o.activity,o.activity};
+    ServerNpcActivityAssignmentResult result{};
+    if(!api||!api->assign(npc,bytes,&in,b.assignment,&result)||!result.assigned)return false;
+    o.assigned=o.started=1;return true;
+}
+// 221ae2c0: no successor + nonempty post-idle -> NPC script state 2
+// and native StartSequence; otherwise call the remaining finish leaf.
+// Both branches fire OnEndSequence with null activator and self caller.
+bool animation_done(void* a,unsigned n,void* npc,unsigned bytes,const ScriptedSequenceAnimationBindings& b,
+    ScriptedSequenceAnimationResult& o) noexcept {
+    const auto& c=*b.control;
+    if(c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count)||!b.events||!b.events->output)return false;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    const unsigned post=read_field<unsigned>(a,0x39c);
+    if(post&&!registry.Resolve(read_field<unsigned>(a,0x3d4))){
+        write_field(npc,0x96c,2u);o.post_idle=1;
+        if(!animation_start(a,n,npc,bytes,post,false,b,o))return false;
+        o.post_idle_started=o.started;
+    }else{
+        if(!b.finish||!b.finish(b.context,a,npc))return false;o.finish_called=1;
+    }
+    if(b.events->native_queue){
+        if(!native_named_output(a,n,nullptr,0x3f8,false,b.events->output,b.events->native_queue,o.queued))return false;
+        o.native_queued=o.queued;
+    }else{
+        using namespace sin_port::native_weapon_tables;
+        const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+        ServerEntityVoidOutputResult r{};
+        if(!fire||!fire->fire(static_cast<unsigned char*>(a)+0x3f8,0x18,nullptr,a,n,0.f,b.events->output,&r))return false;
+        o.queued=r.queued;
+    }
+    o.output_called=1;return true;
+}
+int run_sequence_animation(void* a,unsigned n,void* npc,unsigned token,bool complete_empty,bool done,
+    const ScriptedSequenceAnimationBindings* b,ScriptedSequenceAnimationResult* o) noexcept {
+    if(!o)return 0;*o={};o->sequence=o->activity=-1;
+    unsigned bytes=0;if(!animation_valid(a,n,npc,b,bytes))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    const bool ok=done?animation_done(a,n,npc,bytes,*b,*o):animation_start(a,n,npc,bytes,token,complete_empty,*b,*o);
+    o->completed=ok;return int(ok);
+}
 // 2216b300 InputTestActivator: predicate (including inherited negation),
 // exactly one output, original activator and self caller, zero extra delay.
 int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
@@ -4082,4 +4158,15 @@ extern "C" int __cdecl SiN_DeferScriptedSequenceRemoval(void* actor,unsigned byt
     if(o)*o={};if(cancelled)*cancelled={};
     if(!cancel||!cancelled)return 0;
     return sin_port::native_map::defer_remove_impl(actor,bytes,b,o,cancel,cancelled);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_StartScriptedSequenceAnimation=_SiN_StartScriptedSequenceAnimation")
+extern "C" int __cdecl SiN_StartScriptedSequenceAnimation(void* a,unsigned n,void* npc,unsigned token,bool complete_empty,
+    const sin_port::native_map::ScriptedSequenceAnimationBindings* b,sin_port::native_map::ScriptedSequenceAnimationResult* o) noexcept {
+    return sin_port::native_map::run_sequence_animation(a,n,npc,token,complete_empty,false,b,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_CompleteScriptedSequencePlay=_SiN_CompleteScriptedSequencePlay")
+extern "C" int __cdecl SiN_CompleteScriptedSequencePlay(void* a,unsigned n,void* npc,
+    const sin_port::native_map::ScriptedSequenceAnimationBindings* b,sin_port::native_map::ScriptedSequenceAnimationResult* o) noexcept {
+    return sin_port::native_map::run_sequence_animation(a,n,npc,0,false,true,b,o);
 }
