@@ -1026,7 +1026,7 @@ int main(int argc,char** argv){
         bool short_allocation=false;
         float fraction=0,next=0;
     } affactory{&ex};
-    CanisterBindings canister_bind{};
+    sin_port::native_resupply::CanisterBindings canister_bind{};
     canister_bind.context=&affactory;
     canister_bind.base_construct=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AntigenFactoryFixture*>(p);assert(a==q.ex->canister);++q.constructs;return 1;};
     canister_bind.spawn_setup=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AntigenFactoryFixture*>(p);assert(a==q.ex->canister);++q.spawns;return 1;};
