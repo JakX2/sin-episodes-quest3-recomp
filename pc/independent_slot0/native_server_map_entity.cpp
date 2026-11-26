@@ -174,10 +174,10 @@ int __cdecl parse(const char* s,unsigned n,const Bindings* b,Result* o) noexcept
         cursor=e.end;
     }
 }
-const Api api{1,sizeof(Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
 extern "C" __declspec(dllexport) const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t v,std::uint32_t n) noexcept {
-    using namespace sin_port::native_map;return v==1&&n==sizeof(Api)?&api:nullptr;
+    using namespace sin_port::native_map;return v==1&&n==sizeof(sin_port::native_map::Api)?&api:nullptr;
 }
