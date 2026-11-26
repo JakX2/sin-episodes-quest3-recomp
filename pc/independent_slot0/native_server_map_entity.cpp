@@ -111,11 +111,12 @@ constexpr FactorySpec counter_spec{"math_counter",Family::MathCounter,0x224fb61c
 constexpr FactorySpec menu_spec{"logic_menulistener",Family::LogicMenuListener,0x224fb634,0x2241f620,menu_extent};
 constexpr FactorySpec navigation_spec{"logic_navigation",Family::LogicNavigation,0x224fb0e0,0x2241ece4,navigation_extent};
 constexpr FactorySpec autosave_spec{"logic_autosave",Family::LogicAutosave,0x224fb62c,0x2241f608,autosave_extent};
+constexpr FactorySpec multicompare_spec{"logic_multicompare",Family::LogicMultiCompare,0x224fb600,0x2241f584,multicompare_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||d->count<12||d->count>22)return false;
+    if(!d||!d->registered||d->count<12||d->count>23)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false,logic_autosave=false;
-    for(unsigned i=12;i<22;++i){
+    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false,logic_autosave=false,logic_multicompare=false;
+    for(unsigned i=12;i<23;++i){
         if(i>=d->count){if(d->slots[i])return false;continue;}
         if(d->slots[i]==&relay_spec&&!relay)relay=true;
         else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
@@ -127,12 +128,13 @@ bool valid_dictionary(const FactoryDictionary* d) noexcept {
         else if(d->slots[i]==&menu_spec&&!logic_menu)logic_menu=true;
         else if(d->slots[i]==&navigation_spec&&!logic_navigation)logic_navigation=true;
         else if(d->slots[i]==&autosave_spec&&!logic_autosave)logic_autosave=true;
+        else if(d->slots[i]==&multicompare_spec&&!logic_multicompare)logic_multicompare=true;
         else return false;
     }
     return true;
 }
 int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
-    if(!valid_dictionary(d)||d->count==22)return 0;
+    if(!valid_dictionary(d)||d->count==23)return 0;
     for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
     d->slots[d->count++]=spec;return 1;
 }
@@ -146,6 +148,7 @@ int __cdecl register_counter(FactoryDictionary* d) noexcept {return register_opt
 int __cdecl register_menu(FactoryDictionary* d) noexcept {return register_optional(d,&menu_spec);}
 int __cdecl register_navigation(FactoryDictionary* d) noexcept {return register_optional(d,&navigation_spec);}
 int __cdecl register_autosave(FactoryDictionary* d) noexcept {return register_optional(d,&autosave_spec);}
+int __cdecl register_multicompare(FactoryDictionary* d) noexcept {return register_optional(d,&multicompare_spec);}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -183,6 +186,26 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         const unsigned zero=0,invalid=0xffffffffu,vt=relay_vtable;
         std::memcpy(a,&vt,4);std::memcpy(a+0x394,&zero,4);
         std::memcpy(a+0x3a0,&invalid,4);std::memcpy(a+0x3a4,&zero,4);
+        if(!r->initialize(r->context,a,name))return 0;
+        o->networkable=a+0x160;o->completed=1;return 1;
+    }
+    if(o->spec->family==Family::LogicMultiCompare){
+        const auto* r=b->logic_multicompare;
+        if(!r||!r->allocate||!r->base_construct||!r->initialize||
+           !r->allocate(r->context,multicompare_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<multicompare_extent)return 0;
+        auto* a=static_cast<unsigned char*>(o->actor);
+        if(!r->base_construct(r->context,a,1))return 0;
+        unsigned scalar[3]{};std::memcpy(scalar,a+0x3c4,8);std::memcpy(scalar+2,a+0x3d0,4);
+        if(scalar[0]||scalar[1]||scalar[2])return 0;
+        for(unsigned off=0x394;off<=0x3ac;off+=0x18){
+            unsigned head=0;std::memcpy(&head,a+off+0x14,4);if(head)return 0;
+        }
+        const unsigned zero=0,invalid=0xffffffffu,vt=multicompare_vtable;
+        std::memcpy(a,&vt,4);
+        for(unsigned off=0x394;off<=0x3ac;off+=0x18){
+            std::memcpy(a+off,&zero,4);std::memcpy(a+off+0xc,&invalid,4);std::memcpy(a+off+0x10,&zero,4);
+        }
+        std::memcpy(a+0x3cc,&zero,4);
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
     }
@@ -423,6 +446,12 @@ int __cdecl destroy_navigation(void* actor,unsigned bytes,void* networkable,cons
 int __cdecl destroy_autosave(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
     if(!networkable)return 1;
     if(!actor||bytes<autosave_extent||entity_vtable(actor)!=autosave_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
+    return b->release_networkable(b->context,networkable);
+}
+int __cdecl destroy_multicompare(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!actor||bytes<multicompare_extent||entity_vtable(actor)!=multicompare_vtable||
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
@@ -1517,6 +1546,7 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
         case menu_vtable:first=0x398;count=16;extent=menu_extent;break;
         case navigation_vtable:extent=navigation_extent;break;
         case autosave_vtable:extent=autosave_extent;break;
+        case multicompare_vtable:first=0x394;count=2;extent=multicompare_extent;break;
         default:return 0;
     }
     if(n<extent||(menu&&(!b->unregister_menu||read_field<unsigned>(a,0x394)!=menu_listener_vtable))||
@@ -1531,21 +1561,38 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
     };
     std::uintptr_t actor_begin=0,actor_end=0;
     if(!range(a,n,actor_begin,actor_end))return 0;
+    // CMultiInputVar destructor 22154c20 uses a special head-last
+    // release order, but the same 28-byte pool as output actions.
+    if(vt==multicompare_vtable){
+        unsigned token=read_field<unsigned>(a,0x3cc);
+        while(token){
+            if(o->comparisons==max_per_output||!b->resolve||!b->release_action)return 0;
+            void* row=nullptr;unsigned bytes=0;
+            if(!b->resolve(b->context,token,&row,&bytes)||bytes<0x1c)return 0;
+            std::uintptr_t begin=0,end=0;
+            if(!range(row,0x1c,begin,end)||(begin<actor_end&&actor_begin<end))return 0;
+            for(unsigned j=0;j<o->comparisons;++j){
+                const auto prev=reinterpret_cast<std::uintptr_t>(plan[j].row);
+                if(plan[j].token==token||(begin<prev+0x1c&&prev<end))return 0;
+            }
+            plan[o->comparisons++]={token,row};token=read_field<unsigned>(row,0x18);
+        }
+    }
     for(unsigned i=count;i>0;--i){
         const unsigned off=first+(i-1)*0x18;
         unsigned token=read_field<unsigned>(a,off+0x14),list_count=0;
         ++o->outputs;
         while(token){
-            if(list_count++==max_per_output||o->actions==max_actions||!b->resolve||!b->release_action)return 0;
+            if(list_count++==max_per_output||o->comparisons+o->actions==max_actions||!b->resolve||!b->release_action)return 0;
             void* row=nullptr;unsigned bytes=0;
             if(!b->resolve(b->context,token,&row,&bytes)||bytes<0x1c)return 0;
             std::uintptr_t begin=0,end=0;
             if(!range(row,0x1c,begin,end)||(begin<actor_end&&actor_begin<end))return 0;
-            for(unsigned j=0;j<o->actions;++j){
+            for(unsigned j=0;j<o->comparisons+o->actions;++j){
                 const auto prev=reinterpret_cast<std::uintptr_t>(plan[j].row);
                 if(plan[j].token==token||(begin<prev+0x1c&&prev<end))return 0;
             }
-            plan[o->actions++]={token,row};
+            plan[o->comparisons+o->actions++]={token,row};
             token=read_field<unsigned>(row,0x18);
         }
     }
@@ -1557,7 +1604,16 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
         if(!b->unregister_menu(b->context,static_cast<unsigned char*>(a)+0x394))return 0;
         o->unregistered=1;
     }
-    for(unsigned i=0;i<o->actions;++i){
+    if(o->comparisons){
+        for(unsigned i=1;i<o->comparisons;++i){
+            write_field(plan[0].row,0x18,i+1<o->comparisons?plan[i+1].token:0u);
+            if(!b->release_action(b->context,plan[i].token,plan[i].row))return 0;
+            ++o->comparisons_released;
+        }
+        if(!b->release_action(b->context,plan[0].token,plan[0].row))return 0;
+        ++o->comparisons_released;
+    }
+    for(unsigned i=o->comparisons;i<o->comparisons+o->actions;++i){
         if(!b->release_action(b->context,plan[i].token,plan[i].row))return 0;
         ++o->released;
     }
@@ -1838,7 +1894,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
