@@ -105,23 +105,25 @@ constexpr FactorySpec auto_spec{"logic_auto",Family::LogicAuto,0x224fb288,0x2241
 constexpr FactorySpec timer_spec{"logic_timer",Family::LogicTimer,0x224fb604,0x2241f590,timer_extent};
 constexpr FactorySpec branch_spec{"logic_branch",Family::LogicBranch,0x224fb628,0x2241f5fc,branch_extent};
 constexpr FactorySpec case_spec{"logic_case",Family::LogicCase,0x224fb620,0x2241f5e4,case_extent};
+constexpr FactorySpec compare_spec{"logic_compare",Family::LogicCompare,0x224fb624,0x2241f5f0,compare_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||d->count<12||d->count>17)return false;
+    if(!d||!d->registered||d->count<12||d->count>18)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false;
-    for(unsigned i=12;i<17;++i){
+    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false;
+    for(unsigned i=12;i<18;++i){
         if(i>=d->count){if(d->slots[i])return false;continue;}
         if(d->slots[i]==&relay_spec&&!relay)relay=true;
         else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
         else if(d->slots[i]==&timer_spec&&!logic_timer)logic_timer=true;
         else if(d->slots[i]==&branch_spec&&!logic_branch)logic_branch=true;
         else if(d->slots[i]==&case_spec&&!logic_case)logic_case=true;
+        else if(d->slots[i]==&compare_spec&&!logic_compare)logic_compare=true;
         else return false;
     }
     return true;
 }
 int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
-    if(!valid_dictionary(d)||d->count==17)return 0;
+    if(!valid_dictionary(d)||d->count==18)return 0;
     for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
     d->slots[d->count++]=spec;return 1;
 }
@@ -130,6 +132,7 @@ int __cdecl register_auto(FactoryDictionary* d) noexcept {return register_option
 int __cdecl register_timer(FactoryDictionary* d) noexcept {return register_optional(d,&timer_spec);}
 int __cdecl register_branch(FactoryDictionary* d) noexcept {return register_optional(d,&branch_spec);}
 int __cdecl register_case(FactoryDictionary* d) noexcept {return register_optional(d,&case_spec);}
+int __cdecl register_compare(FactoryDictionary* d) noexcept {return register_optional(d,&compare_spec);}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -167,6 +170,26 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         const unsigned zero=0,invalid=0xffffffffu,vt=relay_vtable;
         std::memcpy(a,&vt,4);std::memcpy(a+0x394,&zero,4);
         std::memcpy(a+0x3a0,&invalid,4);std::memcpy(a+0x3a4,&zero,4);
+        if(!r->initialize(r->context,a,name))return 0;
+        o->networkable=a+0x160;o->completed=1;return 1;
+    }
+    if(o->spec->family==Family::LogicCompare){
+        const auto* r=b->logic_compare;
+        if(!r||!r->allocate||!r->base_construct||!r->initialize||
+           !r->allocate(r->context,compare_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<compare_extent)return 0;
+        auto* a=static_cast<unsigned char*>(o->actor);
+        // Original 2217da20 base(1) and four float output triplets.
+        if(!r->base_construct(r->context,a,1))return 0;
+        unsigned values[2]{};std::memcpy(values,a+0x394,8);
+        if(values[0]||values[1])return 0;
+        for(unsigned off=0x39c;off<=0x3e4;off+=0x18){
+            unsigned head=0;std::memcpy(&head,a+off+0x14,4);if(head)return 0;
+        }
+        const unsigned zero=0,invalid=0xffffffffu,vt=compare_vtable;
+        std::memcpy(a,&vt,4);
+        for(unsigned off=0x39c;off<=0x3e4;off+=0x18){
+            std::memcpy(a+off,&zero,4);std::memcpy(a+off+0xc,&invalid,4);std::memcpy(a+off+0x10,&zero,4);
+        }
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
     }
@@ -294,6 +317,12 @@ int __cdecl destroy_branch(void* actor,unsigned bytes,void* networkable,const Re
 int __cdecl destroy_case(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
     if(!networkable)return 1;
     if(!actor||bytes<case_extent||entity_vtable(actor)!=case_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
+    return b->release_networkable(b->context,networkable);
+}
+int __cdecl destroy_compare(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!actor||bytes<compare_extent||entity_vtable(actor)!=compare_vtable||
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
@@ -1240,7 +1269,7 @@ int __cdecl compare_input(void* a,unsigned n,const char* name,void* activator,un
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
