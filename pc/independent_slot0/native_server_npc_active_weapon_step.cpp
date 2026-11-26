@@ -911,6 +911,37 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
         return 1;
     };
     switch(handler){
+    case 0x22037a30u:{ // SetHealth: heal through 222a57a0/22140be0,
+        // or lower by constructing damage info via 221f89c0/221f8550.
+        if(n<0x37c)return 0;
+        const int requested=rd<unsigned>(d.variant,0x10)==5u?rd<int>(d.variant,0):0;
+        const int prior=rd<int>(a,0x9c);
+        if(requested==prior)return 1;
+        const unsigned delta=static_cast<unsigned>(requested)-static_cast<unsigned>(prior);
+        // x86 SUB/CDQ/XOR/SUB implements wrapping signed absolute value.
+        const unsigned magnitude=delta&0x80000000u?0u-delta:delta;
+        int signed_magnitude=0;std::memcpy(&signed_magnitude,&magnitude,4);
+        const float amount=static_cast<float>(signed_magnitude);
+        if(requested>prior){
+            const int maximum=rd<int>(a,0x98);
+            if(!rd<unsigned>(a,0x16c)||rd<int>(a,0x94)<2||prior>=maximum){++o.health_blocked;return 1;}
+            const double truncated=std::trunc(double(amount));
+            const int added=truncated<double(std::numeric_limits<int>::min())||truncated>double(std::numeric_limits<int>::max())?std::numeric_limits<int>::min():static_cast<int>(truncated);
+            const unsigned bits=static_cast<unsigned>(prior)+static_cast<unsigned>(added);
+            int next=0;std::memcpy(&next,&bits,4);
+            // Shared +1b4 is RET and +120 returns false on all eight tables.
+            wr<int>(a,0x9c,next);if(next>maximum)wr<int>(a,0x9c,maximum);
+            ++o.health_healed;return 1;
+        }
+        if(!b.health_damage)return -1;
+        alignas(4) unsigned char info[0x48]{};
+        const unsigned self=rd<unsigned>(a,0x378);
+        wr<unsigned>(info,0x24,self);wr<unsigned>(info,0x28,self);
+        wr<float>(info,0x2c,amount);wr<float>(info,0x30,amount);
+        wr<unsigned>(info,0x34,0x7f7fffffu);wr<unsigned>(info,0x40,0xffffffffu);
+        if(!b.health_damage(b.context,a,info,sizeof(info)))return 0;
+        ++o.health_damage;return 1;
+    }
     case 0x22032000u:return native_set_squad(a,n,d,b,o);
     case 0x22031fe0u:return native_rappel_input(a,n,true,b,o);
     case 0x22031ff0u:return native_rappel_input(a,n,false,b,o);
