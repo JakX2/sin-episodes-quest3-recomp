@@ -38,4 +38,21 @@ struct ServerNpcActiveWeaponStepApi {
     int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcActiveWeaponStepBindings*,ServerNpcActiveWeaponStepResult*) noexcept;
 };
 using GetServerNpcActiveWeaponStepApi=const ServerNpcActiveWeaponStepApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_active_jet_weapon_step_export[]="SiN_GetServerNpcActiveJetWeaponStepApi";
+struct ServerNpcActiveJetWeaponStepBindings {
+    ServerNpcActiveWeaponStepBindings base; // base.think must be null
+    const ServerNpcNativeJetCombatLineThinkBindings* think;
+};
+struct ServerNpcActiveJetWeaponStepResult {
+    ServerNpcNativeJetRequestThinkResult think;
+    ServerNpcGruntNativeLineAttackResult outer_line,inner_line;
+    ServerNpcWeaponPolicyResult outer_weapon,inner_weapon;
+    ServerNpcScriptWeaponEventFrameResult animation;
+    unsigned think_called,think_completed,reset_called,motor_called,animation_called,completed;
+};
+struct ServerNpcActiveJetWeaponStepApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcActiveJetWeaponStepBindings*,ServerNpcActiveJetWeaponStepResult*) noexcept;
+};
+using GetServerNpcActiveJetWeaponStepApi=const ServerNpcActiveJetWeaponStepApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

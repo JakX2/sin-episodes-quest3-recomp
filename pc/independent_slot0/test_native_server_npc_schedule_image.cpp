@@ -1113,6 +1113,42 @@ int main(int argc,char** argv){
     assert(jet_think->run(f.actor,sizeof(f.actor),84,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_bind,&jet_run));
     assert(!jet_run.requests.base.requests&&jet_cycle.jet_queried&&!jet_cycle.jet_called&&jet_cycle.think.completed&&jet_run.requests.base.scheduler.jetpack.lifecycle.completed);
     int mode=0;std::memcpy(&mode,f.actor+0xfec,4);assert(mode==2);
+    // Due Jetpack outer update: keep the original attachment tick and
+    // actual native descriptor acquisition, then enter animation.
+    {
+        auto get_step=reinterpret_cast<GetServerNpcActiveJetWeaponStepApi>(GetProcAddress(s,server_npc_active_jet_weapon_step_export));
+        auto get_reg=reinterpret_cast<GetServerGruntRegistrationApi>(GetProcAddress(s,server_grunt_registration_export));
+        auto get_events=reinterpret_cast<GetServerEventDictionaryApi>(GetProcAddress(s,server_event_dictionary_export));
+        assert(get_step&&get_reg&&get_events);
+        const auto* step=get_step(1,sizeof(ServerNpcActiveJetWeaponStepApi));
+        const auto* reg=get_reg(1,sizeof(ServerGruntRegistrationApi));const auto* ed=get_events(1,sizeof(ServerEventDictionaryApi));
+        assert(step&&reg&&ed);
+        ServerEventDictionaryEntry event_names[32]{};ServerEventDictionary events{event_names,32,0,0,0};const auto old_ids=ids;
+        assert(ed->seed(&events)&&reg->grunt(&activities,&events,nullptr,&ids));
+        ServerNpcScriptWeaponEventFrameBindings frame{};auto& gf=frame.frame.frame;gf.ids=&ids;
+        auto& rt=gf.runtime;rt.npc.context=&f;
+        auto& as=rt.npc.transition.assignment;as.translation.actor_class=NpcActivityJetpack;as.translation.activities=&activities;as.translation.events=&events;
+        as.translation.metadata=[](void*,void*,const ServerActivityCompositeView** out) noexcept -> int{*out=nullptr;return 0;};
+        as.dictionary.dictionary=&events;rt.npc.frame.activities=&activities;rt.npc.frame.frame.dictionary=as.dictionary;
+        // Explicit absent studio model, not a fake successful animation.
+        rt.npc.frame.frame.sequence.frame.model_available=[](void*,void*) noexcept -> int{return 0;};
+        rt.npc.storage=[](void* p,std::uint32_t token,const void** out,unsigned* n) noexcept -> int{
+            auto& q=F::self(p);if(token==100){*out=q.nav;*n=sizeof(q.nav);return 1;}
+            if(token==101){*out=q.path;*n=sizeof(q.path);return 1;}return 0;
+        };
+        rt.weapon.animation.activities=&activities;rt.weapon.animation.events=&events;rt.weapon.animation.dictionary=as.dictionary;
+        ServerNpcActiveJetWeaponStepBindings binding{};auto& bs=binding.base;
+        bs.image=&f.image;bs.schedule=&runtime;bs.full=&full;bs.attack=&ab;bs.facing=&fb;bs.target=&tb;bs.movement=&mb;
+        bs.cue=&no_legacy_cue;bs.observe=&ob;bs.sound_cover=&scb;bs.tactical=&tcb;bs.policy=&weapon_policy;bs.frame=&frame;binding.think=&jet_combat_bind;
+        static ServerNpcActiveJetWeaponStepResult out;
+        std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
+        f.put(f.actor,0x218,321u);f.put(f.actor,0x78c,0xffffffffu);bind_nav();ready=true;
+        f.put(f.actor,0x864,85.f);const ServerNpcRunAnimationInput input{85.f,false,false};
+        assert(step->run(f.actor,sizeof(f.actor),&input,&binding,&out)&&out.completed&&out.think_completed&&out.animation_called);
+        assert(out.think.think.think.think.squad.cycle.preschedule.jet_called&&out.think.requests.base.request.acquisition.translated==122);
+        assert(!out.animation.frame.frame.runtime.tick.animation.frame.frame.model_available&&!out.animation.frame.frame.handled);
+        ids=old_ids;
+    }
     std::memcpy(before,f.actor,sizeof(before));
     assert(!jet_think->run(f.actor,0x1084,85,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_bind,&jet_run)&&!std::memcmp(before,f.actor,sizeof(before)));
     assert(!request_think->run(f.actor,sizeof(f.actor),85,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run)&&!std::memcmp(before,f.actor,sizeof(before)));

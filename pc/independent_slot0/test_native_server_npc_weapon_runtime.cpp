@@ -13,7 +13,7 @@
 #include <initializer_list>
 using namespace sin_port::native_weapon_tables;
 struct F {
-    alignas(4) unsigned char actor[0xfd8]{},weapon[0x598]{},component[0x28]{},path[0x48]{};
+    alignas(4) unsigned char actor[0x1088]{},weapon[0x598]{},component[0x28]{},path[0x48]{};
     alignas(4) unsigned char npc_desc[2][0x40]{},weapon_desc[2][0x40]{};
     ServerActivityDescriptor nr[2]{},wr[2]{};
     std::uint32_t ng=3,wg=3;
@@ -238,6 +238,20 @@ int main(int argc,char** argv){
     f.put(f.actor,0x864,20.f);step_bind.motor_activity=nullptr;
     assert(!step->run(f.actor,sizeof(f.actor),&in,&step_bind,&step_out)&&step_out.reset_called&&step_out.motor_called&&!step_out.animation_called&&(f.trace==std::vector<int>{90}));
     f.actor[0x7b8]=f.actor[0x7b9]=0;
+    // Jetpack uses the same active-update deadline branch and frame handler.
+    auto get_jet_step=reinterpret_cast<GetServerNpcActiveJetWeaponStepApi>(GetProcAddress(server,server_npc_active_jet_weapon_step_export));
+    assert(get_jet_step&&!GetProcAddress(client,server_npc_active_jet_weapon_step_export)&&!get_jet_step(0,sizeof(ServerNpcActiveJetWeaponStepApi))&&!get_jet_step(1,0));
+    const auto* jet_step=get_jet_step(1,sizeof(ServerNpcActiveJetWeaponStepApi));assert(jet_step);
+    ServerNpcActiveJetWeaponStepBindings jet_bind{};jet_bind.base=step_bind;
+    static ServerNpcActiveJetWeaponStepResult jet_out;
+    schedule.scheduler.original_vtable=0x2249964cu;
+    authoritative.frame.frame.runtime.npc.transition.assignment.translation.actor_class=NpcActivityJetpack;
+    f.put(f.actor,0x864,20.f);f.put(f.weapon,0x4ec,0);f.put(f.weapon,0x4f0,-1);f.put(f.weapon,0x580,0.f);
+    seed_frame();
+    assert(!jet_step->run(f.actor,0x1084,&in,&jet_bind,&jet_out)&&!jet_out.animation_called&&f.trace.empty());
+    assert(!step->run(f.actor,sizeof(f.actor),&in,&step_bind,&step_out)&&!step_out.animation_called&&f.trace.empty());
+    assert(jet_step->run(f.actor,sizeof(f.actor),&in,&jet_bind,&jet_out)&&jet_out.completed&&!jet_out.think_called&&jet_out.animation.fixed_resets==1&&f.get<int>(f.weapon,0x4ec)==31);
+    assert((f.trace==std::vector<int>{10,11,109,80,80,70,70,70,12,1,102,102,2,3}));
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
