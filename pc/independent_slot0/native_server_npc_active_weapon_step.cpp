@@ -1473,12 +1473,60 @@ int __cdecl jet_primary_run(void* a,unsigned n,unsigned vt,unsigned handle,int t
 const ServerNpcJetpackPrimaryThinkApi jet_primary_api{1,sizeof(ServerNpcJetpackPrimaryThinkApi),&jet_primary_install,&jet_primary_run};
 struct JetInitialThinkRoute {
     const ServerNpcJetpackDeathBranchBindings* source;
+    const ServerNpcJetpackDeathModeBindings* mode_source;
     ServerNpcOuterCadenceBindings cadence;
     ServerEntityAcceptInputResult* out;
     void* actor;unsigned extent,vt;float interval;
     const ServerNpcInputJetThinkScheduleBindings* initial;
     const ServerWeaponActivityBindings* entities;
 };
+void bind_jet_death_pickup(ServerNpcJetpackDeathModeBindings& bound,JetInitialThinkRoute& route) noexcept {
+    bound.context=&route;
+    bound.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->mode_source;
+        return s.random_int&&s.random_int(s.context,lo,hi,v);
+    };
+    bound.effect_rule=[](void* p,void* a,bool* yes) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->mode_source;
+        return s.effect_rule&&s.effect_rule(s.context,a,yes);
+    };
+    bound.force_mode3=[](void* p,bool* yes) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->mode_source;
+        return s.force_mode3&&s.force_mode3(s.context,yes);
+    };
+    bound.tail=[](void* p,void* a,void* damage,unsigned mode,unsigned token) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->mode_source;
+        return s.tail&&s.tail(s.context,a,damage,mode,token);
+    };
+    bound.effect=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<JetInitialThinkRoute*>(p);auto& o=*q.out;
+        const auto& b=*q.initial->pickup;
+        if(a!=q.actor||q.extent<0x360u)return 0;
+        ++o.health_jet_pickup_native;
+        if(rd<unsigned>(a,0xb8)&0x800u){
+            if(!b.refresh_origin||!b.refresh_origin(b.context,a))return 0;
+            ++o.health_jet_pickup_refreshed;
+        }
+        if(!b.center(b.context,a,o.health_jet_pickup_center))return 0;
+        for(float v:o.health_jet_pickup_center)if(!std::isfinite(v))return 0;
+        // 22146c40 allocates by classname with forced edict -1. Even
+        // a null entity passes through DispatchSpawn's null path.
+        void* item=nullptr;
+        if(!b.create(b.context,"item_healthvial",-1,&item))return 0;
+        if(item){
+            ++o.health_jet_pickup_created;
+            if(!b.position||!b.position(b.context,item,o.health_jet_pickup_center))return 0;
+            ++o.health_jet_pickup_positioned;
+            for(unsigned i=0;i<3;++i){o.health_jet_pickup_angles[i]=rd<float>(a,0x354+4*i);if(!std::isfinite(o.health_jet_pickup_angles[i]))return 0;}
+            if(!b.orientation||!b.orientation(b.context,item,o.health_jet_pickup_angles))return 0;
+            ++o.health_jet_pickup_oriented;
+            if(!b.owner||!b.owner(b.context,item,nullptr))return 0;
+            ++o.health_jet_pickup_owner;
+        }
+        if(!b.spawn(b.context,item))return 0;
+        ++o.health_jet_pickup_spawned;return 1;
+    };
+}
 void bind_jet_initial_think(ServerNpcJetpackDeathBranchBindings& bound,JetInitialThinkRoute& route) noexcept {
     bound.context=&route;
     // The original branch has one context for all its services. Preserve
@@ -1592,7 +1640,8 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
     if(initial&&(!initial->cadence||!std::isfinite(initial->interval)||initial->interval<=0||rd<unsigned>(a,0)!=vt||
         (initial->ragdoll&&!initial->ragdoll_result)||
         (bool(initial->sentence)!=bool(initial->sentence_request))||
-        (initial->ignition&&!initial->ignition->base)))return false;
+        (initial->ignition&&!initial->ignition->base)||
+        (initial->pickup&&(!initial->pickup->center||!initial->pickup->create||!initial->pickup->spawn))))return false;
     if(!self_damage_scale(a,*b.storage,false,o.health_outgoing_scale,o.health_multiplier_rows))return false;
     wr<float>(info,0x2c,static_cast<float>(double(rd<float>(info,0x2c))*o.health_outgoing_scale));
     if(!self_damage_scale(a,*b.storage,true,o.health_incoming_scale,o.health_multiplier_rows))return false;
@@ -1655,6 +1704,7 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
             think.out=&o;think.actor=a;think.extent=n;think.vt=vt;think.interval=initial->interval;
             think.initial=initial;think.entities=&b.entities;
             bind_jet_initial_think(bound.combat.branch,think);
+            if(initial->pickup){think.mode_source=&dispatch.subclass_death->combat.combat.jet;bind_jet_death_pickup(bound.combat.combat.jet,think);}
         }
         const auto* api=SiN_GetServerNpcGruntEliteLifeApi(1,sizeof(ServerNpcGruntEliteLifeApi));
         if(!api||!api->run(a,n,rd<unsigned>(a,0x378),info,0x48,b.now,&bound,dispatch.subclass_result))return false;

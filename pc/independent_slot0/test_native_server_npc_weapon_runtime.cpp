@@ -2022,6 +2022,7 @@ int main(int argc,char** argv){
         float think_clock{},think_scheduled{};
         alignas(4) unsigned char native_rag[4]{},native_aux[2][4]{};
         int alternate_sample{},alternate_mode{};
+        bool pickup_null{},pickup_rule{};
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -2746,6 +2747,60 @@ int main(int argc,char** argv){
     assert(primary_run(738)&&primary_o.removed&&!primary_o.native_result);
     assert((hd.death_order==std::vector<unsigned>{43,41,44,46,45}));
     hq_service.live_now=nullptr;script_slots[2].next=prior_script_next;
+    // Native pre-death pickup: game-rule true/false and a null factory
+    // result must not change the original final-mode branch selection.
+    ServerNpcInputJetDeathPickupBindings pickup_b{};pickup_b.context=&hd;
+    pickup_b.refresh_origin=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);
+        q.f->put(a,0xb8,q.f->get<unsigned>(a,0xb8)&~0x800u);q.death_order.push_back(61);return 1;
+    };
+    pickup_b.center=[](void* p,void* a,float* v) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&!(q.f->get<unsigned>(a,0xb8)&0x800u));
+        v[0]=11.f;v[1]=22.f;v[2]=33.f;q.death_order.push_back(62);return 1;
+    };
+    pickup_b.create=[](void* p,const char* name,int edict,void** item) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(!std::strcmp(name,"item_healthvial")&&edict==-1);
+        *item=q.pickup_null?nullptr:q.native_aux[0];q.death_order.push_back(63);return 1;
+    };
+    pickup_b.position=[](void* p,void* item,const float* v) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(item==q.native_aux[0]&&v[0]==11.f&&v[1]==22.f&&v[2]==33.f);
+        q.death_order.push_back(64);return 1;
+    };
+    pickup_b.orientation=[](void* p,void* item,const float* v) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(item==q.native_aux[0]&&v[0]==5.f&&v[1]==90.f&&v[2]==0.f);
+        q.death_order.push_back(65);return 1;
+    };
+    pickup_b.owner=[](void* p,void* item,void* owner) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(item==q.native_aux[0]&&!owner);
+        q.death_order.push_back(66);return 1;
+    };
+    pickup_b.spawn=[](void* p,void* item) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(item==(q.pickup_null?nullptr:q.native_aux[0]));
+        q.death_order.push_back(67);return 1;
+    };
+    initial_think.pickup=&pickup_b;jet_mode.effect=nullptr;
+    jet_mode.effect_rule=[](void* p,void* a,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x1004)==1);
+        *yes=q.pickup_rule;
+        if(*yes)q.f->put(a,0xb8,q.f->get<unsigned>(a,0xb8)|0x800u);
+        q.death_order.push_back(21);return 1;
+    };
+    for(int scenario:{0,1,2}){
+        reset_subclass(primary_vt);hd.alternate_sample=26;hd.alternate_mode=1;
+        hd.pickup_rule=scenario!=0;hd.pickup_null=scenario==2;
+        f.actor[0xbf]&=static_cast<unsigned char>(~8u);
+        f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x1028,0x7001u);
+        f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0x400000u);
+        f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);f.put(f.actor,8,0u);
+        f.put(f.actor,0x354,5.f);f.put(f.actor,0x358,90.f);f.put(f.actor,0x35c,0.f);
+        assert(hd_run(0,primary_vt)&&catalog_o.health_jet_think_scheduled&&hd_subclass_result.combat.combat.jet.final_mode==1);
+        assert(catalog_o.health_jet_pickup_native==unsigned(scenario!=0)&&catalog_o.health_jet_pickup_refreshed==unsigned(scenario!=0)&&catalog_o.health_jet_pickup_spawned==unsigned(scenario!=0));
+        assert(catalog_o.health_jet_pickup_created==unsigned(scenario==1)&&catalog_o.health_jet_pickup_positioned==unsigned(scenario==1)&&catalog_o.health_jet_pickup_oriented==unsigned(scenario==1)&&catalog_o.health_jet_pickup_owner==unsigned(scenario==1));
+        std::vector<unsigned> expected_pickup{20,21};
+        if(scenario!=0){expected_pickup.insert(expected_pickup.end(),{61,62,63});if(scenario==1)expected_pickup.insert(expected_pickup.end(),{64,65,66});expected_pickup.push_back(67);}
+        expected_pickup.insert(expected_pickup.end(),{22,23,24,25,48,49,50,26,26,42});
+        assert(hd.death_order==expected_pickup&&f.get<int>(f.actor,0x74)==721);
+    }
     hd_services.jet_think=nullptr;
     script_slots[0].serial=0;script_slots[0].entity=nullptr;
     std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
