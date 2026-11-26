@@ -4460,7 +4460,7 @@ int main(int argc,char** argv){
         assert(g&&!GetProcAddress(c,server_npc_grunt_combat_selector_export)&&!g(0,sizeof(ServerNpcGruntCombatSelectorApi))&&!g(1,0));
         const auto* api=g(1,sizeof(ServerNpcGruntCombatSelectorApi));assert(api);
         struct CombatFixture{
-            alignas(4) unsigned char a[0x1085]{},enemy[0x208]{},weapon[0x630]{},desc[0x48]{},record[0x34]{},group[0x78]{},row[8]{};
+            alignas(4) unsigned char a[0x1085]{},enemy[0x900]{},weapon[0x630]{},desc[0x48]{},record[0x34]{},group[0x78]{},row[8]{};
             sin_independent::EntityHandleEntry entries[3]{};
             bool leader_match=false,leader_present=false,leader_same=true,allow_speech=true,policy=true,visible=true,global=false,blocked=true;
             unsigned updates=0;float invalid[3]{},remembered[3]{},candidate_pos[3]{60,0,0},fraction=1.f,candidate_radius=10.f;double stamp=7;int target_class=0;
@@ -4635,6 +4635,36 @@ int main(int argc,char** argv){
         f.put(q.row,4,5u);q.a[0xc64]=0;translate(98,91);
         assert(CombatFixture::rd(q.row,4)==7u&&CombatFixture::rd(q.a,0x9cc)==1);
         f.put(q.a,0x9c4,0u);bits(0);
+        // Recognized original primary-vtable tokens enable exact virtual constant leaves.
+        for(unsigned vt:{0x2245a554u,0x22478d0cu,0x2247875cu,0x224776acu,0x2247a1e4u,
+                         0x22477c8cu,0x22478214u,0x2247924cu,0x2247ab9cu}){
+            f.put(q.weapon,0,vt);translate(42,92);
+        }
+        f.put(q.weapon,0,0u);
+        assert(!acq->acquire(q.a,sizeof(q.a),42,10,&ac,&ar,&translation)&&!ar.completed);
+        f.put(q.weapon,0,0x224776acu);
+        // Player +120 and clean absolute-origin cache: below, equal, unordered and dirty.
+        f.put(q.enemy,0,0x224aec3cu);q.a[0xc67]=1;
+        f.put(q.a,0xb8,0u);f.put(q.enemy,0xb8,0u);
+        f.put(q.a,0x2bc,0.f);f.put(q.enemy,0x2bc,255.f);
+        translate(80,80);assert(q.a[0xc67]==1);
+        f.put(q.enemy,0x2bc,256.f);translate(80,86);assert(q.a[0xc67]==0);
+        q.a[0xc67]=1;f.put(q.enemy,0x2bc,std::numeric_limits<float>::quiet_NaN());
+        translate(80,80);assert(q.a[0xc67]==1);
+        f.put(q.enemy,0xb8,0x800u);
+        assert(!acq->acquire(q.a,sizeof(q.a),80,10,&ac,&ar,&translation)&&!ar.completed);
+        f.put(q.enemy,0xb8,0u);f.put(q.enemy,0x2bc,0.f);
+        // 87: recognized player fails NPC cast; Grunt capability merge includes held weapon.
+        translate(87,87);f.put(q.enemy,0,0x2249aaa4u);
+        f.put(q.enemy,0x8ec,0u);f.put(q.enemy,0x78c,0x2002u);translate(87,87);
+        f.put(q.enemy,0x78c,0x9002u);f.put(q.enemy,0x8ec,0x2000u);translate(87,87);
+        f.put(q.enemy,0x8ec,0u);f.put(q.a,0xc90,11.f);translate(87,88);
+        translate(80,80);assert(q.a[0xc67]==1);
+        // 41 +360 distance branch: equal skips scene calls and preserves +c64.
+        q.a[0xc64]=0;q.a[0xc66]=1;f.put(q.a,0x360,0.f);f.put(q.enemy,0x360,256.f);
+        translate(41,91);assert(q.a[0xc64]==0);
+        f.put(q.enemy,0x360,257.f);
+        assert(!acq->acquire(q.a,sizeof(q.a),41,10,&ac,&ar,&translation)&&!ar.completed);
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
         f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
 
