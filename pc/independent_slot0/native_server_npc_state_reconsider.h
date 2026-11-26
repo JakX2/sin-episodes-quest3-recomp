@@ -1234,4 +1234,23 @@ struct ServerNpcGruntNativeStateApi {
     int (__cdecl *apply)(void*,unsigned,int,float,const ServerNpcStateBindings*,const ServerNpcGruntNativeStateBindings*,ServerNpcGruntNativeStateResult*) noexcept;
 };
 using GetServerNpcGruntNativeStateApi=const ServerNpcGruntNativeStateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_input_export[]="SiN_GetServerNpcGruntSquadInputApi";
+struct ServerNpcGruntSquadInputBindings {
+    ServerNpcGruntSquadRegistryBindings registry;
+    ServerNpcGruntSquadJoinBindings join;
+    void* context;
+    int (__cdecl *weapon_capabilities)(void*,void*,std::uint32_t*) noexcept;
+};
+struct ServerNpcGruntSquadInputResult {
+    ServerNpcGruntSquadRegistryResult attachment;
+    ServerNpcGruntSquadLeaveResult departure;
+    unsigned completed,capability_blocked,nonstring,clearing,owner_written,weapon_queried;
+    std::uint32_t name_token;
+};
+struct ServerNpcGruntSquadInputApi {
+    std::uint32_t version,size;
+    // 22032000: variant type at input+18, string token at +8; typed adapter.
+    int (__cdecl *change)(void*,unsigned,std::uint32_t,float,std::uint32_t*,unsigned,std::uint32_t,const ServerNpcGruntSquadInputBindings*,ServerNpcGruntSquadInputResult*) noexcept;
+};
+using GetServerNpcGruntSquadInputApi=const ServerNpcGruntSquadInputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
