@@ -3237,6 +3237,25 @@ struct ServerNpcGruntNativeLineCycleApi {
 };
 using GetServerNpcGruntNativeLineCycleApi=const ServerNpcGruntNativeLineCycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 int native_line_squad_report_gather(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntSquadReportBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntSquadReportResult*,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntNativeLineAttackResult*) noexcept;
+// Original shared weapon +330/+334; owner cast is explicit for adjusted subobjects.
+struct ServerWeaponScriptView;
+struct ServerNpcWeaponAmmoBindings {
+    const ServerWeaponScriptView* scripts;
+    void* context;
+    int (__cdecl *combat_owner)(void*,void*,void**) noexcept; // owner +fc
+    int (__cdecl *max_carry)(void*,int,int*) noexcept; // optional live ammo definition override
+};
+struct ServerNpcWeaponAmmoResult {
+    unsigned completed,available,uses_clip,clip_positive,owner_live,combat_live,reserve_read,unlimited;
+    int clip,ammo_type,max_carry,reserve;
+};
+inline constexpr char server_npc_weapon_ammo_export[]="SiN_GetServerNpcWeaponAmmoApi";
+struct ServerNpcWeaponAmmoApi {
+    std::uint32_t version,size;
+    int (__cdecl *query)(void*,unsigned,const ServerNpcGruntAssaultAdmissionBindings*,const ServerNpcWeaponAmmoBindings*,ServerNpcWeaponAmmoResult*) noexcept;
+    int (__cdecl *attack)(void*,unsigned,void*,float,float,const ServerNpcGruntAttackBindings*,const ServerNpcGruntCombatLineBindings*,const ServerNpcWeaponAmmoBindings*,ServerNpcGruntNativeLineAttackResult*) noexcept;
+};
+using GetServerNpcWeaponAmmoApi=const ServerNpcWeaponAmmoApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 int grunt_schedule_cone_normal_internal(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*,const ServerNpcGruntScheduleConeServices*) noexcept;
 int grunt_schedule_line_jet_internal(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*,const ServerNpcGruntScheduleConeServices* = nullptr) noexcept;
 int grunt_schedule_line_failure_internal(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,const ServerNpcGruntScheduleConeServices* = nullptr) noexcept;
