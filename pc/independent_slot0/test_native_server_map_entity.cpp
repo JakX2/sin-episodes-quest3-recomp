@@ -682,7 +682,19 @@ int main(int argc,char** argv){
     nw::ServerNpcActivePostAnimationBindings tstorage{};
     nw::ServerEntityAcceptInputBindings tai{};tai.storage=&tstorage;tai.timer=&tb;
     tai.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
-        *text=token==301?"FireTimer":token==302?"-3":nullptr;if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        switch(token){
+            case 301:case 0x22420054:*text="FireTimer";break;
+            case 302:*text="-3";break;
+            case 0x22420090:*text="RefireTime";break;
+            case 0x223edd00:*text="Enable";break;
+            case 0x223edce8:*text="Disable";break;
+            case 0x223d4914:*text="Toggle";break;
+            case 0x22420030:*text="UseRandomTime";break;
+            case 0x22420004:*text="LowerRandomBound";break;
+            case 0x2241ffd8:*text="UpperRandomBound";break;
+            default:return 0;
+        }
+        *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
     };
     nw::ServerEntityAcceptInputResult tair{};
     unsigned tv[5]{};
