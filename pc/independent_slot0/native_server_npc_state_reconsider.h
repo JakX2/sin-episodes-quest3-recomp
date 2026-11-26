@@ -2054,6 +2054,14 @@ struct ServerNpcGruntEliteEffectBindings {
     int (__cdecl *debug_trace)(void*,const float*,const float*,int,int,int,int,float) noexcept;
     int (__cdecl *impact)(void*,const ServerNpcGruntEliteEffectTrace*,int) noexcept; // 2228bee0
 };
+// 22288a40 single-player helper. The owner provides PE32-shaped edict
+// bytes and the engine's IServerUnknown::GetBaseEntity boundary.
+struct ServerNpcEliteLocalPlayerBindings {
+    void* context;
+    int (__cdecl *max_clients)(void*,int*) noexcept;
+    int (__cdecl *edict)(void*,int,const void**,unsigned*) noexcept;
+    int (__cdecl *base_entity)(void*,std::uint32_t,void**) noexcept;
+};
 struct ServerNpcGruntEliteDeathBindings {
     void* context;
     int (__cdecl *effect_begin)(void*,void*) noexcept;
@@ -2072,6 +2080,7 @@ struct ServerNpcGruntEliteDeathBindings {
     const ServerNpcGruntEliteEffectBindings* native_effects;
     // Optional native 2202e350 vector generation; raw 2226ffa0 stream.
     int (__cdecl *velocity_random_int)(void*,int,int,int*) noexcept;
+    const ServerNpcEliteLocalPlayerBindings* native_player;
 };
 struct ServerNpcGruntEliteDeathResult {
     float origin[3],angles[3],velocity[3];
@@ -2080,6 +2089,8 @@ struct ServerNpcGruntEliteDeathResult {
     float effect_origin[3],effect_upper[3],effect_angles[3];
     unsigned native_effects_completed,effect_refreshes,effect_burst,effect_light,effect_randoms,effect_upward,effect_downward,effect_traces,effect_debug,effect_impacts,effect_iterations;
     unsigned velocity_native,velocity_randoms;
+    unsigned player_lookup_native,player_slot_checked,player_edict_found,player_edict_free,player_unknown_called;
+    int player_max_clients;
 };
 struct ServerNpcGruntEliteLifeBindings {
     ServerNpcJetpackDeathBranchesBindings combat;
