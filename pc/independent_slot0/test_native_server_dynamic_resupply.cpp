@@ -942,29 +942,29 @@ int main(int argc,char** argv){
     } inf{&af};
     sin_independent::EntityHandleEntry interaction_entries[3]{ae[0],ae[1],{}};
     interaction_entries[2].serial=12;interaction_entries[2].entity=reinterpret_cast<CBaseEntity*>(inf.screen);
-    AntigenInteractionBindings ib{};ib.context=&inf;ib.control=ab;
-    ib.control.entries=interaction_entries;ib.control.entry_count=3;
-    ib.use_event=[](void* p,int descriptor,void* pl,void* a,int sub) noexcept ->int{
+    AntigenInteractionBindings antigen_interaction{};antigen_interaction.context=&inf;antigen_interaction.control=ab;
+    antigen_interaction.control.entries=interaction_entries;antigen_interaction.control.entry_count=3;
+    antigen_interaction.use_event=[](void* p,int descriptor,void* pl,void* a,int sub) noexcept ->int{
         auto& q=*static_cast<InteractionFixture*>(p);assert(pl==q.a->player&&a==q.a->actor&&sub==0);++q.events;q.descriptor=descriptor;return 1;
     };
-    ib.spawn_setup=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor);++q.setup;return 1;};
-    ib.bodygroup=[](void* p,void* a,int i,int v) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor&&i==1);++q.groups;q.group=v;return 1;};
-    ib.button_listener=[](void* p,void* a,const char* n) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor+0x494&&!std::strcmp(n,"button_press"));++q.listeners;return 1;};
-    ib.create_screen=[](void* p,void* a,unsigned* h) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor);++q.screen_creates;*h=0xc002;return 1;};
-    ib.configure_screen=[](void* p,void* a,void* s) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor&&s==q.screen);++q.screen_configs;return 1;};
+    antigen_interaction.spawn_setup=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor);++q.setup;return 1;};
+    antigen_interaction.bodygroup=[](void* p,void* a,int i,int v) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor&&i==1);++q.groups;q.group=v;return 1;};
+    antigen_interaction.button_listener=[](void* p,void* a,const char* n) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor+0x494&&!std::strcmp(n,"button_press"));++q.listeners;return 1;};
+    antigen_interaction.create_screen=[](void* p,void* a,unsigned* h) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor);++q.screen_creates;*h=0xc002;return 1;};
+    antigen_interaction.configure_screen=[](void* p,void* a,void* s) noexcept ->int{auto& q=*static_cast<InteractionFixture*>(p);assert(a==q.a->actor&&s==q.screen);++q.screen_configs;return 1;};
     assert(api->antigen_construct(af.actor,sizeof(af.actor),&ab,&agr));
     AntigenInteractionResult ir{};af.now=20.f;
     EvalFixture::f(af.actor,0x49c,200.f);
-    assert(api->antigen_spawn(af.actor,sizeof(af.actor),&ib,&ir)&&ir.completed&&ir.setup&&ir.control.remaining==100.f&&ir.control.loaded&&ir.touch_installed&&ir.animation_installed&&ir.listener);
+    assert(api->antigen_spawn(af.actor,sizeof(af.actor),&antigen_interaction,&ir)&&ir.completed&&ir.setup&&ir.control.remaining==100.f&&ir.control.loaded&&ir.touch_installed&&ir.animation_installed&&ir.listener);
     assert(inf.group==1&&inf.listeners==1&&EvalFixture::rd(af.actor,8)==antigen_animation_token&&EvalFixture::rd(af.actor,0x7c)==antigen_touch_token);
-    assert(api->antigen_animation_think(af.actor,sizeof(af.actor),&ib,&ir)&&ir.completed&&ir.screen_created&&ir.screen_configured&&ir.control.scheduled);
-    assert(api->antigen_animation_think(af.actor,sizeof(af.actor),&ib,&ir)&&ir.completed&&ir.screen_reused&&inf.screen_creates==1&&inf.screen_configs==1);
-    assert(api->antigen_use_event(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),2,&ib,&ir)&&ir.completed&&!ir.event_called&&!inf.events);
-    assert(api->antigen_use_event(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),1,&ib,&ir)&&ir.completed&&ir.press&&ir.event_descriptor==2&&ir.control.started);
-    assert(api->antigen_use_event(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),0,&ib,&ir)&&ir.completed&&ir.release&&ir.user_invalidated&&inf.descriptor==3&&inf.events==2);
+    assert(api->antigen_animation_think(af.actor,sizeof(af.actor),&antigen_interaction,&ir)&&ir.completed&&ir.screen_created&&ir.screen_configured&&ir.control.scheduled);
+    assert(api->antigen_animation_think(af.actor,sizeof(af.actor),&antigen_interaction,&ir)&&ir.completed&&ir.screen_reused&&inf.screen_creates==1&&inf.screen_configs==1);
+    assert(api->antigen_use_event(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),2,&antigen_interaction,&ir)&&ir.completed&&!ir.event_called&&!inf.events);
+    assert(api->antigen_use_event(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),1,&antigen_interaction,&ir)&&ir.completed&&ir.press&&ir.event_descriptor==2&&ir.control.started);
+    assert(api->antigen_use_event(af.actor,sizeof(af.actor),hf2.player,sizeof(hf2.player),0,&antigen_interaction,&ir)&&ir.completed&&ir.release&&ir.user_invalidated&&inf.descriptor==3&&inf.events==2);
     assert(EvalFixture::rd(af.actor,0x4b0)==0xb001&&EvalFixture::rd(af.actor,8)==antigen_think_token);
     assert(api->antigen_think(af.actor,sizeof(af.actor),&ab,&agr)&&agr.stopped&&agr.steam_removed);
     EvalFixture::f(af.actor,0x49c,-10.f);
-    assert(api->antigen_spawn(af.actor,sizeof(af.actor),&ib,&ir)&&ir.completed&&!ir.control.loaded&&ir.control.remaining==0.f&&inf.group==0);
+    assert(api->antigen_spawn(af.actor,sizeof(af.actor),&antigen_interaction,&ir)&&ir.completed&&!ir.control.loaded&&ir.control.remaining==0.f&&inf.group==0);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
