@@ -1409,4 +1409,25 @@ struct ServerNpcGruntDeathPrefixApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntDeathPrefixBindings*,ServerNpcGruntDeathPrefixResult*) noexcept;
 };
 using GetServerNpcGruntDeathPrefixApi=const ServerNpcGruntDeathPrefixApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_death_event_export[]="SiN_GetServerNpcGruntDeathEventApi";
+struct ServerNpcGruntDeathEventBindings {
+    ServerNpcGruntDeathPrefixBindings prefix;
+    void* context;
+    int (__cdecl *base_death)(void*,void*,void*) noexcept; // 222a7850
+    int (__cdecl *activity_lookup)(void*,void*,int,int*) noexcept; // 220eebd0
+    int (__cdecl *final_remove)(void*,void*) noexcept; // 22143d90
+};
+struct ServerNpcGruntDeathEventResult {
+    ServerNpcGruntDeathPrefixResult prefix;
+    ServerNpcConditionResult condition;
+    int activity,previous_state;
+    unsigned completed,field_cleared,base_called,activity_called,ideal_written,state_written,time_written,remove_called;
+};
+struct ServerNpcGruntDeathEventApi {
+    std::uint32_t version,size;
+    // Complete base orchestration 22042e70, not the outer subclass caller or hosted leaves.
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntDeathEventBindings*,ServerNpcGruntDeathEventResult*) noexcept;
+};
+using GetServerNpcGruntDeathEventApi=const ServerNpcGruntDeathEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
