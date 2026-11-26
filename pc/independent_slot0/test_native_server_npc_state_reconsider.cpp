@@ -4246,5 +4246,58 @@ int main(int argc,char** argv){
         f.put(p,0x14,0x9001u);q.parent_result=false;query();assert(!o.link_valid&&!o.origin_called&&o.parent_called&&!o.accepted);
         assert(!api->query(q.a,sizeof(q.a)-1,q.point,0,0,&b,&o));
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntAssaultActivationApi>(GetProcAddress(s,server_npc_grunt_assault_activation_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_assault_activation_export)&&!g(0,sizeof(ServerNpcGruntAssaultActivationApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntAssaultActivationApi));assert(api);
+        struct ActivationFixture {
+            alignas(4) unsigned char a[0xde8]{},primary[0x3c0]{},secondary[0x3c0]{},desc[0x48]{},group[0x78]{},row[8]{};
+            sin_independent::EntityHandleEntry entries[4]{};
+            std::uint8_t guard=55;bool ready=true,redirect=false;unsigned count=0,order[6]{};
+            static ActivationFixture& self(void* p){return *static_cast<ActivationFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.secondary);
+        q.entries[3].serial=3;q.entries[3].entity=reinterpret_cast<CBaseEntity*>(q.a);
+        ServerNpcGruntAssaultScheduleBindings sb{};auto& ab=sb.admission;
+        ab.entries=q.entries;ab.count=4;ab.actor_vtable=0x2249aaa4;ab.actor_token=0x10000;ab.context=&q;
+        ab.conditions.context=&q;ab.conditions.descriptor=[](void* x,void*,const void** d,unsigned* n) noexcept -> int{auto& q=ActivationFixture::self(x);*d=q.desc;*n=sizeof(q.desc);return 1;};
+        ab.owner_ready=[](void* x,void*,bool* v) noexcept -> int{*v=ActivationFixture::self(x).ready;return 1;};
+        ab.extent=[](void* x,void* e,unsigned* n) noexcept -> int{auto& q=ActivationFixture::self(x);assert(e==q.primary||e==q.secondary);*n=0x3c0;return 1;};
+        ServerNpcGruntSquadSlotsBindings slots{};slots.storage.context=&q;
+        slots.storage.storage=[](void* x,std::uint32_t token,void** v,unsigned* n) noexcept -> int{auto& q=ActivationFixture::self(x);if(token==91){*v=q.group;*n=sizeof(q.group);return 1;}if(token==200){*v=q.row;*n=sizeof(q.row);return 1;}return 0;};
+        ServerNpcGruntAssaultActivationBindings b{};b.schedule=&sb;b.slots=&slots;b.context=&q;b.activation_guard=&q.guard;
+        b.other_lifecycle=[](void* x,void* a,void* c,unsigned n,std::uint32_t vt,unsigned slot) noexcept -> int{
+            auto& q=ActivationFixture::self(x);assert(a==q.a&&c==q.a+0xcd8&&n==sizeof(q.a)-0xcd8&&vt==0x224abec4&&q.count<6);
+            q.order[q.count++]=slot;assert(q.guard==(slot==0x24?1:0));
+            if(slot==0x20)assert(ActivationFixture::rd(q.a,0xc18)==0x10db8u);
+            if(slot==0x1c&&q.redirect){std::uint32_t v=0x10db8u;std::memcpy(q.a+0xc18,&v,4);}
+            return 1;
+        };
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
+        f.put(q.a,0xcd8,0x224abec4u);f.put(q.a,0xcdc,0x10000u);f.put(q.a,0xce4,0x10c14u);
+        auto* p=q.a+0xdb8;f.put(p,0x14,0x1001u);f.put(p,0x18,0x2002u);f.put(p,0x1c,3);
+        p[0x24]=p[0x25]=1;f.put(q.secondary,0x3bc,0x3003u);
+        ServerNpcGruntAssaultActivationResult o{};
+        auto change=[&](unsigned token){return api->change(q.a,sizeof(q.a),token,10,&b,&o);};
+        auto reevaluate=[&](unsigned token,bool force){return api->reevaluate(q.a,sizeof(q.a),token,force,10,&b,&o);};
+        assert(change(0x10db8u)&&o.changed&&o.active_written&&o.arrival_called&&o.guard_set&&o.guard_cleared&&o.post_arrival_called&&o.notification_ignored&&q.guard==0&&p[0x24]&&p[0x25]);
+        q.guard=55;assert(change(0x10db8u)&&!o.changed&&!o.guard_set&&q.guard==55);q.guard=0;
+        assert(!change(0x10db9u)&&!o.active_written&&ActivationFixture::rd(q.a,0xc18)==0x10db8u);
+        assert(reevaluate(0x10cd8u,false)&&!o.admission_checked&&!o.deactivated);
+        assert(reevaluate(0x10db8u,false)&&o.admission_checked&&o.admitted&&!o.deactivated);
+        q.ready=false;assert(reevaluate(0x10db8u,true)&&o.force_kept&&!o.deactivated&&p[0x24]);
+        f.put(q.a,0x9c4,91u);f.put(q.a,0x9cc,1);f.put(q.a,0x8a0,0x1001u);
+        f.put(q.group,0x5c,200u);f.put(q.group,0x60,200u);f.put(q.group,0x64,1);f.put(q.group,0x6c,1);f.put(q.group,0x74,100.f);
+        f.put(q.row,0,0x1001u);f.put(q.row,4,2u);
+        assert(reevaluate(0x10db8u,false)&&o.reevaluated&&o.deactivated&&o.native_departure&&o.departure.reservation_released&&o.slot_released&&o.slot.old_cleared);
+        assert(!ActivationFixture::rd(q.a,0xc18)&&!p[0x24]&&!p[0x25]&&ActivationFixture::rd(q.secondary,0x3bc)==0xffffffffu&&ActivationFixture::rd(q.a,0x9cc)==0xffffffffu&&!ActivationFixture::rd(q.row,4));
+        f.put(q.a,0x9c4,0u);assert(change(0x10cd8u)&&q.count==2&&q.order[0]==0x1c&&q.order[1]==0x24);
+        assert(change(0x10db8u)&&o.other_departure&&q.count==3&&q.order[2]==0x20);
+        q.redirect=true;assert(change(0x10cd8u)&&o.after==0x10db8u&&o.native_departure&&q.count==4&&q.order[3]==0x1c&&q.guard==0);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

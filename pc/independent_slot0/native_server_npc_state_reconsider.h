@@ -2804,4 +2804,30 @@ struct ServerNpcGruntAssaultLifecycleApi {
         ServerNpcGruntRappelScheduleResult*,ServerNpcGruntEventTimerResult*) noexcept;
 };
 using GetServerNpcGruntAssaultLifecycleApi=const ServerNpcGruntAssaultLifecycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_activation_export[]="SiN_GetServerNpcGruntAssaultActivationApi";
+struct ServerNpcGruntAssaultActivationBindings {
+    const ServerNpcGruntAssaultScheduleBindings* schedule;
+    const ServerNpcGruntSquadSlotsBindings* slots;
+    void* context;
+    std::uint8_t* activation_guard; // original global byte 2254c0a0
+    // Only for other verified component identities, original +1c/+24/+20.
+    int (__cdecl *other_lifecycle)(void*,void*,void*,unsigned,std::uint32_t,unsigned) noexcept;
+    int (__cdecl *other_admit)(void*,void*,void*,unsigned,std::uint32_t,bool*) noexcept;
+};
+struct ServerNpcGruntAssaultActivationResult {
+    ServerNpcGruntAssaultAdmissionResult admission;
+    ServerNpcGruntAssaultScheduleResult departure;
+    ServerNpcGruntSquadSlotsResult slot;
+    std::uint32_t previous,next,after,departure_vtable,arrival_vtable;
+    unsigned completed,changed,active_written,arrival_called,guard_set,guard_cleared,post_arrival_called,
+        native_departure,other_departure,slot_released,notification_ignored,admission_checked,
+        admitted,force_kept,reevaluated,deactivated;
+};
+struct ServerNpcGruntAssaultActivationApi {
+    std::uint32_t version,size;
+    int (__cdecl *change)(void*,unsigned,std::uint32_t,float,const ServerNpcGruntAssaultActivationBindings*,ServerNpcGruntAssaultActivationResult*) noexcept; // 2216e510
+    int (__cdecl *reevaluate)(void*,unsigned,std::uint32_t,bool,float,const ServerNpcGruntAssaultActivationBindings*,ServerNpcGruntAssaultActivationResult*) noexcept; // 2216e8c0
+};
+using GetServerNpcGruntAssaultActivationApi=const ServerNpcGruntAssaultActivationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
