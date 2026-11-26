@@ -35,6 +35,13 @@ class AuthenticationTests(unittest.TestCase):
             else:
                 self.assertEqual(auth.verify(path, digest)["format"], "PE32")
 
+    def test_campaign_trigger_evidence_mutations(self):
+        trigger_spec = importlib.util.spec_from_file_location(
+            "trigger_audit", HERE / "audit_sin_original_gameplay_triggers.py")
+        trigger_audit = importlib.util.module_from_spec(trigger_spec)
+        trigger_spec.loader.exec_module(trigger_audit)
+        trigger_audit.self_test()
+
     def test_valid(self):
         self.check(fake_pe())
 
