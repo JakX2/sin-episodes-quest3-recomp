@@ -4886,6 +4886,47 @@ int main(int argc,char** argv){
         sf.base[0]=1.25f;sbind.angle_count=256;
         assert(!spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&sr)&&!sr.completed);
         assert(!spread->spread(q.a,0x987,q.weapon,q.enemy,10,&sbind,&sr));
+        const auto cone_getter=reinterpret_cast<GetServerNpcGruntScheduleConeApi>(GetProcAddress(s,server_npc_grunt_schedule_cone_export));
+        assert(cone_getter&&!GetProcAddress(c,server_npc_grunt_schedule_cone_export)&&!cone_getter(0,sizeof(ServerNpcGruntScheduleConeApi))&&!cone_getter(1,0));
+        const auto* cone_api=cone_getter(1,sizeof(ServerNpcGruntScheduleConeApi));assert(cone_api);
+        ServerNpcGruntScheduleConeServices cone{};cone.line=&line;cone.spread=&sbind;cone.squad_storage=slots.storage;
+        cone.normalize=[](void*,float* v,float* length) noexcept -> int{
+            *length=std::sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);if(*length)for(unsigned i=0;i<3;++i)v[i]/=*length;return 1;
+        };
+        cone.hull_width=[](void*,int type,float* width) noexcept -> int{assert(type==2);*width=20.f;return 1;};
+        f.put(q.enemy,0x610,2);const float st[3]{0,0,0},ed[3]{200,0,0};
+        float peer[3]{50,0,0};ServerNpcGruntScheduleConePredicateResult cp{};
+        assert(cone_api->predicate(q.enemy,st,ed,peer,.95f,96,&ab,&cone,&cp)&&cp.blocked&&cp.dot_accepted);
+        peer[1]=96;assert(cone_api->predicate(q.enemy,st,ed,peer,.95f,96,&ab,&cone,&cp)&&cp.range_rejected&&!cp.blocked);
+        peer[0]=200;peer[1]=0;assert(cone_api->predicate(q.enemy,st,ed,peer,.95f,96,&ab,&cone,&cp)&&cp.length_rejected&&!cp.blocked);
+        peer[0]=-30;assert(cone_api->predicate(q.enemy,st,ed,peer,.95f,96,&ab,&cone,&cp)&&cp.behind&&!cp.blocked);
+        peer[0]=50;peer[1]=20;assert(cone_api->predicate(q.enemy,st,ed,peer,.95f,96,&ab,&cone,&cp)&&cp.width_called&&cp.blocked&&cp.spatial==20);
+        peer[1]=30;assert(cone_api->predicate(q.enemy,st,ed,peer,.95f,96,&ab,&cone,&cp)&&cp.width_called&&!cp.blocked&&cp.spatial==30);
+        assert(cone_api->predicate(nullptr,st,ed,peer,.95f,96,&ab,&cone,&cp)&&!cp.width_called&&!cp.blocked);
+        struct ConeFixture{void* player=nullptr;int count=2,disposition=0;unsigned calls=0;} cf;
+        cf.player=q.enemy;cone.context=&cf;
+        auto player_line=line;player_line.context=&cf;
+        player_line.center=[](void*,void*,float* v) noexcept -> int{v[0]=50;v[1]=v[2]=0;return 1;};
+        player_line.disposition=[](void* p,void*,void*,int* v) noexcept -> int{*v=static_cast<ConeFixture*>(p)->disposition;return 1;};
+        cone.line=&player_line;
+        cone.player_count=[](void* p,int* count) noexcept -> int{*count=static_cast<ConeFixture*>(p)->count;return 1;};
+        cone.player_at=[](void* p,int index,void** e) noexcept -> int{auto& z=*static_cast<ConeFixture*>(p);++z.calls;*e=index==2?z.player:nullptr;return 1;};
+        sf.base[0]=.125f;sbind.multiplier=1.f;ServerNpcGruntScheduleConeResult co{};
+        assert(cone_api->filter(q.a,sizeof(q.a),q.weapon,0x10000000u,st,ed,10,false,&ab,&cone,&co)&&co.player_blocked&&!co.allowed&&co.player_visited==2&&co.player_skipped==1);
+        cf.disposition=1;assert(cone_api->filter(q.a,sizeof(q.a),q.weapon,0x10000000u,st,ed,10,true,&ab,&cone,&co)&&co.allowed&&co.player_skipped==2);
+        f.put(q.a,0x9c4,91u);f.put(q.group,0x48,2);f.put(q.group,8,0x9001u);f.put(q.group,12,0x1001u);
+        f.put(q.enemy,0x204,1u);f.put(q.enemy,0x94,1u);f.put(q.enemy,0x2bc,50.f);
+        assert(cone_api->filter(q.a,sizeof(q.a),q.weapon,0x40000000u,st,ed,10,true,&ab,&cone,&co)&&co.squad_blocked&&!co.allowed&&co.squad_visited==2&&co.squad_skipped==1);
+        assert(cone_api->filter(q.a,sizeof(q.a),q.weapon,0x40000000u,st,ed,10,false,&ab,&cone,&co)&&!co.squad_visited&&!co.allowed);
+        f.put(q.enemy,0x94,0u);assert(cone_api->filter(q.a,sizeof(q.a),q.weapon,0x40000000u,st,ed,10,true,&ab,&cone,&co)&&co.allowed&&co.squad_skipped==2);
+        // Actual schedule41 entry with high-capability policy supplied; no player/squad candidates.
+        cone.line=&line;f.put(q.a,0x9c4,0u);f.put(q.a,0x8ec,0x40000000u);f.put(q.weapon,0x494,0x3000u);
+        ab.entries=extended_entries;ab.count=4;
+        f.put(q.enemy,0x2bc,0.f);f.put(q.a,0xc90,100.f);q.a[0xc64]=q.a[0xc66]=1;
+        lf.fraction=1.f;lf.hit=nullptr;f.put(q.record,0,1000000091);
+        assert(cone_api->acquire(q.a,sizeof(q.a),41,60,&ac,&cone,&ar,&translation)&&ar.completed&&ar.translated==91&&!q.a[0xc64]);
+        f.put(q.a,0x8ec,0u);ab.entries=q.entries;ab.count=3;
+
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
         f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
 
