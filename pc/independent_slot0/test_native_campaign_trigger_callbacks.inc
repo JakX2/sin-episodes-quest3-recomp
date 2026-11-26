@@ -1261,3 +1261,71 @@
         put(f.other,0xc0,23u);put(f.seq,0x3a4,21u);
         assert(activate(f.seq,sizeof(f.seq),&ab,&ao)&&ao.next_handle==0x4001u&&ao.next_found);
     }
+
+
+    // Original UpdateOnRemove cancels possession before base notification;
+    // destruction then releases all ten derived output chains in reverse.
+    {
+        struct RemovalSequence {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x974]{},actions[11][0x1c]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            void* slots[2]{};DeferredRemovalQueue queue{slots,2};
+            std::string order;
+            unsigned released=0,factory_releases=0;
+        } f;
+        const auto defer=reinterpret_cast<DeferScriptedSequenceRemoval>(GetProcAddress(server,scripted_sequence_defer_export));
+        const auto factory_destroy=reinterpret_cast<DestroyScriptedSequenceEntity>(GetProcAddress(server,scripted_sequence_destroy_factory_export));
+        assert(defer&&factory_destroy&&!GetProcAddress(client,scripted_sequence_defer_export)&&!GetProcAddress(client,scripted_sequence_destroy_factory_export));
+        put(f.seq,0,scripted_sequence_vtable);put(f.seq,0xc,0x2242ee1cu);put(f.seq,0xc0,99u);put(f.seq,0x378,0x3000u);
+        put(f.seq,0x160,0x22454f00u);put(f.seq,0x168,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.seq)));
+        put(f.seq,0x3d0,0x4001u);put(f.seq,0x3b8,2u);put(f.seq,0x3c4,0x1234u);
+        put(f.npc,0,0x224954a4u);put(f.npc,0x378,0x4001u);put(f.npc,0x970,0x3000u);
+        f.entries[0].entity=reinterpret_cast<CBaseEntity*>(f.seq);f.entries[0].serial=3;
+        f.entries[1].entity=reinterpret_cast<CBaseEntity*>(f.npc);f.entries[1].serial=4;
+        ScriptedSequenceControlBindings control{};control.context=&f;control.entries=f.entries;control.entry_count=2;
+        control.extent=[](void* p,void* a,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<RemovalSequence*>(p);*n=a==f.seq?sizeof(f.seq):a==f.npc?sizeof(f.npc):0;return *n!=0;
+        };
+        ScriptedSequenceCancelBindings cancel{};cancel.context=&f;cancel.control=&control;
+        cancel.restore_flags=[](void* p,void* a,unsigned flags) noexcept ->int{
+            auto& f=*static_cast<RemovalSequence*>(p);assert(a==f.npc&&flags==0x1234u&&(f.seq[0xb8]&1u)&&f.seq[0xc0]==99);f.order+='N';return 1;
+        };
+        DeferredRemovalBindings deferred{};deferred.context=&f;deferred.queue=&f.queue;
+        deferred.update=[](void* p,void* a,unsigned handler) noexcept ->int{
+            auto& f=*static_cast<RemovalSequence*>(p);unsigned handle=0;std::memcpy(&handle,f.npc+0x970,4);
+            assert(a==f.seq&&handler==0x221446f0u&&handle==0xffffffffu&&f.seq[0xc0]==99&&f.order=="N");f.order+='B';return 1;
+        };
+        DeferredRemovalResult dr{};ScriptedSequenceCancelResult cr{};
+        assert(!api->defer_logic_remove(f.seq,sizeof(f.seq),&deferred,&dr)&&!f.seq[0xb8]);
+        assert(defer(f.seq,sizeof(f.seq),&deferred,&dr,&cancel,&cr)&&dr.queued&&cr.completed&&cr.cleared&&cr.count_reset&&f.order=="NB"&&!word(f.seq,0xc0)&&word(f.seq,0x3d0)==0xffffffffu&&word(f.npc,0x970)==0xffffffffu);
+        assert(defer(f.seq,sizeof(f.seq),&deferred,&dr,&cancel,&cr)&&dr.already_marked&&!cr.completed&&f.queue.count==1&&f.order=="NB");
+        for(unsigned i=0;i<10;++i)put(f.seq,0x3e0+0x18*i+0x14,i+1);
+        put(f.actions[9],0x18,11u);
+        LogicDestroyBindings destroy{};destroy.context=&f;
+        destroy.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<RemovalSequence*>(p);if(!token||token>11)return 0;*row=f.actions[token-1];*bytes=0x1c;return 1;
+        };
+        destroy.release_action=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& f=*static_cast<RemovalSequence*>(p);
+            const unsigned expected=f.released==0?10:f.released==1?11:11-f.released;
+            assert(token==expected&&row==f.actions[token-1]);++f.released;return 1;
+        };
+        destroy.base_destroy=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<RemovalSequence*>(p);assert(a==f.seq&&f.released==11);f.order+='D';return 1;
+        };
+        destroy.free_actor=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<RemovalSequence*>(p);assert(a==f.seq&&f.order=="NBD");f.order+='F';return 1;
+        };
+        LogicDestroyResult out{};
+        // Duplicate chain node is refused during validation, before release.
+        put(f.actions[9],0x18,10u);
+        assert(!api->destroy_logic(f.seq,sizeof(f.seq),1,&destroy,&out)&&!f.released&&f.order=="NB");
+        put(f.actions[9],0x18,11u);
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.release_networkable=[](void* p,void* net) noexcept ->int{
+            auto& f=*static_cast<RemovalSequence*>(p);assert(net==f.seq+0x160);++f.factory_releases;return 1;
+        };
+        assert(factory_destroy(nullptr,0,nullptr,nullptr)&&!factory_destroy(f.seq,sizeof(f.seq),f.seq+0x164,&owner)&&!f.factory_releases);
+        assert(factory_destroy(f.seq,sizeof(f.seq),f.seq+0x160,&owner)&&f.factory_releases==1);
+        assert(api->destroy_logic(f.seq,sizeof(f.seq),1,&destroy,&out)&&out.completed&&out.outputs==10&&out.actions==11&&out.released==11&&out.base_called&&out.freed&&f.order=="NBDF");
+    }

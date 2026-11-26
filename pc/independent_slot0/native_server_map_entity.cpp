@@ -2082,6 +2082,7 @@ int destroy_entity_members(void* a,unsigned n,unsigned flags,const LogicDestroyB
     switch(vt){
         case dynamic_trigger_vtable:first=0x414;count=3;extent=dynamic_trigger_extent;break;
         case secret_trigger_vtable:first=0x414;count=3;extent=secret_trigger_extent;break;
+        case scripted_sequence_vtable:first=0x3e0;count=10;extent=scripted_sequence_extent;break; // 221b02e0 reverse order
         case relay_vtable:first=0x394;count=1;extent=relay_extent;break;
         case auto_vtable:first=0x394;count=7;extent=auto_extent;break;
         case timer_vtable:first=0x394;count=3;extent=timer_extent;break;
@@ -2593,11 +2594,18 @@ bool removal_update_native(void* a,unsigned n,unsigned vt,const NativeRemovalUpd
 }
 // 22286bf0 -> 22286b90 -> 221636d0. The embedded networkable's
 // authenticated flags and base-entity getters use its +8 backpointer.
-int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings* b,DeferredRemovalResult* o) noexcept {
+int scripted_sequence_cancel(void*,unsigned,const ScriptedSequenceCancelBindings*,ScriptedSequenceCancelResult*) noexcept;
+int defer_remove_impl(void* a,unsigned n,const DeferredRemovalBindings* b,DeferredRemovalResult* o,
+    const ScriptedSequenceCancelBindings* sequence=nullptr,ScriptedSequenceCancelResult* cancelled=nullptr) noexcept {
+    if(cancelled)*cancelled={};
     if(!o)return 0;*o={};
     if(!a){o->completed=1;return 1;}
     if(n<4)return 0;
-    const auto vt=entity_vtable(a),extent=removal_entity_extent(vt);
+    const auto vt=entity_vtable(a);
+    const bool is_sequence=vt==scripted_sequence_vtable;
+    if(is_sequence&&(!sequence||!cancelled||!sequence->control||!sequence->control->extent))return 0;
+    if(sequence&&!is_sequence)return 0;
+    const auto extent=is_sequence?scripted_sequence_extent:removal_entity_extent(vt);
     if(!extent||n<extent||read_field<unsigned>(a,0x160)!=0x22454f00u||
        read_field<unsigned>(a,0x168)!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(a)))return 0;
     const auto flags=read_field<unsigned>(a,0xb8);
@@ -2612,7 +2620,10 @@ int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings*
     if(q.count+q.reserved==q.capacity)return 0;
     ++q.reserved;
     write_field(a,0xb8,flags|1u);o->marked=1;q.chained_update=false;
-    const bool updated=b->native_update?removal_update_native(a,n,vt,*b->native_update,q,*o,*b):
+    // Retail +17c 221af950 calls 221af840 before tail-jumping to
+    // CBaseEntity::UpdateOnRemove. The owner sees only the base leaf.
+    bool updated=!is_sequence||scripted_sequence_cancel(a,n,sequence,cancelled)!=0;
+    if(updated)updated=b->native_update?removal_update_native(a,n,vt,*b->native_update,q,*o,*b):
         b->update(b->context,a,vt==navigation_vtable?0x22177f50u:0x221446f0u)!=0;
     --q.reserved;
     if(!updated)return 0; // original virtual is void; do not roll back side effects
@@ -2622,6 +2633,9 @@ int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings*
     if(!deferred_valid(&q)||q.count+q.reserved>=q.capacity)return 0;
     q.slots[q.count++]=static_cast<unsigned char*>(a)+0x160;
     o->queued=o->completed=1;o->remaining=q.count;return 1;
+}
+int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings* b,DeferredRemovalResult* o) noexcept {
+    return defer_remove_impl(a,n,b,o);
 }
 // 22162aa0: pre-cleanup before handle guard, forward traversal of the
 // LIVE vector count. Release can append new rows during the same pass.
@@ -4047,4 +4061,25 @@ int __cdecl SinParseMapWithSequencesInternal(const char* text,unsigned bytes,
     const sin_port::native_map::PipelineBindings* b,sin_port::native_map::PipelineResult* o,void* manager,
     const sin_port::native_map::ScriptedSequenceMapBindings* sequences) noexcept {
     return sequences&&sin_port::native_map::parse_all_impl(text,bytes,false,b,o,manager,sequences->filters,sequences);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_DestroyScriptedSequenceEntity=_SiN_DestroyScriptedSequenceEntity")
+extern "C" int __cdecl SiN_DestroyScriptedSequenceEntity(void* actor,unsigned bytes,void* networkable,
+    const sin_port::native_map::RelayFactoryBindings* owner) noexcept {
+    using namespace sin_port::native_map;
+    if(!networkable)return 1;
+    unsigned marker=0;
+    if(!owner||!owner->release_networkable||bytes<scripted_sequence_extent||
+       !SinReadCampaignTouchMarkerInternal(actor,&marker)||marker!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(actor,scripted_sequence_extent)||
+       networkable!=static_cast<unsigned char*>(actor)+0x160)return 0;
+    return owner->release_networkable(owner->context,networkable);
+}
+#pragma comment(linker,"/EXPORT:SiN_DeferScriptedSequenceRemoval=_SiN_DeferScriptedSequenceRemoval")
+extern "C" int __cdecl SiN_DeferScriptedSequenceRemoval(void* actor,unsigned bytes,
+    const sin_port::native_map::DeferredRemovalBindings* b,sin_port::native_map::DeferredRemovalResult* o,
+    const sin_port::native_map::ScriptedSequenceCancelBindings* cancel,sin_port::native_map::ScriptedSequenceCancelResult* cancelled) noexcept {
+    if(o)*o={};if(cancelled)*cancelled={};
+    if(!cancel||!cancelled)return 0;
+    return sin_port::native_map::defer_remove_impl(actor,bytes,b,o,cancel,cancelled);
 }
