@@ -622,6 +622,19 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                     }
                     bound.math_colorblend=&blend;
                 }
+                sin_port::native_map::CaseBindings cases{};
+                sin_port::native_map::RelayQueueBindings case_queue{};
+                if(vt==sin_port::native_map::case_vtable&&bound.logic_case){
+                    cases=*bound.logic_case;
+                    if(cases.native_queue){
+                        case_queue=*cases.native_queue;
+                        if(case_queue.root!=sentinel||case_queue.root_token!=root)return false;
+                        case_queue.root_bytes=n;case_queue.entries=b->entities.entries;case_queue.entry_count=b->entities.count;
+                        case_queue.now=b->live_now?b->live_now:&bound.now;
+                        case_queue.protected_node=&dispatch_token;cases.native_queue=&case_queue;
+                    }
+                    bound.logic_case=&cases;
+                }
                 sin_port::native_map::TimerBindings timer{};
                 if(vt==sin_port::native_map::timer_vtable&&bound.timer){
                     timer=*bound.timer;timer.now=b->live_now?b->live_now:&bound.now;
