@@ -3385,6 +3385,47 @@ int scripted_sequence_think(void* a,unsigned n,const ScriptedSequenceThinkBindin
     if(!api||!api->set_default(a,n,o->retry_time,*c.interval,scripted_sequence_vtable,c.cadence,&cadence))return 0;
     o->due_tick=cadence.tick;o->retry_scheduled=o->completed=1;return 1;
 }
+// No-edict 2221c35f -> 22222c30 -> 22222b90 default context.
+int sequence_primary(void* a,unsigned n,int tick,const ScriptedSequencePrimaryBindings* b,ScriptedSequencePrimaryResult* o) noexcept {
+    if(!o)return 0;*o={};o->due_tick=o->next_tick=o->last_tick=-1;
+    unsigned vt=0;
+    if(!b||!b->think||!b->think->acquire||!b->think->acquire->control||n<scripted_sequence_extent||
+       !SinReadCampaignTouchMarkerInternal(a,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(a,scripted_sequence_extent)||read_field<int>(a,0x50)>0)return 0;
+    const auto& c=*b->think->acquire->control;
+    if(!c.now||!c.interval||!c.cadence||!std::isfinite(*c.now)||!std::isfinite(*c.interval)||*c.interval<=0||
+       c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count)||
+       sin_independent::EntityHandleView(c.entries,c.entry_count).Resolve(read_field<unsigned>(a,0x378))!=a)return 0;
+    auto idle=[&](){o->next_tick=read_field<int>(a,0x74);o->native_result=o->completed=1;return 1;};
+    if(read_field<unsigned>(a,0xb8)&0x400000u){o->no_think=1;return idle();}
+    o->due_tick=read_field<int>(a,0x74);
+    if(o->due_tick<=0||o->due_tick>tick){o->not_due=1;return idle();}
+    const unsigned token=read_field<unsigned>(a,8);
+    if(token&&token!=0x221afc90u)return 0;
+    if(!b->record||!b->scope)return 0;
+    const float interval=*c.interval;
+    const double scheduled=double(o->due_tick)*interval;
+    o->recorded_time=scheduled>double(*c.now)?*c.now:static_cast<float>(scheduled);
+    if(!b->record(b->context,a,tick,o->recorded_time,read_field<int>(a,0x74)))return 0;o->recorded=1;
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerNpcOuterCadenceApi(1,sizeof(ServerNpcOuterCadenceApi));
+    ServerNpcOuterCadenceResult cadence{};
+    if(!api||!api->set_default(a,n,-1.f,interval,vt,c.cadence,&cadence)||
+       !api->set_default(a,n,-1.f,interval,vt,c.cadence,&cadence))return 0;
+    if(!b->scope(b->context,a,true))return 0;o->entered=1;
+    // 22002ca0 re-reads the token after the default-clear callbacks.
+    const unsigned live=read_field<unsigned>(a,8);
+    bool ok=live==0;
+    if(live==0x221afc90u){o->invoked=1;ok=scripted_sequence_think(a,n,b->think,&o->behavior)!=0;}
+    const bool closed=b->scope(b->context,a,false)!=0;o->closed=closed;
+    if(!ok||!closed)return 0;
+    o->last_time=*c.now;
+    const double last=std::trunc(double(o->last_time)/interval+.5);
+    if(!std::isfinite(last)||last<INT_MIN||last>INT_MAX)return 0;
+    o->last_tick=static_cast<int>(last);write_field(a,0x34,o->last_tick);
+    o->next_tick=read_field<int>(a,0x74);o->native_result=(read_field<unsigned>(a,0xb8)&1u)==0;
+    o->completed=1;return 1;
+}
 // Original 221b0430/221b0500/221af970 input wrappers. Native
 // handle/state/permission leaves; possession/cancel group remain owners.
 int scripted_sequence_control(void* a,unsigned n,ScriptedSequenceInput input,
@@ -3899,4 +3940,10 @@ extern "C" int __cdecl SiN_ControlScriptedSequenceNative(void* actor,unsigned by
     const sin_port::native_map::ScriptedSequenceNativeControlBindings* b,sin_port::native_map::ScriptedSequenceControlResult* o) noexcept {
     if(o)*o={};
     return b&&sin_port::native_map::scripted_sequence_control(actor,bytes,input,b->control,o,b);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_RunScriptedSequencePrimaryThink=_SiN_RunScriptedSequencePrimaryThink")
+extern "C" int __cdecl SiN_RunScriptedSequencePrimaryThink(void* actor,unsigned bytes,int tick,const sin_port::native_map::ScriptedSequencePrimaryBindings* b,
+    sin_port::native_map::ScriptedSequencePrimaryResult* o) noexcept {
+    return sin_port::native_map::sequence_primary(actor,bytes,tick,b,o);
 }

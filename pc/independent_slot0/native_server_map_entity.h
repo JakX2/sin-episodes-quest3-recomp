@@ -599,6 +599,20 @@ struct ScriptedSequenceThinkResult {
 };
 inline constexpr char scripted_sequence_think_export[]="SiN_RunScriptedSequenceAcquisitionThink";
 using RunScriptedSequenceAcquisitionThink=int (__cdecl *)(void*,unsigned,const ScriptedSequenceThinkBindings*,ScriptedSequenceThinkResult*) noexcept;
+struct ScriptedSequencePrimaryBindings {
+    const ScriptedSequenceThinkBindings* think;
+    void* context;
+    int (__cdecl *record)(void*,void*,int,float,int) noexcept;
+    int (__cdecl *scope)(void*,void*,bool) noexcept;
+};
+struct ScriptedSequencePrimaryResult {
+    unsigned completed,no_think,not_due,recorded,entered,closed,invoked,native_result;
+    int due_tick,next_tick,last_tick;
+    float recorded_time,last_time;
+    ScriptedSequenceThinkResult behavior;
+};
+inline constexpr char scripted_sequence_primary_export[]="SiN_RunScriptedSequencePrimaryThink";
+using RunScriptedSequencePrimaryThink=int (__cdecl *)(void*,unsigned,int,const ScriptedSequencePrimaryBindings*,ScriptedSequencePrimaryResult*) noexcept;
 struct ScriptedSequenceEventBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     const RelayQueueBindings* native_queue;

@@ -1181,4 +1181,27 @@
         assert(tick()&&er.step_stopped&&sum.cancelled==1&&word(f.seq,0x3d0)==0xffffffffu&&q.released==2);
         single=0;
         assert(tick()&&er.native_named_searches==2&&er.named==1&&sum.scheduled==1&&!f.seq[0x3c0]&&word(f.seq,0x74)==162&&q.released==3&&!q.locked&&!word(q.root,0x30));
+        const auto primary=reinterpret_cast<RunScriptedSequencePrimaryThink>(GetProcAddress(server,scripted_sequence_primary_export));
+        assert(primary&&!GetProcAddress(client,scripted_sequence_primary_export));
+        struct PrimaryTrace{unsigned records=0,enters=0,leaves=0,notifications=0;float time=0;int tick=0,due=0;void* actor=nullptr;} trace;
+        trace.actor=f.seq;
+        cadence.context=&trace;cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{
+            auto& t=*static_cast<PrimaryTrace*>(p);assert(a==t.actor);++t.notifications;return 1;
+        };
+        ScriptedSequencePrimaryBindings pb{&b,&trace};
+        pb.record=[](void* p,void* a,int tick,float time,int due) noexcept ->int{
+            auto& t=*static_cast<PrimaryTrace*>(p);assert(a==t.actor);++t.records;t.tick=tick;t.due=due;t.time=time;return 1;
+        };
+        pb.scope=[](void* p,void* a,bool enter) noexcept ->int{auto& t=*static_cast<PrimaryTrace*>(p);assert(a==t.actor);if(enter)++t.enters;else ++t.leaves;return 1;};
+        ScriptedSequencePrimaryResult pr{};
+        f.now=20.125f;f.rules=0;
+        assert(primary(f.seq,sizeof(f.seq),161,&pb,&pr)&&pr.not_due&&!trace.records);
+        f.now=20.25f;
+        assert(primary(f.seq,sizeof(f.seq),162,&pb,&pr)&&pr.invoked&&pr.behavior.rules_blocked&&pr.next_tick==170&&pr.last_tick==162&&trace.records==1&&trace.enters==1&&trace.leaves==1&&trace.notifications==2&&trace.time==20.25f);
+        f.rules=1;f.now=21.25f;put(f.npc,0x96c,0u);
+        assert(primary(f.seq,sizeof(f.seq),170,&pb,&pr)&&pr.invoked&&pr.behavior.possessed&&!pr.behavior.retry_scheduled&&pr.next_tick==-1&&pr.last_tick==170&&trace.notifications==3);
+        assert(primary(f.seq,sizeof(f.seq),171,&pb,&pr)&&pr.no_think&&!pr.invoked&&trace.records==2);
+        // Original default Think wrapper tolerates null installed token.
+        put(f.seq,0xb8,0u);put(f.seq,8,0u);put(f.seq,0x74,172u);f.now=21.5f;
+        assert(primary(f.seq,sizeof(f.seq),172,&pb,&pr)&&pr.completed&&!pr.invoked&&pr.next_tick==-1&&pr.last_tick==172&&trace.enters==3&&trace.leaves==3);
     }
