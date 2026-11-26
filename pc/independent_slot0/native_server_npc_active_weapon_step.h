@@ -286,9 +286,11 @@ struct ServerEntityAcceptInputBindings {
     // frame time used by InputIgnoreDangerSounds.
     bool native_npc_handlers;
     float now;
+    // Optional diagnostic for original Jetpack path-control warning token.
+    int (__cdecl *path_warning)(void*,void*,std::uint32_t) noexcept;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
