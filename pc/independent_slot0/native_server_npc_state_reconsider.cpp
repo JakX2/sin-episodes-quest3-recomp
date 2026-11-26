@@ -3704,7 +3704,68 @@ int __cdecl grunt_damage_output_chain(void* a,unsigned n,void* damage,unsigned d
     return grunt_damage_outputs(a,n,damage,dn,now,&tail,&out->outputs);
 }
 const ServerNpcGruntDamageOutputsApi damage_outputs_api{1,sizeof(ServerNpcGruntDamageOutputsApi),&grunt_damage_outputs,&grunt_damage_output_chain};
-int __cdecl grunt_damage_tail(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageTailBindings* b,ServerNpcGruntDamageTailResult* out) noexcept{
+
+bool damage_notify_refresh(void* a,const ServerNpcGruntDamageNotificationBindings& b,unsigned& refreshed) noexcept{
+    if(!(read<unsigned>(a,0xb8)&0x800u))return true;
+    if(!b.refresh_origin||!b.refresh_origin(b.context,a))return false;
+    ++refreshed;return true;
+}
+int __cdecl grunt_damage_receive(void* a,unsigned n,void* source,unsigned sn,const ServerNpcGruntDamageNotificationBindings* b,ServerNpcGruntDamageReceiveResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0x86c||!source||sn<0x2c8||!b||!relation_grunt_class(b->original_vtable))return 0;
+    if(read<int>(a,0x868)==3){out->state_blocked=out->completed=1;return 1;}
+    if(!damage_notify_refresh(source,*b,out->source_refreshed)||!damage_notify_refresh(a,*b,out->receiver_refreshed))return 0;
+    const bool active=read<int>(a,0x868)!=0;
+    float d[3];
+    for(unsigned i=0;i<3;++i){d[i]=static_cast<float>(static_cast<double>(read<float>(a,0x2bc+4*i))-read<float>(source,0x2bc+4*i));if(!std::isfinite(d[i]))return 0;}
+    out->distance_squared=static_cast<float>(static_cast<double>(d[2])*d[2]+static_cast<double>(d[1])*d[1]+static_cast<double>(d[0])*d[0]);
+    if(!std::isfinite(out->distance_squared))return 0;
+    if(active&&out->distance_squared<57600.f){
+        if(!b->state_signal||!b->state_signal(b->context,a,1))return 0;
+        out->signal_called=1;
+    }
+    if(out->distance_squared<360000.f){write<std::uint8_t>(a,0x84c,1);write(a,0x85c,0u);out->marked=1;}
+    out->completed=1;return 1;
+}
+int __cdecl grunt_damage_notify(void* a,unsigned n,void* attacker,const ServerNpcGruntDamageNotificationBindings* b,ServerNpcGruntDamageNotificationResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0x9c8||!b||!relation_grunt_class(b->original_vtable)||!attacker||!b->as_npc)return 0;
+    void* npc=nullptr;if(!b->as_npc(b->context,attacker,&npc))return 0;out->cast_called=1;
+    if(!npc){out->completed=1;return 1;}
+    if(!damage_notify_refresh(a,*b,out->source_refreshed)||!b->count||!b->member)return 0;
+    for(int i=0;;++i){
+        int count=0;if(!b->count(b->context,&count)||count>4096||i>4096)return 0;
+        if(i>=count)break;
+        void* m=nullptr;unsigned extent=0;std::uint32_t vt=0;
+        if(!b->member(b->context,i,&m,&extent,&vt))return 0;++out->visited;
+        if(!m){++out->null_member;continue;}
+        if(m==a){++out->self;continue;}
+        if(extent<0x9c8)return 0;
+        unsigned refreshed=0;if(!damage_notify_refresh(m,*b,refreshed))return 0;
+        double d[3];for(unsigned j=0;j<3;++j){d[j]=static_cast<double>(read<float>(m,0x2bc+4*j))-read<float>(a,0x2bc+4*j);if(!std::isfinite(d[j]))return 0;}
+        if(std::abs(d[2])>=120.0){++out->vertical_blocked;continue;}
+        if(d[0]*d[0]+d[1]*d[1]>=360000.0){++out->horizontal_blocked;continue;}
+        if(read<unsigned>(m,0x9c4)!=read<unsigned>(a,0x9c4)){
+            int disposition=0;if(!b->disposition||!b->disposition(b->context,a,m,&disposition))return 0;
+            ++out->disposition_checked;if(disposition!=3){++out->disposition_blocked;continue;}
+        }
+        if(relation_grunt_class(vt)){
+            auto bound=*b;bound.original_vtable=vt;
+            if(!grunt_damage_receive(m,extent,a,n,&bound,&out->last_receive))return 0;
+            ++out->native_received;
+        }else{
+            if(!b->other_receive||!b->other_receive(b->context,m,a,npc))return 0;
+            ++out->hosted_received;
+        }
+    }
+    out->completed=1;return 1;
+}
+struct DamageNotifyRoute {
+    const ServerNpcGruntDamageNotificationBindings* bindings;
+    ServerNpcGruntDamageNotificationResult* result;
+};
+
+int grunt_damage_tail_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageTailBindings* b,ServerNpcGruntDamageTailResult* out,const DamageNotifyRoute* route) noexcept{
     if(!out)return 0;*out={};out->lookup.index=out->touch.index=255;
     if(!a||n<0xdb2||!damage||dn<0x3c||!b||!std::isfinite(now))return 0;
     const auto& sb=b->entities;
@@ -3793,14 +3854,20 @@ int __cdecl grunt_damage_tail(void* a,unsigned n,void* damage,unsigned dn,float 
         if(!lookup(true))return 0;
         if(static_cast<double>(read<int>(a,0x98))*0.3<static_cast<double>(read<float>(a,0x990))&&
             !cond->store(a,n,0x13,NpcConditionCurrent,true,&b->conditions,&out->accumulated))return 0;
-        if(!b->notify_attacker||!b->notify_attacker(b->context,a,attacker()))return 0;
+        if(route){
+            auto bound=*route->bindings;bound.original_vtable=sb.speech.original_vtable;
+            if(!grunt_damage_notify(a,n,attacker(),&bound,route->result))return 0;
+        }else if(!b->notify_attacker||!b->notify_attacker(b->context,a,attacker()))return 0;
         out->notified=1;
     }
     float p[3]{};
     if(!origin(a,p)||!b->final_notice||!b->final_notice(b->context,a,p,1,0x400,0.5f,4))return 0;
     out->final_notice=1;out->native_result=out->completed=1;return 1;
 }
-int __cdecl grunt_damage_event(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageEventBindings* b,ServerNpcGruntDamageEventResult* out) noexcept{
+int __cdecl grunt_damage_tail(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageTailBindings* b,ServerNpcGruntDamageTailResult* out) noexcept{
+    return grunt_damage_tail_impl(a,n,damage,dn,now,b,out,nullptr);
+}
+int grunt_damage_event_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageEventBindings* b,ServerNpcGruntDamageEventResult* out,const DamageNotifyRoute* route) noexcept{
     if(!out)return 0;
     out->completed=0;out->native_result=0;out->tail={};
     if(!b||!grunt_damage_output_chain(a,n,damage,dn,now,&b->chain,&out->chain))return 0;
@@ -3809,11 +3876,22 @@ int __cdecl grunt_damage_event(void* a,unsigned n,void* damage,unsigned dn,float
     const auto& source=b->chain.prefix.damage.reaction.sentence;
     tail.entities.entries=source.entries;tail.entities.count=source.count;
     tail.entities.speech.original_vtable=source.speech.original_vtable;
-    if(!grunt_damage_tail(a,n,damage,dn,now,&tail,&out->tail))return 0;
+    if(!grunt_damage_tail_impl(a,n,damage,dn,now,&tail,&out->tail,route))return 0;
     out->chain.outputs.tail_required=out->chain.prefix.damage.tail_required=0;
     out->native_result=out->tail.native_result;out->completed=1;return 1;
 }
+int __cdecl grunt_damage_event(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageEventBindings* b,ServerNpcGruntDamageEventResult* out) noexcept{
+    return grunt_damage_event_impl(a,n,damage,dn,now,b,out,nullptr);
+}
 const ServerNpcGruntDamageEventApi damage_event_api{1,sizeof(ServerNpcGruntDamageEventApi),&grunt_damage_tail,&grunt_damage_event};
+int __cdecl grunt_damage_notified_event(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageNotifiedEventBindings* b,ServerNpcGruntDamageNotifiedEventResult* out) noexcept{
+    if(!out)return 0;out->notify={};
+    if(!b)return 0;
+    const DamageNotifyRoute route{&b->notify,&out->notify};
+    return grunt_damage_event_impl(a,n,damage,dn,now,&b->event,&out->event,&route);
+}
+const ServerNpcGruntDamageNotificationApi damage_notification_api{1,sizeof(ServerNpcGruntDamageNotificationApi),&grunt_damage_receive,&grunt_damage_notify,&grunt_damage_notified_event};
+
 int __cdecl grunt_damage_override(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings* b,ServerNpcGruntDamageOverrideResult* out) noexcept{
     if(!out)return 0;
     // Large composed result: avoid deep aggregate initialization on MSVC x86.
@@ -4432,4 +4510,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageOverrideApi=_SiN_GetServerNpcGruntDamageOverrideApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageOverrideApi* __cdecl SiN_GetServerNpcGruntDamageOverrideApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageOverrideApi)?&damage_override_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDamageNotificationApi=_SiN_GetServerNpcGruntDamageNotificationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDamageNotificationApi* __cdecl SiN_GetServerNpcGruntDamageNotificationApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDamageNotificationApi)?&damage_notification_api:nullptr;
 }

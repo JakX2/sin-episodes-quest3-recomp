@@ -2277,5 +2277,38 @@ int main(int argc,char** argv){
         f.put(q.actor,0xc18,0u);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),17,&b,&o)&&o.copy_used&&o.base_called&&!o.native_result&&q.base==1);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntDamageNotificationApi>(GetProcAddress(s,server_npc_grunt_damage_notification_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_damage_notification_export)&&!g(0,sizeof(ServerNpcGruntDamageNotificationApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntDamageNotificationApi));assert(api);
+        struct NotifyFixture{
+            alignas(4) unsigned char a[0xdb2]{},m[5][0xdb2]{},attacker[4]{};
+            int count=7;unsigned signals=0,hosted=0,relations=0;bool cast=true;
+            static NotifyFixture& self(void* p){return *static_cast<NotifyFixture*>(p);}
+        } q;
+        ServerNpcGruntDamageNotificationBindings b{};b.original_vtable=0x2249aaa4;b.context=&q;
+        b.as_npc=[](void* p,void* e,void** out) noexcept -> int{auto& q=NotifyFixture::self(p);assert(e==q.attacker);*out=q.cast?e:nullptr;return 1;};
+        b.count=[](void* p,int* v) noexcept -> int{*v=NotifyFixture::self(p).count;return 1;};
+        b.member=[](void* p,int i,void** out,unsigned* n,std::uint32_t* vt) noexcept -> int{
+            auto& q=NotifyFixture::self(p);*n=sizeof(q.a);*vt=i==6?0:0x2249aaa4;
+            *out=i==0?nullptr:i==1?q.a:q.m[i-2];return 1;};
+        b.disposition=[](void* p,void*,void* m,int* d) noexcept -> int{auto& q=NotifyFixture::self(p);++q.relations;*d=m==q.m[4]?3:1;return 1;};
+        b.state_signal=[](void* p,void* m,int v) noexcept -> int{auto& q=NotifyFixture::self(p);assert(m==q.m[0]&&v==1);++q.signals;return 1;};
+        b.other_receive=[](void* p,void* m,void* a,void* npc) noexcept -> int{auto& q=NotifyFixture::self(p);assert(m==q.m[4]&&a==q.a&&npc==q.attacker);++q.hosted;return 1;};
+        f.put(q.m[0],0x868,1);f.put(q.m[0],0x2bc,239.f);
+        f.put(q.m[1],0x2c4,120.f);f.put(q.m[2],0x2bc,600.f);
+        f.put(q.m[3],0x9c4,1u);f.put(q.m[4],0x9c4,2u);
+        ServerNpcGruntDamageNotificationResult nr{};
+        q.cast=false;assert(api->broadcast(q.a,sizeof(q.a),q.attacker,&b,&nr)&&nr.completed&&!nr.visited);
+        q.cast=true;assert(api->broadcast(q.a,sizeof(q.a),q.attacker,&b,&nr)&&nr.completed&&nr.visited==7&&nr.null_member==1&&nr.self==1&&nr.vertical_blocked==1&&nr.horizontal_blocked==1&&nr.disposition_checked==2&&nr.disposition_blocked==1&&nr.native_received==1&&nr.hosted_received==1&&q.signals==1&&q.hosted==1&&q.m[0][0x84c]);
+        ServerNpcGruntDamageReceiveResult rr{};
+        q.m[0][0x84c]=0;f.put(q.m[0],0x2bc,240.f);
+        assert(api->receive(q.m[0],sizeof(q.m[0]),q.a,sizeof(q.a),&b,&rr)&&rr.distance_squared==57600&&!rr.signal_called&&rr.marked&&q.signals==1);
+        f.put(q.m[0],0x2bc,600.f);
+        assert(api->receive(q.m[0],sizeof(q.m[0]),q.a,sizeof(q.a),&b,&rr)&&!rr.marked);
+        f.put(q.m[0],0x868,3);
+        assert(api->receive(q.m[0],sizeof(q.m[0]),q.a,sizeof(q.a),&b,&rr)&&rr.state_blocked&&!rr.marked);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
