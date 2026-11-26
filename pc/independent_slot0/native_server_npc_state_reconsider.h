@@ -1079,4 +1079,25 @@ struct ServerNpcGruntSquadJoinApi {
     int (__cdecl *detach)(void*,unsigned,std::uint32_t,float,const ServerNpcGruntSquadLeaveBindings*,ServerNpcGruntSquadLeaveResult*) noexcept;
 };
 using GetServerNpcGruntSquadJoinApi=const ServerNpcGruntSquadJoinApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_registry_export[]="SiN_GetServerNpcGruntSquadRegistryApi";
+struct ServerNpcGruntSquadRegistryBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    void* context;
+    int (__cdecl *name)(void*,std::uint32_t,const char**,unsigned*) noexcept;
+    int (__cdecl *intern)(void*,const char*,std::uint32_t*) noexcept;
+    int (__cdecl *allocate)(void*,unsigned,std::uint32_t*,std::uint32_t*,void**,unsigned*) noexcept;
+    int (__cdecl *release)(void*,std::uint32_t) noexcept;
+};
+struct ServerNpcGruntSquadRegistryResult {
+    ServerNpcGruntSquadJoinResult join;
+    unsigned completed,visited,found,allocated,constructed,linked,released;
+    std::uint32_t token,array_token,name_token;
+};
+struct ServerNpcGruntSquadRegistryApi {
+    std::uint32_t version,size;
+    int (__cdecl *lookup)(std::uint32_t,const char*,const ServerNpcGruntSquadRegistryBindings*,ServerNpcGruntSquadRegistryResult*) noexcept;
+    int (__cdecl *create)(std::uint32_t*,const char*,const ServerNpcGruntSquadRegistryBindings*,ServerNpcGruntSquadRegistryResult*) noexcept;
+    int (__cdecl *attach)(void*,unsigned,std::uint32_t,float,std::uint32_t*,const char*,const ServerNpcGruntSquadRegistryBindings*,const ServerNpcGruntSquadJoinBindings*,ServerNpcGruntSquadRegistryResult*) noexcept;
+};
+using GetServerNpcGruntSquadRegistryApi=const ServerNpcGruntSquadRegistryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
