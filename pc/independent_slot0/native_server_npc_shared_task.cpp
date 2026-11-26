@@ -13,6 +13,10 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleStateApi* __cdecl SiN_GetServerNpcScheduleStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedAttackApi* __cdecl SiN_GetServerNpcSharedAttackApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::fixed_service::Api* __cdecl SiN_GetFixedDifficultyApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSentenceRequestApi* __cdecl SiN_GetServerNpcGruntSentenceRequestApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRequestSpeechApi* __cdecl SiN_GetServerNpcGruntRequestSpeechApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntReactionSpeechApi* __cdecl SiN_GetServerNpcGruntReactionSpeechApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEventSpeechApi* __cdecl SiN_GetServerNpcGruntEventSpeechApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* p,unsigned off) noexcept{T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -725,6 +729,38 @@ const ServerNpcSharedEnemyRefreshApi enemy_refresh_api{1,sizeof(ServerNpcSharedE
 const ServerNpcSharedTacticalCoverApi tactical_cover_api{1,sizeof(ServerNpcSharedTacticalCoverApi),&execute_tactical_cover};
 const ServerNpcSharedSoundCoverApi sound_cover_api{1,sizeof(ServerNpcSharedSoundCoverApi),&execute_sound_cover};
 const ServerNpcSharedObservationApi observation_api{1,sizeof(ServerNpcSharedObservationApi),&execute_observation};
+int __cdecl execute_native_speech(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,const ServerNpcSharedTaskBindings* b,const ServerNpcGruntEventSpeechBindings* speech,ServerNpcSharedNativeSpeechResult* out) noexcept{
+    if(!out)return 0;*out={};out->shared.activity=-1;out->mode=-1;
+    if(!a||n<0xfcc||!t||t->id<80||t->id>84||!b||!speech||!std::isfinite(now)||!grunt_cue_class(speech->speech.sentence.speech.original_vtable))return 0;
+    out->shared.task=t->id;
+    // Preserve shared dispatcher component-first contract, before task-specific parameter checks.
+    if(const auto token=rd<std::uint32_t>(a,0xc18)){
+        void* component=nullptr;unsigned size=0;
+        if(!b->component_storage||!b->component_storage(b->context,token,&component,&size)||!component||size<9||!b->component_task)return 0;
+        wr<std::uint8_t>(component,8,1);out->shared.component_called=1;
+        if(!b->component_task(b->context,token,t,false))return 0;
+        if(rd<std::uint8_t>(component,8)){out->shared.component_handled=1;return 1;}
+    }
+    out->shared.native=1;
+    const auto& sb=speech->speech.sentence;const auto& rb=speech->speech.request;
+    if(t->id==80){
+        const auto* api=SiN_GetServerNpcGruntSentenceRequestApi(1,sizeof(ServerNpcGruntSentenceRequestApi));
+        if(!api||!api->dispatch(a,n,now,"GRUNT_IDLE",0,2,&sb,&rb,&out->idle,&out->idle_request))return 0;
+    }else if(t->id==81){
+        const auto* api=SiN_GetServerNpcGruntRequestSpeechApi(1,sizeof(ServerNpcGruntRequestSpeechApi));
+        ServerNpcGruntSpeechBindings cue{};cue.original_vtable=sb.speech.original_vtable;cue.memory.entries=sb.entries;cue.memory.count=sb.count;
+        if(!api||!api->speak(a,n,NpcGruntAlert,now,&cue,&sb,&rb,&out->alert))return 0;
+    }else if(t->id==82||t->id==83){
+        const auto* api=SiN_GetServerNpcGruntReactionSpeechApi(1,sizeof(ServerNpcGruntReactionSpeechApi));
+        if(!api||!(t->id==82?api->pain(a,n,now,&speech->speech,&out->reaction):api->death(a,n,now,&speech->speech,&out->reaction)))return 0;
+    }else{
+        const auto* api=SiN_GetServerNpcGruntEventSpeechApi(1,sizeof(ServerNpcGruntEventSpeechApi));
+        if(!integer(std::trunc(static_cast<double>(t->parameter)),out->mode)||!api||!api->event(a,n,static_cast<unsigned>(out->mode),now,speech,&out->event))return 0;
+    }
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+    return life&&life->complete(a,n,now,false,&b->lifecycle,&out->shared.lifecycle);
+}
+const ServerNpcSharedNativeSpeechApi native_speech_api{1,sizeof(ServerNpcSharedNativeSpeechApi),&execute_native_speech};
 const ServerNpcSharedCueApi cue_api{1,sizeof(ServerNpcSharedCueApi),&execute_cue};
 const ServerNpcDifficultyWaitApi difficulty_wait_api{1,sizeof(ServerNpcDifficultyWaitApi),&execute_difficulty_wait};
 const ServerNpcSharedMovementApi movement_api{1,sizeof(ServerNpcSharedMovementApi),&execute_movement};
@@ -758,6 +794,12 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
         if(q.observe&&running&&t->id==6){
             auto& st=*q.observe_stats;++st.calls;
             const int ok=observation_api.execute(a,q.bytes,t,q.now,&q.shared,q.observe,&st.last);
+            st.native+=st.last.shared.native;st.components+=st.last.shared.component_handled;return ok;
+        }
+        if(q.native_speech&&!running&&t->id>=80&&t->id<=84){
+            auto binding=*q.native_speech;binding.speech.sentence.entries=q.original.entities.entries;binding.speech.sentence.count=q.original.entities.count;
+            auto& st=*q.native_speech_stats;++st.calls;
+            const int ok=native_speech_api.execute(a,q.bytes,t,q.now,&q.shared,&binding,&st.last);
             st.native+=st.last.shared.native;st.components+=st.last.shared.component_handled;return ok;
         }
         if(q.cue&&!running&&t->id==84){
@@ -878,4 +920,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedEnemyRefreshApi=_SiN_GetServerNpcSharedEnemyRefreshApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedEnemyRefreshApi* __cdecl SiN_GetServerNpcSharedEnemyRefreshApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedEnemyRefreshApi)?&enemy_refresh_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcSharedNativeSpeechApi=_SiN_GetServerNpcSharedNativeSpeechApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSharedNativeSpeechApi* __cdecl SiN_GetServerNpcSharedNativeSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcSharedNativeSpeechApi)?&native_speech_api:nullptr;
 }
