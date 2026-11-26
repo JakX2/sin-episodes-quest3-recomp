@@ -181,6 +181,7 @@ int main(int argc,char** argv){
         assert(ng&&!GetProcAddress(c,server_npc_native_request_scheduler_export)&&!ng(0,sizeof(ServerNpcNativeRequestSchedulerApi))&&!ng(1,0));
         const auto* native=ng(1,sizeof(ServerNpcNativeRequestSchedulerApi));assert(native);
         ServerNpcGruntAssaultScheduleBindings schedule{};
+        schedule.admission.actor_token=0x10000u;
         ServerNpcGruntAssaultActivationBindings activation{};activation.schedule=&schedule;
         ServerNpcGruntAssaultArbitrationBindings arbitration{};arbitration.activation=&activation;
         arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=18;return 1;};
