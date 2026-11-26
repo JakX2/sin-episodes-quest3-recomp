@@ -107,4 +107,26 @@ struct ServerNpcOuterAdmissionApi {
 };
 using GetServerNpcOuterAdmissionApi=const ServerNpcOuterAdmissionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+inline constexpr char server_npc_outer_cadence_export[]="SiN_GetServerNpcOuterCadenceApi";
+struct ServerNpcOuterCadenceBindings {
+    const ServerNpcActivePostAnimationBindings* storage;
+    void* context;
+    bool optimize_a,optimize_b; // 22547050/+2c, 22546f30/+2c
+    int (__cdecl *notify_think_flags)(void*,void*) noexcept; // 22163610
+    int (__cdecl *dynamic_mode)(void*,void*,bool) noexcept; // remaining 2203aac1..2203aeec
+};
+struct ServerNpcOuterCadenceResult {
+    unsigned unscheduled,mode_called,mode_direct,deadline_written,tick_written,flags_changed,notify_called,completed;
+    int mode,tick;
+    float deadline,next_time;
+};
+struct ServerNpcOuterCadenceApi {
+    std::uint32_t version,size;
+    // 2214d7b0 default (unnamed) think context only; -1 clears it.
+    int (__cdecl *set_default)(void*,unsigned,float,float,std::uint32_t,const ServerNpcOuterCadenceBindings*,ServerNpcOuterCadenceResult*) noexcept;
+    // 2204368c..2204376f. pvs is the entry snapshot, think_called is BL.
+    int (__cdecl *finish)(void*,unsigned,float,float,std::uint32_t,bool,bool,const ServerNpcOuterCadenceBindings*,ServerNpcOuterCadenceResult*) noexcept;
+};
+using GetServerNpcOuterCadenceApi=const ServerNpcOuterCadenceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 }
