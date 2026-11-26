@@ -173,6 +173,7 @@ struct AutosaveBindings {
     int (__cdecl *attachment_notice)(void*,void* attachment,void* actor) noexcept;
     int (__cdecl *clear_attachment)(void*,void* actor) noexcept;
     int (__cdecl *remove)(void*,void* actor) noexcept;
+    const DeferredRemovalBindings* deferred;
 };
 struct AutosaveResult {
     unsigned completed,handled,new_level_unit,gate_read,suppressed,command_queued;
@@ -438,11 +439,14 @@ struct RelayBindings {
     // input EnableRefire, action ID zero. Owner resolves handles and clock.
     int (__cdecl *refire)(void*,void*,float) noexcept;
     const RelayQueueBindings* native_queue;
+    bool native_fire;
+    const DeferredRemovalBindings* deferred;
 };
 struct RelayResult {
     unsigned completed,handled,suppressed,fired,queued,removed,canceled,refire,actions;
     float maximum_delay,refire_delay;
     unsigned native_refire,native_cancel,cancel_visited,cancel_removed,protected_match;
+    unsigned native_output_queued,native_removed;
 };
 // Independent owner storage for the original CUtlVector of networkable
 // pointers (2255a8b8, count 2255a8c4). No retail allocator is assumed.

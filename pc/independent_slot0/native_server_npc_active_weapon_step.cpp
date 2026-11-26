@@ -2429,7 +2429,7 @@ int native_autosave_input(void* a,unsigned n,unsigned handler,const ServerEntity
     sin_port::native_map::AutosaveResult result{};
     if(handler==0x22178dd0u)
         return api&&api->autosave_input(a,n,"Save",b.logic_autosave,&result)&&result.completed&&result.handled?1:0;
-    if(handler==0x2213cdc0u&&b.logic_autosave->remove)
+    if(handler==0x2213cdc0u&&(b.logic_autosave->remove||b.logic_autosave->deferred))
         return api&&api->autosave_kill(a,n,b.entities.entries,b.entities.count,b.logic_autosave,&result)&&result.completed&&result.handled?1:0;
     return -1;
 }
@@ -2606,7 +2606,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         // Project only the authenticated inherited Kill descriptor.
         // Other inherited inputs retain owner storage.
         bool base_kill=false;
-        const bool native_kill=shared_kill||(vt==sin_port::native_map::autosave_vtable&&b->logic_autosave&&b->logic_autosave->remove)||
+        const bool native_kill=shared_kill||(vt==sin_port::native_map::autosave_vtable&&b->logic_autosave&&(b->logic_autosave->remove||b->logic_autosave->deferred))||
             (vt==sin_port::native_map::multicompare_vtable&&b->logic_multicompare&&sin_port::native_map::kill_available(b->logic_multicompare->kill));
         if(token==logic_base_kill_map.token&&native_kill){
             if(shared_kill)base_kill=true;
