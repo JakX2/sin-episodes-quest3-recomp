@@ -380,7 +380,18 @@ int main(int argc,char** argv){
     ServerNpcThinkCatalogResult think_run;
     install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);f.actor[0x84d]=f.actor[0x84e]=1;
     component_calls=0;
-    assert(think_api->run(f.actor,sizeof(f.actor),69.44f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&think,&think_run)&&think_run.outer_called&&think_run.outer_gather.gather.completed&&think_run.preschedule_called&&think_run.maintenance_called&&think_run.completed&&!think_run.scheduler.gather_calls&&think_run.scheduler.scheduler.tactical.last.accepted&&component_calls==1&&think_run.conditions_cleared==4);
+    const int think_ok=think_api->run(f.actor,sizeof(f.actor),69.44f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&think,&think_run);
+    std::fprintf(stderr,"outer think diagnostic: status=%d outer=%u gather=%u pre=%u maintenance=%u completed=%u inner_gather=%u tactical=%u components=%u cleared=%u\n",think_ok,think_run.outer_called,think_run.outer_gather.gather.completed,think_run.preschedule_called,think_run.maintenance_called,think_run.completed,think_run.scheduler.gather_calls,think_run.scheduler.scheduler.tactical.last.accepted,component_calls,think_run.conditions_cleared);
+    assert(think_ok);
+    assert(think_run.outer_called);
+    assert(think_run.outer_gather.gather.completed);
+    assert(think_run.preschedule_called);
+    assert(think_run.maintenance_called);
+    assert(think_run.completed);
+    assert(!think_run.scheduler.gather_calls);
+    assert(think_run.scheduler.scheduler.tactical.last.accepted);
+    assert(component_calls==1);
+    assert(think_run.conditions_cleared==4);
     tcb.submit_goal=old_submit;
     // Invalidated schedule can invoke +420 again because +84e remains false.
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0xc18,711u);component_calls=0;
