@@ -1,5 +1,6 @@
 #include "native_server_npc_weapon_runtime.h"
 #include "native_server_npc_active_weapon_step.h"
+#include "native_server_weapon_script_view.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -2026,6 +2027,8 @@ int main(int argc,char** argv){
         bool pickup_null{},pickup_rule{};
         unsigned elite_randoms{},elite_traces{},elite_refreshes{};
         bool elite_trace_fail{};
+        alignas(4) unsigned char reward_player[0x78c]{},reward_weapon[0x51e]{},reward_script[0x1bc]{},reward_edict[0x10]{},reward_item[4]{};
+        unsigned reward_angles{},reward_velocity{},reward_max_reads{};
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -2934,7 +2937,111 @@ int main(int argc,char** argv){
         }
         assert(hd.death_order==expected_elite);
     }
-    elite.native_effects=nullptr;
+    // Complete campaign-triggered Elite reward: no high-level player,
+    // entity selection, velocity vector or effect-block host callbacks.
+    ServerNpcEliteLocalPlayerBindings reward_local{};reward_local.context=&hd;
+    reward_local.max_clients=[](void* p,int* clients) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(q.f->get<int>(q.f->actor,0x850)==7);
+        *clients=1;q.death_order.push_back(82);return 1;
+    };
+    reward_local.edict=[](void* p,int slot,const void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(slot==1);*data=q.reward_edict;*bytes=sizeof(q.reward_edict);q.death_order.push_back(83);return 1;
+    };
+    reward_local.base_entity=[](void* p,unsigned token,void** entity) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(token==0x1234u);*entity=q.reward_player;q.death_order.push_back(84);return 1;
+    };
+    f.put(hd.reward_edict,0xc,0x1234u);f.put(hd.reward_player,0,0x224aec3cu);
+    for(unsigned i=0;i<48;++i)f.put(hd.reward_player,0x6cc+4*i,0xffffffffu);
+    f.put(hd.reward_player,0x6cc,0x9000u);f.put(hd.reward_player,0x6d0,0x8000u); // stale duplicate
+    f.put(hd.reward_player,0x650,4);f.put(hd.reward_player,0x654,30);
+    f.put(hd.reward_weapon,0x51c,static_cast<std::uint16_t>(0xffffu));
+    std::memcpy(hd.reward_script+0x17c,"MAG",4);std::memcpy(hd.reward_script+0x19c,"AR",3);
+    ServerWeaponScriptView reward_scripts{};reward_scripts.fallback=hd.reward_script;reward_scripts.fallback_bytes=sizeof(hd.reward_script);
+    ServerNpcEliteAmmoRewardBindings reward_native{};reward_native.context=&hd;reward_native.scripts=&reward_scripts;
+    reward_native.extent=[](void* p,void* entity,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        if(entity==q.reward_player)*bytes=sizeof(q.reward_player);else if(entity==q.reward_weapon)*bytes=sizeof(q.reward_weapon);else return 0;return 1;
+    };
+    reward_native.ammo_index=[](void* p,const char* name,int* id) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        if(!std::strcmp(name,"MAG"))*id=1;else if(!std::strcmp(name,"AR"))*id=2;else return 0;
+        q.death_order.push_back(85);return 1;
+    };
+    reward_native.max_carry=[](void* p,int id,int* value) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(id==1||id==2);*value=id==1?12:30;
+        ++q.reward_max_reads;q.death_order.push_back(86);return 1;
+    };
+    reward_native.create=[](void* p,const char* name,int edict,void** item) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(!std::strcmp(name,"item_ammo_magnum")&&edict==-1&&q.f->get<int>(q.f->actor,0x850)==7);
+        *item=q.reward_item;q.death_order.push_back(87);return 1;
+    };
+    elite.native_player=&reward_local;elite.native_reward=&reward_native;elite.player=nullptr;elite.entity=nullptr;
+    elite.rule=[](void* p,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(q.f->get<int>(q.f->actor,0x850)==7);
+        *yes=true;q.death_order.push_back(12);return 1;
+    };
+    elite.effect_begin=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&!q.f->get<int>(a,0xc38)&&!q.f->get<int>(a,0x8c));
+        q.f->put(a,0xb8,q.f->get<unsigned>(a,0xb8)|0x800u);q.death_order.push_back(10);return 1;
+    };
+    elite.position=[](void* p,void* e,const float* pos) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(e==q.reward_item&&pos[0]==999.f&&pos[1]==20.f&&pos[2]==30.f);
+        q.death_order.push_back(88);return 1;
+    };
+    elite.random_float=[](void* p,float lo,float hi,float* value) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);const unsigned i=q.reward_angles++;
+        assert(i<3&&lo==(i==1?0.f:-20.f)&&hi==(i==1?360.f:20.f));*value=i==1?180.f:10.f;
+        q.death_order.push_back(89);return 1;
+    };
+    elite.orientation=[](void* p,void* e,const float* ang) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(e==q.reward_item&&ang[0]==10.f&&ang[1]==180.f&&ang[2]==10.f&&q.reward_angles==3);
+        q.death_order.push_back(90);return 1;
+    };
+    elite.velocity=nullptr;elite.velocity_random_int=[](void* p,int lo,int hi,int* sample) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(lo==0&&hi==32767&&q.reward_velocity<3);
+        constexpr int values[]{0,16384,32767};*sample=values[q.reward_velocity++];q.death_order.push_back(91);return 1;
+    };
+    elite.set_velocity=[](void* p,void* e,const float* v) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(e==q.reward_item&&v[0]==-10.f&&v[1]==.00030517578125f&&v[2]==10.f);
+        q.death_order.push_back(92);return 1;
+    };
+    elite.finish=[](void* p,void* e) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(e==q.reward_item);q.death_order.push_back(93);return 1;
+    };
+    // Live registry includes the weapon, but the active search list has
+    // only the two NPCs. Nested reward registry intentionally absent.
+    sin_independent::EntityHandleEntry elite_slots[4]{};
+    elite_slots[0].serial=9;elite_slots[0].entity=reinterpret_cast<CBaseEntity*>(hd.reward_weapon);
+    elite_slots[1].serial=7;elite_slots[1].entity=reinterpret_cast<CBaseEntity*>(wt.member);
+    elite_slots[2].serial=8;elite_slots[2].entity=reinterpret_cast<CBaseEntity*>(f.actor);elite_slots[2].next=&elite_slots[1];
+    elite_slots[3].serial=10;elite_slots[3].entity=reinterpret_cast<CBaseEntity*>(hd.reward_player);
+    auto elite_search=*hq.lookup;elite_search.head=&elite_slots[2];
+    hq_service.entities.entries=elite_slots;hq_service.entities.count=4;hq_service.native_search=&elite_search;
+    reset_subclass(0x2248df04u);f.put(f.actor,0xc38,4);f.actor[0xbf]&=static_cast<unsigned char>(~8u);
+    f.put(f.actor,0xc0,501u);f.put(wt.member,0xc0,500u);
+    hd.elite_refreshes=hd.elite_randoms=hd.elite_traces=hd.reward_angles=hd.reward_velocity=hd.reward_max_reads=0;hd.elite_trace_fail=false;
+    std::memset(hq.root,0,sizeof(hq.root));std::memset(hq.events,0,sizeof(hq.events));std::memset(hq.actions,0,sizeof(hq.actions));
+    hq.allocated=hq.released_events=hq.released_actions=0;
+    hq_service.live_now=&campaign_now;campaign_now=89.75f;
+    f.put(hq.actions[0],0,501u);f.put(hq.actions[0],4,600u);f.put(hq.actions[0],8,777u);
+    f.put(hq.actions[0],0xc,.25f);f.put(hq.actions[0],0x10,1u);f.put(hq.actions[0],0x14,69u);
+    f.put(wt.member,0xbdc,0x7100u);
+    assert(void_output->fire(wt.member+0xbc8,0x18,wt.member,wt.member,0xfd8u,0.f,&campaign_actions,&campaign_output));
+    assert(campaign_output.queued==1&&campaign_output.removed==1&&hq.released_actions==1);
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,-99.f,false,&steps,&hq_service,&sr)&&sr.future_stopped&&!sr.native_inputs&&hd.death_order.empty());
+    campaign_now=90.f;
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,-99.f,false,&steps,&hq_service,&sr)&&sr.completed&&sr.events==1&&sr.named==1&&sr.native_inputs==1&&!sr.rejected_inputs&&!sr.foreign_inputs&&hq.released_events==1&&!hq.locks&&!f.get<unsigned>(hq.root,0x30));
+    const auto& reward_result=hd_subclass_result.elite;
+    assert(reward_result.completed&&reward_result.native_effects_completed&&reward_result.effect_iterations==6&&reward_result.base_called&&reward_result.rule_allowed&&reward_result.player_lookup_native&&reward_result.player_unknown_called);
+    assert(reward_result.reward_native&&reward_result.reward_slots==48&&reward_result.reward_weapons==1&&reward_result.reward_candidates==2&&!reward_result.reward_equal_minimum&&reward_result.reward_ammo_index==1&&reward_result.reward_factory&&reward_result.entity_found&&reward_result.velocity_native&&reward_result.finished&&reward_result.effect_closed);
+    assert(reward_result.reward_minimum==1.f/3.f&&hd.reward_max_reads==4&&!reward_native.entries&&!reward_native.count);
+    assert(f.get<int>(f.actor,0x9c)==-200&&f.get<int>(f.actor,0x8c)==1&&f.get<int>(f.actor,0x850)==7&&f.get<float>(f.actor,0x854)==90.f&&f.get<int>(f.actor,0xc68)==11);
+    std::vector<unsigned> expected_reward{10,72,72,73,74};
+    for(unsigned i=0;i<6;++i){expected_reward.insert(expected_reward.end(),{75,75,76,75,75,77,75,75,78,79});if(!(i%2))expected_reward.insert(expected_reward.end(),{80,81});}
+    expected_reward.insert(expected_reward.end(),{1,2,3,4,5,6,12,82,83,84,85,86,86,85,86,86,87,88,89,89,89,90,91,91,91,92,93,13});
+    assert(hd.death_order==expected_reward);
+    hq_service.live_now=nullptr;hq_service.native_search=hq.lookup;hq_service.entities=hd_b.entities;
+    elite.native_effects=nullptr;elite.native_player=nullptr;elite.native_reward=nullptr;
     script_slots[0].serial=0;script_slots[0].entity=nullptr;
     std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
     assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);
