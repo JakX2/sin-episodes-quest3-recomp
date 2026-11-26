@@ -502,6 +502,20 @@ int main(int argc,char** argv){
     assert(!sst->run(f.actor,sizeof(f.actor),69.493f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&ssbind,&ssrun)&&ssrun.choose_calls==1&&ssrun.choose.broadcast_calls==1&&ssrun.choose.broadcast.assigned==1&&!ssrun.apply_calls&&component_calls==2);
     unsigned assigned=0;std::memcpy(&assigned,member+0x8a0,4);assert(assigned==0x7001u);
     selection.state.state_query=state_query;selection.state.entities=old_entities;
+    auto gtaskthink=reinterpret_cast<GetServerNpcNativeSquadTaskThinkApi>(GetProcAddress(s,server_npc_native_squad_task_think_export));
+    assert(gtaskthink&&!GetProcAddress(c,server_npc_native_squad_task_think_export)&&!gtaskthink(0,sizeof(ServerNpcNativeSquadTaskThinkApi))&&!gtaskthink(1,0));
+    const auto* taskthink=gtaskthink(1,sizeof(ServerNpcNativeSquadTaskThinkApi));assert(taskthink);
+    ServerNpcNativeSquadTaskThinkBindings taskbind{};taskbind.think=ssbind;
+    taskbind.speech_tasks.context=&f;taskbind.speech_tasks.flank_metric=cb.path_distance;
+    auto saved_component_task=ab.shared.component_task;
+    ab.shared.component_task=[](void* p,std::uint32_t token,const ServerNpcScheduleTask* task,bool running) noexcept -> int{
+        auto& f=F::self(p);assert(token==711&&task->id==84&&!running&&f.think_component[8]);++f.think_component_tasks;f.think_component[8]=0;return 1;
+    };
+    install_at(88,3);bind_nav();f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);component_calls=0;
+    auto no_legacy_cue=cb;no_legacy_cue.cue=nullptr;
+    ServerNpcNativeSquadTaskThinkResult taskrun{};
+    assert(taskthink->run(f.actor,sizeof(f.actor),69.494f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&taskbind,&taskrun)&&taskrun.think.think.squad.cycle.preschedule.think.completed&&taskrun.speech_tasks.calls==1&&taskrun.speech_tasks.native==1&&taskrun.speech_tasks.last.mode==1&&taskrun.speech_tasks.last.event.metric==241&&!taskrun.speech_tasks.last.event.sentence.mode_allowed&&taskrun.speech_tasks.last.shared.lifecycle.completed&&component_calls==1&&f.think_component_tasks==8);
+    ab.shared.component_task=saved_component_task;
     tcb.submit_goal=cover_submit;
     ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;
     m.before_selection=old_before;
