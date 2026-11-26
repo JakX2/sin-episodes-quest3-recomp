@@ -5030,6 +5030,44 @@ int __cdecl grunt_ragdoll_route(void* a,unsigned n,const void* damage,unsigned d
 }
 const ServerNpcGruntRagdollRouteApi ragdoll_route_api{1,sizeof(ServerNpcGruntRagdollRouteApi),&grunt_ragdoll_route};
 
+int __cdecl grunt_component_damage(void* component,unsigned n,const void* damage,unsigned dn,const ServerNpcGruntComponentDamageBindings* b,ServerNpcGruntComponentDamageResult* out) noexcept{
+    if(!out)return 0;*out={};out->mapped_condition=-1;out->source_handle=out->tank_handle=0xffffffffu;
+    if(!component||n<0x10||!damage||dn<0x48||!b||b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    switch(b->original_behavior_vtable){
+    case 0x224abec4u:out->tank=1;break;
+    case 0x223f956cu:case 0x224ae624u:case 0x224ab88cu:case 0x224ab494u:case 0x223f5544u:case 0x22495344u:case 0x223f6b7cu:break;
+    default:return 0;
+    }
+    if(out->tank&&n<0x18)return 0;
+    out->parent=read<unsigned>(component,0xc);
+    if(!out->parent||!b->parent_damage||!b->parent_damage(b->context,out->parent,damage,&out->native_result))return 0;
+    out->delegated=1;
+    auto done=[&](){out->completed=1;return 1;};
+    if(!out->tank||!out->native_result)return done();
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    out->source_handle=read<unsigned>(damage,0x28);
+    void* source=registry.Resolve(out->source_handle);out->source_valid=source!=nullptr;
+    out->tank_handle=read<unsigned>(component,0x14);
+    out->tank_valid=registry.Resolve(out->tank_handle)!=nullptr;
+    if(!out->tank_valid||!source)return done();
+    bool yes=false;
+    if(!b->source_predicate||!b->source_predicate(b->context,source,&yes))return 0;
+    out->source_checked=1;out->source_admitted=yes;
+    if(!yes)return done();
+    // The original re-resolves the tank handle after the source virtual call.
+    void* tank=registry.Resolve(read<unsigned>(component,0x14));
+    if(!tank||!b->tank_predicate||!b->tank_predicate(b->context,tank,source,&yes))return 0;
+    out->tank_checked=1;out->tank_predicate_value=yes;
+    if(yes)return done();
+    if(!b->condition_map||!b->condition_map(b->context,component,100000,&out->mapped_condition))return 0;
+    out->mapped=1;
+    out->owner=read<unsigned>(component,4);
+    if(!out->owner||!b->condition_set||!b->condition_set(b->context,out->owner,out->mapped_condition))return 0;
+    out->condition_set=1;return done();
+}
+const ServerNpcGruntComponentDamageApi component_damage_api{1,sizeof(ServerNpcGruntComponentDamageApi),&grunt_component_damage};
+
+
 
 
 
@@ -5659,4 +5697,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRagdollLifeApi=_SiN_GetServerNpcGruntRagdollLifeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRagdollLifeApi* __cdecl SiN_GetServerNpcGruntRagdollLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRagdollLifeApi)?&ragdoll_life_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntComponentDamageApi=_SiN_GetServerNpcGruntComponentDamageApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntComponentDamageApi* __cdecl SiN_GetServerNpcGruntComponentDamageApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntComponentDamageApi)?&component_damage_api:nullptr;
 }
