@@ -4431,6 +4431,86 @@ int __cdecl jetpack_death_dispatch(void* a,unsigned n,const void* damage,unsigne
     return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->life,&out->life,&route);
 }
 const ServerNpcJetpackDeathModeApi jetpack_death_mode_api{1,sizeof(ServerNpcJetpackDeathModeApi),&jetpack_death_mode,&jetpack_death_dispatch};
+int __cdecl grunt_ground_death_prepare(void* a,unsigned n,void* damage,unsigned dn,const ServerNpcGruntGroundDeathBindings* b,ServerNpcGruntGroundDeathResult* out) noexcept{
+    if(!out)return 0;
+    out->base.combat.death.event.completed=0;
+    out->ammo=nullptr;out->attacker_class=0;out->grenade_sample=-1;
+    out->completed=out->attacker_valid=out->loot_enabled=out->weapon_checked=out->rule_checked=out->matches=out->ammo_dropped=out->kick_called=out->grenade_dropped=out->copy_used=out->components=out->base_called=0;
+    if(!a||n<0xdb2||!damage||dn<0x48||!b||!b->loot_enabled)return 0;
+    const auto& sb=b->base.combat.death.event.prefix.removal.removal.leave.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    if(void* attacker=registry.Resolve(read<unsigned>(damage,0x28))){
+        out->attacker_valid=1;
+        if(!b->classification||!b->classification(b->context,attacker,&out->attacker_class))return 0;
+    }
+    write(a,0xc68,out->attacker_class);
+    bool enabled=false;if(!b->loot_enabled(b->context,&enabled))return 0;
+    out->loot_enabled=enabled;
+    if(!enabled){out->completed=1;return 1;}
+    if(!(read<std::uint8_t>(a,0xb6)&0x10u)){
+        void* weapon=nullptr;if(!b->weapon||!b->weapon(b->context,a,&weapon))return 0;
+        out->weapon_checked=1;
+        if(weapon){
+            bool yes=false;if(!b->loot_rule||!b->loot_rule(b->context,&yes))return 0;
+            out->rule_checked=1;
+            if(yes){
+                constexpr const char* names[]{"weapon_assault_rifle","weapon_scattergun","weapon_npc_pistol"};
+                constexpr const char* ammo[]{"item_ammo_ar_grenade","item_ammo_flak","item_ammo_duag"};
+                for(unsigned i=0;i<3;++i){
+                    if(!b->matches||!b->matches(b->context,weapon,names[i],&yes))return 0;
+                    ++out->matches;
+                    if(yes){
+                        out->ammo=ammo[i];void* item=nullptr;
+                        if(!b->drop||!b->drop(b->context,a,out->ammo,&item))return 0;
+                        out->ammo_dropped=item!=nullptr;
+                        if(item){if(!b->kick||!b->kick(b->context,item))return 0;out->kick_called=1;}
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if(!b->random_int||!b->random_int(b->context,0,1,&out->grenade_sample)||out->grenade_sample<0||out->grenade_sample>1)return 0;
+    if(out->grenade_sample==1&&read<int>(a,0xc38)>0){
+        void* item=nullptr;if(!b->drop||!b->drop(b->context,a,"weapon_grenade",&item))return 0;
+        out->grenade_dropped=item!=nullptr;
+    }
+    if(read<std::uint8_t>(a,0xb6)&8u){
+        std::memcpy(out->copied,damage,0x48);out->copy_used=1;
+        float scaled[3];
+        for(unsigned i=0;i<3;++i){scaled[i]=static_cast<float>(static_cast<double>(read<float>(damage,4*i))*10.0);if(!std::isfinite(scaled[i]))return 0;}
+        for(unsigned i=0;i<3;++i){
+            float v=0;if(!b->random_float||!b->random_float(b->context,10.f,50.f,&v)||!std::isfinite(v)||v<10.f||v>50.f)return 0;
+            const float next=static_cast<float>(static_cast<double>(scaled[i])+v);if(!std::isfinite(next))return 0;
+            write(out->copied,4*i,next);
+        }
+    }
+    out->completed=1;return 1;
+}
+int __cdecl grunt_ground_death(void* a,unsigned n,std::uint32_t handle,void* damage,unsigned dn,float now,const ServerNpcGruntGroundDeathBindings* b,ServerNpcGruntGroundDeathResult* out) noexcept{
+    if(!out||!b||!std::isfinite(now))return 0;
+    const auto& rb=b->base.combat.death.event.prefix.removal;
+    const auto& sb=rb.removal.leave.sentence;
+    if(!a||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries)||sin_independent::EntityHandleView(sb.entries,sb.count).Resolve(handle)!=a)return 0;
+    if(!grunt_ground_death_prepare(a,n,damage,dn,b,out))return 0;
+    out->completed=0;
+    void* forwarded=out->copy_used?static_cast<void*>(out->copied):damage;
+    // Original 2208b3b0 calls every live component +44 before base death.
+    for(int i=0;;++i){
+        const int count=read<int>(a,0xc28);if(count>4096||i>4096)return 0;
+        if(i>=count)break;
+        void* array=nullptr;unsigned extent=0;
+        if(!memory_storage(&rb.component_storage,read<unsigned>(a,0xc1c),4u*static_cast<unsigned>(count),array,extent))return 0;
+        const auto token=read<unsigned>(array,4*i);
+        if(!token||!b->component_death||!b->component_death(b->context,token,forwarded))return 0;
+        ++out->components;
+    }
+    if(!grunt_death_selected(a,n,handle,forwarded,0x48,now,&b->base,&out->base))return 0;
+    out->base_called=out->completed=1;return 1;
+}
+const ServerNpcGruntGroundDeathApi ground_death_api{1,sizeof(ServerNpcGruntGroundDeathApi),&grunt_ground_death_prepare,&grunt_ground_death};
+
 
 
 
@@ -5004,4 +5084,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcJetpackDeathModeApi=_SiN_GetServerNpcJetpackDeathModeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathModeApi* __cdecl SiN_GetServerNpcJetpackDeathModeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcJetpackDeathModeApi)?&jetpack_death_mode_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntGroundDeathApi=_SiN_GetServerNpcGruntGroundDeathApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGroundDeathApi* __cdecl SiN_GetServerNpcGruntGroundDeathApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGroundDeathApi)?&ground_death_api:nullptr;
 }

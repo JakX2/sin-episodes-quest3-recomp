@@ -1892,4 +1892,34 @@ struct ServerNpcJetpackDeathModeApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcJetpackDeathDispatchBindings*,ServerNpcJetpackDeathDispatchResult*) noexcept;
 };
 using GetServerNpcJetpackDeathModeApi=const ServerNpcJetpackDeathModeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_ground_death_export[]="SiN_GetServerNpcGruntGroundDeathApi";
+struct ServerNpcGruntGroundDeathBindings {
+    ServerNpcGruntDeathSelectedBindings base;
+    void* context;
+    int (__cdecl *classification)(void*,void*,int*) noexcept; // attacker +d0
+    int (__cdecl *loot_enabled)(void*,bool*) noexcept; // 2259c5b0 +2c
+    int (__cdecl *weapon)(void*,void*,void**) noexcept; // 222aa800(0)
+    int (__cdecl *loot_rule)(void*,bool*) noexcept; // 22572914 +1a4
+    int (__cdecl *matches)(void*,void*,const char*,bool*) noexcept;
+    // Host original randomized pose/creation helper; kick owns optional +218 physics.
+    int (__cdecl *drop)(void*,void*,const char*,void**) noexcept;
+    int (__cdecl *kick)(void*,void*) noexcept;
+    int (__cdecl *random_int)(void*,int,int,int*) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *component_death)(void*,std::uint32_t,void*) noexcept; // +44
+};
+struct ServerNpcGruntGroundDeathResult {
+    ServerNpcGruntDeathSelectedResult base;
+    unsigned char copied[0x48];
+    const char* ammo;
+    int attacker_class,grenade_sample;
+    unsigned completed,attacker_valid,loot_enabled,weapon_checked,rule_checked,matches,ammo_dropped,kick_called,grenade_dropped,copy_used,components,base_called;
+};
+struct ServerNpcGruntGroundDeathApi {
+    std::uint32_t version,size;
+    int (__cdecl *prepare)(void*,unsigned,void*,unsigned,const ServerNpcGruntGroundDeathBindings*,ServerNpcGruntGroundDeathResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntGroundDeathBindings*,ServerNpcGruntGroundDeathResult*) noexcept;
+};
+using GetServerNpcGruntGroundDeathApi=const ServerNpcGruntGroundDeathApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

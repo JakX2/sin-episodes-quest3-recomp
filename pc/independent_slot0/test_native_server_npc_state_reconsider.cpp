@@ -2639,5 +2639,44 @@ int main(int argc,char** argv){
         static ServerNpcJetpackDeathDispatchResult cr;
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&cb,&cr)&&cr.life.completed&&cr.life.death_called&&cr.jet.completed&&cr.jet.final_mode==1&&cr.jet.tail_called&&q.tails==1&&!std::memcmp(q.actor+0x102c,q.damage,sizeof(q.damage)));
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntGroundDeathApi>(GetProcAddress(s,server_npc_grunt_ground_death_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_ground_death_export)&&!g(0,sizeof(ServerNpcGruntGroundDeathApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntGroundDeathApi));assert(api);
+        struct LootFixture{
+            alignas(4) unsigned char actor[0xdb2]{},attacker[4]{},weapon[4]{},item[4]{},damage[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            const char* weapon_name="weapon_npc_pistol";const char* dropped=nullptr;
+            bool enabled=true,rule=true;unsigned matches=0,drops=0,kicks=0,rng=0;int sample=1;
+            static LootFixture& self(void* p){return *static_cast<LootFixture*>(p);}
+            static float fl(const void* p,unsigned o){float v;std::memcpy(&v,static_cast<const unsigned char*>(p)+o,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.attacker);
+        static ServerNpcGruntGroundDeathBindings b;b.context=&q;
+        auto& sb=b.base.combat.death.event.prefix.removal.removal.leave.sentence;
+        sb.entries=q.entries;sb.count=2;sb.speech.original_vtable=0x2249aaa4;
+        b.classification=[](void* p,void* a,int* v) noexcept -> int{assert(a==LootFixture::self(p).attacker);*v=10;return 1;};
+        b.loot_enabled=[](void* p,bool* v) noexcept -> int{*v=LootFixture::self(p).enabled;return 1;};
+        b.weapon=[](void* p,void* a,void** v) noexcept -> int{auto& q=LootFixture::self(p);assert(a==q.actor);*v=q.weapon;return 1;};
+        b.loot_rule=[](void* p,bool* v) noexcept -> int{*v=LootFixture::self(p).rule;return 1;};
+        b.matches=[](void* p,void* w,const char* name,bool* v) noexcept -> int{auto& q=LootFixture::self(p);assert(w==q.weapon);++q.matches;*v=!std::strcmp(name,q.weapon_name);return 1;};
+        b.drop=[](void* p,void* a,const char* name,void** v) noexcept -> int{auto& q=LootFixture::self(p);assert(a==q.actor);q.dropped=name;++q.drops;*v=q.item;return 1;};
+        b.kick=[](void* p,void* item) noexcept -> int{auto& q=LootFixture::self(p);assert(item==q.item);++q.kicks;return 1;};
+        b.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{auto& q=LootFixture::self(p);assert(lo==0&&hi==1);*v=q.sample;++q.rng;return 1;};
+        b.random_float=[](void* p,float lo,float hi,float* v) noexcept -> int{auto& q=LootFixture::self(p);assert(lo==10&&hi==50);*v=20;++q.rng;return 1;};
+        f.put(q.damage,0x28,0x1001u);f.put(q.damage,0,1.f);f.put(q.damage,4,2.f);f.put(q.damage,8,3.f);f.put(q.actor,0xc38,1);
+        static ServerNpcGruntGroundDeathResult o;
+        q.enabled=false;q.actor[0xb6]=8;
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.completed&&o.attacker_class==10&&!o.copy_used&&!q.rng);
+        q.enabled=true;
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.completed&&o.matches==3&&o.ammo_dropped&&!std::strcmp(o.ammo,"item_ammo_duag")&&o.kick_called&&o.grenade_dropped&&!std::strcmp(q.dropped,"weapon_grenade")&&o.copy_used&&q.rng==4&&LootFixture::fl(o.copied,0)==30&&LootFixture::fl(o.copied,4)==40&&LootFixture::fl(o.copied,8)==50&&LootFixture::fl(q.damage,0)==1);
+        q.actor[0xb6]=0x10;q.sample=0;f.put(q.damage,0x28,0x9001u);
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&!o.attacker_valid&&!o.attacker_class&&!o.weapon_checked&&!o.grenade_dropped&&!o.copy_used&&q.rng==5);
+        q.actor[0xb6]=0;q.weapon_name="weapon_assault_rifle";
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.matches==1&&o.ammo_dropped&&!std::strcmp(o.ammo,"item_ammo_ar_grenade"));
+        q.weapon_name="weapon_scattergun";
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.matches==2&&o.ammo_dropped&&!std::strcmp(o.ammo,"item_ammo_flak"));
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
