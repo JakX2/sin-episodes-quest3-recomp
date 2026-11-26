@@ -416,10 +416,17 @@ bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const 
     const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
     unsigned family=0;if(!cls||!cls->classify(vt,&family))return false;
     if(family==NpcSubclassJetpack){
-        // 22366e60 prepares attachments before resolving the linked NPC.
-        if(!b.jet_prepare||!b.jet_prepare(b.context,a))return false;++o.jet_prepared;
+        // 22366e60 calls 22366a20 before resolving the linked NPC.
+        // The original preparation returns immediately if either thrust
+        // handle is live. Keep the explicit creation/initialization service
+        // for the unresolved path where neither handle resolves.
         if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
-        void* linked=sin_independent::EntityHandleView(b.entities.entries,b.entities.count).Resolve(rd<unsigned>(a,0x1024));
+        const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+        if(b.jet_prepare){
+            if(!b.jet_prepare(b.context,a))return false;
+        }else if(!registry.Resolve(rd<unsigned>(a,0xfe4))&&!registry.Resolve(rd<unsigned>(a,0xfe8)))return false;
+        ++o.jet_prepared;
+        void* linked=registry.Resolve(rd<unsigned>(a,0x1024));
         if(!linked||linked==a||!wake_member(linked,true,b,o,depth+1))return false;
         ++o.jet_linked;
         const auto token=rd<unsigned>(a,0x218);
