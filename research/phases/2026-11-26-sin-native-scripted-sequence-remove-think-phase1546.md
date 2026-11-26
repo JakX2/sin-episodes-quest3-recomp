@@ -1,0 +1,3 @@
+# Phase 1546: native delayed sequence removal think
+
+221c0d40 authenticated in phase 1544. Health >0 calls +1b4 owner virtual, sets +9c to zero, emits original warning, then requests native deferred removal via explicit sequence cancellation sidecar. Primary dispatcher opt-in accepts 221c0d40 only with coherent sidecar and retains original default clear/record/scope semantics; prior API still refuses unsupported tokens. Loaded regression authored for not-due, due health path, cancellation before queue, and deferred release. Actual GameFrame sidecar and automatic Kill route still outstanding. CI pending.

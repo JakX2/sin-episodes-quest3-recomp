@@ -3486,7 +3486,24 @@ int scripted_sequence_activate(void* a,unsigned n,const ScriptedSequenceActivate
     o->completed=1;return 1;
 }
 // No-edict 2221c35f -> 22222c30 -> 22222b90 default context.
-int sequence_primary(void* a,unsigned n,int tick,const ScriptedSequencePrimaryBindings* b,ScriptedSequencePrimaryResult* o) noexcept {
+int sequence_removal_think(void* a,unsigned n,const ScriptedSequenceRemovalThinkBindings* b,ScriptedSequenceRemovalThinkResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned vt=0;
+    if(!b||!b->deferred||!b->cancel||!b->cancel->control||n<scripted_sequence_extent||
+       !SinReadCampaignTouchMarkerInternal(a,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(a,scripted_sequence_extent))return 0;
+    if(read_field<int>(a,0x9c)>0){
+        if(!b->positive_health||!b->warning||!b->positive_health(b->context,a))return 0;o->positive_health=1;
+        write_field(a,0x9c,0);o->health_cleared=1;
+        if(!b->warning(b->context,a))return 0;o->warning_called=1;
+    }
+    if(!defer_remove_impl(a,n,b->deferred,&o->removal,b->cancel,&o->cancelled))return 0;
+    o->completed=1;return 1;
+}
+int sequence_primary(void* a,unsigned n,int tick,const ScriptedSequencePrimaryBindings* b,ScriptedSequencePrimaryResult* o,
+    const ScriptedSequenceRemovalThinkBindings* removal=nullptr,ScriptedSequenceRemovalThinkResult* removed=nullptr) noexcept {
+    if(removed)*removed={};
+    if(removal&&(!removed||!b||!b->think||removal->cancel!=b->think->cancel||!removal->deferred))return 0;
     if(!o)return 0;*o={};o->due_tick=o->next_tick=o->last_tick=-1;
     unsigned vt=0;
     if(!b||!b->think||!b->think->acquire||!b->think->acquire->control||n<scripted_sequence_extent||
@@ -3501,7 +3518,7 @@ int sequence_primary(void* a,unsigned n,int tick,const ScriptedSequencePrimaryBi
     o->due_tick=read_field<int>(a,0x74);
     if(o->due_tick<=0||o->due_tick>tick){o->not_due=1;return idle();}
     const unsigned token=read_field<unsigned>(a,8);
-    if(token&&token!=0x221afc90u)return 0;
+    if(token&&token!=0x221afc90u&&!(removal&&token==0x221c0d40u))return 0;
     if(!b->record||!b->scope)return 0;
     const float interval=*c.interval;
     const double scheduled=double(o->due_tick)*interval;
@@ -3517,6 +3534,7 @@ int sequence_primary(void* a,unsigned n,int tick,const ScriptedSequencePrimaryBi
     const unsigned live=read_field<unsigned>(a,8);
     bool ok=live==0;
     if(live==0x221afc90u){o->invoked=1;ok=scripted_sequence_think(a,n,b->think,&o->behavior)!=0;}
+    else if(live==0x221c0d40u&&removal){o->invoked=1;ok=sequence_removal_think(a,n,removal,removed)!=0;}
     const bool closed=b->scope(b->context,a,false)!=0;o->closed=closed;
     if(!ok||!closed)return 0;
     o->last_time=*c.now;
@@ -4282,4 +4300,17 @@ extern "C" int __cdecl SiN_CompleteScriptedSequencePlayNative(void* a,unsigned n
     sin_port::native_map::ScriptedSequenceFinishResult* terminal) noexcept {
     if(!b||!terminal){if(o)*o={};if(terminal)*terminal={};return 0;}
     return sin_port::native_map::run_sequence_animation(a,n,npc,0,false,true,b->animation,o,b,terminal);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_RunScriptedSequenceRemovalThink=_SiN_RunScriptedSequenceRemovalThink")
+extern "C" int __cdecl SiN_RunScriptedSequenceRemovalThink(void* a,unsigned n,
+    const sin_port::native_map::ScriptedSequenceRemovalThinkBindings* b,sin_port::native_map::ScriptedSequenceRemovalThinkResult* o) noexcept {
+    return sin_port::native_map::sequence_removal_think(a,n,b,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_RunScriptedSequencePrimaryWithRemoval=_SiN_RunScriptedSequencePrimaryWithRemoval")
+extern "C" int __cdecl SiN_RunScriptedSequencePrimaryWithRemoval(void* a,unsigned n,int tick,
+    const sin_port::native_map::ScriptedSequencePrimaryBindings* b,sin_port::native_map::ScriptedSequencePrimaryResult* o,
+    const sin_port::native_map::ScriptedSequenceRemovalThinkBindings* removal,sin_port::native_map::ScriptedSequenceRemovalThinkResult* removed) noexcept {
+    if(!removal||!removed){if(o)*o={};if(removed)*removed={};return 0;}
+    return sin_port::native_map::sequence_primary(a,n,tick,b,o,removal,removed);
 }
