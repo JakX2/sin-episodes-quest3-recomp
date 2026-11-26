@@ -345,6 +345,32 @@ struct AutoPrimaryResult {
 };
 struct MenuBindings;
 struct NavigationBindings;
+// Original game-event manager +18 CreateEvent, event setters +28/+2c/+30,
+// and manager +1c FireEvent. A successful create with null event is the
+// retail unavailable-event branch; transport refusal is distinct.
+struct CampaignTriggerBindings {
+    void* context;
+    int (__cdecl *spawn_gate)(void*,bool*) noexcept;
+    int (__cdecl *base_spawn)(void*,void*) noexcept;
+    int (__cdecl *warning)(void*,const char*) noexcept;
+    int (__cdecl *string_text)(void*,unsigned,const char**,unsigned*) noexcept;
+    int (__cdecl *is_player)(void*,void*,bool*) noexcept;
+    int (__cdecl *special)(void*,void*) noexcept;
+    int (__cdecl *create_event)(void*,const char*,bool,void**) noexcept;
+    int (__cdecl *set_int)(void*,void*,const char*,int) noexcept;
+    int (__cdecl *set_float)(void*,void*,const char*,float) noexcept;
+    int (__cdecl *set_string)(void*,void*,const char*,const char*) noexcept;
+    int (__cdecl *fire_event)(void*,void*,bool) noexcept;
+    // 22288a40 -> current owner +8 -> dereference full returned word.
+    int (__cdecl *owner_word)(void*,int*) noexcept;
+    int (__cdecl *end_game)(void*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+};
+struct CampaignTriggerResult {
+    unsigned completed,dynamic,spawn_suppressed,base_spawned,warned,nonplayer,
+        special_called,event_attempted,event_unavailable,event_fired,manager_signaled,removed;
+    int descriptor;
+};
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
@@ -376,6 +402,7 @@ struct SpawnBindings {
     const NavigationBindings* logic_navigation;
     bool native_math_remap;
     bool native_math_colorblend;
+    const CampaignTriggerBindings* campaign_triggers;
 };
 struct SpawnResult {
     unsigned completed,ranked,parent_reads,parents,debugged,spawned,failed,pruned,cleanups,activated,
@@ -622,6 +649,8 @@ struct Api {
     int (__cdecl *notify_deleting)(unsigned,const DeletionListenerBindings*,DeletionListenerResult*) noexcept;
     int (__cdecl *register_campaign_triggers)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_campaign_trigger)(void*,unsigned,void*,const TriggerFactoryBindings*) noexcept;
+    int (__cdecl *campaign_trigger_spawn)(void*,unsigned,const CampaignTriggerBindings*,CampaignTriggerResult*) noexcept;
+    int (__cdecl *campaign_trigger_touch)(void*,unsigned,void*,const CampaignTriggerBindings*,CampaignTriggerResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
