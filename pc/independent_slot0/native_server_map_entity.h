@@ -441,6 +441,23 @@ inline constexpr PlayerPredicate campaign_player_marker(unsigned vt) noexcept {
 }
 // Recovered inherited StartTouch bookkeeping and scripted output.
 // The filter and allocator remain owner boundaries, not collision code.
+// Original +298 logical eligibility. These are gameplay state reads,
+// not collision detection. A live custom filter remains an owner leaf.
+struct CampaignFilterBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    int (__cdecl *classname)(void*,void*,const char**,unsigned*) noexcept;
+    int (__cdecl *is_player)(void*,void*,bool*) noexcept;
+    int (__cdecl *npc_condition)(void*,void*,bool*) noexcept;
+    int (__cdecl *player_vehicle)(void*,void*,bool*) noexcept;
+    int (__cdecl *custom_filter)(void*,void*,void*,bool*) noexcept;
+};
+struct CampaignFilterResult {
+    unsigned completed,accepted,eligibility,player_read,player,npc_read,vehicle_reads,custom_called;
+    unsigned filter_handle;
+};
+inline constexpr char campaign_filter_export[]="SiN_TestCampaignTriggerFilter";
+using TestCampaignTriggerFilter=int (__cdecl *)(const void*,unsigned,void*,unsigned,const CampaignFilterBindings*,CampaignFilterResult*) noexcept;
 struct CampaignStartTouchBindings {
     void* context;
     int (__cdecl *filter)(void*,void*,void*,bool*) noexcept;
@@ -456,6 +473,9 @@ struct CampaignStartTouchResult {
 };
 inline constexpr char start_touch_output_export[]="SiN_StartCampaignTriggerOutput";
 using StartCampaignTriggerOutput=int (__cdecl *)(void*,unsigned,void*,unsigned,const CampaignStartTouchBindings*,CampaignStartTouchResult*) noexcept;
+inline constexpr char filtered_start_touch_export[]="SiN_StartCampaignTriggerOutputWithFilter";
+using FilteredStartCampaignOutput=int (__cdecl *)(void*,unsigned,void*,unsigned,const CampaignStartTouchBindings*,CampaignStartTouchResult*,
+    const CampaignFilterBindings*,CampaignFilterResult*) noexcept;
 struct CampaignEndTouchBindings {
     void* context;
     int (__cdecl *resolve_vector)(void*,unsigned,void**,unsigned*) noexcept;

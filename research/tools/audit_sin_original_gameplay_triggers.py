@@ -52,6 +52,11 @@ ORIGINAL_METHODS={
   "void_output_fire":(0x22156900,84,"9831538fbf90681abd884187a73a262d05aa6031d2b58a5156dd3b8c717c0e26"),
   "inherited_end_touch":(0x221D3590,302,"a406f6f83bbde10c9ca03f6b28cdb3da0ab376c2b866e890bc90057cdc56c4cb"),
   "trigger_handle_identity_find":(0x220A21F0,131,"b29f95c429940c6193361871918e463b8a258ea174cfabd6971f38141bed9050"),
+  "trigger_filter":(0x221CE520,314,"460637a5e0d1149d281a94ed22991457e36daa803120f5bab56c0ec39eabda85"),
+  "trigger_classname_compare":(0x221387F0,130,"5993dfdb12306b0c2d95ae3e02a79a50cec0bca37e65f2c5457cd090ffc86aa7"),
+  "trigger_npc_query":(0x22139F60,19,"d5ea9253030765bcd70227e7860e4620758e52644047e564b5756b5d78eaef44"),
+  "trigger_vehicle_query":(0x22035100,56,"53a6bdb618de249bc00c327d2326511c8dd944c26a2f4692f3e366f8fd756c6a"),
+  "trigger_custom_filter":(0x2216B2A0,46,"e3cf0c2990ba6e8464a74f92378827c0e2d2123b27cab476a05fcdbc5acf2324"),
 }
 PLAYER_ROWS=(
     (0x224aec3c,0x224d3ff0,0x2251e69c,0x22253c30,".?AVCHL2_Player@@"),
@@ -217,7 +222,7 @@ def verify_contact_slots(read_u32):
 def verify_player_predicates(read_u32,read_text):
     for table,col,typedesc,target,name in PLAYER_ROWS:
         if (read_u32(table-4),read_u32(col),read_u32(col+4),
-            read_u32(col+12),read_u32(table+0x120),read_u32(table+8))!=(col,0,0,typedesc,target,0x22001B00):
+            read_u32(col+12),read_u32(table+0x120),read_u32(table+8),read_u32(table+0xf4))!=(col,0,0,typedesc,target,0x22001B00,0x22001780):
             raise EvidenceRefused("primary player predicate slot/RTTI changed "+name)
         if not read_text(typedesc+8,name):
             raise EvidenceRefused("player predicate RTTI name changed "+name)
@@ -267,6 +272,8 @@ def verify_raw(client:bytes,server:bytes)->dict:
     control_rows,control_slots=verify_trigger_control(pe.u32,pe.text)
     subject_sites=verify_subject_operands(pe.at,pe.text)
     player_rows=verify_player_predicates(pe.u32,pe.text)
+    if not pe.text(0x22423278,"func_pushable"):
+        raise EvidenceRefused("original trigger pushable literal changed")
     contact_slots=verify_contact_slots(pe.u32)
     va,length,digest=BASE_TOGGLE_ROWS
     if hashlib.sha256(pe.at(va,length)).hexdigest()!=digest:
@@ -412,7 +419,7 @@ def self_test()->None:
     player_words={}
     player_text={}
     for table,col,typedesc,target,name in PLAYER_ROWS:
-        player_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x120:target,table+8:0x22001B00})
+        player_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x120:target,table+8:0x22001B00,table+0xf4:0x22001780})
         player_text[typedesc+8]=name
     assert verify_player_predicates(player_words.get,lambda va,s:player_text.get(va)==s)==18
     for key in player_words:

@@ -6,6 +6,7 @@ int __cdecl SinPublishCampaignEventInternal(void*,const sin_port::fixed_service:
     int (__cdecl *)(void*,int*) noexcept,void*,const unsigned char*,void*,void*) noexcept;
 bool __cdecl SinReadCampaignTouchMarkerInternal(const void*,unsigned*) noexcept;
 bool __cdecl SinReadCampaignHandleInternal(const void*,unsigned,unsigned*) noexcept;
+bool __cdecl SinCampaignStorageReadableInternal(const void*,unsigned) noexcept;
 extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::fixed_service::Api* __cdecl SiN_GetFixedDifficultyApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
@@ -2788,19 +2789,91 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
+// 221ce520: broad eligibility OR, followed by ordered restrictive
+// conditions and the optional full-serial custom filter lookup.
+int campaign_filter(const void* a,unsigned n,void* other,unsigned other_bytes,
+    const CampaignFilterBindings* b,CampaignFilterResult* o) noexcept {
+    if(!o)return 0;*o={};o->filter_handle=0xffffffffu;
+    unsigned marker=0,vt=0;
+    if(!b||b->entry_count>sin_independent::kEntityHandleCapacity||(!b->entries&&b->entry_count)||
+       n<4||!SinReadCampaignTouchMarkerInternal(a,&marker)||other_bytes<4||!SinReadCampaignTouchMarkerInternal(other,&vt))return 0;
+    const unsigned extent=marker==dynamic_trigger_vtable?dynamic_trigger_extent:marker==secret_trigger_vtable?secret_trigger_extent:0;
+    if(!extent||n<extent||!SinCampaignStorageReadableInternal(a,extent))return 0;
+    auto done=[&](bool accepted){o->accepted=accepted;o->completed=1;return 1;};
+    auto readable=[&](unsigned need){return other_bytes>=need&&SinCampaignStorageReadableInternal(other,need);};
+    const unsigned flags=read_field<unsigned>(a,0xb4);
+    if(flags&64u)o->eligibility=64;
+    else if(flags&1u){
+        if(!readable(0xbd))return 0;
+        if(read_field<unsigned char>(other,0xbc)&0x80u)o->eligibility=1;
+    }
+    if(!o->eligibility&&(flags&2u)){
+        if(!readable(0xbe))return 0;
+        if(read_field<unsigned char>(other,0xbd)&0x20u)o->eligibility=2;
+    }
+    if(!o->eligibility&&(flags&4u)){
+        const char* name=nullptr;unsigned bytes=0;
+        if(!b->classname||!b->classname(b->context,other,&name,&bytes))return 0;
+        if(name){
+            if(!bytes||bytes>4096||!SinCampaignStorageReadableInternal(name,bytes)||!std::memchr(name,0,bytes))return 0;
+            if(equal_class(name,"func_pushable"))o->eligibility=4;
+        }
+    }
+    if(!o->eligibility&&(read_field<unsigned>(a,0xb4)&8u)){
+        if(!readable(0x208))return 0;
+        if(read_field<unsigned>(other,0x204)==6)o->eligibility=8;
+    }
+    if(!o->eligibility)return done(false);
+    // Always perform IsPlayer after broad eligibility, before restrictions.
+    bool player=false;o->player_read=1;
+    const auto classification=campaign_player_marker(vt);
+    if(classification==PlayerPredicate::Player)player=true;
+    else if(classification==PlayerPredicate::Unknown&&(!b->is_player||!b->is_player(b->context,other,&player)))return 0;
+    o->player=player;
+    if((read_field<unsigned>(a,0xb4)&16u)&&!player){
+        bool condition=false;o->npc_read=1;
+        // All 18 reviewed primary layouts have the same false +f4 leaf.
+        // Foreign actors need the owner's complete +f4/+53c condition.
+        if(classification==PlayerPredicate::Unknown&&(!b->npc_condition||!b->npc_condition(b->context,other,&condition)))return 0;
+        if(!condition)return done(false);
+    }
+    const unsigned restrictions=read_field<unsigned>(a,0xb4);
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    auto vehicle=[&](bool& present){
+        ++o->vehicle_reads;
+        if(vt==0x224aec3cu||vt==0x2245222cu){
+            if(!readable(0x9b0))return false;
+            present=registry.Resolve(read_field<unsigned>(other,0x9ac))!=nullptr;return true;
+        }
+        return b->player_vehicle&&b->player_vehicle(b->context,other,&present);
+    };
+    if(player&&(restrictions&32u)){bool present=false;if(!vehicle(present))return 0;if(!present)return done(false);}
+    if(player&&(restrictions&512u)){bool present=false;if(!vehicle(present))return 0;if(present)return done(false);}
+    o->filter_handle=read_field<unsigned>(a,0x410);
+    if(auto* filter=registry.Resolve(o->filter_handle)){
+        bool accepted=false;o->custom_called=1;
+        if(!b->custom_filter||!b->custom_filter(b->context,filter,other,&accepted))return 0;
+        return done(accepted);
+    }
+    return done(true);
+}
 // 221d0df0: filter, handle, append to +45c vector, then
 // COutputEvent::FireOutput(+414, other, this, 0). Preserve duplicate rows.
 int __cdecl campaign_start_output(void* a,unsigned n,void* other,unsigned other_bytes,
-    const CampaignStartTouchBindings* b,CampaignStartTouchResult* o) noexcept {
-    if(!o)return 0;*o={};
+    const CampaignStartTouchBindings* b,CampaignStartTouchResult* o,
+    const CampaignFilterBindings* native_filter=nullptr,CampaignFilterResult* filter_result=nullptr) noexcept {
+    if(!o)return 0;*o={};if(filter_result)*filter_result={};
     unsigned marker=0;
-    if(!b||!b->filter||!SinReadCampaignTouchMarkerInternal(a,&marker))return 0;
+    if(!b||(!native_filter&&!b->filter)||n<4||!SinReadCampaignTouchMarkerInternal(a,&marker))return 0;
     const unsigned extent=marker==dynamic_trigger_vtable?dynamic_trigger_extent:marker==secret_trigger_vtable?secret_trigger_extent:0;
     if(!extent||n<extent)return 0;
     static thread_local bool active=false;if(active)return 0;
     struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
     bool accepted=false;o->filter_called=1;
-    if(!b->filter(b->context,a,other,&accepted))return 0;
+    if(native_filter){
+        if(!filter_result||!campaign_filter(a,n,other,other_bytes,native_filter,filter_result))return 0;
+        accepted=filter_result->accepted!=0;
+    }else if(!b->filter(b->context,a,other,&accepted))return 0;
     if(!accepted){o->completed=1;return 1;}o->accepted=1;
     unsigned handle=0xffffffffu;
     if(other){
@@ -2977,4 +3050,17 @@ extern "C" int __cdecl SiN_StartCampaignTriggerOutput(void* a,unsigned n,void* o
 extern "C" int __cdecl SiN_EndCampaignTriggerOutput(void* a,unsigned n,void* other,unsigned other_bytes,
     const sin_port::native_map::CampaignEndTouchBindings* b,sin_port::native_map::CampaignEndTouchResult* o) noexcept {
     return sin_port::native_map::campaign_end_output(a,n,other,other_bytes,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_TestCampaignTriggerFilter=_SiN_TestCampaignTriggerFilter")
+extern "C" int __cdecl SiN_TestCampaignTriggerFilter(const void* a,unsigned n,void* other,unsigned other_bytes,
+    const sin_port::native_map::CampaignFilterBindings* b,sin_port::native_map::CampaignFilterResult* o) noexcept {
+    return sin_port::native_map::campaign_filter(a,n,other,other_bytes,b,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_StartCampaignTriggerOutputWithFilter=_SiN_StartCampaignTriggerOutputWithFilter")
+extern "C" int __cdecl SiN_StartCampaignTriggerOutputWithFilter(void* a,unsigned n,void* other,unsigned other_bytes,
+    const sin_port::native_map::CampaignStartTouchBindings* b,sin_port::native_map::CampaignStartTouchResult* o,
+    const sin_port::native_map::CampaignFilterBindings* filter,sin_port::native_map::CampaignFilterResult* fr) noexcept {
+    if(!filter||!fr){if(o)*o={};return 0;}
+    return sin_port::native_map::campaign_start_output(a,n,other,other_bytes,b,o,filter,fr);
 }
