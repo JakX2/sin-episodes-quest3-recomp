@@ -838,8 +838,7 @@ int main(int argc,char** argv){
         auto& wf=rt.weapon;wf.context=&equipped;wf.extent=extent;
         wf.animation.activities=&activities;wf.animation.events=&event_dictionary;wf.animation.dictionary=as.dictionary;
         wf.animation.metadata=as.translation.metadata;
-        wf.combat_owner=[](void* p,void* e,void** out) noexcept -> int{assert(e==static_cast<EquippedThinkFixture*>(p)->f->actor);*out=e;return 1;};
-        wf.is_player=[](void*,void*,bool* out) noexcept -> int{*out=false;return 1;};
+        // Native primary-vtable owner cast and player predicate.
         wf.frame.cycle=adv.base;wf.events=nf.events;
         ServerNpcActiveWeaponStepBindings step_bind{};
         step_bind.image=&f.image;step_bind.schedule=&runtime;step_bind.full=&full;step_bind.attack=&ab;step_bind.facing=&fb;

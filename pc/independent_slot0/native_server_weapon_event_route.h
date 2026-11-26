@@ -15,8 +15,8 @@ struct ServerWeaponEventRouteBindings {
     ServerWeaponEventSoundBindings sound;
     ServerWeaponActivityBindings weapons;
     // Resolve actual combat owner, +fc and +120, not the event receiver.
-    int (__cdecl *combat_owner)(void*,void*,void**) noexcept;
-    int (__cdecl *is_player)(void*,void*,bool*) noexcept;
+    int (__cdecl *combat_owner)(void*,void*,void**) noexcept; // optional for authenticated primary vtables
+    int (__cdecl *is_player)(void*,void*,bool*) noexcept; // optional for authenticated primary vtables
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
     int (__cdecl *storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
     // Engine-facing leaves of the recovered event methods.

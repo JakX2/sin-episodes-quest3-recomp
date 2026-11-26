@@ -1,0 +1,3 @@
+# Phase 1314: Shared native combat-owner and player identity
+
+Authenticated original DLL: eight Grunt primary vtables +fc -> 22044820 identity, +120 -> 220017e0 false. Two player classes use +fc identity and +120 -> 22253c30 true. Nine reviewed weapon classes use +fc -> 220017a0 null, +120 false. One bounded helper now serves ammo, event and post-frame paths; explicit callbacks preserve adjustment semantics, unknown classes fail closed. Tests cover player viewmodel forwarding, NPC/noncombat/unknown classes and grenade re-resolution. Full combined frame fixture omits both identity callbacks. CI pending.

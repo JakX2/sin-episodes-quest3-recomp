@@ -97,5 +97,17 @@ int main(int argc,char** argv){
     assert(f.get<float>(f.weapon,0x3c0)==2.f);
     f.trace.clear();f.put(f.actor,0x78c,0x8001u);
     assert(api->notify(f.actor,sizeof(f.actor),10.125f,&b,&out,&live)&&!live&&f.trace.empty());
+    b.combat_owner=nullptr;b.is_player=nullptr;
+    f.put(f.weapon,0x494,0x8002u);f.put(f.actor,0x78c,0x7001u);
+    f.trace.clear();f.put(f.actor,0,0x2249aaa4u);f.seed(f.weapon,0,.125f);
+    assert(api->run(f.weapon,sizeof(f.weapon),f.actor,10.125f,&b,&out)&&out.owner_live&&!out.player_owner&&!out.viewmodel_advanced);
+    assert((f.trace==std::vector<int>{10,31}));
+    f.trace.clear();f.put(f.actor,0,0x224aec3cu);f.seed(f.weapon,0,.125f);f.seed(f.viewmodel,0,.125f);
+    assert(api->run(f.weapon,sizeof(f.weapon),f.actor,10.125f,&b,&out)&&out.owner_live&&out.player_owner&&out.viewmodel_forwarded==1);
+    assert((f.trace==std::vector<int>{10,31,11,32}));
+    f.trace.clear();f.put(f.actor,0,0x2247ab9cu);f.seed(f.weapon,0,.125f);
+    assert(api->run(f.weapon,sizeof(f.weapon),f.actor,10.125f,&b,&out)&&!out.owner_live&&!out.viewmodel_advanced);
+    f.trace.clear();f.put(f.actor,0,0xdeadbeefu);f.seed(f.weapon,0,.125f);
+    assert(!api->run(f.weapon,sizeof(f.weapon),f.actor,10.125f,&b,&out)&&!out.viewmodel_advanced);
     FreeLibrary(server);FreeLibrary(client);std::puts("PASS native weapon loop reselection and player viewmodel event forwarding");
 }

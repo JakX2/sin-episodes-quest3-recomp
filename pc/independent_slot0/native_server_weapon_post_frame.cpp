@@ -1,3 +1,4 @@
+#include "native_server_combat_owner.h"
 #include "native_server_weapon_post_frame.h"
 #include <cmath>
 #include <cstring>
@@ -22,11 +23,10 @@ int player_owner(void* weapon,const ServerWeaponPostFrameBindings& b,void** out,
     *out=nullptr;*player=false;
     void* entity=resolve(b,read<std::uint32_t>(weapon,0x494));
     if(!entity)return 0;
-    if(!b.combat_owner)return -1;
-    const int status=b.combat_owner(b.context,entity,out);
+    const int status=b.combat_owner?b.combat_owner(b.context,entity,out):native_combat_owner(b.context,entity,b.extent,out);
     if(status<0||(status>0&&!*out))return -1;
     if(!status){*out=nullptr;return 0;}
-    if(!b.is_player||!b.is_player(b.context,*out,player))return -1;
+    if(!(b.is_player?b.is_player(b.context,*out,player):native_combat_is_player(b.context,*out,b.extent,player)))return -1;
     return 1;
 }
 struct ViewCall {
