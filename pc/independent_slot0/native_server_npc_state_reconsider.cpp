@@ -4153,6 +4153,84 @@ int __cdecl grunt_damage_native_chain(void* a,unsigned n,void* damage,unsigned d
     return grunt_damage_override_impl(a,n,damage,dn,now,&b->detail.damage,&out->detail.damage,&detail);
 }
 const ServerNpcGruntDamageNativeChainApi damage_native_chain_api{1,sizeof(ServerNpcGruntDamageNativeChainApi),&grunt_damage_native_tail,&grunt_damage_native_chain};
+int __cdecl grunt_life_damage(void* a,unsigned n,void* damage,unsigned dn,unsigned route,const ServerNpcGruntLifeDamageBindings* b,ServerNpcGruntLifeDamageResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0x638||!damage||dn<0x3c||!b||route>NpcDamageDead||!relation_grunt_class(b->original_vtable)||
+       b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    auto finish=[&](int value){out->native_result=value;out->health_after=read<int>(a,0x9c);out->completed=1;return 1;};
+    out->health_before=read<int>(a,0x9c);
+    auto decrement=[&](double amount){
+        if(!std::isfinite(amount))return false;
+        const double integer=std::trunc(amount);
+        const double next=static_cast<double>(read<int>(a,0x9c))-integer;
+        if(integer< -2147483648.0||integer>2147483647.0||next< -2147483648.0||next>2147483647.0)return false;
+        if(integer!=0){
+            // All eight +1b4=220018f0 ret; no callback or dirty flag.
+            write(a,0x9c,static_cast<int>(next));++out->health_writes;
+        }
+        return true;
+    };
+    auto deep_remove=[&](){
+        if(read<int>(a,0x9c)>=-500)return true;
+        if(!b->remove||!b->remove(b->context,a))return false;
+        ++out->removed;return true;
+    };
+    if(route!=NpcDamageDying){
+        if(void* inflictor=registry.Resolve(read<unsigned>(damage,0x24))){
+            if(!b->center||!b->normalize||!b->shared_direction)return 0;
+            out->inflictor_valid=1;float p[3]{},q[3]{};
+            if(!b->center(b->context,inflictor,p)||!finite_vec(p))return 0;
+            ++out->centers;p[2]=static_cast<float>(static_cast<double>(p[2])-10.0);
+            if(!b->center(b->context,a,q)||!finite_vec(q))return 0;++out->centers;
+            for(unsigned i=0;i<3;++i)out->direction[i]=static_cast<float>(static_cast<double>(p[i])-q[i]);
+            if(!finite_vec(out->direction)||!b->normalize(b->context,out->direction)||!finite_vec(out->direction))return 0;
+            out->normalized=1;
+        }else if(route==NpcDamageAlive){
+            if(!finite_vec(b->default_direction)||!b->shared_direction)return 0;
+            std::memcpy(out->direction,b->default_direction,sizeof(out->direction));
+        }
+        if(out->inflictor_valid||route==NpcDamageAlive){
+            std::memcpy(b->shared_direction,out->direction,sizeof(out->direction));out->direction_written=1;
+        }
+    }
+    if(route==NpcDamageAlive){
+        if(read<int>(a,0x94)!=1){
+            const float amount=read<float>(damage,0x2c),prior=read<float>(a,0x634);
+            if(!std::isfinite(amount)||!std::isfinite(prior))return 0;
+            const float fraction=static_cast<float>(static_cast<double>(amount)-std::floor(static_cast<double>(amount)));
+            double integral=static_cast<double>(amount)-fraction;
+            const double accumulated=static_cast<double>(prior)+fraction;
+            out->fraction_before=prior;
+            out->fraction_after=static_cast<float>(accumulated);if(!std::isfinite(out->fraction_after))return 0;
+            write(a,0x634,out->fraction_after);out->fraction_written=1;
+            if(accumulated>=1.0){
+                integral+=1.0;out->fraction_after=static_cast<float>(accumulated-1.0);
+                write(a,0x634,out->fraction_after);
+            }
+            if(integral<=0.0)return finish(0);
+            if(!decrement(integral))return 0;
+        }
+        if(read<std::uint8_t>(damage,0x3b)&1){
+            const float amount=read<float>(damage,0x2c);if(!std::isfinite(amount))return 0;
+            if(amount>12.f){
+                if(!b->reaction||!b->reaction(b->context,a,registry.Resolve(read<unsigned>(damage,0x28)),registry.Resolve(read<unsigned>(damage,0x24))))return 0;
+                out->reaction_called=1;
+            }
+        }
+    }else{
+        if(route==NpcDamageDead&&(read<unsigned>(damage,0x38)&0x2e1u)&&read<int>(a,0x94)!=1){
+            if(!decrement(static_cast<double>(read<float>(damage,0x2c))*0.1))return 0;
+        }
+        if((read<std::uint8_t>(damage,0x3b)&2)&&read<int>(a,0x94)!=1){
+            if(!decrement(read<float>(damage,0x2c))||!deep_remove())return 0;
+        }
+        // Dying base 222a45b0 returns 1 unconditionally; dead also returns 1.
+    }
+    return finish(1);
+}
+const ServerNpcGruntLifeDamageApi life_damage_api{1,sizeof(ServerNpcGruntLifeDamageApi),&grunt_life_damage};
+
 
 
 
@@ -4696,4 +4774,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDeathSelectorApi=_SiN_GetServerNpcGruntDeathSelectorApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDeathSelectorApi* __cdecl SiN_GetServerNpcGruntDeathSelectorApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDeathSelectorApi)?&death_selector_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntLifeDamageApi=_SiN_GetServerNpcGruntLifeDamageApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLifeDamageApi* __cdecl SiN_GetServerNpcGruntLifeDamageApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntLifeDamageApi)?&life_damage_api:nullptr;
 }
