@@ -173,7 +173,7 @@ int __cdecl destroy_relay(void* actor,unsigned bytes,void* networkable,const Rel
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -249,9 +249,14 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     constexpr Spec relay[]{
         {"StartDisabled",0x3ac,6},{"OnTrigger",0x394,11}
     };
+    constexpr Spec auto_keys[]{
+        {"globalstate",0x43c,2},{"OnMapSpawn",0x394,11},{"OnViolenceLow",0x3ac,11},
+        {"OnViolenceHigh",0x3c4,11},{"OnNewGame",0x3dc,11},{"OnLoadGame",0x3f4,11},
+        {"OnMapTransition",0x40c,11},{"OnBackgroundMap",0x424,11}
+    };
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);
     if(!spec){match(common);if(spec)o->base_field=1;}
     if(!spec)return foreign(name);
     o->offset=spec->offset;o->field_type=spec->type;
@@ -434,6 +439,60 @@ bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexce
     }
     return b.native_spawn_end(b.context,a,&code);
 }
+// CLogicAuto Activate original 22178400, virtual +88.
+int __cdecl auto_activate(void* actor,unsigned bytes,const AutoBindings* b,AutoResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!actor||bytes<auto_extent||entity_vtable(actor)!=auto_vtable||!b||!b->base_activate||!b->now||!b->schedule)return 0;
+    if(!b->base_activate(b->context,actor))return 0;o->base_called=1;
+    const float now=*b->now;
+    if(!std::isfinite(now))return 0;
+    o->next_think=static_cast<float>(double(now)+0.2);
+    if(!std::isfinite(o->next_think)||!b->schedule(b->context,actor,o->next_think))return 0;
+    o->scheduled=o->completed=1;return 1;
+}
+// CLogicAuto Think original 22178460, virtual +bc.
+int __cdecl auto_think(void* actor,unsigned bytes,const AutoBindings* b,AutoResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!actor||bytes<auto_extent||entity_vtable(actor)!=auto_vtable||!b)return 0;
+    const auto token=read_field<unsigned>(actor,0x43c);
+    if(token){
+        const char* text=nullptr;if(!b->resolve_string||!b->resolve_string(b->context,token,&text)||!text)return 0;
+        using namespace sin_port::fixed_service;
+        const auto* globals=SiN_GetGlobalStateApi(global_state_version,sizeof(GlobalStateApi));if(!globals)return 0;
+        const int index=globals->find(text);o->global_checked=1;
+        if(index>=0){
+            char name[2048]{},level[2048]{};
+            if(!globals->read(index,name,sizeof(name),level,sizeof(level),&o->global_state))return 0;
+        }
+        // 221f4690 returns zero for invalid index, not ON.
+        if(o->global_state!=1){o->blocked=o->completed=1;return 1;}
+    }
+    if(!b->load_type||!b->output||!b->low_violence)return 0;
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));if(!fire)return 0;
+    auto emit=[&](unsigned off){
+        ServerEntityVoidOutputResult r{};
+        if(!fire->fire(static_cast<unsigned char*>(actor)+off,0x18,nullptr,actor,bytes,0.f,b->output,&r))return false;
+        ++o->outputs;o->queued+=r.queued;return true;
+    };
+    o->load_type=*b->load_type;
+    switch(o->load_type){
+        case 0:o->load_output=0x3dc;break;
+        case 1:o->load_output=0x3f4;break;
+        case 2:o->load_output=0x40c;break;
+        case 3:o->load_output=0x424;break;
+        default:break;
+    }
+    if(o->load_output&&!emit(o->load_output))return 0;
+    if(!emit(0x394))return 0;
+    bool low=false;if(!b->low_violence(b->context,&low))return 0;
+    o->violence_output=low?0x3ac:0x3c4;
+    if(!emit(o->violence_output))return 0;
+    if(read_field<unsigned>(actor,0xb4)&1u){
+        if(!b->remove||!b->remove(b->context,actor))return 0;o->removed=1;
+    }
+    o->completed=1;return 1;
+}
 int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const SpawnBindings* b,SpawnResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!b||count>4096||(count&&!rows)||!b->extent||!b->classname||!b->scope||!b->debug_enabled)return 0;
@@ -503,6 +562,8 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
             if(ok&&read_field<unsigned>(a,0)==resupply_vtable&&b->resupply){
                 const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));LifecycleResult r{};
                 ok=api&&api->activate(a,n,b->resupply,&r);if(ok)++o->native_activations;
+            }else if(ok&&read_field<unsigned>(a,0)==auto_vtable&&b->logic_auto){
+                AutoResult r{};ok=auto_activate(a,n,b->logic_auto,&r)!=0;if(ok)++o->native_activations;
             }else if(ok)ok=b->activate&&b->activate(b->context,a);
             const bool closed=b->engine_scope(b->context,false)!=0;if(closed)++o->engine_closes;
             ok=ok&&closed;if(ok)++o->activated;
@@ -691,7 +752,7 @@ int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activa
     else if(!b->refire||!b->refire(b->context,actor,o->refire_delay))return 0;
     o->refire=1;return done();
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

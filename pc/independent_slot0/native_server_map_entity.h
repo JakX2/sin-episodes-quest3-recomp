@@ -87,6 +87,24 @@ struct DispatchResult {
         global_lookup,global_added,global_dead,removed,dormant,notified;
     int native_result,global_index,global_state;
 };
+inline constexpr unsigned auto_vtable=0x2241f0d4,auto_extent=0x440;
+struct AutoBindings {
+    void* context;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    int (__cdecl *base_activate)(void*,void*) noexcept;
+    const float* now;
+    const int* load_type;
+    int (__cdecl *resolve_string)(void*,unsigned,const char**) noexcept;
+    int (__cdecl *low_violence)(void*,bool*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+};
+struct AutoResult {
+    unsigned completed,base_called,scheduled,global_checked,blocked,outputs,queued,removed;
+    unsigned load_output,violence_output;
+    int global_state,load_type;
+    float next_think;
+};
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
@@ -109,6 +127,7 @@ struct SpawnBindings {
     int (__cdecl *native_spawn_end)(void*,void*,int*) noexcept;
     const DispatchBindings* native_dispatch;
     int (__cdecl *virtual_spawn)(void*,void*) noexcept; // original +64, no wrapper
+    const AutoBindings* logic_auto;
 };
 struct SpawnResult {
     unsigned completed,ranked,parent_reads,parents,debugged,spawned,failed,pruned,cleanups,activated,
@@ -185,6 +204,8 @@ struct Api {
     int (__cdecl *relay_input)(void*,unsigned,const char*,void*,const RelayBindings*,RelayResult*) noexcept;
     int (__cdecl *register_relay)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_relay)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *auto_activate)(void*,unsigned,const AutoBindings*,AutoResult*) noexcept;
+    int (__cdecl *auto_think)(void*,unsigned,const AutoBindings*,AutoResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

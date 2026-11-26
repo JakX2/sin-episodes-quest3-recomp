@@ -438,6 +438,54 @@ int main(int argc,char** argv){
     assert(word(rff.storage,0x394)==0&&word(rff.storage,0x398)==0x12345678&&word(rff.storage,0x3a0)==0xffffffffu&&word(rff.storage,0x3a8)==ptrword(relay_pool.rows[0]));
     assert(api->destroy_relay(nullptr,0,nullptr,nullptr)&&!api->destroy_relay(rff.storage,relay_extent,rff.storage+0x164,&rfb)&&!rff.released);
     assert(api->destroy_relay(rff.storage,relay_extent,rff.storage+0x160,&rfb)&&rff.released==1);
+    // CLogicAuto actual datamap outputs and virtual activation/think leaves.
+    alignas(4) unsigned char auto_actor[auto_extent]{};
+    put(auto_actor,0,auto_vtable);
+    ActionPool auto_pool{};OutputActionBindings apo=output;apo.context=&auto_pool;apo.next_id=&auto_pool.id;
+    auto ak=kb;ak.native_output=&apo;
+    ak.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=auto_extent;return 1;};
+    constexpr const char* auto_names[]{"OnMapSpawn","OnViolenceLow","OnViolenceHigh","OnNewGame","OnLoadGame","OnMapTransition","OnBackgroundMap"};
+    constexpr unsigned auto_offsets[]{0x394,0x3ac,0x3c4,0x3dc,0x3f4,0x40c,0x424};
+    for(unsigned i=0;i<7;++i){
+        assert(api->key_value(auto_actor,auto_names[i],"relay,Trigger,,0,-1",&ak,&kr)&&kr.output&&kr.offset==auto_offsets[i]);
+        assert(word(auto_actor,auto_offsets[i]+0x14)==ptrword(auto_pool.rows[i]));
+    }
+    assert(api->key_value(auto_actor,"globalstate","campaign_auto_gate",&ak,&kr)&&kr.interned&&word(auto_actor,0x43c)==300);
+    struct AutoFixture {
+        ActionPool* pool;void* actor;float now=10.f,next=0;int load=0;bool low=false;
+        unsigned base=0,schedules=0,removes=0,violence=0;std::string order;
+    } af{&auto_pool,auto_actor};
+    nw::ServerEntityVoidOutputBindings ao{};ao.context=&af;
+    ao.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<AutoFixture*>(p);
+        for(unsigned i=0;i<7;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+    };
+    ao.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* act) noexcept ->int{
+        auto& f=*static_cast<AutoFixture*>(p);assert(!a&&c==f.actor&&act->action_id>=41&&act->action_id<=47);
+        f.order+=char('0'+act->action_id-41);return 1;
+    };
+    AutoBindings ab{};ab.context=&af;ab.output=&ao;ab.now=&af.now;ab.load_type=&af.load;
+    ab.base_activate=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<AutoFixture*>(p);assert(a==f.actor);++f.base;f.now=12.f;return 1;};
+    ab.schedule=[](void* p,void* a,float time) noexcept ->int{auto& f=*static_cast<AutoFixture*>(p);assert(a==f.actor&&f.base);f.next=time;++f.schedules;return 1;};
+    ab.resolve_string=[](void*,unsigned token,const char** text) noexcept ->int{assert(token==300);*text="campaign_auto_gate";return 1;};
+    ab.low_violence=[](void* p,bool* low) noexcept ->int{auto& f=*static_cast<AutoFixture*>(p);++f.violence;*low=f.low;return 1;};
+    ab.remove=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<AutoFixture*>(p);assert(a==f.actor);++f.removes;f.order+='R';return 1;};
+    AutoResult ar{};
+    assert(api->auto_activate(auto_actor,sizeof(auto_actor),&ab,&ar)&&ar.base_called&&ar.scheduled&&ar.next_think==static_cast<float>(12.2)&&af.next==ar.next_think);
+    assert(globals->clear());
+    assert(api->auto_think(auto_actor,sizeof(auto_actor),&ab,&ar)&&ar.blocked&&ar.global_checked&&!ar.outputs&&!af.violence);
+    const int gate=globals->add("campaign_auto_gate","se1_intro01",0);assert(gate>=0);
+    assert(api->auto_think(auto_actor,sizeof(auto_actor),&ab,&ar)&&ar.blocked&&!ar.outputs);
+    assert(globals->set_state(gate,2)&&api->auto_think(auto_actor,sizeof(auto_actor),&ab,&ar)&&ar.blocked);
+    assert(globals->set_state(gate,1));
+    for(int load=0;load<4;++load){
+        af.load=load;af.low=(load&1)!=0;af.order.clear();
+        assert(api->auto_think(auto_actor,sizeof(auto_actor),&ab,&ar)&&ar.completed&&!ar.blocked&&ar.outputs==3&&ar.queued==3&&ar.load_output==auto_offsets[load+3]);
+        std::string expected;expected+=char('3'+load);expected+='0';expected+=af.low?'1':'2';assert(af.order==expected);
+    }
+    put(auto_actor,0x43c,0);put(auto_actor,0xb4,1);af.load=99;af.low=true;af.order.clear();
+    assert(api->auto_think(auto_actor,sizeof(auto_actor),&ab,&ar)&&!ar.global_checked&&!ar.load_output&&ar.outputs==2&&ar.removed&&af.order=="01R"&&af.removes==1);
+    assert(globals->clear());
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
     struct PipelineFixture {
