@@ -105,5 +105,55 @@ int main(int argc,char** argv){
     assert(!boundary(true,&state,&b,&out)&&!out.completed&&out.frametime_restored);
     f.transition=true;
     assert(boundary(true,&state,&b,&out)&&out.completed&&out.transition);
+    // Original CLogicAuto virtual Think override, via actual GameFrame slot4.
+    namespace nm=sin_port::native_map;
+    const auto get_map=reinterpret_cast<nm::GetApi>(GetProcAddress(server,nm::export_name));assert(get_map);
+    const auto* map=get_map(1,sizeof(nm::Api));assert(map);
+    struct AutoFixture {
+        alignas(4) unsigned char actor[nm::auto_extent]{},actions[2][0x1c]{};
+        Fixture* frame;
+        int load=0;unsigned base=0,notifications=0,records=0,enters=0,leaves=0,violence=0,removes=0;
+        float recorded=0;int tick=0,due=0;
+        std::string outputs;
+    } af{};af.frame=&f;
+    put(af.actor,0,nm::auto_vtable);put(af.actor,0x378,0x3000u);put(af.actor,0x74,-1);
+    put(af.actor,0xb8,0x400000u);put(af.actor,8,0xdeadbeefu); // not used by +bc
+    put(af.actor,0x3f0,1u);put(af.actor,0x3a8,2u);
+    for(unsigned i=0;i<2;++i){
+        put(af.actions[i],0,201u);put(af.actions[i],4,202u);
+        put(af.actions[i],0x10,0xffffffffu);put(af.actions[i],0x14,i+1);
+    }
+    sin_independent::EntityHandleEntry auto_entries[1]{};
+    auto_entries[0].serial=3;auto_entries[0].entity=reinterpret_cast<CBaseEntity*>(af.actor);
+    ServerEntityVoidOutputBindings auto_output{};auto_output.context=&af;
+    auto_output.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<AutoFixture*>(p);if(token<1||token>2)return 0;*row=q.actions[token-1];*bytes=0x1c;return 1;
+    };
+    auto_output.enqueue=[](void* p,void* a,void* c,const ServerEntityVoidOutputAction* action) noexcept ->int{
+        auto& q=*static_cast<AutoFixture*>(p);assert(!a&&c==q.actor&&q.frame->depth==1&&action->target==201&&action->input==202&&!action->variant_type);
+        q.outputs+=char('0'+action->action_id);return 1;
+    };
+    nm::AutoBindings behavior{};behavior.context=&af;behavior.now=&f.g.curtime;behavior.load_type=&af.load;behavior.output=&auto_output;
+    behavior.base_activate=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AutoFixture*>(p);assert(a==q.actor);++q.base;return 1;};
+    behavior.low_violence=[](void* p,bool* low) noexcept ->int{auto& q=*static_cast<AutoFixture*>(p);++q.violence;*low=false;return 1;};
+    behavior.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AutoFixture*>(p);assert(a==q.actor);++q.removes;put(a,0xb8,0x400001u);return 1;};
+    ServerNpcOuterCadenceBindings cadence{};cadence.context=&af;
+    cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<AutoFixture*>(p);assert(a==q.actor);++q.notifications;return 1;};
+    nm::AutoPrimaryBindings ap{};ap.behavior=&behavior;ap.cadence=&cadence;ap.entries=auto_entries;ap.entry_count=1;ap.context=&af;
+    ap.record=[](void* p,void* a,int tick,float time,int due) noexcept ->int{auto& q=*static_cast<AutoFixture*>(p);assert(a==q.actor);++q.records;q.recorded=time;q.tick=tick;q.due=due;return 1;};
+    ap.scope=[](void* p,void* a,bool enter) noexcept ->int{auto& q=*static_cast<AutoFixture*>(p);assert(a==q.actor);if(enter)++q.enters;else ++q.leaves;return 1;};
+    nm::AutoPrimaryResult apr{};
+    f.transition=false;f.g.curtime=10.f;f.g.tick=80;f.skip=false;f.double_step=0;
+    assert(map->auto_primary_activate(af.actor,sizeof(af.actor),f.g.interval,&ap,&apr)&&apr.scheduled&&apr.due_tick==82&&af.base==1&&af.notifications==1);
+    b.logic_auto=&ap;b.pre_systems=[](void*) noexcept ->int{return 1;};
+    b.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=nm::auto_extent;return 1;};
+    b.event_service=[](void*) noexcept ->int{return 1;};
+    f.slots[0]=af.actor;f.slots[1]=nullptr;f.slots[2]=nullptr;
+    assert(boundary(true,&state,&b,&out)&&out.native_auto==1&&out.logic_auto.not_due&&!af.records&&af.outputs.empty());
+    f.g.tick=82;f.g.curtime=10.2f;put(af.actor,0xb4,1u);
+    assert(boundary(true,&state,&b,&out)&&out.native_auto==1&&out.logic_auto.invoked&&out.logic_auto.behavior.outputs==3&&out.logic_auto.behavior.queued==2&&af.outputs=="12"&&out.logic_auto.behavior.removed&&out.logic_auto.last_tick==82&&!out.logic_auto.native_result&&af.records==1&&af.recorded==10.2f&&af.due==82&&af.tick==82&&af.enters==1&&af.leaves==1&&af.notifications==2&&af.violence==1&&af.removes==1);
+    assert(boundary(true,&state,&b,&out)&&out.native_auto==1&&out.logic_auto.no_think&&af.records==1&&af.outputs=="12");
+    // Stale serial is rejected even before an idle check.
+    auto_entries[0].serial=4;assert(!boundary(true,&state,&b,&out)&&out.iteration_closed&&out.curtime_restored);
     FreeLibrary(server);FreeLibrary(client);
 }

@@ -4,6 +4,7 @@
 extern "C" const sin_port::native_weapon_tables::ServerResupplyPrimaryThinkApi* __cdecl SiN_GetServerResupplyPrimaryThinkApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerAntigenPrimaryThinkApi* __cdecl SiN_GetServerAntigenPrimaryThinkApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityEventServiceApi* __cdecl SiN_GetServerEntityEventServiceApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_game_frame {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -22,6 +23,7 @@ unsigned known_kind(void* a,unsigned bytes,const Bindings& b) noexcept {
     if(b.antigen&&((vt==antigen_vtable&&bytes>=antigen_extent)||
         (vt==antigen_canister_vtable&&bytes>=antigen_canister_extent)||
         (vt==antigen_gas_vtable&&bytes>=antigen_gas_extent&&read<int>(a,0x398)==1)))return 2;
+    if(vt==native_map::auto_vtable&&b.logic_auto&&bytes>=native_map::auto_extent)return 3;
     return 0;
 }
 bool native_think(void* a,unsigned bytes,unsigned kind,const State& s,const Bindings& b,Result& o) noexcept {
@@ -29,6 +31,14 @@ bool native_think(void* a,unsigned bytes,unsigned kind,const State& s,const Bind
         const auto* api=SiN_GetServerResupplyPrimaryThinkApi(1,sizeof(ServerResupplyPrimaryThinkApi));
         if(!api||!api->run(a,bytes,read<unsigned>(a,0x378),s.globals->tick,s.globals->interval,b.resupply,&o.resupply))return false;
         ++o.native_resupply;return true;
+    }
+    if(kind==3){
+        if(!b.logic_auto->behavior)return false;
+        const auto* api=SiN_GetServerMapEntityApi(1,sizeof(native_map::Api));
+        auto bound=*b.logic_auto;auto behavior=*bound.behavior;
+        behavior.now=&s.globals->curtime;bound.behavior=&behavior;
+        if(!api||!api->auto_primary_run(a,bytes,s.globals->tick,s.globals->interval,&bound,&o.logic_auto))return false;
+        ++o.native_auto;return true;
     }
     const auto* api=SiN_GetServerAntigenPrimaryThinkApi(1,sizeof(ServerAntigenPrimaryThinkApi));
     if(!api||!api->run(a,bytes,read<unsigned>(a,0x378),s.globals->tick,s.globals->interval,b.antigen,&o.antigen))return false;
@@ -67,7 +77,7 @@ bool actor(void* a,const State& s,const Bindings& b,Result& o) noexcept {
     if(read<unsigned>(a,0x16c)){
         // 2221c1c0 +388 is the prediction branch, +3c nonzero the
         // player-simulation branch; leave both with the full owner path.
-        if(kind&&!named&&b.edict_scope&&!read<unsigned char>(a,0x388)&&!read<unsigned>(a,0x3c)){
+        if(kind&&kind!=3&&!named&&b.edict_scope&&!read<unsigned char>(a,0x388)&&!read<unsigned>(a,0x3c)){
             const auto& entities=kind==1?b.resupply->entities:b.antigen->entities;
             if(entities.count>sin_independent::kEntityHandleCapacity||(!entities.entries&&entities.count))return false;
             const sin_independent::EntityHandleView registry(entities.entries,entities.count);
