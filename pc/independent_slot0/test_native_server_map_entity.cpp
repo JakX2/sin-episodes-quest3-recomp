@@ -2011,7 +2011,7 @@ int main(int argc,char** argv){
             auto& f=*static_cast<MultiQueue*>(p);assert(attached==f.activator&&actor==f.actor&&!f.kill_order);f.kill_order=1;return 1;
         };
         kill.clear_attachment=[](void* p,void* actor) noexcept ->int{
-            auto& f=*static_cast<MultiQueue*>(p);assert(actor==f.actor&&f.kill_order==1);put(actor,0x20c,0xffffffffu);f.kill_order=2;return 1;
+            auto& f=*static_cast<MultiQueue*>(p);assert(actor==f.actor&&f.kill_order==1);const unsigned invalid=0xffffffffu;std::memcpy(static_cast<unsigned char*>(actor)+0x20c,&invalid,4);f.kill_order=2;return 1;
         };
         kill.remove=[](void* p,void* actor) noexcept ->int{
             auto& f=*static_cast<MultiQueue*>(p);assert(actor==f.actor&&f.kill_order==2);++f.removes;return 1;
