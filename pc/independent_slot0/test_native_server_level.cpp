@@ -193,5 +193,118 @@ int main(int argc,char** argv){
     lb.native_map_pipeline=&pipeline;lb.entity_text_bytes=sizeof(lump);
     a={pipeline_level.map,lump,nullptr,nullptr,false,false};
     assert(level(&pipeline_level.state,&a,&lb,&o)&&o.completed&&o.parsed&&o.map_pipeline.completed&&o.map_pipeline.parse.created==1&&o.map_pipeline.spawn.spawned==1&&!o.map_pipeline.spawn.activated&&pipeline_level.seq=="[PCENTMD]");
+    // Real slot2/3: native factory and keys, DispatchSpawn and
+    // activation through the live registry; no hosted sequence leaf.
+    {
+        const auto level_seq=reinterpret_cast<InvokeLevelWithSequences>(GetProcAddress(server,scripted_sequence_level_export));
+        const auto activate_seq=reinterpret_cast<InvokeActivateWithSequences>(GetProcAddress(server,scripted_sequence_activate_export));
+        assert(level_seq&&activate_seq&&!GetProcAddress(client,scripted_sequence_level_export)&&!GetProcAddress(client,scripted_sequence_activate_export));
+        struct SequenceLevel : Fixture {
+            alignas(4) unsigned char scripts[2][nm::scripted_sequence_extent]{},npc[0x974]{};
+            sin_independent::EntityHandleEntry registry[3]{};
+            float now=10.f,interval=.125f;
+            unsigned allocations=0,constructs=0,initializes=0,clears=0,solid=0,notifications=0,dispatch_enters=0,dispatch_leaves=0,base=0,foreign=0,listener_count=1,listened=0;
+            void* listeners[1]{&listener_count};
+        } sl;
+        auto seq_extent=[](void* p,void* entity,unsigned* n) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);
+            *n=entity==q.scripts[0]||entity==q.scripts[1]?nm::scripted_sequence_extent:entity==q.npc?sizeof(q.npc):0;return *n!=0;
+        };
+        auto token_text=[](void*,unsigned token,const char** text,unsigned* n) noexcept ->int{
+            *text=token==21?"scripted_sequence":token==22?"first":token==23?"second":token==24?"guard":token==25?"missing":token==26?"npc_sintek_grunt":nullptr;
+            if(!*text)return 0;*n=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nm::RelayFactoryBindings owner{};owner.context=&sl;
+        owner.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);assert(n==nm::scripted_sequence_extent&&q.allocations<2);
+            *a=q.scripts[q.allocations++];*bytes=n;return 1;
+        };
+        owner.base_construct=[](void* p,void* a,int arg) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);assert(!arg&&a==q.scripts[q.constructs]);
+            put(a,0x378,((3u+q.constructs)<<12)|q.constructs);put(a,0xb8,0x400000u);put(a,0x74,-1);++q.constructs;return 1;
+        };
+        owner.initialize=[](void* p,void* a,const char* cls) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);assert(!std::strcmp(cls,"scripted_sequence")&&a==q.scripts[q.initializes]);
+            auto& entry=q.registry[q.initializes];entry.entity=reinterpret_cast<CBaseEntity*>(a);entry.serial=3+q.initializes;++q.initializes;return 1;
+        };
+        for(unsigned i=0;i<3;++i){
+            if(i)sl.registry[i].previous=&sl.registry[i-1];if(i<2)sl.registry[i].next=&sl.registry[i+1];
+        }
+        sl.registry[2].entity=reinterpret_cast<CBaseEntity*>(sl.npc);sl.registry[2].serial=5;
+        put(sl.npc,0,0x224954a4u);put(sl.npc,0x378,0x5002u);put(sl.npc,0xc0,24u);put(sl.npc,0xc,26u);put(sl.npc,0x970,0xffffffffu);
+        auto map_get=reinterpret_cast<nm::GetApi>(GetProcAddress(server,nm::export_name));assert(map_get);
+        const auto* map_api=map_get(1,sizeof(nm::Api));assert(map_api);
+        nm::FactoryDictionary dictionary{};assert(map_api->register_factories(&dictionary));
+        nm::FactoryBindings factories{};factories.context=&sl;factories.dictionary=&dictionary;
+        factories.foreign_create=[](void*,const char*,void**,unsigned*) noexcept ->int{assert(false);return 0;};
+        nm::KeyBindings key{};key.context=&sl;key.extent=seq_extent;
+        key.intern=[](void*,const char* value,unsigned* token) noexcept ->int{
+            const char* names[]{"scripted_sequence","first","second","guard","missing","npc_sintek_grunt"};
+            for(unsigned i=0;i<6;++i)if(!std::strcmp(value,names[i])){*token=21+i;return 1;}return 0;
+        };
+        key.foreign=[](void*,void*,const char*,const char*,bool*) noexcept ->int{assert(false);return 0;};
+        nm::Bindings parse{};parse.context=&sl;parse.native_factory=&factories;parse.native_keys=&key;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<SequenceLevel*>(p)->clears;return 1;};
+        nm::DispatchBindings dispatch{};dispatch.context=&sl;dispatch.entries=sl.registry;dispatch.entry_count=3;dispatch.current_map=&sl.map;
+        dispatch.scope=[](void* p,bool enter) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);if(enter)++q.dispatch_enters;else ++q.dispatch_leaves;return 1;
+        };
+        dispatch.listeners=sl.listeners;dispatch.listener_count=&sl.listener_count;dispatch.listener_capacity=1;
+        dispatch.notify=[](void* p,void* listener,void* actor) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);assert(listener==q.listeners[0]&&(actor==q.scripts[0]||actor==q.scripts[1])&&q.dispatch_enters==q.dispatch_leaves+1);++q.listened;return 1;
+        };
+        nm::SpawnBindings spawn{};spawn.context=&sl;spawn.extent=seq_extent;spawn.native_dispatch=&dispatch;
+        spawn.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="scripted_sequence";return 1;};
+        spawn.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        spawn.debug_enabled=[](void*,bool* yes) noexcept ->int{*yes=false;return 1;};
+        spawn.virtual_spawn=[](void*,void*) noexcept ->int{assert(false);return 0;};
+        nm::PipelineBindings pipe{};pipe.context=&sl;pipe.parse=&parse;pipe.spawn=&spawn;
+        pipe.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        pipe.classify=[](void*,void*,nm::Category* category) noexcept ->int{*category=nm::Category::Ordinary;return 1;};
+        ServerNpcOuterCadenceBindings cadence{};cadence.context=&sl;
+        cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);assert(a==q.scripts[0]);++q.notifications;return 1;
+        };
+        nm::ScriptedSequenceControlBindings control{};control.context=&sl;control.extent=seq_extent;
+        control.now=&sl.now;control.interval=&sl.interval;control.cadence=&cadence;control.entries=sl.registry;control.entry_count=3;
+        nm::ScriptedSequenceSpawnBindings seq_spawn{&control,&sl};
+        seq_spawn.solid_type=[](void* p,void* a,int n) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);assert(!n&&(a==q.scripts[0]+0xfc||a==q.scripts[1]+0xfc));++q.solid;return 1;
+        };
+        nm::ScriptedSequenceMapBindings map_route{&owner,&seq_spawn,nullptr};
+        auto level_b=sl.bind();level_b.parse_entities=nullptr;level_b.native_map_pipeline=&pipe;
+        const char sequence_lump[]="{ classname scripted_sequence targetname first m_iszEntity guard m_iszNextScript second spawnflags 16 } { classname scripted_sequence targetname second m_iszEntity guard m_iszNextScript missing }";
+        level_b.entity_text_bytes=sizeof(sequence_lump);
+        LevelArgs la{sl.map,sequence_lump,nullptr,nullptr,false,false};
+        auto invalid=spawn;invalid.native_dispatch=nullptr;pipe.spawn=&invalid;
+        assert(!level_seq(&sl.state,&la,&level_b,&o,nullptr,&map_route)&&!sl.allocations&&!sl.state.level_ready&&sl.seq.empty());
+        pipe.spawn=&spawn;
+        assert(level_seq(&sl.state,&la,&level_b,&o,nullptr,&map_route)&&o.completed&&o.parsed&&o.map_pipeline.parse.native_creates==2&&o.map_pipeline.spawn.native_dispatches==2&&o.map_pipeline.spawn.native_spawns==2&&!o.map_pipeline.spawn.activated);
+        assert(dictionary.count==12&&sl.allocations==2&&sl.constructs==2&&sl.initializes==2&&sl.clears==2&&sl.solid==2&&sl.notifications==1&&sl.dispatch_enters==2&&sl.dispatch_leaves==2&&sl.listened==2);
+        assert(word(sl.scripts[0],0x74)==88&&word(sl.scripts[0],8)==0x221afc90u&&sl.scripts[0][0x3c0]&&word(sl.scripts[0],0x3d4)==0xffffffffu&&word(sl.scripts[1],0x74)==0xffffffffu);
+        ServerEntitySearchBindings seq_search{};seq_search.context=&sl;seq_search.head=sl.registry;seq_search.extent=seq_extent;seq_search.string_text=token_text;
+        nm::ScriptedSequenceActivateBindings seq_activate{&control,&seq_search,&sl};
+        seq_activate.base_activate=[](void* p,void* actor) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(p);assert(q.state.level_ready&&actor==q.scripts[q.base]&&q.solid==2);++q.base;return 1;
+        };
+        ScriptedSequenceActivationRoute route{&seq_activate,nullptr,nullptr};ScriptedSequenceActivationSummary summary{};
+        level_b.next_entity=[](void* p,void* previous,void** a) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(static_cast<Fixture*>(p));
+            *a=!previous?q.scripts[0]:previous==q.scripts[0]?q.scripts[1]:previous==q.scripts[1]?q.npc:nullptr;return 1;
+        };
+        level_b.extent=[](void* p,void* actor,unsigned* n) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(static_cast<Fixture*>(p));
+            *n=actor==q.scripts[0]||actor==q.scripts[1]?nm::scripted_sequence_extent:actor==q.npc?sizeof(q.npc):actor==q.player?sizeof(q.player):0;return *n!=0;
+        };
+        level_b.activate=[](void* p,void* actor) noexcept ->int{
+            auto& q=*static_cast<SequenceLevel*>(static_cast<Fixture*>(p));assert(actor==q.npc&&q.base==2);++q.foreign;return 1;
+        };
+        sl.transition=true;
+        assert(activate_seq(&sl.state,nullptr,64,1,&level_b,&o,nullptr,&route,&summary)&&o.activation_skipped&&!summary.attempted&&!sl.base);
+        sl.transition=false;
+        assert(activate_seq(&sl.state,nullptr,64,1,&level_b,&o,nullptr,&route,&summary)&&o.completed&&o.visited==3&&o.activated==3&&summary.attempted==2&&summary.completed==2&&summary.npc_found==2&&summary.next_found==1&&summary.next_name_cleared==1&&sl.base==2&&sl.foreign==1);
+        assert(word(sl.scripts[0],0x3d4)==0x4001u&&word(sl.scripts[1],0x3d4)==0xffffffffu&&!word(sl.scripts[1],0x3a4)&&word(sl.npc,0x970)==0xffffffffu);
+        assert(!activate_seq(&sl.state,nullptr,64,1,&level_b,&o,nullptr,&route,&summary)&&!summary.attempted);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
