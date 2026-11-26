@@ -3424,5 +3424,57 @@ int main(int argc,char** argv){
         assert(run(100006)&&o.random_called&&o.ignored_signal&&o.reset_called);
         q.roll=3;assert(run(100006)&&o.random==3&&!o.ignored_signal&&o.reset_called);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntTakecoverEventApi>(GetProcAddress(s,server_npc_grunt_takecover_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_takecover_event_export)&&!g(0,sizeof(ServerNpcGruntTakecoverEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntTakecoverEventApi));assert(api);
+        struct CoverFixture{
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},linked[0x3a6]{},enemy[4]{},descriptor[0x48]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float default_point[3]{1,2,3},fraction=1;
+            bool found=false,changed=false,goal=false;
+            unsigned requests=0,randoms=0,activity=0,velocity=0;
+            static CoverFixture& self(void* p){return *static_cast<CoverFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.linked);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.enemy);
+        ServerNpcGruntTakecoverEventBindings b{};b.context=&q;b.default_point=q.default_point;
+        auto& tb=b.events;tb.context=&q;auto& rb=tb.events.events;rb.context=&q;
+        auto& re=rb.events;re.context=&q;auto& e=re.events;e.context=&q;
+        e.gate.actor_token=0x10000;auto& sb=e.gate.speech.speech.sentence;
+        sb.entries=q.entries;sb.count=3;sb.speech.original_vtable=0x2249aaa4;
+        rb.conditions.context=&q;rb.conditions.descriptor=[](void* p,void*,const void** v,unsigned* n) noexcept -> int{auto& q=CoverFixture::self(p);*v=q.descriptor;*n=sizeof(q.descriptor);return 1;};
+        rb.random_float=[](void* p,float lo,float hi,double* v) noexcept -> int{auto& q=CoverFixture::self(p);assert(lo==2&&hi==4);*v=2.0+0.5*q.randoms++;return 1;};
+        tb.request=[](void* p,void* a,std::uint32_t code) noexcept -> int{auto& q=CoverFixture::self(p);assert(a==q.a&&(code==8||code==11||code==0x223eeb5c||code==0x224ae350));++q.requests;return 1;};
+        b.find_cover=[](void* p,void* a,void* c,float* v,bool* yes) noexcept -> int{auto& q=CoverFixture::self(p);assert(a==q.a&&c==q.a+0xd20&&v[0]==1&&v[1]==2&&v[2]==3);if(q.changed)v[2]=4;*yes=q.found;return 1;};
+        b.goal=[](void* p,void* a,const float* v,bool* yes) noexcept -> int{auto& q=CoverFixture::self(p);assert(a==q.a&&v[2]==(q.changed?4:3));*yes=q.goal;return 1;};
+        b.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& q=CoverFixture::self(p);assert(e==q.linked);*n=sizeof(q.linked);return 1;};
+        b.origin=[](void* p,void* e,float* v) noexcept -> int{auto& q=CoverFixture::self(p);assert(e==q.linked);v[0]=10;v[1]=20;v[2]=30;return 1;};
+        b.enemy_point=[](void* p,void* e,float* v) noexcept -> int{auto& q=CoverFixture::self(p);assert(e==q.enemy);v[0]=40;v[1]=50;v[2]=60;return 1;};
+        b.trace=[](void* p,void* a,const float* start,const float* end,unsigned mask,float* v) noexcept -> int{auto& q=CoverFixture::self(p);assert(a==q.a&&start[0]==10&&end[0]==40&&mask==0x2400b);*v=q.fraction;return 1;};
+        b.set_origin=[](void* p,void* a,const float* v) noexcept -> int{auto& q=CoverFixture::self(p);assert(a==q.a&&v[0]==10&&v[1]==20&&v[2]==77);return 1;};
+        re.velocity=[](void* p,void* a,const float* v) noexcept -> int{auto& q=CoverFixture::self(p);assert(a==q.a&&!v[0]&&!v[1]&&!v[2]);++q.velocity;return 1;};
+        e.clear_activity=[](void* p,void* a,int act) noexcept -> int{auto& q=CoverFixture::self(p);assert(a==q.a);q.activity=act;return 1;};
+        f.put(q.descriptor,0x34,1000000000);f.put(q.descriptor,0x38,0);f.put(q.descriptor,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10d20u);f.put(q.a,0xd20,0x224ae624u);f.put(q.a,0xd24,0x10000u);f.put(q.a,0xd2c,0x10c14u);
+        ServerNpcGruntTakecoverEventResult o{};
+        auto run=[&](int id){q.requests=q.randoms=0;f.put(q.raw,0,id);return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        assert(run(100000)&&o.entered&&!o.search_ok&&o.unchanged&&!o.goal_ok&&o.attempts_added==2&&o.random_calls==3&&o.request_value==11&&o.deadline==13&&q.requests==3);
+        q.found=true;q.changed=true;q.goal=true;
+        assert(run(100000)&&o.search_ok&&!o.unchanged&&o.goal_ok&&o.reset_called&&!o.random_calls&&!o.attempts_added);
+        f.put(q.a,0xa18,0x9001u);assert(run(100001)&&!o.linked_valid&&o.attempts_added==1&&o.request_value==0x223eeb5c);
+        f.put(q.a,0xa18,0x1001u);f.put(q.a,0x8a0,0x2002u);f.put(q.linked,0x3a4,static_cast<std::int16_t>(101));
+        assert(run(100001)&&o.linked_valid&&o.trace_called&&o.point[2]==30&&o.request_value==0x224ae350&&o.reset_called);
+        f.put(q.linked,0x3a4,static_cast<std::int16_t>(108));q.fraction=.5f;
+        assert(run(100001)&&o.point[2]==60&&!o.request_calls&&o.reset_called);
+        q.fraction=std::numeric_limits<float>::quiet_NaN();assert(run(100001)&&!o.request_calls&&o.reset_called);
+        assert(run(100002)&&o.activity_called&&q.activity==72&&!o.reset_called);
+        assert(run(100003)&&o.activity_called&&q.activity==5&&!o.reset_called);
+        assert(run(100004)&&o.velocity_called&&q.velocity==1&&o.reset_called);
+        f.put(q.a,0x2c4,77.f);assert(run(100005)&&o.origin_called&&o.point[2]==77&&o.reset_called);
+        f.put(q.a,0xa18,0xffffffffu);q.a[0xd31]=1;
+        assert(run(100005)&&o.flag_cleared&&!q.a[0xd31]&&!o.origin_called&&o.reset_called);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

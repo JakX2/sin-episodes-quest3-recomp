@@ -2388,4 +2388,29 @@ struct ServerNpcGruntTankEventApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntTankEventBindings*,ServerNpcGruntTankEventResult*) noexcept;
 };
 using GetServerNpcGruntTankEventApi=const ServerNpcGruntTankEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_takecover_event_export[]="SiN_GetServerNpcGruntTakecoverEventApi";
+struct ServerNpcGruntTakecoverEventBindings {
+    ServerNpcGruntTankEventBindings events;
+    void* context;
+    const float* default_point; // live original 2251b1ec vector
+    int (__cdecl *find_cover)(void*,void*,void*,float*,bool*) noexcept; // 22398b80
+    int (__cdecl *goal)(void*,void*,const float*,bool*) noexcept; // 2204c660 + navigation virtual +14 mode2
+    int (__cdecl *origin)(void*,void*,float*) noexcept; // 220092d0
+    int (__cdecl *enemy_point)(void*,void*,float*) noexcept; // +1c4
+    int (__cdecl *trace)(void*,void*,const float*,const float*,unsigned,float*) noexcept;
+    int (__cdecl *set_origin)(void*,void*,const float*) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+};
+struct ServerNpcGruntTakecoverEventResult {
+    ServerNpcGruntTankEventResult events;
+    float point[3],enemy[3],fraction,deadline;
+    std::uint32_t request_value;
+    int subtype,activity;
+    unsigned entered,completed,search_called,search_ok,unchanged,attempts_added,random_calls,request_calls,goal_called,goal_ok,reset_called,linked_valid,enemy_valid,trace_called,origin_called,flag_cleared,velocity_called,activity_called;
+};
+struct ServerNpcGruntTakecoverEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntTakecoverEventBindings*,ServerNpcGruntTakecoverEventResult*) noexcept;
+};
+using GetServerNpcGruntTakecoverEventApi=const ServerNpcGruntTakecoverEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

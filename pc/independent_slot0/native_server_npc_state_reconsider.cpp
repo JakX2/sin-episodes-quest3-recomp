@@ -4272,7 +4272,98 @@ int tank_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now
     if(!tank||!b.extent||!b.extent(b.context,tank,&bytes)||bytes<0x4cc)return 0;
     for(unsigned i=0;i<3;++i)write(tank,0x4c0+4*i,o.point[i]);o.tank_written=1;return done();
 }
-struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;};
+
+struct TakecoverEventRoute {const ServerNpcGruntTakecoverEventBindings* bindings;ServerNpcGruntTakecoverEventResult* result;};
+int takecover_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const TakecoverEventRoute& route,const RappelScheduleRoute* schedule) noexcept{
+    const auto& b=*route.bindings;auto& o=*route.result;
+    const auto& tb=b.events;const auto& rb=tb.events.events;const auto& re=rb.events;const auto& e=re.events;
+    const auto& sb=e.gate.speech.speech.sentence;
+    o.entered=1;
+    if(n<0xc1c||extent<0x80||id<100000||id>100005)return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto resolve=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(a,0xa18)));};
+    auto done=[&](){o.completed=1;return 1;};
+    auto request=[&](std::uint32_t value){
+        o.request_value=value;if(!tb.request||!tb.request(tb.context,a,value))return false;
+        ++o.request_calls;return true;
+    };
+    auto reset=[&](){if(!schedule||!rappel_schedule_reset(a,n,now,*schedule))return false;o.reset_called=1;return true;};
+    auto increment=[&](){write(p,0x7c,read<unsigned>(p,0x7c)+1u);++o.attempts_added;};
+    auto fail=[&](std::uint32_t code,bool count){
+        double delay=0;
+        if(!rb.random_float||!rb.random_float(rb.context,2.f,4.f,&delay)||!std::isfinite(delay))return false;
+        ++o.random_calls;if(count)increment();
+        o.deadline=static_cast<float>(delay+static_cast<double>(now));
+        if(!std::isfinite(o.deadline))return false;
+        write(p,0x68,o.deadline);
+        return request(code);
+    };
+    if(id==100002||id==100003){
+        o.activity=id==100002?72:5;
+        if(!e.clear_activity||!e.clear_activity(e.context,a,o.activity))return 0;
+        o.activity_called=1;return done();
+    }
+    if(id==100004){
+        const float zero[3]{};
+        if(!re.velocity||!re.velocity(re.context,a,zero))return 0;
+        o.velocity_called=1;return reset()?done():0;
+    }
+    if(id==100000){
+        if(!b.default_point||!b.find_cover)return 0;
+        std::memcpy(o.point,b.default_point,12);write(p,0x68,0.f);
+        bool found=false;if(!b.find_cover(b.context,a,p,o.point,&found))return 0;
+        o.search_called=1;o.search_ok=found;
+        if(!found&&!fail(8,true))return 0;
+        // 22027ca0: ordered exact equality of all three coordinates; NaN unequal.
+        o.unchanged=o.point[0]==b.default_point[0]&&o.point[1]==b.default_point[1]&&o.point[2]==b.default_point[2];
+        if(o.unchanged&&!fail(8,true))return 0;
+        bool accepted=false;
+        if(!finite_vec(o.point)||!b.goal||!b.goal(b.context,a,o.point,&accepted))return 0;
+        o.goal_called=1;o.goal_ok=accepted;
+        if(accepted)return reset()?done():0;
+        return fail(11,false)?done():0;
+    }
+    void* linked=resolve();o.linked_valid=linked!=nullptr;
+    auto actor_origin=[&](float* v){
+        if(read<unsigned>(a,0xb8)&0x800u){
+            if(!re.refresh_origin||!re.refresh_origin(re.context,a))return false;
+        }
+        for(unsigned i=0;i<3;++i)v[i]=read<float>(a,0x2bc+4*i);
+        return finite_vec(v);
+    };
+    auto origin=[&](void* v,float* dest){return v&&b.origin&&b.origin(b.context,v,dest)&&finite_vec(dest);};
+    if(id==100005){
+        if(!linked){write<std::uint8_t>(p,0x11,0);o.flag_cleared=1;}
+        else {
+            float current[3]{};
+            if(!origin(linked,o.point)||!actor_origin(current))return 0;
+            o.point[2]=current[2];
+            if(!b.set_origin||!b.set_origin(b.context,a,o.point))return 0;
+            o.origin_called=1;
+        }
+        return reset()?done():0;
+    }
+    if(!linked){increment();return request(0x223eeb5cu)?done():0;}
+    linked=resolve();unsigned bytes=0;
+    if(!linked||!b.extent||!b.extent(b.context,linked,&bytes)||bytes<0x3a6)return 0;
+    o.subtype=read<std::int16_t>(linked,0x3a4);
+    auto enemy=[&](){
+        void* subject=registry.Resolve(read<unsigned>(a,0x8a0));o.enemy_valid=subject!=nullptr;
+        return subject&&b.enemy_point&&b.enemy_point(b.context,subject,o.enemy)&&finite_vec(o.enemy);
+    };
+    if(o.subtype==101){if(!enemy()||!origin(resolve(),o.point))return 0;}
+    else{
+        if(!origin(resolve(),o.point))return 0;
+        o.point[2]=static_cast<float>(static_cast<double>(o.point[2])+30.0);
+        if(!enemy())return 0;
+    }
+    if(!b.trace||!b.trace(b.context,a,o.point,o.enemy,0x2400bu,&o.fraction))return 0;
+    o.trace_called=1;
+    // Original FUCOMPP / JP skips failure on unequal or unordered, not equal.
+    if(o.fraction==1.f&&!request(0x224ae350u))return 0;
+    return reset()?done():0;
+}
+struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;const TakecoverEventRoute* cover=nullptr;};
 int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const RappelEventRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;
     o.entered=1;auto done=[&](){o.completed=1;return 1;};
@@ -4391,12 +4482,15 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
         out->special_entry=entry;
         const bool native_rappel=rappel&&entry&&identity.behavior_vtable==0x223f956c;
         const bool native_tank=rappel&&rappel->tank&&entry&&identity.behavior_vtable==0x224abec4;
-        if(entry&&!no_op&&!native_rappel&&!native_tank&&!b->special)return 0;
+        const bool native_cover=rappel&&rappel->cover&&entry&&identity.behavior_vtable==0x224ae624;
+        if(entry&&!no_op&&!native_rappel&&!native_tank&&!native_cover&&!b->special)return 0;
         write<std::uint8_t>(p,8,1);out->marker_set=1;
         if(native_rappel){
             if(!rappel_event_route(a,n,p,extent,id,now,*rappel))return 0;
         }else if(native_tank){
             if(!tank_event_route(a,n,p,extent,id,now,*rappel->tank,rappel->schedule))return 0;
+        }else if(native_cover){
+            if(!takecover_event_route(a,n,p,extent,id,now,*rappel->cover,rappel->schedule))return 0;
         }else if(entry&&!no_op){
             out->special_called=1;if(!b->special(b->context,a,p,extent,entry,ev,en))return 0;
         }
@@ -4585,6 +4679,19 @@ int __cdecl grunt_tank_event(void* a,unsigned n,const void* ev,unsigned en,float
     return grunt_event43_impl(a,n,ev,en,now,&b->events.events.events.events,&e.events.events,&rappel,&timer);
 }
 const ServerNpcGruntTankEventApi tank_event_api{1,sizeof(ServerNpcGruntTankEventApi),&grunt_tank_event};
+int __cdecl grunt_takecover_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntTakecoverEventBindings* b,ServerNpcGruntTakecoverEventResult* out) noexcept{
+    if(!out)return 0;*out={};out->events.handle=0xffffffffu;out->events.random=-1;
+    auto& timer_out=out->events.events;auto& e=timer_out.events;e.events.rope_handle=0xffffffffu;
+    e.condition.global=e.condition.bit=e.slot.index=e.slot.selected=-1;
+    if(!b)return 0;
+    const RappelScheduleRoute schedule{&b->events.events.events,&e};
+    const TankEventRoute tank{&b->events,&out->events};
+    const TakecoverEventRoute cover{b,out};
+    const RappelEventRoute rappel{&b->events.events.events.events,&e.events,&schedule,&tank,&cover};
+    const EventTimerRoute timer{&b->events.events,&timer_out};
+    return grunt_event43_impl(a,n,ev,en,now,&b->events.events.events.events.events,&e.events.events,&rappel,&timer);
+}
+const ServerNpcGruntTakecoverEventApi takecover_event_api{1,sizeof(ServerNpcGruntTakecoverEventApi),&grunt_takecover_event};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6411,4 +6518,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntTankEventApi=_SiN_GetServerNpcGruntTankEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntTankEventApi* __cdecl SiN_GetServerNpcGruntTankEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntTankEventApi)?&tank_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntTakecoverEventApi=_SiN_GetServerNpcGruntTakecoverEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntTakecoverEventApi* __cdecl SiN_GetServerNpcGruntTakecoverEventApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntTakecoverEventApi)?&takecover_event_api:nullptr;
 }
