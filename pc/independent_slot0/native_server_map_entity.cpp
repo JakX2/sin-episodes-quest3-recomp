@@ -2789,6 +2789,109 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
+// CBaseFilter wrapper 2216b2a0 and RTTI-backed +28c leaves.
+// Recursion guards are independent safeguards against malformed/cyclic
+// owner records; retail assumes valid acyclic map filters.
+int campaign_filter_entity(void* filter,void* other,const CampaignCustomFilterBindings* b,CampaignCustomFilterResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!b||!b->extent||!other||b->entry_count>sin_independent::kEntityHandleCapacity||
+       (!b->entries&&b->entry_count))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    unsigned other_bytes=0,other_vt=0;
+    if(!b->extent(b->context,other,&other_bytes)||other_bytes<4||!SinReadCampaignTouchMarkerInternal(other,&other_vt))return 0;
+    auto read_other=[&](unsigned need){return other_bytes>=need&&SinCampaignStorageReadableInternal(other,need);};
+    auto text=[&](unsigned token,const char*& s){
+        s="";
+        if(!token)return true;
+        unsigned bytes=0;
+        return b->string_text&&b->string_text(b->context,token,&s,&bytes)&&s&&bytes&&bytes<=4096&&
+            SinCampaignStorageReadableInternal(s,bytes)&&std::memchr(s,0,bytes);
+    };
+    auto match=[](const char* value,const char* pattern){
+        auto fold=[](unsigned char ch){return ch>='A'&&ch<='Z'?ch+32:ch;};
+        while(*value&&*pattern&&fold(*value)==fold(*pattern)){++value;++pattern;}
+        return (!*value&&!*pattern)||*pattern=='*';
+    };
+    auto is_player=[&](bool& yes){
+        ++o->player_reads;const auto p=campaign_player_marker(other_vt);
+        if(p==PlayerPredicate::Unknown)return b->foreign_player&&b->foreign_player(b->context,other,&yes);
+        yes=p==PlayerPredicate::Player;return true;
+    };
+    auto vehicle=[&](bool& yes){
+        ++o->vehicle_reads;
+        if(other_vt==0x224aec3cu||other_vt==0x2245222cu){
+            if(!read_other(0x9b0))return false;
+            yes=registry.Resolve(read_field<unsigned>(other,0x9ac))!=nullptr;return true;
+        }
+        return b->foreign_vehicle&&b->foreign_vehicle(b->context,other,&yes);
+    };
+    void* ancestors[32]{};
+    auto evaluate=[&](auto&& self,void* node,unsigned depth,bool& accepted)->bool{
+        if(!node||depth==32||o->visited==512)return false;
+        for(unsigned i=0;i<depth;++i)if(ancestors[i]==node)return false;
+        ancestors[depth]=node;++o->visited;
+        unsigned bytes=0,vt=0;
+        if(!b->extent(b->context,node,&bytes)||bytes<4||!SinReadCampaignTouchMarkerInternal(node,&vt))return false;
+        const unsigned need=vt==base_filter_vtable?0x395u:
+            vt==name_filter_vtable||vt==class_filter_vtable?0x3ccu:vt==multi_filter_vtable?0x3f4u:0;
+        if(!need){
+            ++o->foreign_filters;
+            return b->foreign_filter&&b->foreign_filter(b->context,node,other,&accepted);
+        }
+        if(bytes<need||!SinCampaignStorageReadableInternal(node,need))return false;
+        ++o->native_filters;
+        bool raw=false;
+        if(vt==base_filter_vtable)raw=true;
+        else if(vt==multi_filter_vtable){
+            const bool any=read_field<unsigned>(node,0x3c8)!=0;
+            raw=!any;
+            for(unsigned i=0;i<5;++i){
+                auto* child=registry.Resolve(read_field<unsigned>(node,0x3e0+4*i));
+                if(!child){++o->stale;continue;}
+                bool pass=false;if(!self(self,child,depth+1,pass))return false;
+                if(pass==any){raw=any;++o->short_circuits;break;}
+            }
+        }else{
+            const unsigned token=read_field<unsigned>(node,0x3c8);
+            const char* pattern=nullptr;
+            // Name filter checks !player before pointer/token equality.
+            if(vt==name_filter_vtable){
+                if(!text(token,pattern))return false;
+                if(equal_class(pattern,"!player")){
+                    bool player=false;if(!is_player(player))return false;
+                    if(player){
+                        // Original makes a second IsPlayer virtual call
+                        // before reading the vehicle handle.
+                        if(!is_player(player)||!player)return false;
+                        bool present=false;if(!vehicle(present))return false;
+                        raw=!present;
+                    }
+                }else{
+                    if(!read_other(0xc4))return false;
+                    const unsigned own=read_field<unsigned>(other,0xc0);
+                    if(own&&own==token)raw=true;
+                    else{const char* value=nullptr;if(!text(own,value))return false;raw=match(value,pattern);}
+                }
+            }else{
+                if(!read_other(0x10))return false;
+                const unsigned own=read_field<unsigned>(other,0xc);
+                if(own&&own==token)raw=true;
+                else{
+                    const char* value=nullptr;if(!text(token,pattern)||!text(own,value))return false;
+                    raw=match(value,pattern);
+                }
+            }
+        }
+        // Negation read AFTER child/raw predicate, as original.
+        if(read_field<unsigned char>(node,0x394)){raw=!raw;++o->negated;}
+        accepted=raw;return true;
+    };
+    bool accepted=false;
+    if(!evaluate(evaluate,filter,0,accepted))return 0;
+    o->accepted=accepted;o->completed=1;return 1;
+}
 // 221ce520: broad eligibility OR, followed by ordered restrictive
 // conditions and the optional full-serial custom filter lookup.
 int campaign_filter(const void* a,unsigned n,void* other,unsigned other_bytes,
@@ -3063,4 +3166,18 @@ extern "C" int __cdecl SiN_StartCampaignTriggerOutputWithFilter(void* a,unsigned
     const sin_port::native_map::CampaignFilterBindings* filter,sin_port::native_map::CampaignFilterResult* fr) noexcept {
     if(!filter||!fr){if(o)*o={};return 0;}
     return sin_port::native_map::campaign_start_output(a,n,other,other_bytes,b,o,filter,fr);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_TestCampaignFilterEntity=_SiN_TestCampaignFilterEntity")
+extern "C" int __cdecl SiN_TestCampaignFilterEntity(void* filter,void* other,
+    const sin_port::native_map::CampaignCustomFilterBindings* b,sin_port::native_map::CampaignCustomFilterResult* o) noexcept {
+    return sin_port::native_map::campaign_filter_entity(filter,other,b,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_CampaignFilterEntityCallback=_SiN_CampaignFilterEntityCallback")
+extern "C" int __cdecl SiN_CampaignFilterEntityCallback(void* context,void* filter,void* other,bool* accepted) noexcept {
+    if(!accepted)return 0;*accepted=false;
+    sin_port::native_map::CampaignCustomFilterResult result{};
+    if(!sin_port::native_map::campaign_filter_entity(filter,other,
+        static_cast<const sin_port::native_map::CampaignCustomFilterBindings*>(context),&result))return 0;
+    *accepted=result.accepted!=0;return 1;
 }

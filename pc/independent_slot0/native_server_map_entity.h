@@ -443,6 +443,27 @@ inline constexpr PlayerPredicate campaign_player_marker(unsigned vt) noexcept {
 // The filter and allocator remain owner boundaries, not collision code.
 // Original +298 logical eligibility. These are gameplay state reads,
 // not collision detection. A live custom filter remains an owner leaf.
+// Original RTTI-backed custom-filter predicates, not entity constructors.
+// Supplied strings are live interned tokens in independent storage.
+inline constexpr unsigned base_filter_vtable=0x224149a4,name_filter_vtable=0x22414ed4,
+    class_filter_vtable=0x2241516c,multi_filter_vtable=0x22414c3c;
+struct CampaignCustomFilterBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *string_text)(void*,unsigned,const char**,unsigned*) noexcept;
+    int (__cdecl *foreign_player)(void*,void*,bool*) noexcept;
+    int (__cdecl *foreign_vehicle)(void*,void*,bool*) noexcept;
+    // Foreign filter returns its COMPLETE (already negated) predicate.
+    int (__cdecl *foreign_filter)(void*,void*,void*,bool*) noexcept;
+};
+struct CampaignCustomFilterResult {
+    unsigned completed,accepted,visited,native_filters,foreign_filters,stale,negated,short_circuits,player_reads,vehicle_reads;
+};
+inline constexpr char custom_filter_export[]="SiN_TestCampaignFilterEntity";
+inline constexpr char custom_filter_callback_export[]="SiN_CampaignFilterEntityCallback";
+using TestCampaignFilterEntity=int (__cdecl *)(void*,void*,const CampaignCustomFilterBindings*,CampaignCustomFilterResult*) noexcept;
+using CampaignFilterEntityCallback=int (__cdecl *)(void*,void*,void*,bool*) noexcept;
 struct CampaignFilterBindings {
     void* context;
     const sin_independent::EntityHandleEntry* entries;unsigned entry_count;

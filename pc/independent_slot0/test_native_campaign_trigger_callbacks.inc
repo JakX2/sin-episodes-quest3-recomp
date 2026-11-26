@@ -436,3 +436,70 @@
         assert(tick(10.5f)&&result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&f.relay[0x3ac]&&f.released==2);
         assert(tick(11.f)&&result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&!f.relay[0x3ac]&&f.released==3&&!word(f.root,0x30)&&!f.locked);
     }
+
+// Retail custom filter wrappers: name/class including wildcard and
+// !player special, child negation and short-circuiting multi-filter.
+    {
+        struct CustomFixture {
+            alignas(4) unsigned char trigger[dynamic_trigger_extent]{},player[0x9b0]{},filters[4][0x3f4]{};
+            sin_independent::EntityHandleEntry entries[5]{};
+            unsigned foreign_calls=0;
+        } f;
+        const auto evaluate=reinterpret_cast<TestCampaignFilterEntity>(GetProcAddress(server,custom_filter_export));
+        const auto callback=reinterpret_cast<CampaignFilterEntityCallback>(GetProcAddress(server,custom_filter_callback_export));
+        const auto filter=reinterpret_cast<TestCampaignTriggerFilter>(GetProcAddress(server,campaign_filter_export));
+        assert(evaluate&&callback&&filter&&!GetProcAddress(client,custom_filter_export)&&!GetProcAddress(client,custom_filter_callback_export));
+        CampaignCustomFilterBindings b{};b.context=&f;b.entries=f.entries;b.entry_count=5;
+        b.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<CustomFixture*>(p);
+            if(a==f.player){*bytes=sizeof(f.player);return 1;}
+            for(auto& row:f.filters)if(a==row){*bytes=sizeof(row);return 1;}
+            return 0;
+        };
+        b.string_text=[](void*,unsigned token,const char** value,unsigned* bytes) noexcept ->int{
+            constexpr const char* names[]{"hero","HE*ignored","player","npc_*","!PLAYER","different"};
+            if(token<1||token>6)return 0;*value=names[token-1];*bytes=static_cast<unsigned>(std::strlen(*value)+1);return 1;
+        };
+        b.foreign_filter=[](void* p,void*,void*,bool* yes) noexcept ->int{++static_cast<CustomFixture*>(p)->foreign_calls;*yes=true;return 1;};
+        put(f.player,0,0x224aec3cu);put(f.player,0xc0,1);put(f.player,0xc,3);put(f.player,0x9ac,0xffffffffu);
+        for(unsigned i=0;i<4;++i){
+            f.entries[i].entity=reinterpret_cast<CBaseEntity*>(f.filters[i]);f.entries[i].serial=3+i;
+        }
+        put(f.filters[0],0,base_filter_vtable);put(f.filters[1],0,name_filter_vtable);
+        put(f.filters[2],0,class_filter_vtable);put(f.filters[3],0,multi_filter_vtable);
+        for(unsigned i=0;i<5;++i)put(f.filters[3],0x3e0+4*i,0xffffffffu);
+        CampaignCustomFilterResult r{};
+        auto run=[&](unsigned i){return evaluate(f.filters[i],f.player,&b,&r);};
+        assert(run(0)&&r.accepted&&r.native_filters==1);
+        f.filters[0][0x394]=1;assert(run(0)&&!r.accepted&&r.negated==1);f.filters[0][0x394]=0;
+        put(f.filters[1],0x3c8,1);assert(run(1)&&r.accepted);
+        put(f.filters[1],0x3c8,2);assert(run(1)&&r.accepted);
+        put(f.filters[1],0x3c8,6);assert(run(1)&&!r.accepted);
+        put(f.filters[1],0x3c8,5);assert(run(1)&&r.accepted&&r.player_reads==2&&r.vehicle_reads==1);
+        put(f.player,0x9ac,0x3000u);assert(run(1)&&!r.accepted&&r.player_reads==2);
+        put(f.player,0x9ac,0x4000u);assert(run(1)&&r.accepted);
+        put(f.player,0,relay_vtable);assert(run(1)&&!r.accepted&&r.player_reads==1&&!r.vehicle_reads);
+        put(f.player,0,0x224aec3cu);
+        put(f.filters[2],0x3c8,3);assert(run(2)&&r.accepted);
+        put(f.filters[2],0x3c8,4);assert(run(2)&&!r.accepted);
+        f.filters[2][0x394]=1;assert(run(2)&&r.accepted&&r.negated==1);f.filters[2][0x394]=0;
+        assert(run(3)&&r.accepted&&r.stale==5);
+        put(f.filters[3],0x3c8,1);assert(run(3)&&!r.accepted&&r.stale==5);
+        put(f.filters[3],0x3e0,0x4001);put(f.filters[3],0x3e4,0x5002);
+        put(f.filters[3],0x3c8,0);assert(run(3)&&!r.accepted&&r.visited==3&&r.short_circuits==1);
+        put(f.filters[3],0x3c8,1);assert(run(3)&&r.accepted&&r.visited==2&&r.short_circuits==1);
+        f.filters[3][0x394]=1;assert(run(3)&&!r.accepted&&r.negated==1);f.filters[3][0x394]=0;
+        put(f.filters[3],0x3c8,0);put(f.filters[3],0x3e0,0x6003);
+        assert(!run(3)&&!r.completed); // cyclic owner filter refused
+        put(f.filters[3],0x3e0,0x7003);assert(run(3)&&!r.accepted&&r.stale==1); // stale serial skipped
+        put(f.filters[0],0,0x1234);put(f.filters[3],0x3e0,0x3000);assert(run(3)&&!r.accepted&&r.foreign_filters==1&&f.foreign_calls==1);
+        put(f.filters[0],0,base_filter_vtable);
+        // Actual trigger +410 resolves custom filter and calls the native
+        // ABI-compatible adapter (not an owner-defined predicate).
+        put(f.trigger,0,dynamic_trigger_vtable);put(f.trigger,0xb4,64);put(f.trigger,0x410,0x4001);
+        CampaignFilterBindings outer{};outer.context=&b;outer.entries=f.entries;outer.entry_count=5;outer.custom_filter=callback;
+        CampaignFilterResult result{};
+        assert(filter(f.trigger,sizeof(f.trigger),f.player,sizeof(f.player),&outer,&result)&&result.accepted&&result.custom_called);
+        f.filters[1][0x394]=1;
+        assert(filter(f.trigger,sizeof(f.trigger),f.player,sizeof(f.player),&outer,&result)&&!result.accepted&&result.custom_called);
+    }
