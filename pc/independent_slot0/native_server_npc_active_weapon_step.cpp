@@ -569,7 +569,8 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                (vt==sin_port::native_map::autosave_vtable&&b->native_input->logic_autosave)||
                (vt==sin_port::native_map::multicompare_vtable&&b->native_input->logic_multicompare)||
                (vt==sin_port::native_map::remap_vtable&&b->native_input->math_remap)||
-               (vt==sin_port::native_map::colorblend_vtable&&b->native_input->math_colorblend)){
+               (vt==sin_port::native_map::colorblend_vtable&&b->native_input->math_colorblend)||
+               ((vt==sin_port::native_map::dynamic_trigger_vtable||vt==sin_port::native_map::secret_trigger_vtable)&&b->native_input->campaign_trigger_control)){
                 auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=clock();if(!std::isfinite(bound.now))return false;
                 sin_port::native_map::RelayBindings relay{};
                 sin_port::native_map::RelayQueueBindings relay_queue{};
@@ -2421,6 +2422,23 @@ int native_multicompare_input(void* a,unsigned n,unsigned handler,const ServerEn
     sin_port::native_map::MultiCompareResult result{};
     return api&&api->multicompare_input(a,n,text,data.activator,data.variant,sizeof(data.variant),data.output_id,b.logic_multicompare,&result)&&result.completed&&result.handled?1:0;
 }
+constexpr NativeInputRow trigger_control_inputs[]{
+    {3,0,0x223edd00u,0x22060810u,"Enable"},
+    {4,0,0x223edce8u,0x22060820u,"Disable"},
+    {5,0,0x223d4914u,0x22060830u,"Toggle"}
+};
+constexpr NativeInputMap dynamic_trigger_map{0x2250b374u,0x2250b17cu,3,nullptr,0};
+constexpr NativeInputMap secret_trigger_map{0x2250b38cu,0x2250b17cu,1,nullptr,0};
+constexpr NativeInputMap trigger_control_map{0x2250b17cu,0x22508b14u,9,trigger_control_inputs,3};
+int native_trigger_control_input(void* a,unsigned n,unsigned handler,const ServerEntityAcceptInputBindings& b) noexcept {
+    if(!b.campaign_trigger_control)return -1;
+    const char* text=nullptr;
+    for(const auto& row:trigger_control_inputs)if(row.handler==handler){text=row.text;break;}
+    if(!text)return -1;
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+    sin_port::native_map::TriggerControlResult result{};
+    return api&&api->trigger_control(a,n,text,b.campaign_trigger_control,&result)&&result.completed&&result.handled?1:0;
+}
 constexpr NativeInputMap autosave_map{0x224fb5b8u,0x224f0350u,2,autosave_inputs,1};
 constexpr NativeInputMap logic_base_kill_map{0x224f0350u,0,115,base_kill_inputs,1};
 int native_autosave_input(void* a,unsigned n,unsigned handler,const ServerEntityAcceptInputBindings& b) noexcept {
@@ -2564,6 +2582,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
     const auto* kill_map=shared_kill?shared_kill_map(vt):nullptr;
     if(shared_kill&&(!kill_map||!a||n<sin_port::native_map::logic_kill_extent(vt)||rd<unsigned>(a,0)!=vt))return 0;
     unsigned token=kill_map?kill_map->token:
+        vt==sin_port::native_map::dynamic_trigger_vtable&&b&&b->campaign_trigger_control?dynamic_trigger_map.token:
+        vt==sin_port::native_map::secret_trigger_vtable&&b&&b->campaign_trigger_control?secret_trigger_map.token:
         vt==sin_port::native_map::colorblend_vtable&&b&&b->math_colorblend?colorblend_map.token:
         vt==sin_port::native_map::remap_vtable&&b&&b->math_remap?remap_map.token:
         vt==sin_port::native_map::multicompare_vtable&&b&&b->logic_multicompare?multicompare_map.token:
@@ -2576,6 +2596,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         vt==sin_port::native_map::timer_vtable&&b&&b->timer?timer_map.token:
         vt==sin_port::native_map::relay_vtable&&b&&b->relay?relay_map.token:
         vt==sin_port::native_resupply::resupply_vtable&&b&&b->resupply?resupply_map.token:input_datamap(vt),seen[32]{};
+    if((vt==sin_port::native_map::dynamic_trigger_vtable||vt==sin_port::native_map::secret_trigger_vtable)&&(!a||n<sin_port::native_map::removal_entity_extent(vt)||rd<unsigned>(a,0)!=vt))return 0;
     if(vt==sin_port::native_map::relay_vtable&&n<sin_port::native_map::relay_extent)return 0;
     if(vt==sin_port::native_map::timer_vtable&&(!a||n<sin_port::native_map::timer_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(vt==sin_port::native_map::branch_vtable&&(!a||n<sin_port::native_map::branch_extent||rd<unsigned>(a,0)!=vt))return 0;
@@ -2617,6 +2638,9 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         }
         const auto* native=base_kill?&logic_base_kill_map:
             kill_map&&token==kill_map->token?kill_map:
+            token==dynamic_trigger_map.token&&b->campaign_trigger_control?&dynamic_trigger_map:
+            token==secret_trigger_map.token&&b->campaign_trigger_control?&secret_trigger_map:
+            token==trigger_control_map.token&&b->campaign_trigger_control?&trigger_control_map:
             token==colorblend_map.token&&b->math_colorblend?&colorblend_map:
             token==remap_map.token&&b->math_remap?&remap_map:
             token==multicompare_map.token&&b->logic_multicompare?&multicompare_map:
@@ -2698,6 +2722,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                     shared_status=api&&api->logic_kill(a,n,vt,b->entities.entries,b->entities.count,b->logic_kill,&result)&&result.completed&&result.handled?1:0;
                 }
                 const int status=shared_status>=0?shared_status:
+                    (vt==sin_port::native_map::dynamic_trigger_vtable||vt==sin_port::native_map::secret_trigger_vtable)?native_trigger_control_input(a,n,o->handler,*b):
                     vt==sin_port::native_map::colorblend_vtable?native_colorblend_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::remap_vtable?native_remap_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::multicompare_vtable?native_multicompare_input(a,n,o->handler,data,*b):
