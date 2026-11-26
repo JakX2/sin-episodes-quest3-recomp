@@ -1625,4 +1625,40 @@ struct ServerNpcGruntDamageOverrideApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageOverrideBindings*,ServerNpcGruntDamageOverrideResult*) noexcept;
 };
 using GetServerNpcGruntDamageOverrideApi=const ServerNpcGruntDamageOverrideApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_damage_notification_export[]="SiN_GetServerNpcGruntDamageNotificationApi";
+struct ServerNpcGruntDamageNotificationBindings {
+    std::uint32_t original_vtable;
+    void* context;
+    int (__cdecl *as_npc)(void*,void*,void**) noexcept; // 22139f60
+    int (__cdecl *count)(void*,int*) noexcept; // live global 225475cc
+    int (__cdecl *member)(void*,int,void**,unsigned*,std::uint32_t*) noexcept; // live global 225475c0
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *disposition)(void*,void*,void*,int*) noexcept; // +3c0
+    int (__cdecl *state_signal)(void*,void*,int) noexcept; // receiver +4d8
+    int (__cdecl *other_receive)(void*,void*,void*,void*) noexcept; // unknown receiver +37c
+};
+struct ServerNpcGruntDamageReceiveResult {
+    float distance_squared;
+    unsigned completed,state_blocked,source_refreshed,receiver_refreshed,signal_called,marked;
+};
+struct ServerNpcGruntDamageNotificationResult {
+    ServerNpcGruntDamageReceiveResult last_receive;
+    unsigned completed,cast_called,source_refreshed,visited,null_member,self,vertical_blocked,horizontal_blocked,disposition_checked,disposition_blocked,native_received,hosted_received;
+};
+struct ServerNpcGruntDamageNotifiedEventBindings {
+    ServerNpcGruntDamageEventBindings event;
+    ServerNpcGruntDamageNotificationBindings notify;
+};
+struct ServerNpcGruntDamageNotifiedEventResult {
+    ServerNpcGruntDamageEventResult event;
+    ServerNpcGruntDamageNotificationResult notify;
+};
+struct ServerNpcGruntDamageNotificationApi {
+    std::uint32_t version,size;
+    int (__cdecl *receive)(void*,unsigned,void*,unsigned,const ServerNpcGruntDamageNotificationBindings*,ServerNpcGruntDamageReceiveResult*) noexcept;
+    int (__cdecl *broadcast)(void*,unsigned,void*,const ServerNpcGruntDamageNotificationBindings*,ServerNpcGruntDamageNotificationResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageNotifiedEventBindings*,ServerNpcGruntDamageNotifiedEventResult*) noexcept;
+};
+using GetServerNpcGruntDamageNotificationApi=const ServerNpcGruntDamageNotificationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
