@@ -2005,7 +2005,7 @@ int main(int argc,char** argv){
         assert(g&&!GetProcAddress(c,server_npc_grunt_death_prepared_event_export)&&!g(0,sizeof(ServerNpcGruntDeathPreparedEventApi))&&!g(1,0));
         const auto* api=g(1,sizeof(ServerNpcGruntDeathPreparedEventApi));assert(api);
         struct PrepFixture {
-            alignas(4) unsigned char actor[0xdb2]{},damage[0x48]{},desc[0x48]{};
+            alignas(4) unsigned char actor[0x1088]{},damage[0x48]{},desc[0x48]{};
             sin_independent::EntityHandleEntry entries[2]{};
             unsigned dirty=0x20,calls=0,components=0,removed=0;std::uint32_t tokens[2]{71,72};bool model=true;int selected=7;
             static PrepFixture& self(void* p){return *static_cast<PrepFixture*>(p);}
@@ -2108,6 +2108,22 @@ int main(int argc,char** argv){
         static ServerNpcGruntGroundLifeResult lr;
         assert(!life->run(q.actor,sizeof(q.actor),0x9001u,q.damage,sizeof(q.damage),33,&lc,&lr)&&PrepFixture::rd(q.actor,0x9c)==1);
         assert(life->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),33,&lc,&lr)&&lr.life.completed&&lr.life.native_result==1&&lr.life.death_called&&lr.ground_called&&lr.ground.completed&&lr.ground.base_called&&lr.ground.components==2&&q.components==2&&q.removed==2&&lr.ground.base.selector.selection==0x1a7&&lr.ground.base.combat.death.event.completed&&q.calls==4&&lr.life.alive.alive.life.health_after==-1);
+        auto ge=reinterpret_cast<GetServerNpcGruntEliteLifeApi>(GetProcAddress(s,server_npc_grunt_elite_life_export));
+        assert(ge&&!GetProcAddress(c,server_npc_grunt_elite_life_export)&&!ge(0,sizeof(ServerNpcGruntEliteLifeApi))&&!ge(1,0));
+        const auto* elite=ge(1,sizeof(ServerNpcGruntEliteLifeApi));assert(elite);
+        static ServerNpcGruntEliteLifeBindings ec;ec.combat.combat=lc;
+        auto& es=ec.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
+        es.speech.original_vtable=0x2248df04;ec.elite.context=&q;
+        ec.elite.effect_begin=[](void* p,void* a) noexcept -> int{auto& q=PrepFixture::self(p);assert(a==q.actor&&!PrepFixture::rd(a,0xc38)&&q.components==0);++q.components;return 1;};
+        ec.elite.effects=[](void* p,void* a) noexcept -> int{auto& q=PrepFixture::self(p);assert(a==q.actor&&q.components==1&&!PrepFixture::rd(a,0x8c));++q.components;return 1;};
+        ec.elite.rule=[](void* p,bool* yes) noexcept -> int{auto& q=PrepFixture::self(p);assert(q.components==2&&PrepFixture::rd(q.actor,0x8c)==1);++q.components;*yes=true;return 1;};
+        ec.elite.player=[](void* p,void** v) noexcept -> int{auto& q=PrepFixture::self(p);assert(q.components==3);++q.components;*v=nullptr;return 1;};
+        ec.elite.effect_end=[](void* p,void* a) noexcept -> int{auto& q=PrepFixture::self(p);assert(a==q.actor&&q.components==4);++q.components;return 1;};
+        q.actor[0xa44]=0;f.put(q.actor,0x8c,0);f.put(q.actor,0x9c,1);f.put(q.actor,0x994,34.f);
+        f.put(q.actor,0xc28,0);f.put(q.actor,0xc38,4);f.put(q.actor,0xfdc,0xffffffffu);f.put(q.actor,0x890,-1);q.calls=0;q.components=0;
+        static ServerNpcGruntEliteLifeResult er;
+        assert(elite->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),34,&ec,&er)&&er.elite.completed&&er.elite.prior_grenades==4&&er.elite.grenades_cleared&&er.elite.base_called&&er.elite.rule_checked&&!er.elite.player_found&&er.elite.effect_closed&&er.combat.combat.life.death_called&&er.combat.combat.ground.completed&&q.components==5);
+
 
 
 
@@ -2843,6 +2859,33 @@ int main(int argc,char** argv){
         f.put(q.a,0x1004,4);f.put(q.a,0x1028,0x3003u);f.put(q.a,0xfe8,0x3003u);f.put(q.a,0xfe4,0x9003u);q.time=12.01f;
         assert(api->run(q.a,sizeof(q.a),0x1001u,&b,&o)&&o.completed&&o.expired&&!o.motion_called&&o.terminal_mode==4&&o.effect_closed&&o.aux_removed==1&&o.cleared==1&&o.primary_removed&&o.installed&&o.mode_written&&o.death_called&&o.ground.completed&&o.scheduled_called&&q.base==1&&q.scheduled==3&&ThinkFixture::rd(q.a,0xfe4)==0x9003u);
         assert(!api->run(q.a,sizeof(q.a),0x9001u,&b,&o)&&q.scheduled==3);
+    }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntEliteLifeApi>(GetProcAddress(s,server_npc_grunt_elite_life_export));assert(g);
+        const auto* api=g(1,sizeof(ServerNpcGruntEliteLifeApi));assert(api);
+        struct ElitePostFixture{
+            alignas(4) unsigned char a[0xfe0]{},player[4]{},target[4]{};
+            bool rule=true,player_ok=true,entity_ok=true;unsigned step=0,rng=0;
+            static ElitePostFixture& self(void* p){return *static_cast<ElitePostFixture*>(p);}
+        } q;
+        ServerNpcGruntEliteDeathBindings b{};b.context=&q;
+        b.rule=[](void* p,bool* v) noexcept -> int{*v=ElitePostFixture::self(p).rule;return 1;};
+        b.player=[](void* p,void** v) noexcept -> int{auto& q=ElitePostFixture::self(p);*v=q.player_ok?q.player:nullptr;return 1;};
+        b.entity=[](void* p,void* player,void** v) noexcept -> int{auto& q=ElitePostFixture::self(p);assert(player==q.player);*v=q.entity_ok?q.target:nullptr;return 1;};
+        b.refresh_origin=[](void* p,void* a) noexcept -> int{auto& q=ElitePostFixture::self(p);assert(a==q.a&&q.step==0);++q.step;return 1;};
+        b.position=[](void* p,void* e,const float* v) noexcept -> int{auto& q=ElitePostFixture::self(p);assert(e==q.target&&v[0]==1&&v[1]==2&&v[2]==3&&q.step==1);++q.step;return 1;};
+        b.random_float=[](void* p,float lo,float hi,float* v) noexcept -> int{auto& q=ElitePostFixture::self(p);assert(q.step==2&&lo==(q.rng==1?0.f:-20.f)&&hi==(q.rng==1?360.f:20.f));*v=q.rng==1?180.f:10.f;++q.rng;return 1;};
+        b.orientation=[](void* p,void* e,const float* v) noexcept -> int{auto& q=ElitePostFixture::self(p);assert(e==q.target&&v[0]==10&&v[1]==180&&v[2]==10&&q.rng==3&&q.step==2);++q.step;return 1;};
+        b.velocity=[](void* p,void* e,float lo,float hi,float* v) noexcept -> int{auto& q=ElitePostFixture::self(p);assert(e==q.target&&lo==-10&&hi==10&&q.step==3);v[0]=2;v[1]=-2;v[2]=0;++q.step;return 1;};
+        b.set_velocity=[](void* p,void* e,const float* v) noexcept -> int{auto& q=ElitePostFixture::self(p);assert(e==q.target&&v[0]==2&&v[1]==-2&&v[2]==0&&q.step==4);++q.step;return 1;};
+        b.finish=[](void* p,void* e) noexcept -> int{auto& q=ElitePostFixture::self(p);assert(e==q.target&&q.step==5);++q.step;return 1;};
+        f.put(q.a,0x2bc,1.f);f.put(q.a,0x2c0,2.f);f.put(q.a,0x2c4,3.f);f.put(q.a,0xb8,0x800u);
+        ServerNpcGruntEliteDeathResult o{};
+        q.rule=false;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.rule_checked&&!o.rule_allowed&&!o.player_found);
+        q.rule=true;q.player_ok=false;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.rule_allowed&&!o.player_found);
+        q.player_ok=true;q.entity_ok=false;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_found&&!o.entity_found);
+        q.entity_ok=true;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.entity_found&&o.refreshed&&o.positioned&&o.random_calls==3&&o.oriented&&o.velocity_set&&o.finished&&q.step==6);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

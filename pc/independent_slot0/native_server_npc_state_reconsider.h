@@ -2034,4 +2034,41 @@ struct ServerNpcJetpackDeathThinkApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,const ServerNpcJetpackDeathThinkBindings*,ServerNpcJetpackDeathThinkResult*) noexcept;
 };
 using GetServerNpcJetpackDeathThinkApi=const ServerNpcJetpackDeathThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_elite_life_export[]="SiN_GetServerNpcGruntEliteLifeApi";
+struct ServerNpcGruntEliteDeathBindings {
+    void* context;
+    int (__cdecl *effect_begin)(void*,void*) noexcept;
+    int (__cdecl *effects)(void*,void*) noexcept; // original 22354fde..22355268
+    int (__cdecl *effect_end)(void*,void*) noexcept;
+    int (__cdecl *rule)(void*,bool*) noexcept; // 22572914 +1a4
+    int (__cdecl *player)(void*,void**) noexcept; // 22288a40
+    int (__cdecl *entity)(void*,void*,void**) noexcept; // player +45c
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *position)(void*,void*,const float*) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *orientation)(void*,void*,const float*) noexcept;
+    int (__cdecl *velocity)(void*,void*,float,float,float*) noexcept; // original 2202e350, separate RNG
+    int (__cdecl *set_velocity)(void*,void*,const float*) noexcept;
+    int (__cdecl *finish)(void*,void*) noexcept; // relocated entity +64
+};
+struct ServerNpcGruntEliteDeathResult {
+    float origin[3],angles[3],velocity[3];
+    int prior_grenades;
+    unsigned completed,grenades_cleared,effect_opened,effects_called,base_called,rule_checked,rule_allowed,player_found,entity_found,refreshed,positioned,random_calls,oriented,velocity_generated,velocity_set,finished,effect_closed;
+};
+struct ServerNpcGruntEliteLifeBindings {
+    ServerNpcJetpackDeathBranchesBindings combat;
+    ServerNpcGruntEliteDeathBindings elite;
+};
+struct ServerNpcGruntEliteLifeResult {
+    ServerNpcJetpackDeathBranchesResult combat;
+    ServerNpcGruntEliteDeathResult elite;
+};
+struct ServerNpcGruntEliteLifeApi {
+    std::uint32_t version,size;
+    int (__cdecl *post)(void*,unsigned,const ServerNpcGruntEliteDeathBindings*,ServerNpcGruntEliteDeathResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntEliteLifeBindings*,ServerNpcGruntEliteLifeResult*) noexcept;
+};
+using GetServerNpcGruntEliteLifeApi=const ServerNpcGruntEliteLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
