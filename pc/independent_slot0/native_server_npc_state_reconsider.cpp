@@ -4615,7 +4615,90 @@ int actbusy_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float 
     o.memory_called=1;return done();
 }
 
-struct FollowEventRoute {const ServerNpcGruntFollowEventBindings* bindings;ServerNpcGruntFollowEventResult* result;};
+
+struct FollowSearchRoute {const ServerNpcGruntFollowSearchBindings* bindings;ServerNpcGruntFollowSearchResult* result;};
+int follow_shared_search(void* a,unsigned n,void* p,unsigned extent,float now,const FollowSearchRoute& route,const RappelScheduleRoute* schedule) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;const auto& f=b.events;
+    const auto& busy=f.events;const auto& rb=busy.events.events.events.events.events;const auto& re=rb.events;
+    const auto& sb=re.events.gate.speech.speech.sentence;
+    if(n<0xc1c||extent<0xd0||!f.default_point||!finite_vec(f.default_point))return 0;
+    o.entered=1;o.roll=o.peer_count=o.peer_index=-1;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto target=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(p,0x14)));};
+    auto done=[&](){o.completed=1;return 1;};
+    auto restart=[&](){
+        const float lo=read<float>(p,0xbc),hi=read<float>(p,0xc0);
+        double value=lo;
+        if(hi!=0.f&&(!rb.random_float||!rb.random_float(rb.context,lo,hi,&value)))return false;
+        o.timer=static_cast<float>(value+now);if(!std::isfinite(o.timer))return false;
+        write(p,0xb8,o.timer);++o.restarts;return true;
+    };
+    auto reset=[&](){if(!schedule||!rappel_schedule_reset(a,n,now,*schedule))return false;o.reset_called=1;return true;};
+    auto origin=[&](){void* t=target();if(!t||!f.origin||!f.origin(f.context,t,o.point)||!finite_vec(o.point))return false;o.target_called=1;return true;};
+    auto fallback=[&](){if(!b.fallback_point||!b.fallback_point(b.context,p,o.point)||!finite_vec(o.point))return false;o.fallback_called=1;return true;};
+    auto random=[&](int lo,int hi,int& value){return rb.random_int&&rb.random_int(rb.context,lo,hi,&value)&&value>=lo&&value<=hi;};
+    // Original TEST AH,41h / JE skips restart only for ordered greater.
+    if(!(static_cast<double>(now)-read<float>(p,0xac)>-0.001)){
+        if(!restart())return 0;o.initial_restart=1;
+    }
+    std::memcpy(o.point,f.default_point,12);
+    bool cast=false;
+    if(!b.target_cast||!b.target_cast(b.context,target(),&cast))return 0;o.cast_called=1;o.cast_result=cast;
+    if(read<int>(a,0x850)==3){
+        if(!b.memory_time||!b.memory_time(b.context,a,&o.memory_time))return 0;o.memory_called=1;
+        if(static_cast<double>(now)-o.memory_time<5.0){
+            if(!b.memory_point||!b.memory_point(b.context,a,o.point)||!finite_vec(o.point))return 0;
+            o.memory_selected=1;
+        }else if(!cast&&!fallback())return 0;
+    }else if(target()&&!cast){
+        bool predicate=false;
+        if(read<std::uint8_t>(p,0x4c)){
+            void* q=target();if(!q||!b.target_predicate||!b.target_predicate(b.context,q,&predicate))return 0;
+        }
+        if(predicate){if(!origin())return 0;}
+        else{
+            // 2202dd40: deadline test is ordered strictly greater than -0.001.
+            if(!(static_cast<double>(now)-read<float>(p,0xb8)>-0.001)){o.early_reset=1;return reset()?done():0;}
+            if(!restart()||!random(1,4,o.roll))return 0;
+            if(o.roll==1){if(!fallback())return 0;}
+            else if(o.roll==2){if(!origin())return 0;}
+            else{
+                if(!b.peer_count||!b.peer_count(b.context,a,&o.peer_count))return 0;o.peer_called=1;
+                if(o.peer_count>0){
+                    if(o.peer_count==std::numeric_limits<int>::max()||!random(0,o.peer_count,o.peer_index))return 0;
+                    void* q=target();
+                    if(!q||!b.orientation||!b.orientation(b.context,q,o.angles)||!finite_vec(o.angles))return 0;
+                    const float raw=static_cast<float>(360.0/(o.peer_count+1)*o.peer_index+o.angles[1]);
+                    const double trunc=std::trunc(static_cast<double>(raw)*182.0444488525390625);
+                    int iv=std::numeric_limits<int>::min();
+                    if(std::isfinite(trunc)&&trunc>=std::numeric_limits<int>::min()&&trunc<=std::numeric_limits<int>::max())iv=static_cast<int>(trunc);
+                    o.angles[1]=static_cast<float>((static_cast<unsigned>(iv)&0xffffu)*0.0054931640625);
+                    if(!b.direction||!b.direction(b.context,o.angles,o.direction)||!finite_vec(o.direction))return 0;o.direction_called=1;
+                    if(read<unsigned>(a,0xb8)&0x800u){if(!re.refresh_origin||!re.refresh_origin(re.context,a))return 0;}
+                    for(unsigned i=0;i<3;++i){
+                        const float scaled=static_cast<float>(static_cast<double>(o.direction[i])*128.0);
+                        o.point[i]=static_cast<float>(static_cast<double>(read<float>(a,0x2bc+4*i))+scaled);
+                    }
+                }
+            }
+        }
+    }
+    write<std::uint8_t>(p,0x4c,0);
+    bool yes=false;
+    if(!finite_vec(o.point)||!b.prepare_point||!b.prepare_point(b.context,p,o.point,&yes))return 0;
+    o.point_prepared=1;o.point_ok=yes;
+    if(!yes){
+        if(!busy.owner_event)return 0;
+        const auto marker=read<std::uint8_t>(p,8);
+        const bool ok=busy.owner_event(busy.context,a,57,0.f)!=0;
+        write(p,8,marker);o.synthetic_called=1;return ok?done():0;
+    }
+    if(!finite_vec(o.point)||!b.facing||!b.facing(b.context,a,o.point,&yes))return 0;o.facing_called=1;o.facing_ok=yes;
+    if(yes)return reset()?done():0;
+    if(!b.turn||!b.turn(b.context,a,o.point,30.f))return 0;o.turn_called=1;
+    if(!b.finish_turn||!b.finish_turn(b.context,a))return 0;o.finish_called=1;return done();
+}
+struct FollowEventRoute {const ServerNpcGruntFollowEventBindings* bindings;ServerNpcGruntFollowEventResult* result;const FollowSearchRoute* search=nullptr;};
 int follow_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const void* ev,float now,const FollowEventRoute& route,const RappelScheduleRoute* schedule) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;
     const auto& busy=b.events;const auto& tank=busy.events.events.events;const auto& rb=tank.events.events;
@@ -4663,6 +4746,10 @@ int follow_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const v
         if(mark)write<std::uint8_t>(p,off+4,1);
         write(p,off,o.timer);o.timer_written=1;return true;
     };
+    if((id==100001||id==100005)&&route.search){
+        if(!follow_shared_search(a,n,p,extent,now,*route.search,schedule))return 0;
+        return done();
+    }
     if(id==100000){
         if(target()){
             write(p,0x48,0.f);
@@ -4879,7 +4966,7 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
         const bool native_cover=rappel&&rappel->cover&&entry&&identity.behavior_vtable==0x224ae624;
         const bool native_standoff=rappel&&rappel->standoff&&entry&&identity.behavior_vtable==0x22495344;
         const bool native_busy=rappel&&rappel->busy&&entry&&identity.behavior_vtable==0x224ab494;
-        const bool native_follow=rappel&&rappel->follow&&entry&&identity.behavior_vtable==0x223f6b7c&&id!=100001&&id!=100005;
+        const bool native_follow=rappel&&rappel->follow&&entry&&identity.behavior_vtable==0x223f6b7c&&(rappel->follow->search||(id!=100001&&id!=100005));
         if(entry&&!no_op&&!native_rappel&&!native_tank&&!native_cover&&!native_standoff&&!native_busy&&!native_follow&&!b->special)return 0;
         write<std::uint8_t>(p,8,1);out->marker_set=1;
         if(native_rappel){
@@ -5129,7 +5216,7 @@ int __cdecl grunt_actbusy_event(void* a,unsigned n,const void* ev,unsigned en,fl
     return grunt_event43_impl(a,n,ev,en,now,&sched.events.events,&e.events.events,&rappel,&timer);
 }
 const ServerNpcGruntActBusyEventApi actbusy_event_api{1,sizeof(ServerNpcGruntActBusyEventApi),&grunt_actbusy_event};
-int __cdecl grunt_follow_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntFollowEventBindings* b,ServerNpcGruntFollowEventResult* out) noexcept{
+int grunt_follow_event_impl(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntFollowEventBindings* b,ServerNpcGruntFollowEventResult* out,const FollowSearchRoute* search=nullptr) noexcept{
     if(!out)return 0;*out={};out->target_handle=out->link_handle=0xffffffffu;out->emitted_event=out->node_mode=-1;
     auto& busy_out=out->events;busy_out.activity=busy_out.memory_id=-1;busy_out.condition.global=busy_out.condition.bit=-1;
     auto& stand=busy_out.events;stand.random=-1;
@@ -5141,12 +5228,20 @@ int __cdecl grunt_follow_event(void* a,unsigned n,const void* ev,unsigned en,flo
     const RappelScheduleRoute schedule{&sched,&e};
     const TankEventRoute tank{&tb,&tank_out};const TakecoverEventRoute cover{&cb,&cover_out};
     const StandoffEventRoute standoff{&st,&stand};const ActBusyEventRoute busy{&bu,&busy_out};
-    const FollowEventRoute follow{b,out};
+    const FollowEventRoute follow{b,out,search};
     const RappelEventRoute rappel{&sched.events,&e.events,&schedule,&tank,&cover,&standoff,&busy,&follow};
     const EventTimerRoute timer{&timer_bind,&timer_out};
     return grunt_event43_impl(a,n,ev,en,now,&sched.events.events,&e.events.events,&rappel,&timer);
 }
+int __cdecl grunt_follow_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntFollowEventBindings* b,ServerNpcGruntFollowEventResult* out) noexcept{return grunt_follow_event_impl(a,n,ev,en,now,b,out);}
 const ServerNpcGruntFollowEventApi follow_event_api{1,sizeof(ServerNpcGruntFollowEventApi),&grunt_follow_event};
+int __cdecl grunt_follow_search(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntFollowSearchBindings* b,ServerNpcGruntFollowSearchResult* out) noexcept{
+    if(!out)return 0;*out={};out->roll=out->peer_count=out->peer_index=-1;
+    if(!b)return 0;
+    const FollowSearchRoute search{b,out};
+    return grunt_follow_event_impl(a,n,ev,en,now,&b->events,&out->events,&search);
+}
+const ServerNpcGruntFollowSearchApi follow_search_api{1,sizeof(ServerNpcGruntFollowSearchApi),&grunt_follow_search};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6993,4 +7088,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntFollowEventApi=_SiN_GetServerNpcGruntFollowEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntFollowEventApi* __cdecl SiN_GetServerNpcGruntFollowEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntFollowEventApi)?&follow_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntFollowSearchApi=_SiN_GetServerNpcGruntFollowSearchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntFollowSearchApi* __cdecl SiN_GetServerNpcGruntFollowSearchApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntFollowSearchApi)?&follow_search_api:nullptr;
 }

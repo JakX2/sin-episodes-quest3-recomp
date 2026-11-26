@@ -2516,4 +2516,32 @@ struct ServerNpcGruntFollowEventApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntFollowEventBindings*,ServerNpcGruntFollowEventResult*) noexcept;
 };
 using GetServerNpcGruntFollowEventApi=const ServerNpcGruntFollowEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_follow_search_export[]="SiN_GetServerNpcGruntFollowSearchApi";
+struct ServerNpcGruntFollowSearchBindings {
+    ServerNpcGruntFollowEventBindings events;
+    void* context;
+    int (__cdecl *target_cast)(void*,void*,bool*) noexcept; // exact RTTI 223a5bab
+    int (__cdecl *memory_time)(void*,void*,float*) noexcept; // 220317a0
+    int (__cdecl *memory_point)(void*,void*,float*) noexcept; // 22031780
+    int (__cdecl *fallback_point)(void*,void*,float*) noexcept; // 220d2d70
+    int (__cdecl *target_predicate)(void*,void*,bool*) noexcept; // +120
+    int (__cdecl *peer_count)(void*,void*,int*) noexcept; // 220d40b0
+    int (__cdecl *orientation)(void*,void*,float*) noexcept; // 2202f0b0
+    int (__cdecl *direction)(void*,const float*,float*) noexcept; // 22269b30
+    int (__cdecl *prepare_point)(void*,void*,float*,bool*) noexcept; // 220d3000
+    int (__cdecl *facing)(void*,void*,const float*,bool*) noexcept; // +304
+    int (__cdecl *turn)(void*,void*,const float*,float) noexcept; // 2206c670
+    int (__cdecl *finish_turn)(void*,void*) noexcept; // +71c
+};
+struct ServerNpcGruntFollowSearchResult {
+    ServerNpcGruntFollowEventResult events;
+    float point[3],angles[3],direction[3],timer,memory_time;
+    int roll,peer_count,peer_index;
+    unsigned entered,completed,initial_restart,restarts,cast_called,cast_result,memory_called,memory_selected,fallback_called,target_called,early_reset,peer_called,direction_called,point_prepared,point_ok,facing_called,facing_ok,turn_called,finish_called,reset_called,synthetic_called;
+};
+struct ServerNpcGruntFollowSearchApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntFollowSearchBindings*,ServerNpcGruntFollowSearchResult*) noexcept;
+};
+using GetServerNpcGruntFollowSearchApi=const ServerNpcGruntFollowSearchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
