@@ -2020,7 +2020,8 @@ int main(int argc,char** argv){
         unsigned jet_ticks{};
         int expected_class=11;
         float think_clock{},think_scheduled{};
-        alignas(4) unsigned char native_rag[4]{};
+        alignas(4) unsigned char native_rag[4]{},native_aux[2][4]{};
+        int alternate_sample{},alternate_mode{};
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -2601,6 +2602,83 @@ int main(int argc,char** argv){
     hd.death_order.clear();hd.think_clock=92.375f;
     assert(primary_run(739)&&primary_o.removed&&primary_o.health_zeroed&&!primary_o.native_result);
     assert((hd.death_order==std::vector<unsigned>{43,41,44,47,46,45}));
+    // Alternate delayed modes 0 and 1 keep their attachments initially.
+    // The native ragdoll route reparents fe4 then fe8; terminal death
+    // removes fe8 then fe4. The engine motion leaf remains hosted.
+    sin_independent::EntityHandleEntry alternate_slots[5]{};
+    std::memcpy(alternate_slots,script_slots,sizeof(script_slots));
+    alternate_slots[3].serial=10;alternate_slots[3].entity=reinterpret_cast<CBaseEntity*>(hd.native_aux[0]);
+    alternate_slots[4].serial=11;alternate_slots[4].entity=reinterpret_cast<CBaseEntity*>(hd.native_aux[1]);
+    const auto saved_hd_entities=hd_b.entities;
+    hd_b.entities.entries=alternate_slots;hd_b.entities.count=5;
+    primary_b.entities=hd_b.entities;
+    hd_services.jet_think=&initial_think;
+    jet_mode.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(lo==0&&hi==100);
+        *v=q.alternate_sample;q.death_order.push_back(20);return 1;
+    };
+    jet_mode.effect_rule=[](void* p,void* a,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x1004)==q.alternate_mode);
+        *yes=false;q.death_order.push_back(21);return 1;
+    };
+    jet_branch.time=[](void* p,float* now) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);q.death_order.push_back(26);
+        *now=90.f+float(q.jet_ticks++)*.125f;return 1;
+    };
+    native_rag_b.jet_setup=[](void* p,void* a,const void* damage,unsigned* handle) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        assert(a==q.f->actor&&q.f->get<int>(a,0x8c)==1&&q.f->get<int>(a,0x1004)==q.alternate_mode&&q.f->get<float>(damage,0x2c)==300.f);
+        *handle=0x9000u;q.death_order.push_back(25);return 1;
+    };
+    native_rag_b.reparent=[](void* p,void* target,void* attachment) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(attachment==q.parent&&(target==q.native_aux[0]||target==q.native_aux[1]));
+        q.death_order.push_back(target==q.native_aux[0]?59:60);return 1;
+    };
+    think.motion=[](void* p,void* a,void* rag,int mode) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        assert(a==q.f->actor&&rag==q.native_rag&&mode==q.alternate_mode);
+        q.death_order.push_back(58);return 1;
+    };
+    think.terminal_effect=[](void* p,void* a,void* subject,bool mode4) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&subject==q.native_rag&&!mode4);
+        q.death_order.push_back(31);return 1;
+    };
+    think.remove=[](void* p,void* entity) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        assert(entity==q.native_aux[0]||entity==q.native_aux[1]||entity==q.parent);
+        q.death_order.push_back(entity==q.native_aux[0]?56:entity==q.native_aux[1]?57:32);return 1;
+    };
+    for(unsigned alternate_vt:{0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+        for(int sample:{26,54}){
+            reset_subclass(alternate_vt);hd.alternate_sample=sample;hd.alternate_mode=sample==26?1:0;
+            f.actor[0xbf]&=static_cast<unsigned char>(~8u);
+            f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x1028,0x7001u);
+            f.put(f.actor,0xfe4,0xa003u);f.put(f.actor,0xfe8,0xb004u);
+            f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0x400000u);
+            f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);f.put(f.actor,8,0u);
+            f.put(f.actor,0xc3c,0x7001u);f.put(f.actor,0xc40,0x1234u);
+            assert(hd_run(0,alternate_vt)&&catalog_o.health_jet_route&&catalog_o.health_jet_ignition_native==1&&catalog_o.health_jet_ragdoll_native==1&&catalog_o.health_jet_think_installed==1&&catalog_o.health_jet_think_scheduled==1);
+            assert(!catalog_o.health_jet_sentence_native&&hd_subclass_result.combat.combat.jet.final_mode==hd.alternate_mode&&!hd_subclass_result.combat.branch.cleanup);
+            assert(native_rag_o.aux_reparented==2&&f.get<unsigned>(f.actor,0xfe4)==0xa003u&&f.get<unsigned>(f.actor,0xfe8)==0xb004u);
+            assert((hd.death_order==std::vector<unsigned>{20,21,22,23,24,25,48,49,59,60,50,26,26,42})&&hd.jet_ticks==2);
+            assert(f.get<unsigned>(f.actor,8)==0x22365760u&&f.get<int>(f.actor,0x74)==721);
+            auto alternate_run=[&](int tick){return primary->run(f.actor,sizeof(f.actor),alternate_vt,0x8002u,tick,.125f,&primary_b,&primary_o);};
+            hd.death_order.clear();hd.think_clock=92.f;
+            assert(alternate_run(736)&&primary_o.death_called&&primary_o.rescheduled&&think_result.motion_called&&!think_result.expired);
+            assert(think_result.motion_mode==hd.alternate_mode&&f.get<int>(f.actor,0x74)==737);
+            assert((hd.death_order==std::vector<unsigned>{43,41,44,58,42,45}));
+            hd.death_order.clear();hd.think_clock=92.125f;
+            assert(alternate_run(737)&&primary_o.death_called&&primary_o.installed&&think_result.motion_called&&think_result.expired&&think_result.death_called);
+            assert(think_result.terminal_mode==hd.alternate_mode&&think_result.aux_removed==2&&think_result.cleared==2&&think_result.primary_removed);
+            assert(f.get<unsigned>(f.actor,0xfe4)==0xffffffffu&&f.get<unsigned>(f.actor,0xfe8)==0xffffffffu&&f.get<unsigned>(f.actor,0x1028)==0xffffffffu);
+            assert(think_result.ground.attacker_class==hd.expected_class&&f.get<unsigned>(f.actor,8)==0x221c0d40u&&f.get<int>(f.actor,0x74)==738);
+            assert((hd.death_order==std::vector<unsigned>{43,41,44,58,30,31,57,56,32,33,1,2,3,4,34,5,6,42,45}));
+            hd.death_order.clear();hd.think_clock=92.25f;
+            assert(alternate_run(738)&&primary_o.removed&&!primary_o.native_result);
+            assert((hd.death_order==std::vector<unsigned>{43,41,44,46,45}));
+        }
+    }
+    hd_services.jet_think=nullptr;hd_b.entities=saved_hd_entities;primary_b.entities=saved_hd_entities;
     script_slots[0].serial=0;script_slots[0].entity=nullptr;
     std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
     assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);
