@@ -891,5 +891,61 @@ int main(int argc,char** argv){
         assert(api->destroy_branch(nullptr,0,nullptr,nullptr)&&!api->destroy_branch(ff.storage,branch_extent,ff.storage+0x164,&binding)&&!ff.released);
         assert(api->destroy_branch(ff.storage,branch_extent,ff.storage+0x160,&binding)&&ff.released==1);
     }
+    {
+        // Original branch datamap through AcceptInput, then actual queue
+        // delivery with resolved activator and caller.
+        alignas(4) unsigned char actor[branch_extent]{};
+        put(actor,0,branch_vtable);put(actor,0x378,0x4001u);actor[0x1f0]=1;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=branch_extent;return 1;};
+        assert(api->key_value(actor,"OnTrue","relay,Trigger,,0,-1",&keys,&kr));
+        assert(api->key_value(actor,"OnFalse","relay,Trigger,,0,-1",&keys,&kr));
+        struct BranchFixture {void* actor;void* activator;ActionPool* pool;std::string order;} f{actor,timer,&pool};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<BranchFixture*>(p);
+            for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<BranchFixture*>(p);assert(a==f.activator&&c==f.actor&&action->action_id>=41&&action->action_id<=42);f.order+=char('0'+action->action_id-41);return 1;
+        };
+        BranchBindings behavior{&fire};
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&tstorage;input.branch=&behavior;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            switch(token){
+                case 0x224202e4:*text="SetValue";break;
+                case 0x2242080c:*text="SetValueTest";break;
+                case 0x223d4914:*text="Toggle";break;
+                case 0x224207f0:*text="ToggleTest";break;
+                case 0x224207dc:*text="Test";break;
+                case 301:*text="-1";break;
+                case 302:*text="0";break;
+                default:return 0;
+            }
+            *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nw::ServerEntityAcceptInputResult result{};
+        auto accept=[&](unsigned token,unsigned type,unsigned value){
+            unsigned variant[5]{value,0,0,0xffffffffu,type};actor[0x200]=0;
+            return timer_accept->run(actor,sizeof(actor),branch_vtable,token,timer,timer,variant,sizeof(variant),17,&input,&result);
+        };
+        assert(accept(0x224202e4,2,301)&&result.row==1&&result.written==1&&result.converted&&result.dirty&&actor[0x394]==1&&actor[0x200]&&f.order.empty());
+        assert(accept(0x224207dc,0,0)&&result.native_handler&&f.order=="0");
+        assert(accept(0x223d4914,0,0)&&result.native_handler&&!actor[0x394]&&f.order=="0");
+        assert(accept(0x2242080c,2,302)&&result.converted&&result.native_handler&&f.order=="01");
+        assert(accept(0x224207f0,0,0)&&result.native_handler&&actor[0x394]&&f.order=="010");
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=100.f;
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(timer);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        co.actor=actor;
+        auto bindings=tes;bindings.entities.entries=entries;bindings.entities.count=2;bindings.native_input=&input;
+        nw::ServerEntitySearchBindings search{};search.context=&co;
+        search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{*bytes=a==static_cast<ConnectedOutput*>(p)->actor?branch_extent:0;return *bytes!=0;};
+        bindings.native_search=&search;
+        unsigned variant[5]{0,0,0,0xffffffffu,5};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2242080c,0x3000,0x3000,variant,sizeof(variant),0.f,17,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&bindings,&es)&&es.native_inputs==1&&es.direct==1&&co.released==1&&!actor[0x394]&&f.order=="0101");
+    }
     FreeLibrary(server);FreeLibrary(client);
 }

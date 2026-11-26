@@ -540,7 +540,8 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
             const unsigned vt=rd<unsigned>(entity,0);
             if(input_datamap(vt)||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)||
                (vt==sin_port::native_map::relay_vtable&&b->native_input->relay)||
-               (vt==sin_port::native_map::timer_vtable&&b->native_input->timer)){
+               (vt==sin_port::native_map::timer_vtable&&b->native_input->timer)||
+               (vt==sin_port::native_map::branch_vtable&&b->native_input->branch)){
                 auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=clock();if(!std::isfinite(bound.now))return false;
                 sin_port::native_map::RelayBindings relay{};
                 sin_port::native_map::RelayQueueBindings relay_queue{};
@@ -919,6 +920,13 @@ constexpr NativeInputRow relay_inputs[]{
     {5,0,0x223d4914u,0x2217df20u,"Toggle"},
     {6,0,0x22422b7cu,0x2217df50u,"Trigger"},
     {7,0,0x22422b58u,0x2217def0u,"CancelPending"}
+};
+constexpr NativeInputRow branch_inputs[]{
+    {1,6,0x224202e4u,0,"SetValue",0x394,0xe},
+    {2,6,0x2242080cu,0x22179ba0u,"SetValueTest"},
+    {3,0,0x223d4914u,0x22178d70u,"Toggle"},
+    {4,0,0x224207f0u,0x22179be0u,"ToggleTest"},
+    {5,0,0x224207dcu,0x22179c20u,"Test"}
 };
 constexpr NativeInputRow timer_inputs[]{
     {3,1,0x22420090u,0x221793e0u,"RefireTime"},
@@ -2215,6 +2223,16 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
     default:return -1;
     }
 }
+constexpr NativeInputMap branch_map{0x224fb5a0u,0x224f0350u,8,branch_inputs,5};
+int native_branch_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
+    if(!b.branch)return -1;
+    const char* text=nullptr;
+    for(const auto& row:branch_inputs)if(row.handler==handler&&handler){text=row.text;break;}
+    if(!text)return -1;
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+    sin_port::native_map::BranchResult result{};
+    return api&&api->branch_input(a,n,text,data.activator,rd<unsigned>(data.variant,0x10),rd<unsigned char>(data.variant,0),b.branch,&result)&&result.completed&&result.handled?1:0;
+}
 constexpr NativeInputMap timer_map{0x224fb4c8u,0x224f0350u,14,timer_inputs,8};
 int native_timer_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
     if(!b.timer)return -1;
@@ -2266,11 +2284,13 @@ const NativeInputMap* native_input_map(unsigned token) noexcept {
 int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
-    unsigned token=vt==sin_port::native_map::timer_vtable&&b&&b->timer?timer_map.token:
+    unsigned token=vt==sin_port::native_map::branch_vtable&&b&&b->branch?branch_map.token:
+        vt==sin_port::native_map::timer_vtable&&b&&b->timer?timer_map.token:
         vt==sin_port::native_map::relay_vtable&&b&&b->relay?relay_map.token:
         vt==sin_port::native_resupply::resupply_vtable&&b&&b->resupply?resupply_map.token:input_datamap(vt),seen[32]{};
     if(vt==sin_port::native_map::relay_vtable&&n<sin_port::native_map::relay_extent)return 0;
     if(vt==sin_port::native_map::timer_vtable&&(!a||n<sin_port::native_map::timer_extent||rd<unsigned>(a,0)!=vt))return 0;
+    if(vt==sin_port::native_map::branch_vtable&&(!a||n<sin_port::native_map::branch_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||(!b->name_equal&&!b->string_text))return 0;
     if(vt==sin_port::native_map::timer_vtable&&b->timer&&b->timer->cadence){
         const auto& t=*b->timer;
@@ -2287,7 +2307,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         if(o->maps>=32)return 0;
         for(unsigned i=0;i<o->maps;++i)if(seen[i]==token)return 0;
         seen[o->maps++]=token;
-        const auto* native=token==timer_map.token&&b->timer?&timer_map:
+        const auto* native=token==branch_map.token&&b->branch?&branch_map:
+            token==timer_map.token&&b->timer?&timer_map:
             token==relay_map.token&&b->relay?&relay_map:
             token==resupply_map.token&&b->resupply?&resupply_map:b->native_npc_datamaps?native_input_map(token):nullptr;
         void* map=nullptr;void* rows=nullptr;int count=0;unsigned parent=0;
@@ -2352,7 +2373,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
                 o->native_wake=1;
             }else if(o->handler){
-                const int status=vt==sin_port::native_map::timer_vtable?native_timer_input(a,n,o->handler,data,*b):
+                const int status=vt==sin_port::native_map::branch_vtable?native_branch_input(a,n,o->handler,data,*b):
+                    vt==sin_port::native_map::timer_vtable?native_timer_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::relay_vtable?native_relay_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_resupply::resupply_vtable?native_resupply_input(a,n,o->handler,*b,*o):b->native_npc_handlers?native_npc_input(a,n,vt,o->handler,data,*b,*o):-1;
                 if(status==0)return 0;
