@@ -54,6 +54,13 @@ ORIGINAL_METHODS={
   "trigger_handle_identity_find":(0x220A21F0,131,"b29f95c429940c6193361871918e463b8a258ea174cfabd6971f38141bed9050"),
   "trigger_activate":(0x221CE3E0,98,"3e336eef7e02b9aa9feff8001b45dd597314be5699fdaf257edf5a0d72a64a39"),
   "multi_filter_activate":(0x2216B3E0,78,"8275ee5da2a598acc65fa3d2452d1fffcfe80d5bc2e3351cb1ecbbcb6f75a6c8"),
+  "base_filter_allocate":(0x2216BBC0,61,"95043533ef67d48d781e0fcb6199c797c849df325d6dc64a5bc6e8e042f2caa2"),
+  "base_filter_construct":(0x2216BC00,61,"640467fd2f279239b8c2f8dbbc26e966b2da027251976811f004ce1f5868cde0"),
+  "multi_filter_allocate":(0x2216BCA0,88,"e9115d5b73adf58c4680504f2d239086c731ff947620268f4418167c9c1b2fee"),
+  "name_filter_allocate":(0x2216BD60,66,"7c9fa593c490b51d6a13243787a278ad61d16ee14c7b01784040386b835f4f92"),
+  "class_filter_allocate":(0x2216BEA0,67,"3de21a3a9907ef489be628d4d3feef96dbf876338c68c1084633cd509e0445ed"),
+  "filter_handle_init":(0x22028F40,9,"b4863fcf4bff0a00d9a803b851c59bf0421e835e51d8e921d2a1ef38942775e8"),
+  "base_filter_datamap_init":(0x2216B790,320,"0a5f3a996331ee97b74c34864aeb6411b3491656eaad0c929cb852a42a3459aa"),
   "trigger_filter":(0x221CE520,314,"460637a5e0d1149d281a94ed22991457e36daa803120f5bab56c0ec39eabda85"),
   "trigger_classname_compare":(0x221387F0,130,"5993dfdb12306b0c2d95ae3e02a79a50cec0bca37e65f2c5457cd090ffc86aa7"),
   "trigger_npc_query":(0x22139F60,19,"d5ea9253030765bcd70227e7860e4620758e52644047e564b5756b5d78eaef44"),
@@ -66,6 +73,24 @@ ORIGINAL_METHODS={
   "filter_targetname_compare":(0x22138740,164,"eef6cd79c9ad7cbfeb9fccc98f7cc219c1093f25af066fdb82d6fb30cda7f6ef"),
   "filter_vehicle_handle_resolve":(0x220280A0,42,"3e1f38e2f06c1fd7b15f8268e7eecf5e4e21067cfa73e45348e71183740c9fa6"),
 }
+FILTER_FACTORY_ROWS=(
+    (0x223bbce0,0x22415930,0x224f8ad4,0x22414800,0x2216bba0,"filter_base"),
+    (0x223bbd10,0x2241593c,0x224f8ad8,0x2241480c,0x2216bc80,"filter_multi"),
+    (0x223bbd40,0x2241594c,0x224f8adc,0x22414818,0x2216bd40,"filter_activator_name"),
+    (0x223bbd70,0x22415964,0x224f8ae0,0x22414824,0x2216be80,"filter_activator_class"),
+)
+FILTER_KEY_ROWS=(
+    (0x224f8c4c,6,0x394,0x22414868,"Negated"),
+    (0x224f8cb4,11,0x398,0x223f2de4,"OnPass"),
+    (0x224f8d54,5,0x3c8,0x22414930,"FilterType"),
+    (0x224f8d88,2,0x3cc,0x22414910,"Filter01"),
+    (0x224f8dbc,2,0x3d0,0x224148f0,"Filter02"),
+    (0x224f8df0,2,0x3d4,0x224148d0,"Filter03"),
+    (0x224f8e24,2,0x3d8,0x224148b0,"Filter04"),
+    (0x224f8e58,2,0x3dc,0x22414890,"Filter05"),
+    (0x224f8ef4,2,0x3c8,0x22405d5c,"filtername"),
+    (0x224f8f5c,2,0x3c8,0x2241494c,"filterclass"),
+)
 CUSTOM_FILTER_ROWS=(
     (0x224149a4,0x224bd6c4,0x224ecf0c,0x2216b290,".?AVCBaseFilter@@"),
     (0x22414ed4,0x224bd784,0x224f9080,0x2216bdb0,".?AVCFilterName@@"),
@@ -233,6 +258,17 @@ def verify_contact_slots(read_u32):
             raise EvidenceRefused("campaign contact dispatch slot changed")
     return 10
 
+def verify_filter_factory_keys(read_u32,read_text):
+    for site,name_ptr,obj,table,create,name in FILTER_FACTORY_ROWS:
+        if (read_u32(site+8),read_u32(site+13),read_u32(obj),read_u32(table))!=(name_ptr,obj,table,create) or not read_text(name_ptr,name):
+            raise EvidenceRefused("filter factory registration changed "+name)
+    for row,typ,offset,external,name in FILTER_KEY_ROWS:
+        if (read_u32(row),read_u32(row+8),read_u32(row+20))!=(typ,offset,external) or not read_text(external,name):
+            raise EvidenceRefused("filter map key changed "+name)
+    if not read_text(0x2241487c,"OnFail"):
+        raise EvidenceRefused("runtime OnFail descriptor literal changed")
+    return len(FILTER_FACTORY_ROWS),len(FILTER_KEY_ROWS)
+
 def verify_custom_filter_slots(read_u32,read_text):
     for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
         if (read_u32(table-4),read_u32(col),read_u32(col+4),read_u32(col+12),
@@ -299,6 +335,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
     subject_sites=verify_subject_operands(pe.at,pe.text)
     player_rows=verify_player_predicates(pe.u32,pe.text)
     custom_rows=verify_custom_filter_slots(pe.u32,pe.text)
+    filter_factories,filter_keys=verify_filter_factory_keys(pe.u32,pe.text)
     if not pe.text(0x22423278,"func_pushable"):
         raise EvidenceRefused("original trigger pushable literal changed")
     contact_slots=verify_contact_slots(pe.u32)
@@ -338,6 +375,8 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "subject_operand_sites":subject_sites,
         "player_predicate_primary_rows":player_rows,
         "custom_filter_primary_rows":custom_rows,
+        "filter_factory_rows":filter_factories,
+        "filter_static_key_rows":filter_keys,
         "campaign_contact_dispatch_slots":contact_slots,
         "base_toggle_rows_without_inputs":15,
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
@@ -445,6 +484,20 @@ def self_test()->None:
         try:verify_contact_slots(bad.get)
         except EvidenceRefused:pass
         else:raise AssertionError("mutated campaign contact slot accepted")
+    factory_words={}
+    factory_text={0x2241487c:"OnFail"}
+    for site,name_ptr,obj,table,create,name in FILTER_FACTORY_ROWS:
+        factory_words.update({site+8:name_ptr,site+13:obj,obj:table,table:create})
+        factory_text[name_ptr]=name
+    for row,typ,offset,external,name in FILTER_KEY_ROWS:
+        factory_words.update({row:typ,row+8:offset,row+20:external})
+        factory_text[external]=name
+    assert verify_filter_factory_keys(factory_words.get,lambda va,s:factory_text.get(va)==s)==(4,10)
+    for key in factory_words:
+        bad=dict(factory_words);bad[key]^=1
+        try:verify_filter_factory_keys(bad.get,lambda va,s:factory_text.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated filter factory or key accepted")
     filter_words={}
     filter_text={0x223d994c:"!player"}
     for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
