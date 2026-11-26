@@ -2265,6 +2265,38 @@ int __cdecl pending_object(void* a,unsigned bytes,float now,const ServerNpcGrunt
     if(!preschedule_init(a,bytes,now,b,out)||!pending_policy(a,now,*b,*out))return 0;
     out->completed=1;return 1;
 }
+bool speech_squad(const ServerNpcGruntSpeechQueueBindings& b,unsigned token,void*& data) noexcept{
+    unsigned n=0;data=nullptr;return b.squad_storage&&b.squad_storage(b.context,token,&data,&n)&&data&&n>=0x58;
+}
+bool speech_admission(void* a,float now,int priority,const ServerNpcGruntSpeechQueueBindings& b,ServerNpcGruntSpeechQueueResult& out) noexcept{
+    const auto squad=read<unsigned>(a,0x9c4);
+    void* squad_data=nullptr;
+    float deadline=read<float>(a,0xc04);int prior=read<int>(a,0xc08);
+    if(squad){
+        out.squad_used=1;if(!speech_squad(b,squad,squad_data))return 0;
+        deadline=read<float>(squad_data,0x50);prior=read<int>(squad_data,0x54);
+    }
+    if(!std::isfinite(deadline))return 0;
+    // Owner +584 -> 22037960 / squad 220a7cd0: TEST AH,41; JP.
+    // For finite values, both less and equal still require greater priority.
+    if(now<=deadline&&priority<=prior){out.priority_blocked=1;return true;}
+    if((read<unsigned>(a,0xb4)&2u)&&read<int>(a,0x850)!=3){out.state_blocked=1;return true;}
+    return true;
+}
+bool speech_mark(void* a,float now,int priority,float extra,const ServerNpcGruntSpeechQueueBindings& b,ServerNpcGruntSpeechQueueResult& out) noexcept{
+    void* squad_data=nullptr;
+    auto next=[&](float& stamp){
+        float sample=0;if(!b.random_float||!b.random_float(b.context,1.5f,2.f,&sample)||!std::isfinite(sample)||sample<1.5f||sample>2.f)return false;
+        stamp=static_cast<float>(static_cast<double>(now)+sample+extra);return std::isfinite(stamp);
+    };
+    if(!next(out.owner_deadline))return 0;
+    write(a,0xc08,priority);write(a,0xc04,out.owner_deadline);out.owner_written=1;
+    if(const auto token=read<unsigned>(a,0x9c4)){
+        if(!next(out.squad_deadline)||!speech_squad(b,token,squad_data))return 0;
+        write(squad_data,0x50,out.squad_deadline);write(squad_data,0x54,priority);out.squad_written=1;
+    }
+    return true;
+}
 int __cdecl speech_queue_tick(void* a,unsigned bytes,float now,const ServerNpcGruntSpeechQueueBindings* b,ServerNpcGruntSpeechQueueResult* out) noexcept{
     if(!out)return 0;*out={};out->index=-1;
     if(!a||bytes<0xcd8||!b||!relation_grunt_class(b->original_vtable)||!std::isfinite(now))return 0;
@@ -2277,38 +2309,84 @@ int __cdecl speech_queue_tick(void* a,unsigned bytes,float now,const ServerNpcGr
     if(!std::isfinite(expiration))return 0;
     if(expiration<now){out->expired=1;return clear();}
     out->priority=read<int>(a,0xcd4);
-    const auto squad=read<unsigned>(a,0x9c4);
-    auto get_squad=[&](unsigned token,void*& data){unsigned n=0;data=nullptr;return b->squad_storage&&b->squad_storage(b->context,token,&data,&n)&&data&&n>=0x58;};
-    void* squad_data=nullptr;
-    float deadline=read<float>(a,0xc04);int prior=read<int>(a,0xc08);
-    if(squad){
-        out->squad_used=1;if(!get_squad(squad,squad_data))return 0;
-        deadline=read<float>(squad_data,0x50);prior=read<int>(squad_data,0x54);
-    }
-    if(!std::isfinite(deadline))return 0;
-    // Owner +584 -> 22037960 / squad 220a7cd0: TEST AH,41; JP.
-    // For finite values, both less and equal still require greater priority.
-    if(now<=deadline&&out->priority<=prior){out->priority_blocked=1;return done();}
-    if((read<unsigned>(a,0xb4)&2u)&&read<int>(a,0x850)!=3){out->state_blocked=1;return done();}
+    if(!speech_admission(a,now,out->priority,*b,*out))return 0;
+    if(out->priority_blocked||out->state_blocked)return done();
     // 221b37c0 itself skips negative indexes. Diagnostic lookups are omitted.
     if(out->index>=0){
         if(!std::isfinite(b->volume)||!b->deliver||!b->deliver(b->context,read<unsigned>(a,0x16c),out->index,b->volume,b->level,0,read<unsigned>(a,0xcc8)))return 0;
         out->delivered=1;
     }
     // Owner +588 -> 220319d0 with zero additional seconds, after delivery.
-    auto next=[&](float& stamp){
-        float sample=0;if(!b->random_float||!b->random_float(b->context,1.5f,2.f,&sample)||!std::isfinite(sample)||sample<1.5f||sample>2.f)return false;
-        stamp=static_cast<float>(static_cast<double>(now)+sample);return std::isfinite(stamp);
-    };
-    const int priority=read<int>(a,0xcd4);
-    if(!next(out->owner_deadline))return 0;
-    write(a,0xc08,priority);write(a,0xc04,out->owner_deadline);out->owner_written=1;
-    if(const auto token=read<unsigned>(a,0x9c4)){
-        if(!next(out->squad_deadline)||!get_squad(token,squad_data))return 0;
-        write(squad_data,0x50,out->squad_deadline);write(squad_data,0x54,priority);out->squad_written=1;
-    }
+    if(!speech_mark(a,now,read<int>(a,0xcd4),0.f,*b,*out))return 0;
     return clear();
 }
+bool sentence_init(void* a,unsigned n,const ServerNpcGruntSentenceBindings* b,ServerNpcGruntSentenceResult* out) noexcept{
+    if(!out)return false;*out={};out->request_result=-1;out->cooldown.index=-1;
+    return a&&n>=0xcd8&&b&&relation_grunt_class(b->speech.original_vtable)&&
+        b->count<=sin_independent::kEntityHandleCapacity&&(!b->count||b->entries);
+}
+bool sentence_eligible(void* e,const ServerNpcGruntSentenceBindings& b,bool& yes) noexcept{
+    yes=false;if(!e)return true;
+    unsigned n=0;
+    if(!b.extent||!b.extent(b.speech.context,e,&n)||n<0x208)return false;
+    bool enabled=read<int>(e,0x204)!=0;
+    if(!enabled&&(!b.component_eligible||!b.component_eligible(b.speech.context,e,&enabled)))return false;
+    if(!enabled)return true;
+    bool rejected=false;
+    if(!b.entity_rejected||!b.entity_rejected(b.speech.context,e,&rejected))return false;
+    yes=!rejected;return true;
+}
+bool sentence_scan(void* group,const ServerNpcGruntSentenceBindings& b,ServerNpcGruntSentenceResult& out) noexcept{
+    ++out.group_scans;out.eligible_count=0;out.first_eligible=nullptr;
+    const int n=read<int>(group,0x48);if(n<0||n>16)return false;
+    const auto registry=sin_independent::EntityHandleView(b.entries,b.count);
+    for(int i=0;i<n;++i){
+        void* e=registry.Resolve(read<unsigned>(group,8+4*i));bool yes=false;
+        if(!sentence_eligible(e,b,yes))return false;
+        if(yes){if(!out.eligible_count)out.first_eligible=e;++out.eligible_count;}
+    }
+    return true;
+}
+bool sentence_mode(void* a,unsigned mode,const ServerNpcGruntSentenceBindings& b,ServerNpcGruntSentenceResult& out) noexcept{
+    if(mode==0||mode>3){out.mode_allowed=1;return true;}
+    if(read<int>(a,0x850)!=3&&(read<unsigned>(a,0xb4)&2u))return true;
+    if(mode==1){out.mode_allowed=1;return true;}
+    const auto token=read<unsigned>(a,0x9c4);if(!token)return true;
+    void* group=nullptr;if(!speech_squad(b.speech,token,group)||!sentence_scan(group,b,out))return false;
+    if(out.eligible_count<=1)return true;
+    if(mode==2){out.mode_allowed=1;return true;}
+    bool eligible=false;if(!sentence_eligible(a,b,eligible))return false;
+    out.candidate_eligible=eligible;if(!eligible)return true;
+    // 220aa2d0 calls 220a9210: rescan, do not reuse earlier filtered count.
+    if(!sentence_scan(group,b,out))return false;
+    out.leader_match=out.eligible_count>1&&out.first_eligible==a;
+    out.mode_allowed=out.leader_match;return true;
+}
+int __cdecl sentence_gate(void* a,unsigned n,unsigned mode,const ServerNpcGruntSentenceBindings* b,ServerNpcGruntSentenceResult* out) noexcept{
+    if(!sentence_init(a,n,b,out)||!sentence_mode(a,mode,*b,*out))return 0;
+    out->completed=1;return 1;
+}
+int __cdecl sentence_dispatch(void* a,unsigned n,float now,const char* cue,int priority,unsigned mode,const ServerNpcGruntSentenceBindings* b,ServerNpcGruntSentenceResult* out) noexcept{
+    if(!sentence_init(a,n,b,out)||!std::isfinite(now)||!sentence_mode(a,mode,*b,*out))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(!out->mode_allowed)return done();
+    write(a,0xccc,-1);out->queue_reset=1;
+    out->cooldown.priority=priority;
+    if(priority!=-1){
+        if(!speech_admission(a,now,priority,b->speech,out->cooldown))return 0;
+        if(out->cooldown.priority_blocked||out->cooldown.state_blocked)return done();
+    }
+    // Do not reproduce original unbounded 128-byte stack copy.
+    if(!cue||!b->enqueue)return 0;
+    unsigned length=0;while(length<128&&cue[length])++length;
+    if(length==128)return 0;
+    if(!b->enqueue(b->speech.context,a,cue,&out->request_result))return 0;
+    out->queued=1;
+    // Original push 40000000 is float 2.0f, not a bitmask. Even -1 result marks cooldown.
+    if(priority!=-1&&!speech_mark(a,now,priority,2.f,b->speech,out->cooldown))return 0;
+    return done();
+}
+const ServerNpcGruntSentenceApi sentence_api{1,sizeof(ServerNpcGruntSentenceApi),&sentence_gate,&sentence_dispatch};
 int grunt_preschedule_impl(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out,const ServerNpcGruntSpeechQueueBindings* speech=nullptr,ServerNpcGruntSpeechQueueResult* speech_out=nullptr) noexcept{
     if(!preschedule_init(a,bytes,now,b,out))return 0;
     const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
@@ -2660,4 +2738,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSpeechQueueApi=_SiN_GetServerNpcGruntSpeechQueueApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpeechQueueApi* __cdecl SiN_GetServerNpcGruntSpeechQueueApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSpeechQueueApi)?&speech_queue_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSentenceApi=_SiN_GetServerNpcGruntSentenceApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSentenceApi* __cdecl SiN_GetServerNpcGruntSentenceApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSentenceApi)?&sentence_api:nullptr;
 }

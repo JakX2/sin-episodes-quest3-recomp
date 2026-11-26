@@ -933,4 +933,29 @@ struct ServerNpcGruntSpeechQueueApi {
     int (__cdecl *preschedule)(void*,unsigned,float,const ServerNpcGruntPrescheduleBindings*,const ServerNpcGruntSpeechQueueBindings*,ServerNpcGruntPrescheduleResult*,ServerNpcGruntSpeechQueueResult*) noexcept;
 };
 using GetServerNpcGruntSpeechQueueApi=const ServerNpcGruntSpeechQueueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_sentence_export[]="SiN_GetServerNpcGruntSentenceApi";
+struct ServerNpcGruntSentenceBindings {
+    ServerNpcGruntSpeechQueueBindings speech;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    // Original entity +204, embedded +fc virtual +2c, entity virtual +694.
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *component_eligible)(void*,void*,bool*) noexcept;
+    int (__cdecl *entity_rejected)(void*,void*,bool*) noexcept;
+    // 220a34f0: bounded string transformation and engine sentence request.
+    // The signed request result is distinct from adapter success.
+    int (__cdecl *enqueue)(void*,void*,const char*,int*) noexcept;
+};
+struct ServerNpcGruntSentenceResult {
+    ServerNpcGruntSpeechQueueResult cooldown;
+    unsigned completed,mode_allowed,queue_reset,queued,group_scans,eligible_count,candidate_eligible,leader_match;
+    int request_result;
+    void* first_eligible;
+};
+struct ServerNpcGruntSentenceApi {
+    std::uint32_t version,size;
+    int (__cdecl *gate)(void*,unsigned,unsigned,const ServerNpcGruntSentenceBindings*,ServerNpcGruntSentenceResult*) noexcept;
+    int (__cdecl *dispatch)(void*,unsigned,float,const char*,int,unsigned,const ServerNpcGruntSentenceBindings*,ServerNpcGruntSentenceResult*) noexcept;
+};
+using GetServerNpcGruntSentenceApi=const ServerNpcGruntSentenceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
