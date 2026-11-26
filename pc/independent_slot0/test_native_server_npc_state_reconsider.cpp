@@ -4528,7 +4528,7 @@ int main(int argc,char** argv){
         b.final_cue=[](void* x,void*) noexcept -> int{++CombatFixture::self(x).finals;return 1;};
         b.random_int=[](void* x,int lo,int hi,int* v) noexcept -> int{assert(lo==0&&hi==99);*v=CombatFixture::self(x).roll;return 1;};
         b.special_combat=[](void* x,void*,bool,int* v) noexcept -> int{*v=CombatFixture::self(x).special;return 1;};
-        b.extent=[](void* x,void* e,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);if(e==q.enemy){*n=sizeof(q.enemy);return 1;}if(e==q.weapon){*n=sizeof(q.weapon);return 1;}return 0;};
+        b.extent=[](void* x,void* e,unsigned* n) noexcept -> int{auto& q=CombatFixture::self(x);if(e==q.a){*n=sizeof(q.a);return 1;}if(e==q.enemy){*n=sizeof(q.enemy);return 1;}if(e==q.weapon){*n=sizeof(q.weapon);return 1;}return 0;};
         b.position=[](void* x,void* e,bool,float* v) noexcept -> int{auto& q=CombatFixture::self(x);if(e==q.a){v[0]=v[1]=v[2]=0;return 1;}assert(e==q.enemy||e==q.weapon);std::memcpy(v,e==q.enemy?q.position:q.candidate_pos,12);return 1;};
         f.put(q.a,0x8a0,0x1001u);f.put(q.a,0x78c,0x2002u);f.put(q.a,0x9cc,-1);
         f.put(q.group,0x5c,200u);f.put(q.group,0x60,200u);f.put(q.group,0x64,1);f.put(q.group,0x6c,1);f.put(q.group,0x74,100.f);
