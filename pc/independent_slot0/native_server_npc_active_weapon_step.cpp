@@ -2631,7 +2631,7 @@ const NativeInputMap* shared_kill_map(unsigned vt) noexcept {
     case colorblend_vtable:return &colorblend_map;
     case dynamic_trigger_vtable:return &dynamic_trigger_map;
     case secret_trigger_vtable:return &secret_trigger_map;
-    default:return nullptr;
+    default:return filter_input_map(filter_input_token(vt));
     }
 }
 int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o,
@@ -2700,7 +2700,7 @@ int accept_input_impl(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,vo
             else{const char* actual=nullptr;if(!input_text(*b,input,&actual))return 0;base_kill=search_equal("Kill",actual);}
         }
         const auto* native=base_kill?&logic_base_kill_map:
-            filters&&filter_input_map(token)?filter_input_map(token):
+            (filters||(shared_kill&&native_map::campaign_filter_class(vt)))&&filter_input_map(token)?filter_input_map(token):
             kill_map&&token==kill_map->token?kill_map:
             token==dynamic_trigger_map.token&&b->campaign_trigger_control?&dynamic_trigger_map:
             token==secret_trigger_map.token&&b->campaign_trigger_control?&secret_trigger_map:

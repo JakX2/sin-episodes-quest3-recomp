@@ -461,6 +461,12 @@ inline constexpr unsigned base_filter_vtable=0x224149a4,name_filter_vtable=0x224
 inline constexpr bool campaign_filter_class(unsigned vt) noexcept {
     return vt==base_filter_vtable||vt==name_filter_vtable||vt==class_filter_vtable||vt==multi_filter_vtable;
 }
+inline constexpr unsigned campaign_filter_extent(unsigned vt) noexcept {
+    return vt==base_filter_vtable?0x3c8u:vt==multi_filter_vtable?0x3f4u:
+        vt==name_filter_vtable||vt==class_filter_vtable?0x3ccu:0;
+}
+inline constexpr char destroy_filter_factory_export[]="SiN_DestroyCampaignFilterEntity";
+using DestroyCampaignFilterEntity=int (__cdecl *)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
 struct CampaignFilterActivationBindings {
     void* context;
     const native_weapon_tables::ServerEntitySearchBindings* search;
@@ -630,7 +636,7 @@ inline constexpr unsigned logic_kill_extent(unsigned vt) noexcept {
     case multicompare_vtable:return multicompare_extent;
     case remap_vtable:return remap_extent;
     case colorblend_vtable:return colorblend_extent;
-    default:return 0;
+    default:return campaign_filter_extent(vt);
     }
 }
 // The two SiN trigger primary tables share the base removal/update

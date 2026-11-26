@@ -67,6 +67,15 @@ ORIGINAL_METHODS={
   "trigger_vehicle_query":(0x22035100,56,"53a6bdb618de249bc00c327d2326511c8dd944c26a2f4692f3e366f8fd756c6a"),
   "trigger_custom_filter":(0x2216B2A0,46,"e3cf0c2990ba6e8464a74f92378827c0e2d2123b27cab476a05fcdbc5acf2324"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
+  "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
+  "multi_filter_destructor":(0x2216BD00,54,"a2236c56ca198071b36f73169ff97317f1bbb54db4140a0973688fd09640ae2a"),
+  "name_filter_destructor":(0x2216BE40,54,"43af6b3d48ca7ed82ff50b9d7d392d82400c89c2f1885471c0a15ff365aa1fa1"),
+  "class_filter_destructor":(0x2216BF20,54,"cb9b85c3d1e444b9e863beb8de961a4ec7defa8cf0908d8cb4950e136cfc7da5"),
+  "filter_output_destructor":(0x221544D0,38,"bd8b25bd36b1dcc840d9a0abf29fdd318cef1c00c716ba2d065c34c99729bc62"),
+  "base_filter_factory_destroy":(0x2216B490,16,"ed8abac6973adb2766ebee7d4e8a19d917263843bcec4e4a25f52cc4c4203a21"),
+  "multi_filter_factory_destroy":(0x2216B4C0,16,"ed8abac6973adb2766ebee7d4e8a19d917263843bcec4e4a25f52cc4c4203a21"),
+  "name_filter_factory_destroy":(0x2216B4F0,16,"ed8abac6973adb2766ebee7d4e8a19d917263843bcec4e4a25f52cc4c4203a21"),
+  "class_filter_factory_destroy":(0x2216B520,16,"ed8abac6973adb2766ebee7d4e8a19d917263843bcec4e4a25f52cc4c4203a21"),
   "base_filter_raw":(0x2216B290,5,"f4c6d7ae520f88aecb3ea65952e885437fa4a6ce4b5c3439a161d1c5d8e42863"),
   "name_filter_raw":(0x2216BDB0,139,"0040852e4e4dd65b0a35c530d22e3894599441c146d65b3b23e02ab80a6c7f48"),
   "class_filter_raw":(0x2216BEF0,38,"ffeb9f83148ef71a7ab6d225b4dedcd6911da474b47e0b98322441d7323e7ba8"),
@@ -272,12 +281,16 @@ def verify_filter_factory_keys(read_u32,read_text):
         raise EvidenceRefused("runtime OnFail descriptor literal changed")
     return len(FILTER_FACTORY_ROWS),len(FILTER_KEY_ROWS)
 
+FILTER_DESTRUCTORS={0x224149a4:0x2216bc40,0x22414c3c:0x2216bd00,0x22414ed4:0x2216be40,0x2241516c:0x2216bf20}
+FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x224,0x2214a060),(0x268,0x220019f0))
 def verify_custom_filter_slots(read_u32,read_text):
     for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
         if (read_u32(table-4),read_u32(col),read_u32(col+4),read_u32(col+12),
             read_u32(table+0x28c),read_u32(table+8),read_u32(table+0x88))!=(
                 col,0,0,typedesc,target,0x22001b00,0x2216b3e0 if table==0x22414c3c else 0x22146bd0):
             raise EvidenceRefused("custom filter RTTI or predicate slot changed "+name)
+        if read_u32(table)!=FILTER_DESTRUCTORS[table] or any(read_u32(table+slot)!=target for slot,target in FILTER_REMOVAL_SLOTS):
+            raise EvidenceRefused("filter removal/destructor slot changed "+name)
         if not read_text(typedesc+8,name):
             raise EvidenceRefused("custom filter RTTI name changed "+name)
     if not read_text(0x223d994c,"!player"):
@@ -508,6 +521,8 @@ def self_test()->None:
     for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
         filter_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x28c:target,
                              table+8:0x22001b00,table+0x88:0x2216b3e0 if table==0x22414c3c else 0x22146bd0})
+        filter_words[table]=FILTER_DESTRUCTORS[table]
+        filter_words.update({table+slot:target for slot,target in FILTER_REMOVAL_SLOTS})
         filter_text[typedesc+8]=name
     assert verify_custom_filter_slots(filter_words.get,lambda va,s:filter_text.get(va)==s)==4
     for key in filter_words:

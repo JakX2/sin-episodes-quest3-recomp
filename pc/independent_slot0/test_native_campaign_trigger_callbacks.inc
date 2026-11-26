@@ -762,3 +762,71 @@
         f.filter[0x394]=1;
         assert(enqueue()&&tick(false)&&sr.events==2&&sr.native_inputs==2&&!sr.foreign_inputs&&summary.failed==1&&summary.queued==1&&f.relay[0x3ac]&&f.released==4&&!word(f.root,0x30));
     }
+
+// Shared inherited Kill -> deferred networkable release -> filter
+// destructor. The four destructors have identical member release order.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct FilterDestroyFixture {
+            alignas(4) unsigned char actor[0x3f4]{};
+            unsigned actions[3][7]{},updates=0,base=0,freed=0,releases=0,order[3]{},network=0;
+            void* slots[1]{};
+            const Api* api;
+            const LogicDestroyBindings* destroy=nullptr;
+            unsigned extent=0;
+        } f;f.api=api;
+        const auto destroy_factory=reinterpret_cast<DestroyCampaignFilterEntity>(GetProcAddress(server,destroy_filter_factory_export));
+        const auto input_get=reinterpret_cast<nw::GetServerEntityAcceptInputApi>(GetProcAddress(server,nw::server_entity_accept_input_export));
+        assert(destroy_factory&&input_get&&!GetProcAddress(client,destroy_filter_factory_export));
+        const auto* input_api=input_get(1,sizeof(nw::ServerEntityAcceptInputApi));assert(input_api);
+        LogicDestroyBindings db{};db.context=&f;f.destroy=&db;
+        db.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FilterDestroyFixture*>(p);if(token<11||token>13)return 0;*row=f.actions[token-11];*bytes=0x1c;return 1;
+        };
+        db.release_action=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& f=*static_cast<FilterDestroyFixture*>(p);assert(f.releases<3&&row==f.actions[token-11]&&!f.base);f.order[f.releases++]=token;return 1;
+        };
+        db.base_destroy=[](void* p,void* actor) noexcept ->int{
+            auto& f=*static_cast<FilterDestroyFixture*>(p);assert(actor==f.actor&&f.releases==3&&f.order[0]==12&&f.order[1]==13&&f.order[2]==11);++f.base;return 1;
+        };
+        db.free_actor=[](void* p,void* actor) noexcept ->int{
+            auto& f=*static_cast<FilterDestroyFixture*>(p);assert(actor==f.actor&&f.base==1);++f.freed;return 1;
+        };
+        RelayFactoryBindings factory{};factory.context=&f;
+        factory.release_networkable=[](void* p,void* net) noexcept ->int{
+            auto& f=*static_cast<FilterDestroyFixture*>(p);assert(net==f.actor+0x160);++f.network;return 1;
+        };
+        DeferredRemovalQueue queue{};queue.slots=f.slots;queue.capacity=1;
+        DeferredRemovalBindings deferred{};deferred.context=&f;deferred.queue=&queue;
+        deferred.update=[](void* p,void* actor,unsigned method) noexcept ->int{
+            auto& f=*static_cast<FilterDestroyFixture*>(p);assert(actor==f.actor&&method==0x221446f0u&&(f.actor[0xb8]&1));++f.updates;return 1;
+        };
+        deferred.release=[](void* p,void* net) noexcept ->int{
+            auto& f=*static_cast<FilterDestroyFixture*>(p);assert(net==f.actor+0x160);
+            LogicDestroyResult result{};return f.api->destroy_logic(f.actor,f.extent,1,f.destroy,&result)&&result.completed&&result.outputs==2&&result.released==3&&result.freed;
+        };
+        EntityKillBindings kb{};kb.deferred=&deferred;
+        nw::ServerNpcActivePostAnimationBindings storage{};nw::ServerEntityAcceptInputBindings ai{};ai.storage=&storage;ai.logic_kill=&kb;
+        ai.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            if(token!=90)return 0;*text="Kill";*bytes=5;return 1;
+        };
+        unsigned variant[5]{};
+        for(unsigned vt:{base_filter_vtable,multi_filter_vtable,name_filter_vtable,class_filter_vtable}){
+            std::memset(f.actor,0,sizeof(f.actor));std::memset(f.actions,0,sizeof(f.actions));
+            f.updates=f.base=f.freed=f.releases=f.network=0;f.extent=campaign_filter_extent(vt);
+            put(f.actor,0,vt);put(f.actor,0x378,0x3000);put(f.actor,0xc0,99);put(f.actor,0x160,0x22454f00);put(f.actor,0x168,ptrword(f.actor));put(f.actor,0x20c,0xffffffffu);
+            put(f.actor,0x3ac,11);put(f.actor,0x3c4,12);f.actions[1][6]=13;
+            assert(destroy_factory(nullptr,0,nullptr,nullptr)&&!destroy_factory(f.actor,f.extent,f.actor+0x164,&factory)&&!f.network);
+            assert(destroy_factory(f.actor,f.extent,f.actor+0x160,&factory)&&f.network==1);
+            // Aliased output lists refused before release.
+            put(f.actor,0x3ac,13);LogicDestroyResult dr{};
+            assert(!api->destroy_logic(f.actor,f.extent,1,&db,&dr)&&!f.releases&&!f.base&&!f.freed);
+            put(f.actor,0x3ac,11);
+            nw::ServerEntityAcceptInputResult ar{};
+            assert(input_api->run(f.actor,f.extent,vt,90,nullptr,nullptr,variant,sizeof(variant),0,&ai,&ar)&&ar.accepted&&ar.native_handler&&ar.handler==0x2213cdc0u);
+            assert(queue.count==1&&f.updates==1&&!word(f.actor,0xc0)&&!f.releases);
+            DeferredRemovalResult rr{};
+            assert(api->defer_logic_remove(f.actor,f.extent,&deferred,&rr)&&rr.already_marked&&queue.count==1);
+            assert(api->cleanup_deferred(&deferred,&rr)&&rr.released==1&&!queue.count&&f.base==1&&f.freed==1&&f.releases==3);
+        }
+    }
