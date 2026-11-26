@@ -478,6 +478,106 @@ int __cdecl ammo_pickup_construct(void* item,unsigned bytes,unsigned type,const 
     set_field(item,0,p.vtable);set_field(item,0x494,p.secondary);
     o->units=p.units;o->constructed=o->completed=1;return 1;
 }
+int signed_word(unsigned v) noexcept {
+    return v<=0x7fffffffu?int(v):int(std::int64_t(v)-0x100000000ll);
+}
+int __cdecl player_give_ammo(void* player,int requested,int index,bool silent,const PlayerAmmoBindings* b,PlayerAmmoResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!b||!player||b->inventory.player!=player||!valid_player(b->inventory)||
+       b->inventory.entry_count>sin_independent::kEntityHandleCapacity||(b->inventory.entry_count&&!b->inventory.entries))return 0;
+    auto done=[&](){o->completed=1;return 1;};
+    const unsigned vt=field<unsigned>(player,0);o->sin_override=vt==0x224aec3cu;
+    if(index<0)return done();
+    if(index>=32)return 0; // retail unsafe array access, independent guard
+    const auto* api=SiN_GetOriginalAmmoDefinitionApi(original_ammo::version,sizeof(original_ammo::Api));
+    if(!api)return 0;
+    auto max=[&](int& v){
+        ++o->max_reads;
+        if(b->max_carry)return b->max_carry(b->context,index,&v)!=0;
+        v=api->max_carry(index);return true;
+    };
+    const unsigned offset=0x64c+4*unsigned(index);
+    o->before=o->after=field<int>(player,offset);
+    const sin_independent::EntityHandleView registry(b->inventory.entries,b->inventory.entry_count);
+    auto weapon_extent=[&](void* w,unsigned need){
+        unsigned bytes=0;return b->inventory.extent&&b->inventory.extent(b->inventory.context,w,&bytes)&&bytes>=need&&direct_ammo_getters(field<unsigned>(w,0));
+    };
+    if(o->sin_override){
+        // 2239e770 invokes HasAmmo even for nonpositive requested counts.
+        int limit=0;if(!max(limit))return 0;
+        o->has_ammo=limit==-2||field<int>(player,offset)!=0;
+        if(!o->has_ammo){
+            for(unsigned i=0;i<48&&!o->has_ammo;++i){
+                ++o->slots;void* w=registry.Resolve(field<unsigned>(player,0x6cc+4*i));
+                if(!w)continue;
+                if(!weapon_extent(w,0x4ec)||!b->weapon_test)return 0;
+                for(unsigned k=0;k<2&&!o->has_ammo;++k){
+                    bool uses=false,has=false;
+                    if(!b->weapon_test(b->context,w,k?0x43c:0x438,&uses))return 0;++o->weapon_tests;
+                    if(!uses||field<int>(w,k?0x4e8:0x4e4)!=index)continue;
+                    if(!b->weapon_test(b->context,w,k?0x334:0x330,&has))return 0;++o->weapon_tests;
+                    o->has_ammo=has;
+                }
+            }
+        }
+    }
+    if(requested>0){
+        // CSE1Rules::CanHaveAmmo 221f26c0: max then GetAmmoCount
+        // (which reads max again, returning 999 for -2).
+        int first=0,live=0;
+        if(!max(first)||!max(live))return 0;
+        const int reserve=live==-2?999:field<int>(player,offset);
+        if(reserve<first){
+            o->permission=1;
+            if(!max(o->maximum))return 0;
+            const int room=signed_word(unsigned(o->maximum)-unsigned(field<int>(player,offset)));
+            const int grant=requested<room?requested:room;
+            if(grant>=1){
+                if(!silent){
+                    original_ammo::Definition definition{};
+                    const bool special=api->definition(index,&definition)&&definition.pickup_sound[0];
+                    if(!b->sound||!b->sound(b->context,player,special?definition.pickup_sound:"BaseCombatCharacter.AmmoPickup"))return 0;
+                    o->sound=1;
+                }
+                // Original reloads reserve after sound and before dirty notification.
+                const int value=signed_word(unsigned(field<int>(player,offset))+unsigned(grant));
+                if(field<int>(player,offset)!=value){
+                    if(field<std::uint8_t>(player,0x1f0))set_field(player,0x200,std::uint8_t(1));
+                    else if(const unsigned edict=field<unsigned>(player,0x16c)){
+                        if(!b->mark_edict||!b->mark_edict(b->context,edict,1))return 0;
+                    }
+                    ++o->dirty;set_field(player,offset,value);
+                }
+                o->granted=grant;
+            }
+        }
+    }
+    o->after=field<int>(player,offset);
+    if(o->sin_override){
+        if(requested>0&&!o->granted){
+            if(!b->denied_message||!b->denied_message(b->context,player,index))return 0;o->denied=1;
+        }
+        bool enabled=false;if(!b->auto_switch_enabled||!b->auto_switch_enabled(b->context,&enabled))return 0;
+        o->auto_checked=1;
+        if(enabled&&!o->has_ammo){
+            if(b->inventory.player_bytes<0x790||!b->next_best)return 0;
+            auto active=[&](){return registry.Resolve(field<unsigned>(player,0x78c));};
+            void* candidate=nullptr;
+            if(!b->next_best(b->context,player,active(),&candidate))return 0;++o->next_best_calls;
+            if(candidate){
+                if(!weapon_extent(candidate,0x4ec))return 0;
+                if(field<int>(candidate,0x4e4)==index){
+                    void* current=active();void* best=nullptr;
+                    if(!b->next_best(b->context,player,current,&best))return 0;++o->next_best_calls;
+                    if(best&&best!=current){
+                        if(!b->switch_weapon||!b->switch_weapon(b->context,player,best,0))return 0;o->switched=1;
+                    }
+                }
+            }
+        }
+    }
+    return done();
+}
 int __cdecl ammo_pickup_touch(void* item,unsigned bytes,void* player,const AmmoPickupBindings* b,AmmoPickupResult* o) noexcept {
     if(!o)return 0;*o={};o->index=-1;o->type=count;
     if(!item||bytes<0x4d8||!player||!b)return 0;
@@ -495,17 +595,20 @@ int __cdecl ammo_pickup_touch(void* item,unsigned bytes,void* player,const AmmoP
         o->unknown=1;if(b->unknown_ammo&&!b->unknown_ammo(b->context,name))return 0;
         o->completed=1;return 1;
     }
-    if(!b->multiplier||!b->multiplier(b->context,o->index,&o->multiplier))return 0;
+    if(b->multiplier){if(!b->multiplier(b->context,o->index,&o->multiplier))return 0;}
+    else if(b->live_metric2)o->multiplier=*b->live_metric2;else return 0;
     o->multiplier_read=1;
     // Original FILD/FSTP rounds units to binary32 before 222f4f30.
     double amount=double(float(o->units))*double(o->multiplier);
     if(amount<1.)amount=1.;
     const double truncated=std::trunc(amount);
     o->requested=(!std::isfinite(truncated)||truncated<double(std::numeric_limits<int>::min())||truncated>double(std::numeric_limits<int>::max()))?std::numeric_limits<int>::min():int(truncated);
-    if(!b->give||!b->give(b->context,player,o->requested,o->index,false,&o->granted))return 0;
+    if(b->give){if(!b->give(b->context,player,o->requested,o->index,false,&o->granted))return 0;}
+    else {if(!player_give_ammo(player,o->requested,o->index,false,b->native_grant,&o->native_grant))return 0;o->granted=o->native_grant.granted;}
     o->give_called=1;
     if(!o->granted){o->completed=1;return 1;}
-    if(!b->respawn_rule||!b->respawn_rule(b->context,item,&o->rule))return 0;
+    if(b->respawn_rule){if(!b->respawn_rule(b->context,item,&o->rule))return 0;}
+    else if(b->native_singleplayer_rules)o->rule=6;else return 0;
     o->rule_called=1;
     if(o->rule==6){if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;}
     o->accepted=o->completed=1;return 1;
@@ -528,7 +631,8 @@ int __cdecl vial_touch(void* item,unsigned bytes,void* player,const VialPickupBi
     o->message=1;
     if(!b->sound||!b->sound(b->context,player,field<unsigned>(item,0x16c),"HealthVial.Touch"))return 0;
     o->sound=1;
-    if(!b->respawn_rule||!b->respawn_rule(b->context,item,&o->rule))return 0;
+    if(b->respawn_rule){if(!b->respawn_rule(b->context,item,&o->rule))return 0;}
+    else if(b->native_singleplayer_rules)o->rule=6;else return 0;
     o->rule_called=1;
     if(o->rule){if(!b->respawn||!b->respawn(b->context,item))return 0;o->respawned=1;}
     else{if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;}
@@ -562,7 +666,8 @@ int __cdecl item_touch(void* item,unsigned bytes,void* other,unsigned other_byte
     if(player_bytes<0xbc)return 0;
     if(field<unsigned>(player,0xb8)&0x20000000u){o->blocked=1;return done();}
     bool allow=false;
-    if(!b->can_pickup||!b->can_pickup(b->context,player,item,&allow))return 0;
+    if(b->can_pickup){if(!b->can_pickup(b->context,player,item,&allow))return 0;}
+    else if(b->native_singleplayer_rules)allow=true;else return 0;
     o->permission_read=1;if(!allow)return done();
     o->subclass_called=1;
     if(is_vial){
@@ -585,15 +690,17 @@ int __cdecl item_touch(void* item,unsigned bytes,void* other,unsigned other_byte
         o->output_called=1;o->output_actions=result.queued;
         set_field(item,0x7c,0u);o->touch_cleared=1;
         set_field(item,8,0u);o->think_cleared=1;
-        if(!b->picked_up||!b->picked_up(b->context,player,item))return 0;o->picked_up=1;
-        if(!b->respawn_rule||!b->respawn_rule(b->context,item,&o->rule))return 0;o->rule_called=1;
+        if(b->picked_up){if(!b->picked_up(b->context,player,item))return 0;}
+        else if(!b->native_singleplayer_rules)return 0;o->picked_up=1;
+        if(b->respawn_rule){if(!b->respawn_rule(b->context,item,&o->rule))return 0;}
+    else if(b->native_singleplayer_rules)o->rule=6;else return 0;o->rule_called=1;
         if(o->rule==5){
             if(!b->respawn||!b->respawn(b->context,item))return 0;o->respawned=1;return done();
         }
     }
     if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch};
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

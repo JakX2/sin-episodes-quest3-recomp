@@ -677,5 +677,47 @@ int main(int argc,char** argv){
     assert(api->item_touch(pf.item,sizeof(pf.item),tf.player,sizeof(tf.player),&tb,&tr)&&tr.completed&&tr.force_read&&!tr.accepted&&!tr.removed&&EvalFixture::rd(pf.item,0x7c)==item_touch_token);
     tf.force=true;
     assert(api->item_touch(pf.item,sizeof(pf.item),tf.player,sizeof(tf.player),&tb,&tr)&&tr.completed&&tr.removed&&!tr.touch_cleared&&!tr.output_called);
+    // Direct reserve transfer in CSE1Player, without hosted grant or
+    // rule scaling. No collision or rendering callbacks involved.
+    struct GrantFixture {
+        alignas(4) unsigned char player[0x790]{},weapon[0x4ec]{};
+        unsigned sounds=0,denied=0,auto_reads=0,tests=0,choices=0,switches=0,marks=0;
+        bool auto_on=false,clip=false;
+        const char* sound=nullptr;
+    } gf;
+    sin_independent::EntityHandleEntry ge{};ge.serial=8;ge.entity=reinterpret_cast<CBaseEntity*>(gf.weapon);
+    PlayerAmmoBindings gb{};gb.context=&gf;gb.inventory={gf.player,sizeof(gf.player),&ge,1,&gf,
+        [](void* p,void* w,unsigned* n) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(w==q.weapon);*n=sizeof(q.weapon);return 1;}};
+    gb.sound=[](void* p,void* a,const char* n) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(a==q.player);++q.sounds;q.sound=n;return 1;};
+    gb.denied_message=[](void* p,void* a,int i) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(a==q.player&&i==1);++q.denied;return 1;};
+    gb.auto_switch_enabled=[](void* p,bool* yes) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);++q.auto_reads;*yes=q.auto_on;return 1;};
+    gb.weapon_test=[](void* p,void* w,unsigned off,bool* yes) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(w==q.weapon);++q.tests;*yes=off==0x438||(off==0x330&&q.clip);return 1;};
+    gb.next_best=[](void* p,void* a,void* current,void** best) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(a==q.player&&!current);++q.choices;*best=q.weapon;return 1;};
+    gb.switch_weapon=[](void* p,void* a,void* best,int n) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(a==q.player&&best==q.weapon&&!n);++q.switches;return 1;};
+    gb.mark_edict=[](void* p,unsigned token,unsigned mask) noexcept ->int{auto& q=*static_cast<GrantFixture*>(p);assert(token==0x9911&&mask==1);++q.marks;return 1;};
+    EvalFixture::u(gf.player,0,0x224aec3c);EvalFixture::u(gf.player,0x16c,0x9911);
+    for(unsigned i=0;i<48;++i)EvalFixture::u(gf.player,0x6cc+4*i,0xffffffffu);
+    EvalFixture::u(gf.player,0x78c,0xffffffffu);
+    EvalFixture::u(gf.weapon,0,0x2247875c);EvalFixture::u(gf.weapon,0x4e4,1);
+    EvalFixture::u(gf.player,0x650,75);PlayerAmmoResult gr{};
+    assert(api->player_give_ammo(gf.player,10,1,false,&gb,&gr)&&gr.completed&&gr.sin_override&&gr.has_ammo&&gr.max_reads==4&&gr.granted==5&&gr.before==75&&gr.after==80&&gr.dirty&&gr.sound&&gf.marks==1);
+    assert(!std::strcmp(gf.sound,"BaseCombatCharacter.AmmoPickup"));
+    assert(api->player_give_ammo(gf.player,10,1,false,&gb,&gr)&&gr.completed&&!gr.granted&&gr.denied&&gf.denied==1&&!gr.dirty);
+    EvalFixture::u(gf.player,0x650,0);EvalFixture::u(gf.player,0x6cc,0x8000);gf.auto_on=true;
+    assert(api->player_give_ammo(gf.player,10,1,true,&gb,&gr)&&gr.granted==10&&!gr.has_ammo&&gr.weapon_tests==3&&gr.next_best_calls==2&&gr.switched&&gf.switches==1&&!gr.sound);
+    EvalFixture::u(gf.player,0x650,0);gf.clip=true;
+    assert(api->player_give_ammo(gf.player,10,1,true,&gb,&gr)&&gr.granted==10&&gr.has_ammo&&gr.weapon_tests==2&&!gr.next_best_calls);
+    EvalFixture::u(gf.player,0x1f0,1);gf.auto_on=false;gf.clip=false;
+    EvalFixture::u(gf.player,0x664,1);
+    assert(api->player_give_ammo(gf.player,1,6,false,&gb,&gr)&&gr.granted==1&&gr.sound&&gr.dirty&&!std::strcmp(gf.sound,"Player.PickupSecondary")&&(EvalFixture::rd(gf.player,0x200)&255)==1);
+    // Whole ItemTouch uses the live metric2 and direct player grant;
+    // native rules: allow, no-op notice, rule6 in both branches.
+    float metric2=.5f;
+    assert(api->ammo_pickup_construct(pf.item,sizeof(pf.item),0,&ap,&ar));
+    touch_seed();EvalFixture::u(gf.player,0x650,77);
+    AmmoPickupBindings native_ap{};native_ap.context=&tf;native_ap.live_metric2=&metric2;native_ap.native_singleplayer_rules=true;native_ap.native_grant=&gb;native_ap.remove=tb.remove;
+    ItemTouchBindings native_tb{};native_tb.context=&tf;native_tb.native_singleplayer_rules=true;native_tb.ammo=&native_ap;native_tb.remove=tb.remove;
+    assert(api->item_touch(pf.item,sizeof(pf.item),gf.player,sizeof(gf.player),&native_tb,&tr)&&tr.completed&&tr.accepted&&tr.ammo.requested==5&&tr.ammo.granted==3&&tr.ammo.native_grant.after==80&&tr.ammo.rule==6&&tr.rule==6&&tr.ammo.removed&&tr.removed&&tr.picked_up);
+    assert(EvalFixture::rd(gf.player,0x650)==80&&!EvalFixture::rd(pf.item,8)&&!EvalFixture::rd(pf.item,0x7c));
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
