@@ -9,9 +9,18 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
-struct FactoryDictionary {const FactorySpec* slots[12]{};unsigned count=0;bool registered=false;};
+struct FactoryDictionary {const FactorySpec* slots[13]{};unsigned count=0;bool registered=false;};
+struct RelayFactoryBindings {
+    void* context;
+    // Fresh allocation must supply zeroed derived extension, as expected
+    // by the original constructor which writes only three output words.
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *base_construct)(void*,void*,int) noexcept;
+    int (__cdecl *initialize)(void*,void*,const char*) noexcept;
+    int (__cdecl *release_networkable)(void*,void*) noexcept;
+};
 struct FactoryBindings {
     void* context;
     FactoryDictionary* dictionary;
@@ -19,6 +28,7 @@ struct FactoryBindings {
     const native_resupply::PickupFactoryBindings* pickup;
     const native_resupply::AntigenFactoryBindings* antigen;
     int (__cdecl *foreign_create)(void*,const char*,void**,unsigned*) noexcept;
+    const RelayFactoryBindings* relay;
 };
 struct FactoryResult {
     const FactorySpec* spec;
@@ -173,6 +183,8 @@ struct Api {
     int (__cdecl *key_value)(void*,const char*,const char*,const KeyBindings*,KeyResult*) noexcept;
     int (__cdecl *parse_all)(const char*,unsigned,bool,const PipelineBindings*,PipelineResult*) noexcept;
     int (__cdecl *relay_input)(void*,unsigned,const char*,void*,const RelayBindings*,RelayResult*) noexcept;
+    int (__cdecl *register_relay)(FactoryDictionary*) noexcept;
+    int (__cdecl *destroy_relay)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

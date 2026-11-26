@@ -393,6 +393,53 @@ int main(int argc,char** argv){
     assert(word(co.root,0x30)==2&&word(co.rows[1],0x30)==3&&word(co.rows[2],0x18)==0x3000);
     assert(run_relay_service(42.f)&&es.events==1&&es.foreign_inputs==1&&es.future_stopped&&co.delivered==1&&relay[0x3ad]);
     assert(run_relay_service(42.01f)&&es.events==1&&es.native_inputs==1&&es.direct==1&&!relay[0x3ad]&&!word(co.root,0x30)&&co.released==3);
+    // Opt-in campaign factory registration and actual native map creation.
+    assert(dictionary.count==12&&!api->find_factory(&dictionary,"logic_relay"));
+    assert(api->register_relay(&dictionary)&&dictionary.count==13&&!api->register_relay(&dictionary));
+    const auto* relay_spec=api->find_factory(&dictionary,"LOGIC_RELAY");
+    assert(relay_spec&&relay_spec->family==Family::Relay&&relay_spec->original_object==0x224fda88&&relay_spec->original_vtable==0x224228bc&&relay_spec->extent==relay_extent);
+    assert(!api->create_factory("logic_relay",&factories,&fr)&&fr.matched&&!fr.actor);
+    struct RelayFactoryFixture {
+        alignas(4) unsigned char storage[relay_extent]{};
+        unsigned alloc=0,base=0,init=0,released=0,cleared=0,accepted=0;
+        bool short_alloc=false;
+    } rff;
+    RelayFactoryBindings rfb{};rfb.context=&rff;
+    rfb.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<RelayFactoryFixture*>(p);assert(n==relay_extent);
+        ++f.alloc;*a=f.storage;*bytes=f.short_alloc?n-1:n;return 1;
+    };
+    rfb.base_construct=[](void* p,void* a,int arg) noexcept ->int{
+        auto& f=*static_cast<RelayFactoryFixture*>(p);assert(a==f.storage&&arg==1);
+        ++f.base;unsigned untouched=0x12345678;std::memcpy(f.storage+0x398,&untouched,4);return 1;
+    };
+    rfb.initialize=[](void* p,void* a,const char* cls) noexcept ->int{
+        auto& f=*static_cast<RelayFactoryFixture*>(p);assert(a==f.storage&&!std::strcmp(cls,"logic_relay")&&f.base==1);
+        unsigned vt=0,invalid=0;std::memcpy(&vt,f.storage,4);std::memcpy(&invalid,f.storage+0x3a0,4);
+        assert(vt==relay_vtable&&invalid==0xffffffffu);++f.init;return 1;
+    };
+    rfb.release_networkable=[](void* p,void* a) noexcept ->int{
+        auto& f=*static_cast<RelayFactoryFixture*>(p);assert(a==f.storage+0x160);++f.released;return 1;
+    };
+    factories.relay=&rfb;
+    rff.short_alloc=true;assert(!api->create_factory("logic_relay",&factories,&fr)&&fr.matched&&fr.actor==rff.storage&&!fr.networkable&&!rff.base);
+    rff.short_alloc=false;
+    ActionPool relay_pool{};OutputActionBindings rpo=output;rpo.context=&relay_pool;rpo.next_id=&relay_pool.id;
+    auto relay_keys=kb;relay_keys.native_output=&rpo;
+    relay_keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=relay_extent;return 1;};
+    Bindings relay_parse{};relay_parse.context=&rff;relay_parse.native_factory=&factories;relay_parse.native_keys=&relay_keys;
+    relay_parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<RelayFactoryFixture*>(p)->cleared;return 1;};
+    relay_parse.accept_entity=[](void* p,void* a,const char* text,unsigned bytes,const EntitySlice* slice) noexcept ->int{
+        auto& f=*static_cast<RelayFactoryFixture*>(p);assert(a==f.storage&&text&&slice&&slice->begin<slice->end&&slice->end<=bytes);
+        constexpr char prefix[]="{ classname logic_relay";
+        assert(slice->end-slice->begin>=sizeof(prefix)-1&&!std::memcmp(text+slice->begin,prefix,sizeof(prefix)-1));++f.accepted;return 1;
+    };
+    const char relay_map_text[]="{ classname logic_relay StartDisabled 1 targetname station OnTrigger \"relay,Trigger,,2,-1\" }";
+    assert(api->parse(relay_map_text,sizeof(relay_map_text),&relay_parse,&r)&&r.native_creates==1&&r.created==1&&r.last_factory.networkable==rff.storage+0x160);
+    assert(rff.alloc==2&&rff.base==1&&rff.init==1&&rff.cleared==1&&rff.accepted==1&&rff.storage[0x3ac]==1&&!rff.storage[0x3ad]);
+    assert(word(rff.storage,0x394)==0&&word(rff.storage,0x398)==0x12345678&&word(rff.storage,0x3a0)==0xffffffffu&&word(rff.storage,0x3a8)==ptrword(relay_pool.rows[0]));
+    assert(api->destroy_relay(nullptr,0,nullptr,nullptr)&&!api->destroy_relay(rff.storage,relay_extent,rff.storage+0x164,&rfb)&&!rff.released);
+    assert(api->destroy_relay(rff.storage,relay_extent,rff.storage+0x160,&rfb)&&rff.released==1);
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
     struct PipelineFixture {
