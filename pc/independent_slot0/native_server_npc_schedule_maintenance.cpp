@@ -29,6 +29,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEli
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherPointApi* __cdecl SiN_GetServerNpcGruntGatherPointApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherNativeApi* __cdecl SiN_GetServerNpcGruntGatherNativeApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSpeechApi* __cdecl SiN_GetServerNpcGruntPerceptionSpeechApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPerceptionSlotsApi* __cdecl SiN_GetServerNpcGruntPerceptionSlotsApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeSlotResolutionApi* __cdecl SiN_GetServerNpcNativeSlotResolutionApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 struct GatherRoute {
@@ -57,6 +59,7 @@ struct Call {
     ServerGruntCombatSchedulerStats* combat_stats;
     const ServerGruntHelperTaskBindings* full;
     ServerGruntFullTaskStats* full_stats;
+    const ServerNpcNativeGatherRoute* native_gather;
     void publish_extended(const ServerGruntTaskResult& result) noexcept{
         sub->task_failures+=result.lifecycle.failed;
         if(sub->subclass==NpcSubclassElite){
@@ -152,6 +155,10 @@ struct Call {
         if(subclass&&sub&&sub->subclass==NpcSubclassJetpack){
             const auto* api=SiN_GetServerJetpackScheduleResolutionApi(1,sizeof(ServerJetpackScheduleResolutionApi));
             if(!api||!api->select(a,bytes,now,failed,&b.selection,&subclass->jet_selector,&out.selection,&sub->jet_selector))return false;
+        }else if(native_gather&&native_gather->slots){
+            const auto* api=SiN_GetServerNpcNativeSlotResolutionApi(1,sizeof(ServerNpcNativeSlotResolutionApi));
+            ++*native_gather->slot_selections;
+            if(!api||!api->select(a,bytes,now,failed,&b.selection,&native_gather->slots->slots,&out.selection,native_gather->slot_selection))return false;
         }else if(!resolution->select(a,bytes,now,failed,&b.selection,&out.selection))return false;
         ++out.selected;if(failed)++out.failed_selected;
         if(!out.selection.token)return !failed;
@@ -173,7 +180,7 @@ int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMainten
     const auto* re=SiN_GetServerNpcScheduleResolutionApi(1,sizeof(ServerNpcScheduleResolutionApi));
     const auto* va=SiN_GetServerNpcScheduleValidityApi(1,sizeof(ServerNpcScheduleValidityApi));
     if(!sa||!ca||!st||!re||!va)return 0;
-    Call q{actor,bytes,now,*b,*out,sa,ca,st,re,va,b->selection.grunt.schedule,tasks,grunt,subclass,sub,combat,combat_stats,full,full_stats};
+    Call q{actor,bytes,now,*b,*out,sa,ca,st,re,va,b->selection.grunt.schedule,tasks,grunt,subclass,sub,combat,combat_stats,full,full_stats,native_gather};
     bool stop=false;
     for(unsigned iteration=0;iteration<10&&!stop;++iteration){
         ++out->iterations;
@@ -195,7 +202,10 @@ int run_impl(void* actor,unsigned bytes,float now,const ServerNpcScheduleMainten
                     bound.gather.base.perception.enemy_switch.best.memory.entries=selection.state.entities.entries;
                     bound.gather.base.perception.enemy_switch.best.memory.count=selection.state.entities.count;
                     ++*native_gather->calls;
-                    if(native_gather->dialogue){
+                    if(native_gather->slots){
+                        const auto* slots=SiN_GetServerNpcGruntPerceptionSlotsApi(1,sizeof(ServerNpcGruntPerceptionSlotsApi));
+                        if(!slots||!slots->gather(actor,bytes,now,&bound,native_gather->slots,native_gather->result,native_gather->slots_result))return 0;
+                    }else if(native_gather->dialogue){
                         const auto* dialogue=SiN_GetServerNpcGruntPerceptionSpeechApi(1,sizeof(ServerNpcGruntPerceptionSpeechApi));
                         if(!dialogue||!dialogue->gather(actor,bytes,now,&bound,native_gather->dialogue,native_gather->result,native_gather->dialogue_result))return 0;
                     }else if(!api||!api->gather(actor,bytes,now,&bound,native_gather->result))return 0;

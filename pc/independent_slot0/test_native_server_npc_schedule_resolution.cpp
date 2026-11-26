@@ -11,6 +11,7 @@
 using namespace sin_port::native_weapon_tables;
 struct F{
     alignas(4) unsigned char actor[0xdd8]{},desc[0x48]{},rows[3][0x34]{},tasks[8]{};
+    unsigned char group[0x78]{},bitmap[32]{};
     unsigned translations=0,component=0,deactivated=0;int translated=-1;
     template<class T>void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
     template<class T>T get(unsigned off){T v{};std::memcpy(&v,actor+off,sizeof(v));return v;}
@@ -53,5 +54,19 @@ int main(int argc,char** argv){
     assert(api->select(f.actor,sizeof(f.actor),10,false,&b,&out)&&out.token==3&&out.forced&&f.get<int>(0x79c)==global+204);
     f.put(f.actor,0x798,3u);f.put(f.actor,0x7b0,7);f.put(f.actor,0xc18,9u);
     assert(api->select(f.actor,sizeof(f.actor),10,true,&b,&out)&&out.token==2&&out.failed&&!out.component_deactivated&&f.get<unsigned>(0xc18)==9);
+    auto gs=reinterpret_cast<GetServerNpcNativeSlotResolutionApi>(GetProcAddress(s,server_npc_native_slot_resolution_export));
+    assert(gs&&!GetProcAddress(c,server_npc_native_slot_resolution_export)&&!gs(0,sizeof(ServerNpcNativeSlotResolutionApi))&&!gs(1,0));
+    const auto* native=gs(1,sizeof(ServerNpcNativeSlotResolutionApi));assert(native);
+    ServerNpcGruntSquadSlotsBindings slots{};slots.context=slots.storage.context=&f;
+    slots.storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);if(token==91){*out=f.group;*n=sizeof(f.group);return 1;}if(token==100){*out=f.bitmap;*n=sizeof(f.bitmap);return 1;}return 0;};
+    slots.resize=[](void* p,std::uint32_t old,unsigned cap,std::uint32_t* token,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);assert(!old&&cap==4);*token=100;*out=f.bitmap;*n=sizeof(f.bitmap);return 1;};
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,2);f.put(f.actor,0x9c4,91u);f.put(f.actor,0x9cc,-1);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x7d0,1u<<19);
+    f.put(f.rows[1],0,global+110);b.grunt.parent=[](void*,void*,int* out) noexcept -> int{*out=1;return 1;};
+    ServerGruntNativeSlotSelectorResult sr{};
+    assert(native->select(f.actor,sizeof(f.actor),20,false,&b,&slots,&out,&sr)&&out.requested==10&&out.token==2&&sr.slot_calls==1&&sr.slots.new_set&&f.get<int>(0x9cc)==4);
+    f.put(f.actor,0x9cc,-1);
+    assert(native->select(f.actor,sizeof(f.actor),20,false,&b,&slots,&out,&sr)&&out.requested==1&&out.token==1&&sr.slot_calls==1&&!sr.slots.allowed&&out.grunt.parent_called);
+    f.put(f.actor,0x7d0,1u<<31);
+    assert(native->select(f.actor,sizeof(f.actor),20,false,&b,&slots,&out,&sr)&&out.forced&&out.token==3&&!sr.slot_calls);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native schedule namespace, linked resolution, fallback and Grunt selection");
 }

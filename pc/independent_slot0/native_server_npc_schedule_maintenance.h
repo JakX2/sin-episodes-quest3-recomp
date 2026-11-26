@@ -108,5 +108,9 @@ struct ServerNpcNativeGatherRoute {
     unsigned* calls;
     const ServerNpcGruntPerceptionSpeechBindings* dialogue=nullptr;
     ServerNpcGruntPerceptionSpeechResult* dialogue_result=nullptr;
+    const ServerNpcGruntPerceptionSlotsBindings* slots=nullptr;
+    ServerNpcGruntPerceptionSlotsResult* slots_result=nullptr;
+    ServerGruntNativeSlotSelectorResult* slot_selection=nullptr;
+    unsigned* slot_selections=nullptr;
 };
 }

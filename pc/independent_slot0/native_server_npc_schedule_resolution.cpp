@@ -13,6 +13,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcScheduleStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJetpackSelectorApi* __cdecl
 SiN_GetServerJetpackScheduleSelectorApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerGruntNativeSlotSelectorApi* __cdecl SiN_GetServerGruntNativeSlotSelectorApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -48,7 +49,7 @@ int __cdecl find(void* a,unsigned bytes,int id,const ServerNpcScheduleResolution
     if(!out)return 0;*out={};out->requested=out->translated=out->global=out->ideal=-1;
     return a&&bytes>=0xc34&&b&&resolve(a,id,*b,*out);
 }
-int select_impl(void* a,unsigned bytes,float now,bool failure,const ServerNpcScheduleResolutionBindings* b,ServerNpcScheduleResolutionResult* out,const ServerJetpackSelectorBindings* jet=nullptr,ServerJetpackSelectorResult* jr=nullptr) noexcept {
+int select_impl(void* a,unsigned bytes,float now,bool failure,const ServerNpcScheduleResolutionBindings* b,ServerNpcScheduleResolutionResult* out,const ServerJetpackSelectorBindings* jet=nullptr,ServerJetpackSelectorResult* jr=nullptr,const ServerNpcGruntSquadSlotsBindings* slots=nullptr,ServerGruntNativeSlotSelectorResult* sr=nullptr) noexcept {
     if(!out)return 0;*out={};out->requested=out->translated=out->global=out->ideal=-1;
     if(!a||bytes<0xdd8||!b||!std::isfinite(now))return 0;
     const auto* ns=SiN_GetServerNpcScheduleNamespaceApi(1,sizeof(ServerNpcScheduleNamespaceApi));
@@ -85,6 +86,11 @@ int select_impl(void* a,unsigned bytes,float now,bool failure,const ServerNpcSch
                 const auto* api=SiN_GetServerJetpackScheduleSelectorApi(1,sizeof(ServerJetpackSelectorApi));
                 if(!api||!jr||!api->select(a,bytes,now,jet,jr))return 0;
                 id=jr->schedule;
+            }else if(slots){
+                const auto* native=SiN_GetServerGruntNativeSlotSelectorApi(1,sizeof(ServerGruntNativeSlotSelectorApi));
+                auto bound=b->grunt;bound.entities=b->state.entities;
+                if(!native||!sr||!native->select(a,bytes,now,&bound,slots,sr))return 0;
+                out->grunt=sr->selection;id=out->grunt.schedule;
             }else{
                 const auto* grunt=SiN_GetServerGruntScheduleSelectorApi(1,sizeof(ServerGruntScheduleSelectorApi));
                 if(!grunt||!grunt->select(a,bytes,&b->grunt,&out->grunt))return 0;id=out->grunt.schedule;
@@ -110,6 +116,11 @@ int __cdecl select_jet(void* a,unsigned n,float now,bool failure,const ServerNpc
     auto bound=*jet;bound.grunt=b->grunt;bound.grunt.entities=b->state.entities;
     return select_impl(a,n,now,failure,b,out,&bound,jr);
 }
+int __cdecl select_slots(void* a,unsigned n,float now,bool failure,const ServerNpcScheduleResolutionBindings* b,const ServerNpcGruntSquadSlotsBindings* slots,ServerNpcScheduleResolutionResult* out,ServerGruntNativeSlotSelectorResult* sr) noexcept{
+    if(!slots||!sr)return 0;*sr={};sr->slots.index=sr->slots.selected=-1;
+    return select_impl(a,n,now,failure,b,out,nullptr,nullptr,slots,sr);
+}
+const ServerNpcNativeSlotResolutionApi slot_api{1,sizeof(ServerNpcNativeSlotResolutionApi),&select_slots};
 const ServerJetpackScheduleResolutionApi jet_api{1,sizeof(ServerJetpackScheduleResolutionApi),&select_jet};
 const ServerNpcScheduleResolutionApi api{1,sizeof(ServerNpcScheduleResolutionApi),&find,&select};
 }
@@ -126,4 +137,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerJet
 SiN_GetServerJetpackScheduleResolutionApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerJetpackScheduleResolutionApi)?&jet_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcNativeSlotResolutionApi=_SiN_GetServerNpcNativeSlotResolutionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeSlotResolutionApi* __cdecl SiN_GetServerNpcNativeSlotResolutionApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcNativeSlotResolutionApi)?&slot_api:nullptr;
 }
