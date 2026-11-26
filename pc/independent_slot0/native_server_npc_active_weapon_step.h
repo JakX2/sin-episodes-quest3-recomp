@@ -262,6 +262,18 @@ struct ServerEntityInputData {
 struct ServerNpcWakeTransitionBindings;
 struct ServerNpcWakeTransitionResult;
 struct ServerEntitySearchBindings;
+// Original squad manager 2254adec and membership helpers 220aa0d0/220aa1b0.
+// Allocation/interning and the existing peer/memory effects remain explicit.
+struct ServerNpcInputSquadBindings {
+    void* context;
+    std::uint32_t* head;
+    int (__cdecl *weapon_capabilities)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *allocate)(void*,std::uint32_t*,void**,unsigned*) noexcept;
+    int (__cdecl *intern)(void*,std::uint32_t,std::uint32_t*) noexcept;
+    int (__cdecl *removed_notice)(void*,void* peer,void* removed) noexcept;
+    int (__cdecl *copy_leader_memory)(void*,void* joining,void* leader) noexcept;
+    int (__cdecl *warning)(void*,void*,std::uint32_t) noexcept;
+};
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
     void* context;
@@ -288,9 +300,10 @@ struct ServerEntityAcceptInputBindings {
     float now;
     // Optional diagnostic for original Jetpack path-control warning token.
     int (__cdecl *path_warning)(void*,void*,std::uint32_t) noexcept;
+    const ServerNpcInputSquadBindings* squad;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
