@@ -388,6 +388,10 @@ struct ServerNpcInputHealthDispatchBindings {
     // Optional regular ground-Grunt death composition, not Elite/Jetpack.
     const ServerNpcGruntGroundDeathBindings* ground_death;
     ServerNpcGruntGroundLifeResult* ground_result;
+    // Optional class-aware death composition for Elite and Jetpack. The
+    // live AcceptInput life/registry bindings override the nested life copy.
+    const ServerNpcGruntEliteLifeBindings* subclass_death;
+    ServerNpcGruntEliteLifeResult* subclass_result;
 };
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
@@ -437,6 +441,7 @@ struct ServerEntityAcceptInputResult {
     float health_outgoing_scale,health_incoming_scale,health_scaled_amount;
     unsigned health_outputs,health_output_actions,health_output_removed,health_output_enqueued;
     unsigned health_ground_route,health_ground_death;
+    unsigned health_elite_route,health_jet_route,health_subclass_death;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
