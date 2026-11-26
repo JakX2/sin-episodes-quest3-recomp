@@ -199,6 +199,23 @@ inline constexpr PickupSpec ammo_pickups[count]{
     {0x22469e8c,0x22469e64,0x2246a170,0x2245f424,1},
     {0x2246a1bc,0x2246a198,0x2246a4a0,0x2245f42c,1}
 };
+struct PlayerAmmoBindings {
+    InventoryView inventory;
+    void* context;
+    int (__cdecl *max_carry)(void*,int,int*) noexcept;
+    int (__cdecl *mark_edict)(void*,unsigned,unsigned) noexcept;
+    int (__cdecl *sound)(void*,void*,const char*) noexcept;
+    // SiN player override leaves: weapon +438/+43c and +330/+334.
+    int (__cdecl *weapon_test)(void*,void*,unsigned,bool*) noexcept;
+    int (__cdecl *denied_message)(void*,void*,int) noexcept;
+    int (__cdecl *auto_switch_enabled)(void*,bool*) noexcept;
+    int (__cdecl *next_best)(void*,void*,void*,void**) noexcept;
+    int (__cdecl *switch_weapon)(void*,void*,void*,int) noexcept;
+};
+struct PlayerAmmoResult {
+    unsigned sin_override,max_reads,has_ammo,slots,weapon_tests,permission,dirty,sound,denied,auto_checked,next_best_calls,switched,completed;
+    int before,after,granted,maximum;
+};
 struct AmmoPickupBindings {
     void* context;
     int (__cdecl *base_construct)(void*,void*) noexcept;
@@ -208,11 +225,15 @@ struct AmmoPickupBindings {
     int (__cdecl *give)(void*,void*,int,int,bool,int*) noexcept;
     int (__cdecl *respawn_rule)(void*,void*,int*) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
+    const float* live_metric2; // CSE1Rules +134, GamePlayVarValue[2]
+    bool native_singleplayer_rules;
+    const PlayerAmmoBindings* native_grant;
 };
 struct AmmoPickupResult {
     unsigned type,constructed,index_read,unknown,multiplier_read,give_called,rule_called,removed,accepted,completed;
     int index,units,requested,granted,rule;
     float multiplier;
+    PlayerAmmoResult native_grant;
 };
 inline constexpr unsigned vial_vtable=0x2246bc94u,vial_secondary=0x2246bc6cu;
 struct VialPickupBindings {
@@ -228,6 +249,7 @@ struct VialPickupBindings {
     int (__cdecl *respawn_rule)(void*,void*,int*) noexcept;
     int (__cdecl *respawn)(void*,void*) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
+    bool native_singleplayer_rules;
 };
 struct VialPickupResult {
     unsigned constructed,value_read,heal_called,message,sound,rule_called,respawned,removed,accepted,completed;
@@ -250,6 +272,7 @@ struct ItemTouchBindings {
     const AmmoPickupBindings* ammo;
     const VialPickupBindings* vial;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    bool native_singleplayer_rules;
 };
 struct ItemTouchResult {
     void* player;
@@ -294,6 +317,7 @@ struct Api {
     int (__cdecl *vial_touch)(void*,unsigned,void*,const VialPickupBindings*,VialPickupResult*) noexcept;
     // 22175770: native default CItem touch, on supported pickup classes.
     int (__cdecl *item_touch)(void*,unsigned,void*,unsigned,const ItemTouchBindings*,ItemTouchResult*) noexcept;
+    int (__cdecl *player_give_ammo)(void*,int,int,bool,const PlayerAmmoBindings*,PlayerAmmoResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
