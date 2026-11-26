@@ -1759,7 +1759,7 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
     }
     if(n<extent||(menu&&(!b->unregister_menu||read_field<unsigned>(a,0x394)!=menu_listener_vtable))||
        (vt==navigation_vtable&&read_field<unsigned>(a,0x394)!=navigation_listener_vtable))return 0;
-    constexpr unsigned max_per_output=256,max_actions=17*max_per_output;
+    constexpr unsigned max_per_output=256,max_actions=22*max_per_output;
     struct Record {unsigned token;void* row;};
     Record plan[max_actions]{};
     auto range=[](const void* p,unsigned bytes,std::uintptr_t& begin,std::uintptr_t& end){
@@ -1786,24 +1786,29 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
             plan[o->comparisons++]={token,row};token=read_field<unsigned>(row,0x18);
         }
     }
-    for(unsigned i=count;i>0;--i){
-        const unsigned off=first+(i-1)*0x18;
+    auto output_plan=[&](unsigned off,bool base)->bool{
         unsigned token=read_field<unsigned>(a,off+0x14),list_count=0;
-        ++o->outputs;
+        if(base)++o->base_outputs;else ++o->outputs;
         while(token){
-            if(list_count++==max_per_output||o->comparisons+o->actions==max_actions||!b->resolve||!b->release_action)return 0;
+            const unsigned total=o->comparisons+o->actions+o->base_actions;
+            if(list_count++==max_per_output||total==max_actions||!b->resolve||!b->release_action)return false;
             void* row=nullptr;unsigned bytes=0;
             if(!b->resolve(b->context,token,&row,&bytes)||bytes<0x1c)return 0;
             std::uintptr_t begin=0,end=0;
             if(!range(row,0x1c,begin,end)||(begin<actor_end&&actor_begin<end))return 0;
-            for(unsigned j=0;j<o->comparisons+o->actions;++j){
+            for(unsigned j=0;j<total;++j){
                 const auto prev=reinterpret_cast<std::uintptr_t>(plan[j].row);
-                if(plan[j].token==token||(begin<prev+0x1c&&prev<end))return 0;
+                if(plan[j].token==token||(begin<prev+0x1c&&prev<end))return false;
             }
-            plan[o->comparisons+o->actions++]={token,row};
+            plan[total]={token,row};
+            if(base)++o->base_actions;else ++o->actions;
             token=read_field<unsigned>(row,0x18);
         }
-    }
+        return true;
+    };
+    for(unsigned i=count;i>0;--i)if(!output_plan(first+(i-1)*0x18,false))return 0;
+    if(b->native_base&&b->native_base->native_outputs)
+        for(unsigned i=5;i>0;--i)if(!output_plan(0x2dc+(i-1)*0x18,true))return 0;
     o->validated=1;
     // Original 2217ddd0 resets derived vtables and unregisters the
     // secondary interface before releasing any output rows.
@@ -1835,6 +1840,12 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
         RegistryRemovalResult removal{};
         if(!registry_unlink_logic(a,n,read_field<unsigned>(a,0x378),base.registry,&removal))return 0;
         o->registry_unlinked=removal.unlinked;
+        // 221442c3..221442fa: five CBaseEntity output members,
+        // reverse member order and forward action-chain order.
+        for(unsigned i=o->comparisons+o->actions;i<o->comparisons+o->actions+o->base_actions;++i){
+            if(!b->release_action(b->context,plan[i].token,plan[i].row))return 0;
+            ++o->base_released;
+        }
         if(!base.suffix(base.context,a))return 0;o->base_suffix=1;
         // Final retail CBaseEntity base table at 22144350.
         write_field(a,0,0x2240a088u);
