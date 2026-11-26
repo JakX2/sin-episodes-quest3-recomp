@@ -760,5 +760,13 @@ int main(int argc,char** argv){
     cv.roots[3].SetFloat(10.f);cv.calls=0;
     EvalFixture::u(vf.item,8,123);EvalFixture::u(vf.item,0x7c,item_touch_token);
     assert(api->item_touch(vf.item,sizeof(vf.item),hf2.player,sizeof(hf2.player),&nvt,&tr)&&tr.completed&&tr.accepted&&tr.vial.native_heal.after==85&&tr.vial.respawned&&tr.removed&&nvf.messages==1&&nvf.sounds==1&&nvf.respawns==1&&nvf.removes==1);
+    // All negative health-event mask precedence, including unusual
+    // negative cvar values, is recovered rather than guessed.
+    constexpr unsigned dmg[]{2,0x91,4,0x1200008,0x30000,0x100000,0x100,0x20,0x10000040,0x4000,0x400000,0,0x102};
+    constexpr int cats[]{8,7,13,9,11,15,10,16,18,17,12,6,8};
+    for(unsigned i=0;i<sizeof(dmg)/sizeof(dmg[0]);++i){
+        EvalFixture::u(hf2.player,0x9c,50);
+        assert(api->player_take_health(hf2.player,-2.75f,dmg[i],&ph,&phr)&&phr.completed&&phr.accepted&&phr.after==48&&phr.raw_delta==-2&&phr.event_type==cats[i]&&phr.fade_called);
+    }
     FreeLibrary(s);FreeLibrary(c);return 0;
 }

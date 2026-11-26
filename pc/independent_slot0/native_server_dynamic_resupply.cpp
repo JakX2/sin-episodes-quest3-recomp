@@ -657,8 +657,11 @@ int __cdecl player_take_health(void* player,float amount,unsigned flags,const Pl
     else if(flags&0x1200008u)o->event_type=9;
     else if(flags&0x30000u)o->event_type=11;
     else if(flags&0x100000u)o->event_type=15;
-    else if(flags&0x20u)o->event_type=5;
-    else o->event_type=6;
+    else if(flags&0x100u)o->event_type=10;
+    else if(flags&0x20u)o->event_type=16;
+    else if(flags&0x10000040u)o->event_type=18;
+    else if(flags&0x4000u)o->event_type=17;
+    else o->event_type=(flags&0x400000u)?12:6;
     if(!b->health_event||!b->health_event(b->context,player,o->event_type,o->raw_health,o->raw_delta,flags))return 0;
     o->event_called=1;
     const int max=field<int>(player,0x98);
