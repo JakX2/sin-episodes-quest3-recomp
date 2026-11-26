@@ -2482,4 +2482,38 @@ struct ServerNpcGruntActBusyEventApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntActBusyEventBindings*,ServerNpcGruntActBusyEventResult*) noexcept;
 };
 using GetServerNpcGruntActBusyEventApi=const ServerNpcGruntActBusyEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_follow_event_export[]="SiN_GetServerNpcGruntFollowEventApi";
+struct ServerNpcGruntFollowEventBindings {
+    ServerNpcGruntActBusyEventBindings events;
+    void* context;
+    const float* default_point; // live 2251b1ec
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *origin)(void*,void*,float*) noexcept;
+    int (__cdecl *release_target)(void*,std::uint32_t) noexcept; // 220d63f0
+    int (__cdecl *navigation_mode)(void*,void*,int*) noexcept; // 22074060
+    int (__cdecl *navigation_clear)(void*,void*,int) noexcept; // 22079250
+    int (__cdecl *target_changed)(void*,void*,bool) noexcept; // 220cd790
+    int (__cdecl *search_point)(void*,void*,float,float*,bool*) noexcept; // 220d1920
+    int (__cdecl *goal)(void*,void*,const float*) noexcept; // mode0, return ignored
+    int (__cdecl *navigation_ready)(void*,void*,bool*) noexcept; // 220740a0
+    int (__cdecl *cache_refresh)(void*,std::uint32_t,float*,bool*) noexcept; // 220d3e90
+    int (__cdecl *cache_allowed)(void*,void*,bool*) noexcept; // 220d2610
+    int (__cdecl *queue_event)(void*,void*,int) noexcept; // 2204fe40, schedule dispatch
+    int (__cdecl *clear_link)(void*,void*) noexcept; // 2204f680(0)
+    int (__cdecl *debug)(void*,void*) noexcept; // 220381b0
+    bool debug_enabled;
+};
+struct ServerNpcGruntFollowEventResult {
+    ServerNpcGruntActBusyEventResult events;
+    std::uint32_t target_handle,link_handle,request_value;
+    float point[3],deadline,cache_point[3],timer;
+    double distance;
+    int emitted_event,node_mode;
+    unsigned entered,completed,target_valid,link_valid,lookups,reset_called,request_called,release_called,mode_called,navigation_cleared,ideal_written,changed_called,search_called,search_found,goal_called,cache_refreshed,cache_written,cache_allowed_called,cache_same_tick,point_written,timer_written,synthetic_called,queue_called,link_cleared,node_cleared,debug_called,marker_fallback,wait_done;
+};
+struct ServerNpcGruntFollowEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntFollowEventBindings*,ServerNpcGruntFollowEventResult*) noexcept;
+};
+using GetServerNpcGruntFollowEventApi=const ServerNpcGruntFollowEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
