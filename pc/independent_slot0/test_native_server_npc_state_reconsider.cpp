@@ -4665,6 +4665,33 @@ int main(int argc,char** argv){
         translate(41,91);assert(q.a[0xc64]==0);
         f.put(q.enemy,0x360,257.f);
         assert(!acq->acquire(q.a,sizeof(q.a),41,10,&ac,&ar,&translation)&&!ar.completed);
+        auto xg=reinterpret_cast<GetServerNpcGruntScheduleServicesApi>(GetProcAddress(s,server_npc_grunt_schedule_services_export));
+        assert(xg&&!GetProcAddress(c,server_npc_grunt_schedule_services_export)&&!xg(0,sizeof(ServerNpcGruntScheduleServicesApi))&&!xg(1,0));
+        const auto* extended=xg(1,sizeof(ServerNpcGruntScheduleServicesApi));assert(extended);
+        struct UnreachableFixture {alignas(4) unsigned char rows[80]{};unsigned grows=0,origins=0,handles=0;bool fail=false;void* target=nullptr;} u;
+        u.target=q.enemy;
+        ServerNpcGruntScheduleServices svc{};svc.context=&u;svc.storage.context=&u;
+        svc.storage.storage=[](void* x,std::uint32_t tok,void** p,unsigned* n) noexcept -> int{
+            auto& u=*static_cast<UnreachableFixture*>(x);if(tok!=300&&tok!=400)return 0;*p=u.rows;*n=sizeof(u.rows);return 1;};
+        svc.resize_unreachable=[](void* x,std::uint32_t old,unsigned count,std::uint32_t* tok,void** p,unsigned* n) noexcept -> int{
+            auto& u=*static_cast<UnreachableFixture*>(x);++u.grows;assert((old==0&&count==2)||(old==300&&count==4));if(u.fail)return 0;*tok=old?400:300;*p=u.rows;*n=sizeof(u.rows);return 1;};
+        svc.entity_handle=[](void* x,void* e,std::uint32_t* h) noexcept -> int{auto& u=*static_cast<UnreachableFixture*>(x);assert(e==u.target);++u.handles;*h=0x1001u;return 1;};
+        svc.origin=[](void* x,void* e,float* p) noexcept -> int{auto& u=*static_cast<UnreachableFixture*>(x);assert(e==u.target);++u.origins;p[0]=7;p[1]=8;p[2]=9;return 1;};
+        auto cache_run=[&](float now){return extended->acquire(q.a,sizeof(q.a),36,now,&ac,&svc,&ar,&translation);};
+        auto rf=[&](const void* p,unsigned off){float v;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+        f.put(q.record,0,1000000103);f.put(q.a,0x8a0,0x1001u);f.put(q.a,0x8c0,123u);
+        f.put(q.a,0x914,0u);f.put(q.a,0x918,0);f.put(q.a,0x91c,0);f.put(q.a,0x920,0);
+        f.put(q.enemy,0x8c,0);f.put(q.enemy,0x2bc,1.f);f.put(q.enemy,0x2c0,2.f);f.put(q.enemy,0x2c4,3.f);bits(0);
+        assert(cache_run(10)&&ar.translated==103&&ar.schedule_token==10);
+        assert(u.grows==1&&u.handles==1&&CombatFixture::rd(q.a,0x8c0)==0xffffffffu&&CombatFixture::rd(q.a,0x920)==1&&CombatFixture::rd(q.a,0x924)==300);
+        assert(CombatFixture::rd(u.rows,0)==0x1001u&&rf(u.rows,4)==13&&rf(u.rows,8)==1&&rf(u.rows,12)==2&&rf(u.rows,16)==3);
+        // Last duplicate wins, no new handle call; dirty origin refresh only on that row.
+        std::memcpy(u.rows+20,u.rows,20);f.put(q.a,0x920,2);f.put(q.enemy,0xb8,0x800u);
+        assert(cache_run(20)&&u.origins==1&&u.handles==1&&rf(u.rows,4)==13&&rf(u.rows,24)==23&&rf(u.rows,28)==7&&rf(u.rows,36)==9);
+        f.put(q.enemy,0xb8,0u);f.put(u.rows,0,0x9001u);f.put(u.rows,20,0x9001u);
+        u.fail=true;assert(!cache_run(30)&&!ar.completed&&CombatFixture::rd(q.a,0x920)==2);u.fail=false;
+        assert(cache_run(30)&&u.grows==3&&u.handles==2&&CombatFixture::rd(q.a,0x918)==4&&CombatFixture::rd(q.a,0x920)==3&&CombatFixture::rd(q.a,0x914)==400);
+        assert(CombatFixture::rd(u.rows,40)==0x1001u&&rf(u.rows,44)==33);
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
         f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
 
