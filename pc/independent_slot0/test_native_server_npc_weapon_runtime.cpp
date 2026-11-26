@@ -558,6 +558,32 @@ int main(int argc,char** argv){
     assert(f.trace.size()>live_prefix.size()&&f.trace.back()==214);
     for(unsigned i=0;i<live_prefix.size();++i)assert(f.trace[i]==live_prefix[i]);
     schedule.scheduler.maintenance.selection.state.entities=saved_registry;
+    // Original 22366a20 returns as soon as either thrust handle resolves.
+    // Keep linked NPC and attachment activation separate from the guard.
+    alignas(4) unsigned char thrust[4]{};
+    sin_independent::EntityHandleEntry thrust_slots[3]{};
+    thrust_slots[1]=wake_slots[1];thrust_slots[2].serial=9;
+    thrust_slots[2].entity=reinterpret_cast<CBaseEntity*>(thrust);
+    auto existing=wtb;existing.entities.entries=thrust_slots;existing.entities.count=3;
+    existing.jet_prepare=nullptr;
+    constexpr unsigned thrust_handle=0x9002u,stale_thrust=0x8002u,invalid_handle=0xffffffffu;
+    for(unsigned left:{invalid_handle,stale_thrust,thrust_handle})for(unsigned right:{invalid_handle,stale_thrust,thrust_handle}){
+        f.put(f.actor,0x868,2);f.put(f.actor,0x1024,0x7001u);f.put(f.actor,0x218,123u);
+        f.put(f.actor,0xfe4,left);f.put(f.actor,0xfe8,right);
+        f.put(f.actor,0x78,0u);f.actor[0x870]=0;f.put(f.actor,0x16c,0u);
+        f.put(wt.member,0x868,2);f.put(wt.member,0x16c,0u);f.put(wt.member,0x78,0u);wt.member[0x870]=0;
+        f.trace.clear();
+        const bool reuse=left==thrust_handle||right==thrust_handle;
+        const int status=transition_wake->run(f.actor,sizeof(f.actor),vt,true,&existing,&wto);
+        if(reuse){
+            assert(status&&wto.completed&&wto.jet_prepared==1&&wto.jet_linked==1&&wto.jet_attachment==1&&wto.transitions==2&&wto.outputs==2);
+            assert((f.trace==std::vector<int>{223,225,222}));
+        }else{
+            assert(!status&&!wto.completed&&!wto.jet_prepared&&!wto.transitions&&f.trace.empty());
+            assert(f.get<int>(f.actor,0x868)==2&&f.get<int>(wt.member,0x868)==2);
+        }
+        assert(f.get<unsigned>(f.actor,0xfe4)==left&&f.get<unsigned>(f.actor,0xfe8)==right);
+    }
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());

@@ -195,7 +195,7 @@ struct ServerNpcWakeTransitionBindings {
     // Original filtered squad iterator 220a9300/220a93c0. Cursor starts at -1.
     int (__cdecl *squad_next)(void*,std::uint32_t,int*,void**) noexcept;
     int (__cdecl *external_wake)(void*,void*,bool) noexcept;
-    int (__cdecl *jet_prepare)(void*,void*) noexcept; // 22366a20 creates/reuses attachments
+    int (__cdecl *jet_prepare)(void*,void*) noexcept; // optional 22366a20 override; required for fresh attachments
     int (__cdecl *jet_attachment)(void*,std::uint32_t) noexcept; // +218 virtual +8
 };
 struct ServerNpcWakeTransitionResult {
