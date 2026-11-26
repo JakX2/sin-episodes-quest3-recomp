@@ -147,9 +147,12 @@ struct MultiCompareBindings {
     int (__cdecl *schedule)(void*,void*,void*,void*,const char*,float,unsigned) noexcept;
     const RelayQueueBindings* native_queue;
     const EntityKillBindings* kill;
+    // Opt in to named output enqueue on the same live native queue.
+    // Output bindings retain owner action resolution/release/debug only.
+    bool native_outputs;
 };
 struct MultiCompareResult {
-    unsigned completed,handled,converted,rejected,visited,inserted,replaced,scheduled,compared,equal,output_offset,queued,native_scheduled;
+    unsigned completed,handled,converted,rejected,visited,inserted,replaced,scheduled,compared,equal,output_offset,queued,native_scheduled,native_output_queued;
 };
 inline constexpr unsigned autosave_vtable=0x2241f9e4,autosave_extent=0x398;
 struct AutosaveBindings {
