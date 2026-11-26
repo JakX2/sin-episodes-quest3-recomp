@@ -1207,12 +1207,22 @@ int __cdecl relay_input(void* actor,unsigned bytes,const char* name,void* activa
     if(!equal_class(name,"Trigger")){o->handled=0;return done();}
     if(a[0x3ac]||a[0x3ad]){o->suppressed=1;return done();}
     using namespace sin_port::native_weapon_tables;
-    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
-    ServerEntityVoidOutputResult fr{};
-    if(!fire||!b->output||!fire->fire(a+relay_output,0x18,activator,actor,bytes,0.f,b->output,&fr))return 0;
-    o->fired=1;o->queued=fr.queued;
+    if(b->native_fire){
+        if(!native_named_output(actor,bytes,activator,relay_output,false,b->output,b->native_queue,o->queued))return 0;
+        o->native_output_queued=o->queued;
+    }else{
+        const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+        ServerEntityVoidOutputResult fr{};
+        if(!fire||!b->output||!fire->fire(a+relay_output,0x18,activator,actor,bytes,0.f,b->output,&fr))return 0;
+        o->queued=fr.queued;
+    }
+    o->fired=1;
     unsigned flags=0;std::memcpy(&flags,a+0xb4,4);
-    if(flags&1){if(!b->remove||!b->remove(b->context,actor))return 0;o->removed=1;return done();}
+    if(flags&1){
+        if(b->deferred){DeferredRemovalResult r{};if(!defer_logic_remove(actor,bytes,b->deferred,&r))return 0;o->native_removed=1;}
+        else if(!b->remove||!b->remove(b->context,actor))return 0;
+        o->removed=1;return done();
+    }
     if(flags&2)return done();
     // Original sets the latch BEFORE computing the maximum of the surviving
     // action list. Finite rows already removed by fire must not count.
@@ -2049,7 +2059,7 @@ int base_entity_kill(void* a,unsigned n,unsigned extent,unsigned vt,const sin_in
     o->remove_requested=o->completed=1;return 1;
 }
 int __cdecl autosave_kill(void* a,unsigned n,const sin_independent::EntityHandleEntry* entries,unsigned count,const AutosaveBindings* b,AutosaveResult* o) noexcept {
-    return base_entity_kill(a,n,autosave_extent,autosave_vtable,entries,count,b,o);
+    return base_entity_kill(a,n,autosave_extent,autosave_vtable,entries,count,b,o,b?b->deferred:nullptr);
 }
 int __cdecl multicompare_kill(void* a,unsigned n,const sin_independent::EntityHandleEntry* entries,unsigned count,const EntityKillBindings* b,EntityKillResult* o) noexcept {
     return base_entity_kill(a,n,multicompare_extent,multicompare_vtable,entries,count,b,o,b?b->deferred:nullptr);
