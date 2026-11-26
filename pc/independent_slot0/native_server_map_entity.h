@@ -562,6 +562,36 @@ struct ScriptedSequenceAcquireResult {
 };
 inline constexpr char scripted_sequence_acquire_export[]="SiN_AcquireScriptedSequenceNpc";
 using AcquireScriptedSequenceNpc=int (__cdecl *)(void*,unsigned,const ScriptedSequenceAcquireBindings*,ScriptedSequenceAcquireResult*) noexcept;
+struct ScriptedSequenceCancelBindings {
+    const ScriptedSequenceControlBindings* control;
+    const native_weapon_tables::ServerEntitySearchBindings* search;
+    void* context;
+    int (__cdecl *restore_flags)(void*,void*,unsigned) noexcept; // 2214c7f0
+    int (__cdecl *cleanup_script_state)(void*,void*) noexcept; // 22048fe0
+    int (__cdecl *cancel_schedule)(void*,void*,void*,unsigned) noexcept; // 221af490
+};
+struct ScriptedSequenceCancelResult {
+    unsigned completed,matched,missing,non_npc,scripted_state,restored_flags,cleanup,cleared,count_reset;
+};
+inline constexpr char scripted_sequence_cancel_export[]="SiN_CancelScriptedSequenceNpc";
+using CancelScriptedSequenceNpc=int (__cdecl *)(void*,unsigned,const ScriptedSequenceCancelBindings*,ScriptedSequenceCancelResult*) noexcept;
+struct ScriptedSequenceThinkBindings {
+    const ScriptedSequenceAcquireBindings* acquire;
+    const ScriptedSequencePossessionBindings* possession;
+    const ScriptedSequenceCancelBindings* cancel;
+    // Null represents absent rules; zero means rules deny acquisition.
+    const unsigned char* rules_enabled;
+    void* context;
+    int (__cdecl *report)(void*,void*,unsigned stage,void* npc,unsigned token) noexcept;
+};
+struct ScriptedSequenceThinkResult {
+    unsigned completed,rules_blocked,acquired,possessed,reported,cancelled,retry_scheduled;
+    int due_tick;float retry_time;
+    ScriptedSequenceAcquireResult acquire;
+    ScriptedSequencePossessionResult possession;
+};
+inline constexpr char scripted_sequence_think_export[]="SiN_RunScriptedSequenceAcquisitionThink";
+using RunScriptedSequenceAcquisitionThink=int (__cdecl *)(void*,unsigned,const ScriptedSequenceThinkBindings*,ScriptedSequenceThinkResult*) noexcept;
 struct ScriptedSequenceEventBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     const RelayQueueBindings* native_queue;

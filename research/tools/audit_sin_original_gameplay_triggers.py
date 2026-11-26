@@ -86,6 +86,9 @@ ORIGINAL_METHODS={
   "sequence_name_radius_search":(0x22161d30,293,"9e313e59c7fbe8a24ff56596a83a204791836a0a8c4ac94862eaca164ef8b707"),
   "sequence_class_radius_search":(0x22161f70,271,"eb3fcbe5b58de5bbddbda9dfb7e81a00ecb07d8aaf214fa4aaafc32705208bd1"),
   "sequence_link_policy":(0x221aed80,251,"0fe3f4c3408689e43a747e3e910a8fad6b61c5ca26c1cd37360c5d07c858c2b6"),
+  "sequence_acquisition_think":(0x221afc90,212,"32c783f72624edd7c93f65097c7377b1d9f213970fcabb49005e8ecaa08d8c20"),
+  "sequence_failed_group":(0x221afc00,129,"327ae85fc9a7a7904334127ec696a3b6e6cfa3a83de8b6307515507f9dd67796"),
+  "sequence_cancel_actor":(0x221af840,268,"455d82a4e51a4fed2a532ea7331c67daae7dcd6264ab23c9d7f828b3f0802e9c"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
@@ -308,7 +311,7 @@ SEQUENCE_WORDS={
     0x223bd498:0x2242ee1c,0x223bd49d:0x22505008,0x22505008:0x2242ee70,0x2242ee70:0x221b0190,
     0x2242f668:0x224c1b4c,0x224c1b4c:0,0x224c1b50:0,0x224c1b58:0x22505014,
     **{0x221aeba4+4*i:target for i,target in enumerate((0x221aeb7e,0x221aeaef,0x221aeafa,0x221aeb06,0x221aeb12,0x221aeb7e))},
-    0x223d2590:0,
+    0x223d2590:0,0x223d22f8:0x3f800000,
     0x2242f66c+8:0x22001b00,0x2242f66c+0x34:0x221ade90,0x2242f66c+0x90:0x22141400,0x2242f66c+0xc0:0x22001740,
     **{vt+off:target for vt in (0x2248df04,0x224954a4,0x2249aaa4,0x224a416c,0x2248c514,0x2248e83c,0x2249964c,0x224a4a4c)
         for off,target in ((0xf4,0x22044210),(0x574,0x2203e690))},

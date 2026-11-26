@@ -3273,6 +3273,118 @@ int scripted_sequence_possession(void* a,unsigned n,const ScriptedSequencePosses
     if(read_field<int>(npc,0x858)!=4)write_field(npc,0x858,4);
     return done();
 }
+// 221af840 handles one actor. The named-group loop belongs to
+// acquisition failure at 221afc00, not the CancelSequence input itself.
+int scripted_sequence_cancel(void* a,unsigned n,const ScriptedSequenceCancelBindings* b,ScriptedSequenceCancelResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||!b||!b->control||!b->control->extent||n<0x10||!SinCampaignStorageReadableInternal(a,0x10))return 0;
+    const auto& c=*b->control;
+    if(c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return 0;
+    bool match=read_field<unsigned>(a,0xc)==0x2242ee1cu;
+    if(!match&&read_field<unsigned>(a,0xc)){
+        const char* text=nullptr;unsigned size=0;
+        if(!b->search||!b->search->string_text||!b->search->string_text(b->search->context,read_field<unsigned>(a,0xc),&text,&size)||
+           !text||!size||size>4096||!SinCampaignStorageReadableInternal(text,size)||!std::memchr(text,0,size))return 0;
+        match=equal_class(text,"scripted_sequence");
+    }
+    if(!match){o->completed=1;return 1;}
+    unsigned vt=0;
+    if(n<scripted_sequence_extent||!SinReadCampaignTouchMarkerInternal(a,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(a,scripted_sequence_extent))return 0;
+    o->matched=1;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    void* npc=registry.Resolve(read_field<unsigned>(a,0x3d0));
+    if(npc){
+        unsigned bytes=0,marker=0;
+        if(!c.extent(c.context,npc,&bytes)||bytes<4||!SinReadCampaignTouchMarkerInternal(npc,&marker))return 0;
+        if(scripted_npc_marker(marker)){
+            if(bytes<0x974||!SinCampaignStorageReadableInternal(npc,0x974))return 0;
+            if(read_field<int>(npc,0x850)==4){
+                if(!b->cleanup_script_state||!b->cancel_schedule)return 0;
+                write_field(npc,0x96c,3u);o->scripted_state=1;
+                unsigned flags=0;
+                if(void* current=registry.Resolve(read_field<unsigned>(npc,0x970))){
+                    unsigned cb=0,cv=0;
+                    if(!c.extent(c.context,current,&cb)||cb<scripted_sequence_extent||!SinCampaignStorageReadableInternal(current,scripted_sequence_extent)||
+                       !SinReadCampaignTouchMarkerInternal(current,&cv)||cv!=scripted_sequence_vtable)return 0;
+                    flags=read_field<unsigned>(current,0x3c8);
+                }
+                if(!b->cleanup_script_state(b->context,npc))return 0;o->cleanup=1;
+                if(!b->cancel_schedule(b->context,a,npc,flags))return 0;
+            }else{
+                if(!b->restore_flags)return 0;
+                write_field(a,0x3d0,0xffffffffu);
+                if(!b->restore_flags(b->context,npc,read_field<unsigned>(a,0x3c4)))return 0;o->restored_flags=1;
+                write_field(npc,0x970,0xffffffffu);write_field(npc,0x8a8,0xffffffffu);write_field(npc,0x90c,0xffffffffu);
+                if(read_field<int>(npc,0x858)!=1)write_field(npc,0x858,1);
+                o->cleared=1;
+            }
+        }else if(campaign_player_marker(marker)!=PlayerPredicate::Unknown||campaign_filter_class(marker)||marker==scripted_sequence_vtable)o->non_npc=1;
+        else return 0;
+    }else o->missing=1;
+    write_field(a,0x3b8,0u);o->count_reset=o->completed=1;return 1;
+}
+int scripted_sequence_think(void* a,unsigned n,const ScriptedSequenceThinkBindings* b,ScriptedSequenceThinkResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned vt=0;
+    if(!b||!b->acquire||!b->acquire->control||!b->possession||!b->cancel||
+       n<scripted_sequence_extent||!SinReadCampaignTouchMarkerInternal(a,&vt)||vt!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(a,scripted_sequence_extent)||read_field<unsigned>(a,8)!=0x221afc90u)return 0;
+    const auto& c=*b->acquire->control;
+    if(!c.now||!c.interval||!c.cadence||b->cancel->control!=&c||b->possession->entries!=c.entries||
+       b->possession->entry_count!=c.entry_count||b->possession->now!=c.now||
+       c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    auto report=[&](unsigned stage,void* npc,unsigned token){
+        if(!b->report||!b->report(b->context,a,stage,npc,token))return false;
+        ++o->reported;return true;
+    };
+    if(b->rules_enabled&&!*b->rules_enabled)o->rules_blocked=1;
+    else{
+        if(!scripted_sequence_acquire(a,n,b->acquire,&o->acquire))return 0;
+        if(o->acquire.found){
+            o->acquired=1;
+            if(!scripted_sequence_possession(a,n,b->possession,&o->possession))return 0;
+            const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+            void* npc=registry.Resolve(read_field<unsigned>(a,0x3d0));
+            if(!npc||!report(1,npc,read_field<unsigned>(a,0x3a8)))return 0;
+            o->possessed=o->possession.claimed||o->possession.queued;o->completed=1;return 1;
+        }
+        // 221afc00 first reports animation, then cancels one unnamed
+        // script or each live same-name entity. Re-read name per lookup.
+        if(!report(2,nullptr,read_field<unsigned>(a,0x398)))return 0;
+        auto cancel=[&](void* target,unsigned bytes){
+            ScriptedSequenceCancelResult result{};
+            if(!scripted_sequence_cancel(target,bytes,b->cancel,&result))return false;
+            o->cancelled+=result.matched;return true;
+        };
+        if(!read_field<unsigned>(a,0xc0)){if(!cancel(a,n))return 0;}
+        else{
+            using namespace sin_port::native_weapon_tables;
+            const auto* api=SiN_GetServerEntitySearchApi(1,sizeof(ServerEntitySearchApi));
+            if(!api||!b->cancel->search||!c.extent)return 0;
+            auto search=*b->cancel->search;search.entities.entries=c.entries;search.entities.count=c.entry_count;
+            void* previous=nullptr;
+            for(unsigned i=0;;++i){
+                if(i==4096)return 0;
+                const unsigned name=read_field<unsigned>(a,0xc0);if(!name)break;
+                ServerEntitySearchResult found{};
+                if(!api->named(previous,name,nullptr,nullptr,&search,&found))return 0;
+                if(!found.entity)break;if(found.entity==previous)return 0;previous=found.entity;
+                unsigned bytes=0;if(!c.extent(c.context,previous,&bytes)||!cancel(previous,bytes))return 0;
+            }
+        }
+        if(!report(3,nullptr,read_field<unsigned>(a,0x3a8)))return 0;
+    }
+    // Original 221afd47: use live time after all earlier calls.
+    o->retry_time=static_cast<float>(double(*c.now)+1.);
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerNpcOuterCadenceApi(1,sizeof(ServerNpcOuterCadenceApi));
+    ServerNpcOuterCadenceResult cadence{};
+    if(!api||!api->set_default(a,n,o->retry_time,*c.interval,scripted_sequence_vtable,c.cadence,&cadence))return 0;
+    o->due_tick=cadence.tick;o->retry_scheduled=o->completed=1;return 1;
+}
 // Original 221b0430/221b0500/221af970 input wrappers. Native
 // handle/state/permission leaves; possession/cancel group remain owners.
 int scripted_sequence_control(void* a,unsigned n,ScriptedSequenceInput input,
@@ -3757,4 +3869,15 @@ extern "C" int __cdecl SiN_PossessScriptedSequenceCallback(void* context,void* a
 extern "C" int __cdecl SiN_AcquireScriptedSequenceNpc(void* actor,unsigned bytes,const sin_port::native_map::ScriptedSequenceAcquireBindings* b,
     sin_port::native_map::ScriptedSequenceAcquireResult* o) noexcept {
     return sin_port::native_map::scripted_sequence_acquire(actor,bytes,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_CancelScriptedSequenceNpc=_SiN_CancelScriptedSequenceNpc")
+extern "C" int __cdecl SiN_CancelScriptedSequenceNpc(void* actor,unsigned bytes,const sin_port::native_map::ScriptedSequenceCancelBindings* b,
+    sin_port::native_map::ScriptedSequenceCancelResult* o) noexcept {
+    return sin_port::native_map::scripted_sequence_cancel(actor,bytes,b,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_RunScriptedSequenceAcquisitionThink=_SiN_RunScriptedSequenceAcquisitionThink")
+extern "C" int __cdecl SiN_RunScriptedSequenceAcquisitionThink(void* actor,unsigned bytes,const sin_port::native_map::ScriptedSequenceThinkBindings* b,
+    sin_port::native_map::ScriptedSequenceThinkResult* o) noexcept {
+    return sin_port::native_map::scripted_sequence_think(actor,bytes,b,o);
 }
