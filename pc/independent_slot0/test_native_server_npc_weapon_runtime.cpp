@@ -365,21 +365,30 @@ int main(int argc,char** argv){
     // Both animation and post-animation must resolve the same nav/path.
     f.put(f.actor,0x8f8,0x1000u);f.put(f.component,0x24,0x2000u);
     f.put(f.weapon,0x4ec,0);f.put(f.weapon,0x4f0,-1);f.put(f.weapon,0x580,0.f);
-    seed_frame();assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&oo.impact_called&&oo.active_called&&!oo.think_called&&po.completed&&jet_out.animation.fixed_resets==1);
+    // The preceding single-step test intentionally froze playback and used
+    // external dirty storage. Reset the animation fixture to its live state.
+    f.put(f.actor,0x3c0,1.f);f.actor[0x1f0]=1;
+    seed_frame();
+    const int outer_status=outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo);
+    if(!outer_status||!jet_out.animation.fixed_resets){
+        std::fprintf(stderr,"outer status=%d impact=%u pvs=%u script=%u admitted=%u active=%u step=%u anim=%u events=%u reload=%u tail=%u finish=%u failed_event=%d trace:",outer_status,oo.impact_called,oo.pvs_called,oo.script.completed,oo.admission.admitted,oo.active_called,jet_out.completed,jet_out.animation_called,jet_out.animation.frame.frame.handled,jet_out.animation.fixed_resets,po.completed,oo.finish.completed,jet_out.animation.frame.frame.failed_event);
+        for(int v:f.trace)std::fprintf(stderr," %d",v);std::fputc('\n',stderr);
+    }
+    assert(outer_status&&oo.completed&&oo.impact_called&&oo.active_called&&!oo.think_called&&po.completed&&jet_out.animation.fixed_resets==1);
     assert(f.get<int>(f.weapon,0x4ec)==31&&oo.finish.next_time==static_cast<float>(double(in.now)+.1)&&oo.finish.deadline==20.f);
     assert(f.trace.front()==217&&f.trace[1]==214&&f.trace[2]==215&&f.trace.back()==214);
     // Disabled branch resets navigation timestamp; no animation or pose work.
     f.trace.clear();outer.admission.global_flags=1;warning_deadline=100.f;
     assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&!oo.active_called&&oo.nav_sentinel_written&&oo.admission.pause_called);
     assert(f.get<unsigned>(f.actor,0x910)==0x7f7fffffu&&!jet_out.animation_called&&!po.completed);
-    assert((f.trace==std::vector<int>{214,215,211,214}));
+    assert((f.trace==std::vector<int>{214,215,70,211,214}));
     // Sleeping actor performs wake service and skips active scene.
     f.trace.clear();f.put(f.actor,0x868,2);
     assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&oo.wake_called&&oo.sleep_bypassed&&!oo.active_called&&oo.finish.mode==4);
-    assert((f.trace==std::vector<int>{214,215,216,214}));
+    assert((f.trace==std::vector<int>{214,215,70,216,214}));
     f.trace.clear();f.put(f.actor,0x868,0);f.put(f.actor,0x85c,0);outer.active_scene=false;
     assert(outer_api->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&outer,&jet_out,&po,&oo)&&oo.completed&&oo.scene_bypassed&&!oo.active_called);
-    assert((f.trace==std::vector<int>{214,215,214}));
+    assert((f.trace==std::vector<int>{214,215,70,214}));
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
