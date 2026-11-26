@@ -9,7 +9,7 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare,MathRemap,MathColorBlend,TriggerDynamic,TriggerSecret,FilterBase,FilterMultiple,FilterName,FilterClass};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare,MathRemap,MathColorBlend,TriggerDynamic,TriggerSecret,FilterBase,FilterMultiple,FilterName,FilterClass,ScriptedSequence};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
 struct FactoryDictionary {const FactorySpec* slots[27]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
@@ -24,6 +24,7 @@ struct RelayFactoryBindings {
 inline constexpr unsigned dynamic_trigger_vtable=0x2243b96c,dynamic_trigger_extent=0x47c;
 inline constexpr unsigned secret_trigger_vtable=0x2243bc0c,secret_trigger_extent=0x470;
 // Owner performs CBaseTrigger construction at 221be3c0, not CBaseEntity(1).
+inline constexpr unsigned scripted_sequence_vtable=0x2242f66cu,scripted_sequence_extent=0x4d0u;
 struct TriggerFactoryBindings {
     void* context;
     int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
@@ -68,6 +69,8 @@ inline constexpr char filter_factory_export[]="SiN_CreateCampaignFilterEntity";
 inline constexpr char filter_map_create_export[]="SiN_CreateCampaignFilterForMap";
 using CreateCampaignFilterEntity=int (__cdecl *)(const char*,const CampaignFilterFactoryBindings*,FactoryResult*) noexcept;
 using CreateCampaignFilterForMap=int (__cdecl *)(void*,const char*,void**) noexcept;
+inline constexpr char scripted_sequence_factory_export[]="SiN_CreateScriptedSequence";
+using CreateScriptedSequence=int (__cdecl *)(const RelayFactoryBindings*,FactoryResult*) noexcept;
 struct Result {unsigned completed,entities,pairs,filtered,created,missing_factory,missing_classname,clears;unsigned offset,native_creates,foreign_creates;FactoryResult last_factory;};
 // Pool storage must remain live until the native output firing path releases it.
 // The counter is shared across all entity outputs, not per entity.
@@ -497,6 +500,13 @@ inline constexpr char custom_filter_export[]="SiN_TestCampaignFilterEntity";
 inline constexpr char custom_filter_callback_export[]="SiN_CampaignFilterEntityCallback";
 using TestCampaignFilterEntity=int (__cdecl *)(void*,void*,const CampaignCustomFilterBindings*,CampaignCustomFilterResult*) noexcept;
 using CampaignFilterEntityCallback=int (__cdecl *)(void*,void*,void*,bool*) noexcept;
+struct ScriptedSequenceEventBindings {
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const RelayQueueBindings* native_queue;
+};
+struct ScriptedSequenceEventResult {unsigned completed,output_called,offset,queued,native_queued;};
+inline constexpr char scripted_sequence_event_export[]="SiN_FireScriptedSequenceEvent";
+using FireScriptedSequenceEvent=int (__cdecl *)(void*,unsigned,int,const ScriptedSequenceEventBindings*,ScriptedSequenceEventResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
