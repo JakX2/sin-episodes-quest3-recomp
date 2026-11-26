@@ -559,7 +559,8 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                (vt==sin_port::native_map::relay_vtable&&b->native_input->relay)||
                (vt==sin_port::native_map::timer_vtable&&b->native_input->timer)||
                (vt==sin_port::native_map::branch_vtable&&b->native_input->branch)||
-               (vt==sin_port::native_map::case_vtable&&b->native_input->logic_case)){
+               (vt==sin_port::native_map::case_vtable&&b->native_input->logic_case)||
+               (vt==sin_port::native_map::compare_vtable&&b->native_input->logic_compare)){
                 auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=clock();if(!std::isfinite(bound.now))return false;
                 sin_port::native_map::RelayBindings relay{};
                 sin_port::native_map::RelayQueueBindings relay_queue{};
@@ -938,6 +939,12 @@ constexpr NativeInputRow relay_inputs[]{
     {5,0,0x223d4914u,0x2217df20u,"Toggle"},
     {6,0,0x22422b7cu,0x2217df50u,"Trigger"},
     {7,0,0x22422b58u,0x2217def0u,"CancelPending"}
+};
+constexpr NativeInputRow compare_inputs[]{
+    {2,1,0x224202e4u,0x22179b30u,"SetValue"},
+    {3,1,0x22420704u,0x2217af50u,"SetValueCompare"},
+    {4,1,0x224206dcu,0x22179b60u,"SetCompareValue"},
+    {5,0,0x224206c4u,0x2217af80u,"Compare"}
 };
 constexpr NativeInputRow case_inputs[]{
     {16,20,0x2242014cu,0x2217ab00u,"InValue"},
@@ -2245,6 +2252,16 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
     default:return -1;
     }
 }
+constexpr NativeInputMap compare_map{0x224fb588u,0x224f0350u,10,compare_inputs,4};
+int native_compare_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
+    if(!b.logic_compare)return -1;
+    const char* text=nullptr;
+    for(const auto& row:compare_inputs)if(row.handler==handler){text=row.text;break;}
+    if(!text)return -1;
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+    sin_port::native_map::CompareResult result{};
+    return api&&api->compare_input(a,n,text,data.activator,rd<unsigned>(data.variant,0x10),rd<float>(data.variant,0),b.logic_compare,&result)&&result.completed&&result.handled?1:0;
+}
 constexpr NativeInputMap case_map{0x224fb570u,0x224f0350u,35,case_inputs,2};
 int native_case_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
     if(!b.logic_case)return -1;
@@ -2318,7 +2335,8 @@ const NativeInputMap* native_input_map(unsigned token) noexcept {
 int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
-    unsigned token=vt==sin_port::native_map::case_vtable&&b&&b->logic_case?case_map.token:
+    unsigned token=vt==sin_port::native_map::compare_vtable&&b&&b->logic_compare?compare_map.token:
+        vt==sin_port::native_map::case_vtable&&b&&b->logic_case?case_map.token:
         vt==sin_port::native_map::branch_vtable&&b&&b->branch?branch_map.token:
         vt==sin_port::native_map::timer_vtable&&b&&b->timer?timer_map.token:
         vt==sin_port::native_map::relay_vtable&&b&&b->relay?relay_map.token:
@@ -2327,6 +2345,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
     if(vt==sin_port::native_map::timer_vtable&&(!a||n<sin_port::native_map::timer_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(vt==sin_port::native_map::branch_vtable&&(!a||n<sin_port::native_map::branch_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(vt==sin_port::native_map::case_vtable&&(!a||n<sin_port::native_map::case_extent||rd<unsigned>(a,0)!=vt))return 0;
+    if(vt==sin_port::native_map::compare_vtable&&(!a||n<sin_port::native_map::compare_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||(!b->name_equal&&!b->string_text))return 0;
     if(vt==sin_port::native_map::timer_vtable&&b->timer&&b->timer->cadence){
         const auto& t=*b->timer;
@@ -2343,7 +2362,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         if(o->maps>=32)return 0;
         for(unsigned i=0;i<o->maps;++i)if(seen[i]==token)return 0;
         seen[o->maps++]=token;
-        const auto* native=token==case_map.token&&b->logic_case?&case_map:
+        const auto* native=token==compare_map.token&&b->logic_compare?&compare_map:
+            token==case_map.token&&b->logic_case?&case_map:
             token==branch_map.token&&b->branch?&branch_map:
             token==timer_map.token&&b->timer?&timer_map:
             token==relay_map.token&&b->relay?&relay_map:
@@ -2410,7 +2430,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
                 o->native_wake=1;
             }else if(o->handler){
-                const int status=vt==sin_port::native_map::case_vtable?native_case_input(a,n,o->handler,data,*b):
+                const int status=vt==sin_port::native_map::compare_vtable?native_compare_input(a,n,o->handler,data,*b):
+                    vt==sin_port::native_map::case_vtable?native_case_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::branch_vtable?native_branch_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::timer_vtable?native_timer_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::relay_vtable?native_relay_input(a,n,o->handler,data,*b):
