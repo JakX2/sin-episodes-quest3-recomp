@@ -611,6 +611,19 @@ int main(int argc,char** argv){
     f.put(f.actor,0x868,2);f.put(pf.group,0x48,17);
     assert(!transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&native_squad,&wto)&&!wto.completed&&!wto.squad_visited);
     f.actor[0x870]=0;
+    // An unconnected OnWake output must not require an event queue host.
+    // A connected output must still fail closed if its dispatch is missing.
+    auto empty_output=wtb;empty_output.output=nullptr;
+    for(unsigned action_head:{0u,0xdeadbeefu}){
+        f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);f.put(f.actor,0x16c,0u);
+        f.put(f.actor,0xbdc,action_head);f.actor[0x870]=0;
+        f.trace.clear();
+        const int ok=transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&empty_output,&wto);
+        assert(bool(ok)==!action_head&&bool(wto.completed)==!action_head&&wto.outputs==(action_head?0u:1u));
+        assert(wto.transitions==1&&wto.refreshed==1&&wto.flags_changed==1&&f.get<int>(f.actor,0x868)==0&&f.trace.empty());
+        assert(f.get<unsigned>(f.actor,0xbdc)==action_head);
+    }
+    f.put(f.actor,0xbdc,0u);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
