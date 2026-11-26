@@ -3280,5 +3280,43 @@ int main(int argc,char** argv){
         assert(run()&&o.weapon_queries==1&&o.refreshed&&o.activity==16);
         f.put(q.a,0x8ec,0u);assert(run()&&!o.capability_route&&o.gate.parent_called);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntRappelEventApi>(GetProcAddress(s,server_npc_grunt_rappel_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_rappel_event_export)&&!g(0,sizeof(ServerNpcGruntRappelEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntRappelEventApi));assert(api);
+        struct RappelFixture{
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},navigation[0x18]{},rope[4]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            float zero[3]{1,2,0},height[2]{241,10};unsigned traces=0,step=0,refreshes=0;
+            static RappelFixture& self(void* p){return *static_cast<RappelFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.rope);
+        ServerNpcGruntRappelEventBindings b{};b.context=&q;b.zero_vector=q.zero;
+        b.events.gate.context=&q;b.events.gate.actor_token=0x10000u;
+        auto& sb=b.events.gate.speech.speech.sentence;sb.entries=q.entries;sb.count=2;sb.speech.original_vtable=0x2249aaa4;
+        b.navigation.context=&q;
+        b.navigation.storage=[](void* p,std::uint32_t token,void** v,unsigned* n) noexcept -> int{auto& q=RappelFixture::self(p);assert(token==77);*v=q.navigation;*n=sizeof(q.navigation);return 1;};
+        b.refresh_origin=[](void* p,void* a) noexcept -> int{auto& q=RappelFixture::self(p);assert(a==q.a);++q.refreshes;return 1;};
+        b.trace=[](void* p,void* a,const float* start,const float* end,unsigned mask,float* z) noexcept -> int{auto& q=RappelFixture::self(p);assert(a==q.a&&start[2]==1000&&end[2]==-7192&&mask==0x46004003u&&q.traces<2);*z=1000-q.height[q.traces++];return 1;};
+        b.sound=[](void* p,void* a,const char* name) noexcept -> int{auto& q=RappelFixture::self(p);assert(a==q.a&&q.traces==1&&q.step==0&&!std::strcmp(name,q.height[0]>240?"NPC_grunt.RappelOneStory":"NPC_grunt.RappelTwoStory"));++q.step;return 1;};
+        b.rope=[](void* p,void* a,void* c,std::uint32_t* handle) noexcept -> int{auto& q=RappelFixture::self(p);assert(a==q.a&&c==q.a+0xcfc&&q.step==1&&q.traces==1);++q.step;*handle=0x1001;return 1;};
+        b.velocity=[](void* p,void* a,const float* v) noexcept -> int{auto& q=RappelFixture::self(p);assert(a==q.a&&v[0]==1&&v[1]==2);++q.step;return 1;};
+        b.schedule_reset=[](void* p,void* a,bool flag) noexcept -> int{auto& q=RappelFixture::self(p);assert(a==q.a&&!flag);++q.step;return 1;};
+        b.events.gate.shared=[](void* p,void* a,const void*,unsigned) noexcept -> int{auto& q=RappelFixture::self(p);assert(a==q.a);++q.step;return 1;};
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10cfcu);f.put(q.a,0xcfc,0x223f956cu);f.put(q.a,0xd00,0x10000u);f.put(q.a,0xd08,0x10c14u);
+        f.put(q.a,0x908,77u);f.put(q.a,0x370,90.f);f.put(q.a,0x2c4,1000.f);f.put(q.a,0xd10,0xffffffffu);
+        ServerNpcGruntRappelEventResult o{};
+        auto run=[&](int id){q.traces=q.step=q.refreshes=0;f.put(q.raw,0,id);return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        assert(run(13)&&o.entered&&o.angle_written&&o.angle==270.f&&o.events.gate.marker_cleared&&o.events.gate.parent_called&&q.step==1);
+        assert(run(100001)&&o.flag_written&&q.a[0xd0e]&&o.schedule_called&&o.events.gate.consumed&&q.step==1);
+        assert(run(100002)&&o.velocity_called&&o.velocity[2]==0&&o.schedule_called&&q.step==2&&o.events.gate.consumed);
+        f.put(q.a,0xb8,0x800u);
+        assert(run(100000)&&o.completed&&o.traces==2&&o.refreshes==6&&q.refreshes==6&&o.rope_created&&o.rope_handle==0x1001&&o.velocity[2]==-60.f&&q.step==3&&o.events.gate.consumed);
+        q.height[0]=240;q.height[1]=241;
+        assert(run(100000)&&o.rope_valid&&!o.rope_created&&o.velocity[2]==-600.f&&q.step==2&&!std::strcmp(o.sound,"NPC_grunt.RappelTwoStory"));
+        q.height[1]=120;assert(run(100000)&&o.velocity[2]==-300.000030517578125f);
+        f.put(q.a,0xc18,0u);assert(run(100000)&&!o.entered&&o.events.gate.parent_called);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
