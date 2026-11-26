@@ -333,6 +333,73 @@ int main(int argc,char** argv){
     assert(boundary(true,&state,&b,&out)&&out.logic_timer.no_think&&out.events.native_inputs==1&&word(camp.automatic,0x74)==173);
     f.g.curtime=21.625f;f.g.tick=173;
     assert(boundary(true,&state,&b,&out)&&out.logic_timer.invoked&&out.logic_timer.next_tick==177&&out.events.foreign_inputs==1&&camp.delivered==2&&camp.records==2&&camp.event_alloc==5&&camp.event_releases==5&&!word(camp.root,0x30));
+// Real GameFrame slot4: filter event at live frame time, then nested
+    // output delivery. Reuse the campaign pool and queue without actor
+    // simulation; filters are ordinary non-thinking entity storage.
+    {
+        const auto frame_filters=reinterpret_cast<InvokeFilterBoundary>(GetProcAddress(server,filter_boundary_export));
+        assert(frame_filters&&!GetProcAddress(client,filter_boundary_export));
+        struct FilterFrame {
+            alignas(4) unsigned char filter[0x3cc]{},player[0x37c]{};
+            CampaignFixture* campaign;
+        } ff{};ff.campaign=&camp;
+        put(ff.filter,0,nm::name_filter_vtable);put(ff.filter,0x378,0x5000u);put(ff.filter,0xc0,201u);
+        put(ff.filter,0x3c8,206u);put(ff.player,0,0x224aec3cu);put(ff.player,0x378,0x6001u);put(ff.player,0xc0,206u);
+        put(camp.relay,0,nm::relay_vtable);put(camp.relay,0x378,0x7002u);put(camp.relay,0xc0,203u);camp.relay[0x3ac]=1;
+        std::memset(camp.root,0,sizeof(camp.root));std::memset(camp.events,0,sizeof(camp.events));std::memset(camp.actions,0,sizeof(camp.actions));
+        camp.event_alloc=camp.event_releases=0;
+        for(unsigned i=0;i<2;++i){
+            put(camp.actions[i],0,203u);put(camp.actions[i],4,204u+i);put(camp.actions[i],0x10,0xffffffffu);
+            put(ff.filter,i?0x3c4:0x3ac,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(camp.actions[i])));
+        }
+        sin_independent::EntityHandleEntry fe[3]{};
+        void* fa[]{ff.filter,ff.player,camp.relay};
+        for(unsigned i=0;i<3;++i){
+            fe[i].serial=5+i;fe[i].entity=reinterpret_cast<CBaseEntity*>(fa[i]);
+            if(i)fe[i].previous=&fe[i-1];if(i<2)fe[i].next=&fe[i+1];
+        }
+        auto extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& x=*static_cast<FilterFrame*>(p);
+            *bytes=a==x.filter?sizeof(x.filter):a==x.player?sizeof(x.player):a==x.campaign->relay?nm::relay_extent:0;return *bytes!=0;
+        };
+        auto strings=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            constexpr const char* names[]{"filter","TestActivator","relay","Enable","Disable","hero"};
+            if(token<201||token>206)return 0;*text=names[token-201];*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        auto filter_search=search;filter_search.context=&ff;filter_search.head=fe;filter_search.extent=extent;filter_search.string_text=strings;
+        auto filter_input=input;filter_input.timer=nullptr;filter_input.relay=&relay_bind;filter_input.string_text=strings;
+        auto filter_events=events;filter_events.entities.entries=fe;filter_events.entities.count=3;filter_events.native_search=&filter_search;
+        filter_events.native_input=&filter_input;filter_events.find_named=nullptr;filter_events.accept=nullptr;
+        auto filter_eq=eq;filter_eq.bindings=&filter_events;
+        camp.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=201&&token<=206;return 1;};
+        auto filter_route=rq;filter_route.context=&ff;filter_route.entries=nullptr;filter_route.entry_count=0;filter_route.now=nullptr;
+        filter_route.handle=[](void* p,void* a,unsigned* handle) noexcept ->int{
+            auto& x=*static_cast<FilterFrame*>(p);
+            if(a==x.filter)*handle=0x5000;else if(a==x.player)*handle=0x6001;else if(a==x.campaign->relay)*handle=0x7002;else return 0;return 1;
+        };
+        auto filter_fire=fire;filter_fire.enqueue=nullptr;
+        nm::CampaignCustomFilterBindings predicate{};predicate.context=&ff;predicate.extent=extent;predicate.string_text=strings;
+        nm::CampaignFilterInputBindings fb{&predicate,&filter_fire,&filter_route};
+        auto frame=b;frame.logic_timer=nullptr;frame.logic_auto=nullptr;frame.queue=&filter_eq;
+        frame.active=[](void*,ActiveList* list) noexcept ->int{*list={};return 1;};
+        f.g.curtime=30.f;f.g.tick=240;single_step=0;
+        ServerEntityVoidOutputAction a{201,202,0,0,99,.25f};
+        ServerEntityNamedEventQueueResult qr{};CampaignFilterServiceSummary summary{};
+        assert(camp.api->enqueue(camp.root,sizeof(camp.root),99,f.g.curtime,0x6001,0x6001,&a,&camp.queue,&qr));
+        assert(frame_filters(true,&state,&frame,&out,&fb,&summary)&&out.events.future_stopped&&!summary.attempted&&camp.relay[0x3ac]);
+        // Skip frame does not consume events, and neither does a
+        // single-step stop before the nested output can be dispatched.
+        f.g.curtime=30.25f;f.g.tick=242;f.skip=true;
+        assert(frame_filters(true,&state,&frame,&out,&fb,&summary)&&out.skip_consumed&&!summary.attempted&&!camp.event_releases);
+        steps=1;single_step=1;
+        assert(frame_filters(true,&state,&frame,&out,&fb,&summary)&&out.events.step_stopped&&summary.passed==1&&summary.queued==1&&camp.event_releases==1&&camp.relay[0x3ac]);
+        assert(word(camp.events[1],0xc)==0x6001&&word(camp.events[1],0x10)==0x5000);
+        single_step=0;
+        assert(frame_filters(true,&state,&frame,&out,&fb,&summary)&&out.events.native_inputs==1&&!camp.relay[0x3ac]&&camp.event_releases==2&&!word(camp.root,0x30));
+        ff.filter[0x394]=1;a.delay=0.f;
+        assert(camp.api->enqueue(camp.root,sizeof(camp.root),99,f.g.curtime,0x6001,0x6001,&a,&camp.queue,&qr));
+        assert(frame_filters(true,&state,&frame,&out,&fb,&summary)&&out.events.native_inputs==2&&summary.failed==1&&camp.relay[0x3ac]&&camp.event_releases==4&&out.cleanup_calls==3&&!camp.locked);
+    }
 #include "test_native_game_frame_deferred.inc"
     FreeLibrary(server);FreeLibrary(client);
 }
