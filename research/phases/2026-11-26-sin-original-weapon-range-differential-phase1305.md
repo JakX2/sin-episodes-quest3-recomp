@@ -1,0 +1,3 @@
+# Phase 1305: Direct original range attack leaf audit
+
+Re-read 222aaae0..222aab55, 222ac940..222ac94a, 2230b2d0..2230b330, 22315560..22315567, 222aafd0,222aab60,222aab70,2230b340,22313870,2231d040 from authenticated owner DLL. Share the production ordered range condition in a small header (no behavior change). Extend optional direct original ammo runner with original base/clip/constant-ready range functions and six zero-result leaves, exact threshold 0.5, adjacent float boundary cases, inverted ranges and unordered threshold operands. 2*3*2*3*3*7*11*9=74844 leaf comparisons in owner mode. Public CI exercises boundary witnesses and native ammunition API without original bytes. Owner runtime comparison remains unexecuted in this environment.
