@@ -1326,4 +1326,23 @@ struct ServerNpcGruntEventSpeechApi {
     int (__cdecl *event)(void*,unsigned,unsigned,float,const ServerNpcGruntEventSpeechBindings*,ServerNpcGruntEventSpeechResult*) noexcept;
 };
 using GetServerNpcGruntEventSpeechApi=const ServerNpcGruntEventSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_init_export[]="SiN_GetServerNpcGruntSquadInitApi";
+struct ServerNpcGruntSquadInitBindings {
+    ServerNpcGruntSquadRegistryBindings registry;
+    ServerNpcGruntSquadJoinBindings join;
+    void* context;
+    int (__cdecl *base_initialize)(void*,void*) noexcept; // 22036120
+    int (__cdecl *optional_initialize)(void*,void*) noexcept; // 22369ad0
+};
+struct ServerNpcGruntSquadInitResult {
+    ServerNpcGruntSquadRegistryResult attachment;
+    unsigned completed,capability_set,base_called,optional_called,existing_group,owner_written;
+    std::uint32_t name_token;
+};
+struct ServerNpcGruntSquadInitApi {
+    std::uint32_t version,size;
+    // Source-bounded tail 22369bdb, not full Spawn. Caller attests original entry route.
+    int (__cdecl *initialize)(void*,unsigned,std::uint32_t,float,std::uint32_t*,const ServerNpcGruntSquadInitBindings*,ServerNpcGruntSquadInitResult*) noexcept;
+};
+using GetServerNpcGruntSquadInitApi=const ServerNpcGruntSquadInitApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

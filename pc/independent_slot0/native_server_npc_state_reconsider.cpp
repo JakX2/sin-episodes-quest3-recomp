@@ -2828,6 +2828,26 @@ int __cdecl squad_input(void* a,unsigned n,std::uint32_t handle,float now,std::u
     write(a,0x9c4,out->attachment.token);out->owner_written=1;
     return done();
 }
+int __cdecl grunt_squad_initialize(void* a,unsigned n,std::uint32_t handle,float now,std::uint32_t* head,const ServerNpcGruntSquadInitBindings* b,ServerNpcGruntSquadInitResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0xdb2||!head||!b||!std::isfinite(now)||!relation_grunt_class(b->join.group.sentence.speech.original_vtable))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    write(a,0x8ec,read<unsigned>(a,0x8ec)|0x04000000u);out->capability_set=1;
+    if(!b->base_initialize||!b->base_initialize(b->context,a))return 0;
+    out->base_called=1;
+    if(read<unsigned>(a,0xc14)){
+        if(!b->optional_initialize||!b->optional_initialize(b->context,a))return 0;
+        out->optional_called=1;
+    }
+    if(read<unsigned>(a,0x9c4)){out->existing_group=1;return done();}
+    out->name_token=read<unsigned>(a,0x9c8);
+    const char* name=nullptr;unsigned extent=0,len=0;
+    if(out->name_token&&(!b->registry.name||!b->registry.name(b->registry.context,out->name_token,&name,&extent)||!name||!squad_name_size(name,extent,len)))return 0;
+    if(!squad_attach(a,n,handle,now,head,name,&b->registry,&b->join,&out->attachment))return 0;
+    write(a,0x9c4,out->attachment.token);out->owner_written=1;
+    return done();
+}
+const ServerNpcGruntSquadInitApi squad_init_api{1,sizeof(ServerNpcGruntSquadInitApi),&grunt_squad_initialize};
 const ServerNpcGruntSquadInputApi squad_input_api{1,sizeof(ServerNpcGruntSquadInputApi),&squad_input};
 int __cdecl squad_destroy(std::uint32_t* head,std::uint32_t token,const ServerNpcGruntSquadDestroyBindings* b,ServerNpcGruntSquadDestroyResult* out) noexcept{
     if(!out)return 0;*out={};out->token=token;
@@ -3710,4 +3730,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEventSpeechApi=_SiN_GetServerNpcGruntEventSpeechApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEventSpeechApi* __cdecl SiN_GetServerNpcGruntEventSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEventSpeechApi)?&event_speech_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadInitApi=_SiN_GetServerNpcGruntSquadInitApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadInitApi* __cdecl SiN_GetServerNpcGruntSquadInitApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadInitApi)?&squad_init_api:nullptr;
 }

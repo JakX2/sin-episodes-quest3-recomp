@@ -1529,6 +1529,24 @@ int main(int argc,char** argv){
         assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,0,&ib,&ir)&&ir.departure.missing&&ir.owner_written&&RegistryFixture::rd(q.actor,0x9c4)==0);
         f.put(q.actor,0x8c,0);
         assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,32,&ib,&ir)&&ir.attachment.join.appended&&RegistryFixture::rd(q.actor,0x9c4)==13);
+        auto gz=reinterpret_cast<GetServerNpcGruntSquadInitApi>(GetProcAddress(s,server_npc_grunt_squad_init_export));
+        assert(gz&&!GetProcAddress(c,server_npc_grunt_squad_init_export)&&!gz(0,sizeof(ServerNpcGruntSquadInitApi))&&!gz(1,0));
+        const auto* init=gz(1,sizeof(ServerNpcGruntSquadInitApi));assert(init);
+        ServerNpcGruntSquadInitBindings zb{};zb.registry=rb;zb.join=jb;zb.context=&q;
+        zb.base_initialize=[](void* p,void* a) noexcept -> int{auto& q=RegistryFixture::self(p);assert(a==q.actor&&(RegistryFixture::rd(a,0x8ec)&0x04000000u));q.actor[0xc13]=1;return 1;};
+        zb.optional_initialize=[](void* p,void* a) noexcept -> int{auto& q=RegistryFixture::self(p);assert(a==q.actor&&q.actor[0xc13]==1);q.actor[0xc13]=2;return 1;};
+        ServerNpcGruntSquadInitResult zr{};
+        f.put(q.actor,0xc14,1u);f.put(q.actor,0x8ec,0u);
+        assert(init->initialize(q.actor,sizeof(q.actor),0x1001u,51,&head,&zb,&zr)&&zr.completed&&zr.capability_set&&zr.base_called&&zr.optional_called&&zr.existing_group&&!zr.owner_written&&q.actor[0xc13]==2);
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,0,&ib,&ir)&&ir.departure.removed);
+        f.put(q.actor,0x9c8,32u);f.put(q.actor,0xc14,0u);
+        assert(init->initialize(q.actor,sizeof(q.actor),0x1001u,51,&head,&zb,&zr)&&zr.completed&&zr.base_called&&!zr.optional_called&&zr.attachment.found&&zr.attachment.join.appended&&zr.owner_written&&zr.name_token==32&&RegistryFixture::rd(q.actor,0x9c4)==13&&q.actor[0xc13]==1);
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,0,&ib,&ir)&&ir.departure.removed);
+        // Null map name still passes registry lookup, reusing linked empty group.
+        assert(init->initialize(q.actor,sizeof(q.actor),0x1001u,51,&head,&zb,&zr)&&zr.completed&&zr.attachment.found&&zr.attachment.token==12&&zr.attachment.join.appended&&!zr.name_token);
+        assert(input->change(q.actor,sizeof(q.actor),0x1001u,51,&head,2,0,&ib,&ir)&&ir.departure.removed);
+        f.put(q.actor,0x9c8,32u);
+        assert(init->initialize(q.actor,sizeof(q.actor),0x1001u,51,&head,&zb,&zr)&&zr.attachment.join.appended&&RegistryFixture::rd(q.actor,0x9c4)==13);
         f.put(q.groups[0],0,10u);assert(!api->lookup(head,"absent",&rb,&rr)&&!rr.completed);f.put(q.groups[0],0,0u);
         assert(q.allocated==4&&q.interned==2&&!q.released);
         auto gd=reinterpret_cast<GetServerNpcGruntSquadDestroyApi>(GetProcAddress(s,server_npc_grunt_squad_destroy_export));
