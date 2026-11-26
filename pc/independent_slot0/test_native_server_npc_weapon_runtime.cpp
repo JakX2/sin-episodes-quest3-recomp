@@ -2678,7 +2678,75 @@ int main(int argc,char** argv){
             assert((hd.death_order==std::vector<unsigned>{43,41,44,46,45}));
         }
     }
-    hd_services.jet_think=nullptr;hd_b.entities=saved_hd_entities;primary_b.entities=saved_hd_entities;
+    // Campaign output action -> native named queue -> string-to-int
+    // SetHealth -> native death lifecycle. Unlike hd_run, this starts
+    // with the original output-list row and no direct AcceptInput call.
+    hd_b.entities=saved_hd_entities;primary_b.entities=saved_hd_entities;
+    reset_subclass(primary_vt);hd.alternate_sample=26;hd.alternate_mode=1;
+    f.actor[0xbf]&=static_cast<unsigned char>(~8u);
+    f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x1028,0x7001u);
+    f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0x400000u);
+    f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);f.put(f.actor,8,0u);
+    f.put(f.actor,0xc3c,0x7001u);f.put(f.actor,0xc40,0x1234u);
+    f.put(f.actor,0xc0,501u);f.put(wt.member,0xc0,500u);
+    // The minimal ragdoll witness is handle-resolvable, but is not an
+    // entity-list member in this fixture (it has no targetname storage).
+    auto* prior_script_next=script_slots[2].next;script_slots[2].next=&script_slots[1];
+    std::memset(hq.root,0,sizeof(hq.root));std::memset(hq.events,0,sizeof(hq.events));
+    std::memset(hq.actions,0,sizeof(hq.actions));hq.allocated=hq.released_events=hq.released_actions=0;
+    hq.input=hd_b;hq.input.now=-99.f;hq.input.name_equal=nullptr;hq.input.convert=nullptr;
+    hq.input.string_text=[](void*,unsigned token,const char** value,unsigned* bytes) noexcept -> int{
+        if(token==600u){*value="SetHealth";*bytes=10;return 1;}
+        if(token==777u){*value="0";*bytes=2;return 1;}
+        return 0;
+    };
+    hq_service.entities=hd_b.entities;hq_service.native_input=&hq.input;
+    float campaign_now=89.75f;hq_service.live_now=&campaign_now;
+    struct CampaignFireFixture {
+        HealthQueueFixture* queue;
+        const ServerEntityVoidOutputBindings* actions;
+        const ServerEntityNamedEventQueueApi* api;
+        const ServerEntityNamedEventQueueBindings* bindings;
+        const float* now;
+    } campaign_fire{&hq,&hq_actions,outf.queue_api,&hq_queue,&campaign_now};
+    ServerEntityVoidOutputBindings campaign_actions{};campaign_actions.context=&campaign_fire;
+    campaign_actions.resolve=[](void* p,unsigned token,void** data,unsigned* bytes) noexcept -> int{
+        const auto& q=*static_cast<CampaignFireFixture*>(p);return q.actions->resolve(q.actions->context,token,data,bytes);
+    };
+    campaign_actions.release=[](void* p,unsigned token,void* row) noexcept -> int{
+        const auto& q=*static_cast<CampaignFireFixture*>(p);return q.actions->release(q.actions->context,token,row);
+    };
+    campaign_actions.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* action) noexcept -> int{
+        auto& q=*static_cast<CampaignFireFixture*>(p);
+        assert(activator==q.queue->recipient&&caller==q.queue->recipient);
+        ServerEntityNamedEventQueueResult result{};
+        return q.api->enqueue(q.queue->root,sizeof(q.queue->root),0x7000u,*q.now,
+            q.queue->f->get<unsigned>(activator,0x378),q.queue->f->get<unsigned>(caller,0x378),action,q.bindings,&result);
+    };
+    f.put(hq.actions[0],0,501u);f.put(hq.actions[0],4,600u);f.put(hq.actions[0],8,777u);
+    f.put(hq.actions[0],0xc,.25f);f.put(hq.actions[0],0x10,1u);f.put(hq.actions[0],0x14,68u);
+    f.put(wt.member,0xbdc,0x7100u);wt.member[0xa8]&=static_cast<unsigned char>(~0x10u);
+    ServerEntityVoidOutputResult campaign_output{};
+    assert(void_output->fire(wt.member+0xbc8,0x18,wt.member,wt.member,0xfd8u,0.f,&campaign_actions,&campaign_output));
+    assert(campaign_output.completed&&campaign_output.queued==1&&campaign_output.parameter_overrides==1&&campaign_output.removed==1&&hq.released_actions==1&&!f.get<unsigned>(wt.member,0xbdc));
+    assert(hq.allocated==1&&f.get<float>(hq.events[0],0)==90.f&&f.get<unsigned>(hq.events[0],0x1c)==777u&&f.get<unsigned>(hq.events[0],0x2c)==2u&&f.get<unsigned>(hq.events[0],0xc)==0x7001u);
+    campaign_now=89.875f;
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,-99.f,false,&steps,&hq_service,&sr)&&sr.future_stopped&&!sr.native_inputs&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty());
+    campaign_now=90.f;
+    assert(service->service(hq.root,sizeof(hq.root),0x7000u,-99.f,false,&steps,&hq_service,&sr)&&sr.completed&&sr.events==1&&sr.deliveries==1&&sr.named==1&&sr.native_inputs==1&&!sr.rejected_inputs&&!sr.foreign_inputs&&hq.released_events==1&&!hq.locks&&!f.get<unsigned>(hq.root,0x30));
+    assert(f.get<int>(f.actor,0x9c)==-200&&f.get<int>(f.actor,0x8c)==1&&f.get<float>(f.actor,0xffc)==90.f&&f.get<unsigned>(f.actor,8)==0x22365760u&&f.get<int>(f.actor,0x74)==721);
+    assert(f.get<unsigned>(f.actor,0x1054)==0x8002u&&f.get<float>(f.actor,0x1058)==300.f&&f.get<float>(f.actor,0x105c)==100.f);
+    assert((hd.death_order==std::vector<unsigned>{20,21,22,23,24,25,48,49,50,26,26,42}));
+    hd.death_order.clear();hd.think_clock=92.f;
+    assert(primary_run(736)&&primary_o.death_called&&think_result.motion_called&&!think_result.expired);
+    hd.death_order.clear();hd.think_clock=92.125f;
+    assert(primary_run(737)&&primary_o.installed&&think_result.death_called&&think_result.terminal_mode==1&&think_result.ground.attacker_class==6);
+    assert((hd.death_order==std::vector<unsigned>{43,41,44,58,30,31,32,33,1,2,3,4,34,5,6,42,45}));
+    hd.death_order.clear();hd.think_clock=92.25f;
+    assert(primary_run(738)&&primary_o.removed&&!primary_o.native_result);
+    assert((hd.death_order==std::vector<unsigned>{43,41,44,46,45}));
+    hq_service.live_now=nullptr;script_slots[2].next=prior_script_next;
+    hd_services.jet_think=nullptr;
     script_slots[0].serial=0;script_slots[0].entity=nullptr;
     std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
     assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);
