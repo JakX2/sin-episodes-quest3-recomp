@@ -5,6 +5,7 @@
 int __cdecl SinPublishCampaignEventInternal(void*,const sin_port::fixed_service::NativeTriggerEvent*,
     int (__cdecl *)(void*,int*) noexcept,void*,const unsigned char*,void*,void*) noexcept;
 bool __cdecl SinReadCampaignTouchMarkerInternal(const void*,unsigned*) noexcept;
+bool __cdecl SinReadCampaignHandleInternal(const void*,unsigned,unsigned*) noexcept;
 extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::fixed_service::Api* __cdecl SiN_GetFixedDifficultyApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
@@ -2787,6 +2788,61 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
+// 221d0df0: filter, handle, append to +45c vector, then
+// COutputEvent::FireOutput(+414, other, this, 0). Preserve duplicate rows.
+int __cdecl campaign_start_output(void* a,unsigned n,void* other,unsigned other_bytes,
+    const CampaignStartTouchBindings* b,CampaignStartTouchResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned marker=0;
+    if(!b||!b->filter||!SinReadCampaignTouchMarkerInternal(a,&marker))return 0;
+    const unsigned extent=marker==dynamic_trigger_vtable?dynamic_trigger_extent:marker==secret_trigger_vtable?secret_trigger_extent:0;
+    if(!extent||n<extent)return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    bool accepted=false;o->filter_called=1;
+    if(!b->filter(b->context,a,other,&accepted))return 0;
+    if(!accepted){o->completed=1;return 1;}o->accepted=1;
+    unsigned handle=0xffffffffu;
+    if(other){
+        unsigned vt=0;
+        if(other_bytes<4||!SinReadCampaignTouchMarkerInternal(other,&vt))return 0;
+        if(campaign_player_marker(vt)!=PlayerPredicate::Unknown){
+            if(!SinReadCampaignHandleInternal(other,other_bytes,&handle))return 0;
+        }else if(!b->foreign_handle||!b->foreign_handle(b->context,other,&handle))return 0;
+    }
+    o->handle=handle;
+    const int size=read_field<int>(a,0x468);int capacity=read_field<int>(a,0x460);
+    unsigned token=read_field<unsigned>(a,0x45c);
+    // Signed original count/capacity and bounded independent storage.
+    if(size<0||capacity<0||size>capacity||capacity>4096||(capacity&&!token)||size==4096||!b->output)return 0;
+    o->prior_count=o->count=static_cast<unsigned>(size);
+    if(size==capacity){
+        if(read_field<unsigned>(a,0x464)==0xffffffffu||!b->grow_vector||
+           !b->grow_vector(b->context,a,static_cast<unsigned>(size+1)))return 0;
+        o->grew=1;
+        token=read_field<unsigned>(a,0x45c);capacity=read_field<int>(a,0x460);
+        if(read_field<int>(a,0x468)!=size||capacity<=size||capacity>4096||!token)return 0;
+    }
+    void* vector=nullptr;unsigned bytes=0;
+    if(!b->resolve_vector||!b->resolve_vector(b->context,token,&vector,&bytes)||
+       !vector||bytes<static_cast<unsigned>(capacity)*4u)return 0;
+    const auto vb=reinterpret_cast<std::uintptr_t>(vector),ab=reinterpret_cast<std::uintptr_t>(a);
+    if(vb+bytes<vb||ab+n<ab||(vb<ab+n&&ab<vb+bytes))return 0;
+    write_field(a,0x468,size+1);write_field(a,0x46c,token);
+    write_field(vector,static_cast<unsigned>(size)*4u,handle);
+    o->appended=1;o->count=static_cast<unsigned>(size+1);
+    using namespace sin_port::native_weapon_tables;
+    if(b->native_queue){
+        if(!native_named_output(a,n,other,0x414,false,b->output,b->native_queue,o->queued))return 0;
+        o->native_queued=o->queued;
+    }else{
+        const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+        ServerEntityVoidOutputResult fired{};
+        if(!fire||!fire->fire(static_cast<unsigned char*>(a)+0x414,0x18,other,a,n,0.f,b->output,&fired))return 0;
+        o->queued=fired.queued;
+    }
+    o->output_fired=o->completed=1;return 1;
+}
 const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting,&register_campaign_triggers,&destroy_campaign_trigger,&campaign_trigger_spawn,&campaign_trigger_touch,&destroy_trigger_members,&trigger_control,&trigger_kill};
 }
 }
@@ -2832,4 +2888,10 @@ extern "C" sin_port::native_map::PlayerPredicate __cdecl SiN_ClassifyCampaignTou
     unsigned marker=0;
     if(bytes<4||!SinReadCampaignTouchMarkerInternal(actor,&marker))return PlayerPredicate::Invalid;
     return campaign_player_marker(marker);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_StartCampaignTriggerOutput=_SiN_StartCampaignTriggerOutput")
+extern "C" int __cdecl SiN_StartCampaignTriggerOutput(void* a,unsigned n,void* other,unsigned other_bytes,
+    const sin_port::native_map::CampaignStartTouchBindings* b,sin_port::native_map::CampaignStartTouchResult* o) noexcept {
+    return sin_port::native_map::campaign_start_output(a,n,other,other_bytes,b,o);
 }

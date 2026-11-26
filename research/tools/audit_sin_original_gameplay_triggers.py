@@ -47,6 +47,9 @@ ORIGINAL_METHODS={
   "is_player_false":(0x220017E0,3,"01cb47d078b4841b8408ec4fe278efa83115c6f6e101972987507d2b2b57dcf0"),
   "contact_touch_notify":(0x2221E740,41,"1c31ff18df45681bbacb993d69fb9fe4c16391394082a160262e815a194b7cbf"),
   "contact_start_touch_notify":(0x2221E770,55,"d9cfe927b17a5181d07c6635cab4e8deba30cb3d59da8df378cb72d6c0d503b5"),
+  "inherited_start_touch":(0x221D0DF0,91,"79882580908eeaf2ae0699834bb06403cc8dde65c79eaa1a958d94d6a6e49368"),
+  "trigger_handle_append":(0x220A22B0,100,"b657875404237bca8be9251e9847b5217a062cfd4fa7307c4858d91cecc3669a"),
+  "void_output_fire":(0x22156900,84,"9831538fbf90681abd884187a73a262d05aa6031d2b58a5156dd3b8c717c0e26"),
 }
 PLAYER_ROWS=(
     (0x224aec3c,0x224d3ff0,0x2251e69c,0x22253c30,".?AVCHL2_Player@@"),
@@ -205,14 +208,14 @@ def verify_trigger_control(read_u32,read_text):
 
 def verify_contact_slots(read_u32):
     for table,touch in ((0x2243B96C,0x221CCB70),(0x2243BC0C,0x221CCC10)):
-        if (read_u32(table+0x160),read_u32(table+0x164))!=(0x221D0DF0,touch):
+        if (read_u32(table+0x160),read_u32(table+0x164),read_u32(table+0x298))!=(0x221D0DF0,touch,0x221CE520):
             raise EvidenceRefused("campaign contact dispatch slot changed")
-    return 4
+    return 6
 
 def verify_player_predicates(read_u32,read_text):
     for table,col,typedesc,target,name in PLAYER_ROWS:
         if (read_u32(table-4),read_u32(col),read_u32(col+4),
-            read_u32(col+12),read_u32(table+0x120))!=(col,0,0,typedesc,target):
+            read_u32(col+12),read_u32(table+0x120),read_u32(table+8))!=(col,0,0,typedesc,target,0x22001B00):
             raise EvidenceRefused("primary player predicate slot/RTTI changed "+name)
         if not read_text(typedesc+8,name):
             raise EvidenceRefused("player predicate RTTI name changed "+name)
@@ -396,7 +399,8 @@ def self_test()->None:
         else:raise AssertionError("mutated trigger input name accepted")
     contact_words={0x2243B96C+0x160:0x221D0DF0,0x2243B96C+0x164:0x221CCB70,
                    0x2243BC0C+0x160:0x221D0DF0,0x2243BC0C+0x164:0x221CCC10}
-    assert verify_contact_slots(contact_words.get)==4
+    contact_words.update({0x2243B96C+0x298:0x221CE520,0x2243BC0C+0x298:0x221CE520})
+    assert verify_contact_slots(contact_words.get)==6
     for key in contact_words:
         bad=dict(contact_words);bad[key]^=1
         try:verify_contact_slots(bad.get)
@@ -405,7 +409,7 @@ def self_test()->None:
     player_words={}
     player_text={}
     for table,col,typedesc,target,name in PLAYER_ROWS:
-        player_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x120:target})
+        player_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x120:target,table+8:0x22001B00})
         player_text[typedesc+8]=name
     assert verify_player_predicates(player_words.get,lambda va,s:player_text.get(va)==s)==18
     for key in player_words:

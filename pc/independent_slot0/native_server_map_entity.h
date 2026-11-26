@@ -439,6 +439,23 @@ inline constexpr PlayerPredicate campaign_player_marker(unsigned vt) noexcept {
     default:return PlayerPredicate::Unknown;
     }
 }
+// Recovered inherited StartTouch bookkeeping and scripted output.
+// The filter and allocator remain owner boundaries, not collision code.
+struct CampaignStartTouchBindings {
+    void* context;
+    int (__cdecl *filter)(void*,void*,void*,bool*) noexcept;
+    int (__cdecl *resolve_vector)(void*,unsigned,void**,unsigned*) noexcept;
+    // Grow only allocation token/capacity/grow fields; leave count intact.
+    int (__cdecl *grow_vector)(void*,void*,unsigned) noexcept;
+    int (__cdecl *foreign_handle)(void*,void*,unsigned*) noexcept;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const RelayQueueBindings* native_queue;
+};
+struct CampaignStartTouchResult {
+    unsigned completed,filter_called,accepted,handle,grew,appended,prior_count,count,output_fired,queued,native_queued;
+};
+inline constexpr char start_touch_output_export[]="SiN_StartCampaignTriggerOutput";
+using StartCampaignTriggerOutput=int (__cdecl *)(void*,unsigned,void*,unsigned,const CampaignStartTouchBindings*,CampaignStartTouchResult*) noexcept;
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;

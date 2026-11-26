@@ -350,13 +350,56 @@ int main(int argc,char** argv){
     tr.is_player=[](void*,void*,bool* yes) noexcept ->int{*yes=false;return 1;};
     assert(touch_events(&session,m.actor,sizeof(m.actor),&candidate,&tr,&cr,&publication)&&cr.nonplayer&&started.events.creates==2);
     tr.is_player=nullptr;
-    cb.start_touch=[](void* p,void* actor,void* other) noexcept ->int{
-        auto& m=*static_cast<Map*>(p);assert(actor==m.actor&&other==m.player&&!m.removed);
-        // Original wrapper enters Touch even if StartTouch marks actor.
-        m.actor[0xb8]=1;return 1;
+    // Native inherited StartTouch filter, vector append and scripted
+    // output precede secret publication without a hosted StartTouch leaf.
+    namespace nw=sin_port::native_weapon_tables;
+    struct StartOutput {
+        Map* map;
+        unsigned vector[2]{},action[7]{},calls=0,filters=0,grows=0;
+        bool allow=false,alias=false;
+    } so{&m};
+    so.action[0]=201;so.action[1]=202;so.action[4]=0xffffffffu;so.action[5]=77;
+    nm::CampaignStartTouchBindings st{};st.context=&so;
+    st.filter=[](void* p,void* actor,void* other,bool* yes) noexcept ->int{
+        auto& s=*static_cast<StartOutput*>(p);assert(actor==s.map->actor&&other==s.map->player);++s.filters;*yes=s.allow;return 1;
     };
-    assert(contact(&session,m.actor,sizeof(m.actor),&m.player,sizeof(m.player),ContactKind::Starting,&cb,&contact_result)&&
-        contact_result.start_called&&contact_result.touch_called&&contact_result.publication==fs::EventFired&&contact_result.trigger.removed&&m.removed==1&&started.events.fires==3&&!started.events.frees);
+    st.grow_vector=[](void* p,void* actor,unsigned need) noexcept ->int{
+        auto& s=*static_cast<StartOutput*>(p);assert(actor==s.map->actor&&need==1);
+        ++s.grows;const unsigned token=8,capacity=2;std::memcpy(s.map->actor+0x45c,&token,4);std::memcpy(s.map->actor+0x460,&capacity,4);return 1;
+    };
+    st.resolve_vector=[](void* p,unsigned token,void** storage,unsigned* bytes) noexcept ->int{
+        auto& s=*static_cast<StartOutput*>(p);assert(token==8);*storage=s.alias?static_cast<void*>(s.map->actor):static_cast<void*>(s.vector);*bytes=8;return 1;
+    };
+    nw::ServerEntityVoidOutputBindings ob{};ob.context=&so;
+    ob.resolve=[](void* p,unsigned token,void** action,unsigned* bytes) noexcept ->int{
+        auto& s=*static_cast<StartOutput*>(p);assert(token==9);*action=s.action;*bytes=0x1c;return 1;
+    };
+    ob.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* a) noexcept ->int{
+        auto& s=*static_cast<StartOutput*>(p);assert(activator==s.map->player&&caller==s.map->actor&&a->target==201&&a->input==202&&a->action_id==77);
+        unsigned count=0;std::memcpy(&count,s.map->actor+0x468,4);
+        assert(count==s.calls+1&&s.vector[s.calls]==0x5002);
+        ++s.calls;s.map->actor[0xb8]=1;return 1;
+    };
+    ob.release=[](void*,unsigned,void*) noexcept ->int{assert(false);return 0;};
+    st.output=&ob;put(0x428,9);
+    const auto start_output=reinterpret_cast<nm::StartCampaignTriggerOutput>(GetProcAddress(server,nm::start_touch_output_export));
+    const auto contact_output=reinterpret_cast<nl::DispatchCampaignContactWithOutput>(GetProcAddress(server,nl::campaign_contact_output_export));
+    assert(start_output&&contact_output&&!GetProcAddress(client,nm::start_touch_output_export)&&!GetProcAddress(client,nl::campaign_contact_output_export));
+    nm::CampaignStartTouchResult sr{};
+    assert(start_output(m.actor,sizeof(m.actor),m.player,sizeof(m.player),&st,&sr)&&sr.filter_called&&!sr.accepted&&!so.grows&&!so.calls);
+    so.allow=true;put(0x464,0xffffffffu);
+    assert(!start_output(m.actor,sizeof(m.actor),m.player,sizeof(m.player),&st,&sr)&&!so.grows&&!so.calls);
+    put(0x464,0);so.alias=true;
+    assert(!start_output(m.actor,sizeof(m.actor),m.player,sizeof(m.player),&st,&sr)&&sr.grew&&!sr.appended&&so.grows==1&&!so.calls);
+    so.alias=false;cb.start_touch=nullptr;
+    assert(contact_output(&session,m.actor,sizeof(m.actor),m.player,sizeof(m.player),ContactKind::Starting,&cb,&contact_result,&st,&sr)&&
+        sr.appended&&sr.output_fired&&sr.queued==1&&sr.count==1&&so.calls==1&&contact_result.start_called&&contact_result.touch_called&&
+        contact_result.publication==fs::EventFired&&contact_result.trigger.removed&&m.removed==1&&started.events.fires==3&&!started.events.frees);
+    // Direct leaf preserves duplicate append and refuses external growth.
+    assert(start_output(m.actor,sizeof(m.actor),m.player,sizeof(m.player),&st,&sr)&&sr.count==2&&so.calls==2&&so.vector[0]==so.vector[1]);
+    put(0x464,0xffffffffu);
+    assert(!start_output(m.actor,sizeof(m.actor),m.player,sizeof(m.player),&st,&sr)&&!sr.appended&&so.calls==2&&so.grows==1);
+    put(0x464,0);
     assert(contact(&session,m.actor,sizeof(m.actor),&m.player,sizeof(m.player),ContactKind::Continuing,&cb,&contact_result)&&contact_result.marked_actor&&!contact_result.touch_called&&started.events.creates==3);
     put(0xb8,0);
     // Original map writer ignores ordinary FireEvent false. Health

@@ -56,6 +56,8 @@ int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State*,const 
     const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*) noexcept;
 int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
 bool __cdecl SinReadCampaignContactFieldsInternal(const void*,unsigned,unsigned*,unsigned char*) noexcept;
+extern "C" int __cdecl SiN_StartCampaignTriggerOutput(void*,unsigned,void*,unsigned,const sin_port::native_map::CampaignStartTouchBindings*,
+    sin_port::native_map::CampaignStartTouchResult*) noexcept;
 int __cdecl SinServerActivateWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::Bindings*,
     sin_port::native_level::Result*,void*) noexcept;
 int __cdecl SinTouchCampaignTriggerFromStartupInternal(void*,unsigned,void*,const sin_port::native_map::CampaignTriggerBindings*,
@@ -1618,11 +1620,12 @@ extern "C" int __cdecl SiN_TouchStartedCampaignTrigger(
 }
 // 2221e740 and 2221e770: check both deletion bytes once, then
 // notify virtual +164 or +160 followed by +164. Do not generate contacts.
-#pragma comment(linker,"/EXPORT:SiN_DispatchStartedCampaignContact=_SiN_DispatchStartedCampaignContact")
-extern "C" int __cdecl SiN_DispatchStartedCampaignContact(
+static int dispatchCampaignContactImpl(
     const sin_port::native_server_startup::EngineEventSession* session,void* actor,unsigned bytes,void* other,unsigned other_bytes,
     sin_port::native_level::CampaignContactKind kind,const sin_port::native_level::CampaignContactBindings* b,
-    sin_port::native_level::CampaignContactResult* o) noexcept {
+    sin_port::native_level::CampaignContactResult* o,const sin_port::native_map::CampaignStartTouchBindings* native_start,
+    sin_port::native_map::CampaignStartTouchResult* start_result) noexcept {
+    if(start_result)*start_result={};
     using namespace sin_port::native_level;
     namespace nm=sin_port::native_map;
     if(!o)return 0;*o={};o->publication=nm::engine_event_not_attempted;
@@ -1642,9 +1645,15 @@ extern "C" int __cdecl SiN_DispatchStartedCampaignContact(
     if(other_flags&1){o->marked_other=o->completed=1;return 1;}
     struct Guard {bool& flag;~Guard(){flag=false;}} guard{dispatching};dispatching=true;
     if(kind==CampaignContactKind::Starting){
-        if(!b->start_touch)return 0;
-        o->start_called=1;
-        if(!b->start_touch(b->context,actor,other))return 0;
+        if(native_start){
+            if(!start_result)return 0;
+            o->start_called=1;
+            if(!SiN_StartCampaignTriggerOutput(actor,bytes,other,other_bytes,native_start,start_result))return 0;
+        }else{
+            if(!b->start_touch)return 0;
+            o->start_called=1;
+            if(!b->start_touch(b->context,actor,other))return 0;
+        }
         // Original does not recheck deletion bits after StartTouch.
         // Validate that storage/class is still supported; owners defer free.
         unsigned after=0;unsigned char ignored=0;
@@ -1653,6 +1662,22 @@ extern "C" int __cdecl SiN_DispatchStartedCampaignContact(
     o->touch_called=1;
     if(!SiN_TouchStartedCampaignTrigger(session,actor,bytes,other,b->campaign,&o->trigger,&o->publication))return 0;
     o->completed=1;return 1;
+}
+#pragma comment(linker,"/EXPORT:SiN_DispatchStartedCampaignContact=_SiN_DispatchStartedCampaignContact")
+extern "C" int __cdecl SiN_DispatchStartedCampaignContact(
+    const sin_port::native_server_startup::EngineEventSession* session,void* actor,unsigned bytes,void* other,unsigned other_bytes,
+    sin_port::native_level::CampaignContactKind kind,const sin_port::native_level::CampaignContactBindings* b,
+    sin_port::native_level::CampaignContactResult* o) noexcept {
+    return dispatchCampaignContactImpl(session,actor,bytes,other,other_bytes,kind,b,o,nullptr,nullptr);
+}
+#pragma comment(linker,"/EXPORT:SiN_DispatchStartedCampaignContactWithOutput=_SiN_DispatchStartedCampaignContactWithOutput")
+extern "C" int __cdecl SiN_DispatchStartedCampaignContactWithOutput(
+    const sin_port::native_server_startup::EngineEventSession* session,void* actor,unsigned bytes,void* other,unsigned other_bytes,
+    sin_port::native_level::CampaignContactKind kind,const sin_port::native_level::CampaignContactBindings* b,
+    sin_port::native_level::CampaignContactResult* o,const sin_port::native_map::CampaignStartTouchBindings* native_start,
+    sin_port::native_map::CampaignStartTouchResult* start_result) noexcept {
+    if(!native_start||!start_result){if(o)*o={};return 0;}
+    return dispatchCampaignContactImpl(session,actor,bytes,other,other_bytes,kind,b,o,native_start,start_result);
 }
 #pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameBoundary=_SiN_InvokeServerGameFrameBoundary")
 extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(bool simulating,const sin_port::native_game_frame::State* state,const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result) noexcept {
