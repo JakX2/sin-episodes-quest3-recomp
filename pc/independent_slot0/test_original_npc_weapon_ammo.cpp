@@ -147,6 +147,43 @@ bool run_matrix(const ServerNpcWeaponAmmoApi& api,Fixture& f,const Original* ori
     std::printf("ammo matrix %u/%u passed (%s)\n",cases,cases,original?"native + original PE32":"native only");
     return true;
 }
+bool native_cast_matrix(const ServerNpcWeaponAmmoApi& api,Fixture& f){
+    ServerWeaponScriptView script_view{};script_view.fallback=f.script;script_view.fallback_bytes=sizeof(f.script);
+    ServerNpcWeaponAmmoBindings ammo{};ammo.scripts=&script_view;ammo.context=&f;ammo.max_carry=max_carry;
+    ServerNpcGruntAssaultAdmissionBindings ab{};ab.context=&f;ab.entries=f.entries;ab.count=2;ab.extent=extent;
+    f.entries[1].serial=7;f.entries[1].entity=reinterpret_cast<CBaseEntity*>(f.owner);
+    put(f.native_weapon,0,0x2247875cu);put(f.native_weapon,0x494,0x7001u);
+    put(f.native_weapon,0x4e4,1);put(f.native_weapon,0x4e8,2);
+    put(f.native_weapon,0x4ec,0);put(f.native_weapon,0x4f0,0);put(f.native_weapon,0x4cc,4);
+    put(f.script,0x160,8);put(f.script,0x164,1);f.cap=80;
+    const unsigned combat_classes[]{0x2248df04,0x224954a4,0x2249aaa4,0x224a416c,0x2248c514,0x2248e83c,0x2249964c,0x224a4a4c,0x2245222c,0x224aec3c};
+    const unsigned noncombat_classes[]{0x2245a554,0x22478d0c,0x2247875c,0x224776ac,0x2247a1e4,0x22477c8c,0x22478214,0x2247924c,0x2247ab9c};
+    unsigned cases=0;
+    for(unsigned vt:combat_classes)for(int reserve:{0,3}){
+        put(f.owner,0,vt);put(f.owner,0x650,reserve);put(f.owner,0x654,reserve);
+        for(unsigned slot:{0x330u,0x334u}){
+            ServerNpcWeaponAmmoResult o{};
+            if(!api.query(f.native_weapon,slot,&ab,&ammo,&o)||!o.completed||!o.owner_live||!o.combat_live||o.reserve!=reserve||o.available!=(reserve>0))return false;
+            ++cases;
+        }
+    }
+    for(unsigned vt:noncombat_classes){
+        put(f.owner,0,vt);
+        for(unsigned slot:{0x330u,0x334u}){
+            ServerNpcWeaponAmmoResult o{};
+            if(!api.query(f.native_weapon,slot,&ab,&ammo,&o)||!o.completed||!o.owner_live||o.combat_live||o.available!=(slot==0x330))return false;
+            ++cases;
+        }
+    }
+    put(f.owner,0,0xdeadbeefu);
+    ServerNpcWeaponAmmoResult o{};
+    if(api.query(f.native_weapon,0x330,&ab,&ammo,&o)||o.completed)return false;
+    // Explicit callback can still select a foreign/adjusted combat object.
+    ammo.combat_owner=combat_owner;f.combat=f.adjusted;put(f.adjusted,0x650,5);
+    if(!api.query(f.native_weapon,0x330,&ab,&ammo,&o)||!o.combat_live||o.reserve!=5||!o.available)return false;
+    std::printf("native owner-cast matrix %u authenticated-class cases plus unknown/override passed\n",cases);
+    return true;
+}
 bool range_matrix(const ServerNpcWeaponAmmoApi& api,Fixture& f,const Original* original){
     ServerWeaponScriptView script_view{};script_view.fallback=f.script;script_view.fallback_bytes=sizeof(f.script);
     ServerNpcWeaponAmmoBindings ammo{};ammo.scripts=&script_view;ammo.context=&f;ammo.combat_owner=combat_owner;ammo.max_carry=max_carry;
@@ -200,6 +237,6 @@ int main(int argc,char** argv){
     HMODULE dll=LoadLibraryA(self?argv[2]:argv[1]);if(!dll)return 2;
     auto getter=reinterpret_cast<GetServerNpcWeaponAmmoApi>(GetProcAddress(dll,server_npc_weapon_ammo_export));
     const auto* api=getter?getter(1,sizeof(ServerNpcWeaponAmmoApi)):nullptr;
-    const bool ok=api&&run_matrix(*api,f,self?nullptr:&original)&&range_matrix(*api,f,self?nullptr:&original);FreeLibrary(dll);
+    const bool ok=api&&run_matrix(*api,f,self?nullptr:&original)&&range_matrix(*api,f,self?nullptr:&original)&&native_cast_matrix(*api,f);FreeLibrary(dll);
     return ok?0:1;
 }

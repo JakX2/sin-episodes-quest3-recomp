@@ -598,10 +598,10 @@ int main(int argc,char** argv){
         unsigned char script[0x168]{};f.put(script,0x160,8);f.put(script,0x164,1);
         ServerWeaponScriptView scripts{};scripts.fallback=script;scripts.fallback_bytes=sizeof(script);
         ServerNpcWeaponAmmoBindings ammo{};ammo.scripts=&scripts;ammo.context=&equipped;
-        ammo.combat_owner=[](void* p,void* owner,void** out) noexcept -> int{assert(owner==static_cast<EquippedThinkFixture*>(p)->f->actor);*out=owner;return 1;};
+        // Original Grunt +fc returns this; no hosted owner cast needed.
         const ServerNpcWeaponPolicyBindings policy{&ammo,&weapon_melee};
         std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);
-        f.put(f.actor,0x908,88u);f.put(f.motor,0x14,0.f);f.put(f.actor,0xccc,-1);
+        f.put(f.actor,0,0x2249aaa4u);f.put(f.actor,0x908,88u);f.put(f.motor,0x14,0.f);f.put(f.actor,0xccc,-1);
         f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0xffffffffu);
         f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x650,3);
         f.put(equipped.weapon,0,0x2247875cu);f.put(equipped.weapon,0x494,0x3000u);
@@ -665,7 +665,7 @@ int main(int argc,char** argv){
         active.cone=&engaged_cone;active.combat_line=&engaged_combat;
         auto prepare_engaged=[&](int clip,int reserve){
             std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);
-            f.put(f.actor,0x908,88u);f.put(f.actor,0xccc,-1);f.put(f.actor,0x8a0,0x8002u);f.put(f.actor,0x8a8,0xffffffffu);
+            f.put(f.actor,0,0x2249aaa4u);f.put(f.actor,0x908,88u);f.put(f.actor,0xccc,-1);f.put(f.actor,0x8a0,0x8002u);f.put(f.actor,0x8a8,0xffffffffu);
             f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x650,reserve);f.put(f.actor,0x988,0x20000u);
             f.put(f.actor,0x984,601u);f.put(f.actor,0x8f8,604u);f.put(f.actor,0xa20,300.f);
             f.put(equipped.weapon,0x4ec,clip);f.put(equipped.weapon,0x4f0,1);
