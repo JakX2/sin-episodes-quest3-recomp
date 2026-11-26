@@ -282,9 +282,13 @@ struct ServerEntityAcceptInputBindings {
     // Use the recovered input-only projection of the four NPC datamaps.
     // Other inherited maps still require the original-shaped storage service.
     bool native_npc_datamaps;
+    // Native leaf inputs for authenticated NPC classes. now is the fixed
+    // frame time used by InputIgnoreDangerSounds.
+    bool native_npc_handlers;
+    float now;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {

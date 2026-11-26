@@ -1158,6 +1158,49 @@ int main(int argc,char** argv){
     };
     assert(accept->run(f.actor,sizeof(f.actor),ground_vt,901u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&catalog_b,&catalog_o)&&catalog_o.accepted&&catalog_o.row==33);
     assert(accept->run(f.actor,sizeof(f.actor),ground_vt,902u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&catalog_b,&catalog_o)&&catalog_o.completed&&!catalog_o.accepted&&catalog_o.reason==EntityInputUnknown&&catalog_o.native_maps==2&&catalog_f.fallback==1);
+    // Ten recovered concrete NPC inputs without the general handler host.
+    auto leaves=catalog_b;leaves.native_npc_handlers=true;leaves.handler=nullptr;leaves.now=31.f;
+    leaves.name_equal=[](void*,unsigned a,unsigned b,bool* same) noexcept -> int{*same=a==b;return 1;};
+    leaves.storage=&pb;f.actor[0x1f0]=1;
+    auto run_leaf=[&](unsigned name,unsigned type=0,unsigned payload=0,unsigned cls=0,unsigned bytes=0){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,type==0?0u:payload);f.put(inp.variant,0x10,type);
+        return accept->run(f.actor,bytes?bytes:sizeof(f.actor),cls?cls:ground_vt,name,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&leaves,&catalog_o);
+    };
+    for(unsigned cls:{ground_vt,0x2248df04u,vt}){
+        f.actor[0x968]=0;f.actor[0x200]=0;
+        assert(run_leaf(0x223db33cu,0,0,cls)&&catalog_o.accepted&&catalog_o.native_handler&&!catalog_o.handler_dirty&&f.actor[0x968]==1&&f.actor[0x200]);
+        assert(run_leaf(0x223db318u,0,0,cls)&&catalog_o.native_handler&&!f.actor[0x968]);
+        f.actor[0xc65]=0;
+        assert(run_leaf(0x22485b74u,0,0,cls)&&catalog_o.native_handler&&f.actor[0xc65]);
+        assert(run_leaf(0x22485b50u,0,0,cls)&&catalog_o.native_handler&&!f.actor[0xc65]);
+    }
+    f.put(f.actor,0xb4,0x80000000u);
+    assert(run_leaf(0x223db2fcu)&&catalog_o.native_handler&&catalog_o.handler_dirty==1&&f.get<unsigned>(f.actor,0xb4)==0x80000002u);
+    assert(run_leaf(0x223db2fcu)&&catalog_o.native_handler&&!catalog_o.handler_dirty);
+    assert(run_leaf(0x22490f34u)&&catalog_o.native_handler&&catalog_o.handler_dirty==1&&f.get<unsigned>(f.actor,0xb4)==0x80010002u);
+    assert(run_leaf(0x22490f20u)&&catalog_o.native_handler&&catalog_o.handler_dirty==1&&f.get<unsigned>(f.actor,0xb4)==0x80000002u);
+    assert(run_leaf(0x223db2d8u)&&catalog_o.native_handler&&catalog_o.handler_dirty==1&&f.get<unsigned>(f.actor,0xb4)==0x80000000u);
+    // The original flag helper dirties external state before mutating.
+    f.actor[0x1f0]=0;f.put(f.actor,0x16c,0x3333u);pf.dirty=0;
+    assert(run_leaf(0x223db2fcu)&&catalog_o.handler_dirty==1&&pf.dirty==1&&f.get<unsigned>(f.actor,0xb4)==0x80000002u);
+    f.put(f.actor,0x16c,0xdeadbeefu);
+    assert(!run_leaf(0x223db2d8u)&&!catalog_o.completed&&!catalog_o.handler_dirty&&f.get<unsigned>(f.actor,0xb4)==0x80000002u);
+    f.put(f.actor,0x16c,0u);f.actor[0x1f0]=1;
+    for(unsigned value:{0u,1u,0xffu}){
+        f.put(f.actor,0xc70,99.f);f.actor[0xc6c]=7;
+        assert(run_leaf(0x22490eecu,6u,value)&&catalog_o.native_handler&&f.get<unsigned>(f.actor,0xc70)==0&&f.actor[0xc6c]==value);
+    }
+    f.put(f.actor,0xc70,99.f);
+    assert(run_leaf(0x22490eecu,5u,256u)&&catalog_o.converted&&catalog_o.native_handler&&f.actor[0xc6c]==1&&!f.get<unsigned>(f.actor,0xc70));
+    for(float duration:{2.5f,0.f,-3.f}){
+        unsigned value=0;std::memcpy(&value,&duration,4);
+        assert(run_leaf(0x223db374u,1u,value)&&catalog_o.native_handler&&f.get<float>(f.actor,0xc0c)==31.f+(duration>0?duration:10.f));
+    }
+    assert(run_leaf(0x223db374u,1u,0x7fc00000u)&&catalog_o.native_handler&&f.get<float>(f.actor,0xc0c)==41.f);
+    assert(run_leaf(0x223db374u,5u,4u)&&catalog_o.converted&&f.get<float>(f.actor,0xc0c)==35.f);
+    assert(!run_leaf(0x22485b74u,0,0,ground_vt,0xc65u)&&!catalog_o.completed);
+    // Still-unrecovered concrete inputs never report a fake success.
+    assert(!run_leaf(0x223db434u,5u,100u)&&catalog_o.matched&&!catalog_o.completed&&!catalog_o.native_handler);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
