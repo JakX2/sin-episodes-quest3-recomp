@@ -2458,5 +2458,92 @@ int main(int argc,char** argv){
         put(pool.rows[0],0x18,0);
         assert(api->destroy_colorblend(f.storage,colorblend_extent,f.storage+0x160,&owner)&&f.destroyed.completed&&f.destroyed.outputs==1&&f.destroyed.released==1&&f.freed==1);
     }
+    {
+        alignas(4) unsigned char actor[colorblend_extent]{},selector[case_extent]{},target[relay_extent]{};
+        put(actor,0,colorblend_vtable);put(actor,0x378,0x4001u);actor[0x1f0]=1;
+        put(selector,0,case_vtable);put(selector,0x378,0x5002u);selector[0x1f0]=1;
+        put(target,0,relay_vtable);put(target,0x378,0x3000u);target[0x1f0]=1;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        struct BlendChain {ConnectedOutput* queue;ActionPool* pool;void* actor;void* selector;void* target;unsigned fired=0;} f{&co,&pool,actor,selector,target};
+        auto keys=kb;keys.context=&f;keys.native_output=&actions;
+        keys.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<BlendChain*>(p);*bytes=a==f.actor?colorblend_extent:a==f.selector?case_extent:0;return *bytes!=0;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            if(!std::strcmp(text,"selector"))*token=201;
+            else if(!std::strcmp(text,"InValue"))*token=0x2242014cu;
+            else if(!std::strcmp(text,"relay"))*token=202;
+            else if(!std::strcmp(text,"Disable"))*token=0x223edce8u;
+            else if(!std::strcmp(text,"135 100 127 127"))*token=401;
+            else return 0;return 1;
+        };
+        assert(api->key_value(actor,"inmin","2",&keys,&kr)&&api->key_value(actor,"inmax","6",&keys,&kr)&&api->key_value(actor,"colormin","16 100 255",&keys,&kr)&&api->key_value(actor,"colormax","255 101 0 255",&keys,&kr));
+        assert(api->key_value(actor,"OutColor","selector,InValue,,0,-1",&keys,&kr));
+        assert(api->key_value(selector,"Case01","135 100 127 127",&keys,&kr));
+        assert(api->key_value(selector,"OnCase01","relay,Disable,,0,1",&keys,&kr));
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<BlendChain*>(p);for(unsigned i=0;i<f.pool->used;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<BlendChain*>(p);assert(a==f.target&&c==f.selector&&action->action_id==42&&!action->variant_type);
+            ++f.fired;auto& q=*f.queue;nw::ServerEntityNamedEventQueueResult out{};
+            return q.api->enqueue(q.root,sizeof(q.root),99,q.now,0x3000u,0x5002u,action,&q.queue,&out);
+        };
+        fire.release=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& f=*static_cast<BlendChain*>(p);assert(row==f.pool->rows[1]&&token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(row)));++f.pool->released;return 1;
+        };
+        auto blend_fire=fire;blend_fire.enqueue=nullptr; // native COLOR32 enqueue
+        RelayQueueBindings route{};route.context=&f;route.root=co.root;route.root_token=98;route.queue=&co.queue;
+        route.handle=[](void* p,void* a,unsigned* handle) noexcept ->int{
+            auto& f=*static_cast<BlendChain*>(p);if(a==f.actor)*handle=0x4001u;else if(a==f.target)*handle=0x3000u;else return 0;return 1;
+        };
+        ColorBlendBindings blend{&blend_fire,&route};
+        CaseBindings cases{};cases.context=&f;cases.output=&fire;
+        cases.resolve_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            if(token!=401)return 0;*text="135 100 127 127";*bytes=16;return 1;
+        };
+        RelayBindings relay_behavior{};
+        nw::ServerNpcActivePostAnimationBindings storage{};
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&storage;input.math_colorblend=&blend;input.logic_case=&cases;input.relay=&relay_behavior;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            switch(token){
+                case 0x2242014cu:*text="InValue";break;
+                case 0x223edce8u:*text="Disable";break;
+                case 403:*text="4 trailing";break;
+                case 404:*text="iNvAlUe";break;
+                default:return 0;
+            }
+            *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        sin_independent::EntityHandleEntry entries[3]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(target);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        entries[2].serial=5;entries[2].entity=reinterpret_cast<CBaseEntity*>(selector);
+        nw::ServerEntitySearchBindings search{};search.context=&f;
+        search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<BlendChain*>(p);*bytes=a==f.actor?colorblend_extent:a==f.selector?case_extent:a==f.target?relay_extent:0;return *bytes!=0;
+        };
+        nw::ServerEntityEventServiceBindings delivery{};delivery.context=&f;delivery.entities.entries=entries;delivery.entities.count=3;delivery.native_input=&input;delivery.native_search=&search;delivery.live_now=&co.now;
+        delivery.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<BlendChain*>(p)->queue;return q.queue.resolve(q.queue.context,token,row,bytes);};
+        delivery.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<BlendChain*>(p)->queue;assert(q.locked!=enter);q.locked=enter;return 1;};
+        delivery.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** out) noexcept ->int{
+            auto& f=*static_cast<BlendChain*>(p);assert(f.queue->locked&&a==f.target&&(name==201||name==202)&&c==(name==201?f.actor:f.selector));*out=prev?nullptr:(name==201?f.selector:f.target);return 1;
+        };
+        delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<BlendChain*>(p)->queue;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=190.f;
+        co.queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};
+        unsigned incoming[5]{403,0x11223344u,0x55667788u,0xffffffffu,2};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2242014cu,0x3000,0x3000,incoming,sizeof(incoming),0.f,17,&co.queue,&cancel_qr));
+        assert(!service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&!co.locked&&co.alloc==1&&!co.released&&!word(actor,0x3a4));
+        route.root_token=99;
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==3&&!es.rejected_inputs&&!es.foreign_inputs&&f.fired==1&&co.released==3&&!word(co.root,0x30));
+        assert(word(actor,0x3a4)==0x7f7f6487u&&word(actor,0x3b4)==9&&target[0x3ac]==1&&actor[0x200]&&selector[0x200]&&target[0x200]&&pool.released==1&&!word(selector,0x3e8));
+        assert(word(co.rows[1],0x14)==41&&word(co.rows[1],0x1c)==0x7f7f6487u&&word(co.rows[1],0x2c)==9&&word(co.rows[1],0xc)==0x3000u&&word(co.rows[1],0x10)==0x4001u);
+        assert(word(co.rows[2],0x14)==42&&!word(co.rows[2],0x2c)&&word(co.rows[2],0x10)==0x5002u);
+        put(actor,0xb4,1u);actor[0x200]=selector[0x200]=target[0x200]=0;
+        unsigned outside[5]{9,0,0,0xffffffffu,5};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,404,0x3000,0x3000,outside,sizeof(outside),0.f,18,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&co.released==4&&!word(co.root,0x30));
+        assert(actor[0x200]&&!selector[0x200]&&!target[0x200]&&word(actor,0x3a4)==0x7f7f6487u);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
