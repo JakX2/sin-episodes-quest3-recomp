@@ -2694,4 +2694,32 @@ struct ServerNpcGruntAssaultResetApi {
     int (__cdecl *mode_ready)(void*,unsigned,const ServerNpcGruntAssaultResetBindings*,ServerNpcGruntAssaultResetResult*) noexcept; // 220cea90
 };
 using GetServerNpcGruntAssaultResetApi=const ServerNpcGruntAssaultResetApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_task_export[]="SiN_GetServerNpcGruntAssaultTaskApi";
+struct ServerNpcGruntAssaultTaskBindings {
+    const ServerNpcGruntAssaultNodeBindings* node; // same existing node/event/schedule services
+    ServerNpcConditionMapBindings behavior_schedules,owner_schedules;
+    void* context;
+    int (__cdecl *navigation_set)(void*,void*,std::uint32_t,int) noexcept; // nav +48
+    int (__cdecl *facing_error)(void*,void*,std::uint32_t,double*) noexcept; // 2206d1b0
+    int (__cdecl *owner_target)(void*,void*,bool*) noexcept; // +154, presence
+    int (__cdecl *debug_draw)(void*,void*,int) noexcept; // engine debug line + box for selected schedule
+    bool debug_enabled;
+};
+struct ServerNpcGruntAssaultTaskResult {
+    ServerNpcConditionResult condition;
+    int task,mode,submode,debug_schedule,global_schedule;
+    std::uint32_t navigation_token,request_value,handle;
+    unsigned completed,identity_valid,marker_cleared,marker_restored,navigation_called,facing_called,facing_ready,
+        condition_tests,reset_calls,primary_checked,primary_valid,node_flag,advance_called,secondary_valid,
+        request_called,mode_written,mode_ready,target_called,target_present,synthetic_called,
+        deadline_checked,deadline_elapsed,debug_checks,owner_maps,debug_called;
+    double facing_error;
+    float deadline;
+};
+struct ServerNpcGruntAssaultTaskApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntAssaultTaskBindings*,ServerNpcGruntAssaultTaskResult*,ServerNpcGruntAssaultNodeResult*,ServerNpcGruntRappelScheduleResult*) noexcept; // 220cf770
+};
+using GetServerNpcGruntAssaultTaskApi=const ServerNpcGruntAssaultTaskApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
