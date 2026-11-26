@@ -2887,4 +2887,39 @@ struct ServerNpcGruntScheduleAcquireApi {
     int (__cdecl *install)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,ServerNpcGruntScheduleAcquireResult*,ServerNpcGruntAssaultArbitrationResult*,ServerNpcScheduleStateResult*) noexcept; // 2204fe40
 };
 using GetServerNpcGruntScheduleAcquireApi=const ServerNpcGruntScheduleAcquireApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_schedule_request_export[]="SiN_GetServerNpcGruntScheduleRequestApi";
+struct ServerNpcGruntScheduleRequestBindings {
+    const ServerNpcGruntScheduleAcquireBindings* acquisition;
+    void* context;
+    int (__cdecl *state_changed)(void*,void*,int,int) noexcept; // owner +4d0
+    // Original 2204e670 conditional scene/animation query, only entered on its verified gate.
+    int (__cdecl *animation_schedule)(void*,void*,int*) noexcept;
+    // Original 2235e5b9..2235e6ec condition48 route. 0 continues to arbitration.
+    int (__cdecl *condition48_schedule)(void*,void*,int*) noexcept;
+    // Original 2235e6fb..2235e8aa tail; 0 means delegate at 2235e8aa.
+    int (__cdecl *normal_tail)(void*,void*,int*) noexcept;
+    // Jet no-winner non-state4 route 22366172; 0 means return to shared selection is not permitted.
+    int (__cdecl *jet_tail)(void*,void*,int*) noexcept;
+    // Follow +5c only; other seven embedded components clear marker and return 0.
+    int (__cdecl *follow_failure)(void*,void*,void*,int,int,int,int*) noexcept;
+};
+struct ServerNpcGruntScheduleRequestResult {
+    ServerNpcGruntScheduleAcquireResult acquisition;
+    ServerNpcGruntAssaultArbitrationResult selection,translation;
+    ServerNpcGruntAssaultActivationResult departure;
+    ServerNpcConditionResult condition;
+    int requested,owner_global,current_state,current_schedule,current_task,failure_reason;
+    std::uint32_t prior_active,final_active;
+    unsigned completed,marker_cleared,marker_used,deactivated,condition_tests,forced_schedule,
+        target_checked,state_changed,shared_selected,highlevel_selected,one_shot,
+        animation_called,condition48_called,arbitrated,tail_called,owner_global_written,
+        failure_marker_set,failure_marker_cleared,follow_called,failure_shared,failure_mapped;
+};
+struct ServerNpcGruntScheduleRequestApi {
+    std::uint32_t version,size;
+    int (__cdecl *choose)(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,ServerNpcGruntScheduleRequestResult*) noexcept; // 2216e900 -> 2204fe80
+    int (__cdecl *failure)(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,ServerNpcGruntScheduleRequestResult*) noexcept; // 2216e940 -> 2204e8a0
+};
+using GetServerNpcGruntScheduleRequestApi=const ServerNpcGruntScheduleRequestApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
