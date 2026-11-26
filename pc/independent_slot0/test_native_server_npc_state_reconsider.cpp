@@ -1803,7 +1803,7 @@ int main(int argc,char** argv){
         assert(g&&!GetProcAddress(c,server_npc_grunt_event_speech_export)&&!g(0,sizeof(ServerNpcGruntEventSpeechApi))&&!g(1,0));
         const auto* api=g(1,sizeof(ServerNpcGruntEventSpeechApi));assert(api);
         struct EventFixture{
-            unsigned char actor[0xdb2]{},other[0xdb2]{},group[0x58]{};
+            unsigned char actor[0x1088]{},other[0xdb2]{},group[0x58]{};
             sin_independent::EntityHandleEntry slots[3]{};
             int roll=1;float metric=240,range=2000;bool accept=true,visible=true;unsigned calls=0;
             const char* expected=nullptr;
@@ -1838,6 +1838,15 @@ int main(int argc,char** argv){
         assert(api->event(q.actor,sizeof(q.actor),1,15,&b,&er)&&er.metric_blocked&&!er.request.group_called);
         q.metric=241;q.expected="GRUNT_FLANK";
         assert(api->event(q.actor,sizeof(q.actor),1,15,&b,&er)&&er.completed&&er.request.group_called&&er.sentence.cooldown.squad_written&&q.calls==2);
+        auto eg=reinterpret_cast<GetServerNpcGruntBehaviorEventApi>(GetProcAddress(s,server_npc_grunt_behavior_event_export));
+        assert(eg);const auto* gate=eg(1,sizeof(ServerNpcGruntBehaviorEventApi));assert(gate);
+        ServerNpcGruntBehaviorEventBindings eb{};eb.speech=b;eb.actor_token=0x10000u;
+        f.put(q.actor,0xc14,0x2249aa40u);f.put(q.actor,0xc18,0x10cfcu);
+        f.put(q.actor,0xcfc,0x223f956cu);f.put(q.actor,0xd00,0x10000u);f.put(q.actor,0xd08,0x10c14u);
+        unsigned char raw[8]{};f.put(raw,0,0x54);f.put(raw,4,1.9f);
+        ServerNpcGruntBehaviorEventResult eo{};
+        q.metric=240;assert(gate->run(q.actor,sizeof(q.actor),raw,sizeof(raw),20,&eb,&eo)&&eo.marker_cleared&&eo.speech.metric_blocked&&q.calls==2);
+        q.metric=241;assert(gate->run(q.actor,sizeof(q.actor),raw,sizeof(raw),20,&eb,&eo)&&eo.speech.request.group_called&&eo.argument==1&&q.calls==3);
     }
 
     {
@@ -3190,6 +3199,48 @@ int main(int argc,char** argv){
         f.put(q.linked,0x3b4,0u);assert(run(1)&&!o.symbol_called&&o.parent_native&&q.symbol_calls==2);
         f.put(q.actor,0xeb8+0xc,0x10c10u);assert(!run(1)&&o.entered&&!o.identity_valid&&!o.parent_native);
         f.put(q.actor,0xc18,0u);assert(run(7)&&!o.entered&&o.full.translation.native_result==7);
+    }
+        {
+        auto g=reinterpret_cast<GetServerNpcGruntBehaviorEventApi>(GetProcAddress(s,server_npc_grunt_behavior_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_behavior_event_export)&&!g(0,sizeof(ServerNpcGruntBehaviorEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntBehaviorEventApi));assert(api);
+        struct EventGateFixture{
+            alignas(4) unsigned char actor[0x1088]{},raw[8]{};
+            unsigned shared=0,special=0,bypass=0;bool clear=false;std::uint32_t entry=0;
+        } q;
+        ServerNpcGruntBehaviorEventBindings b{};b.actor_token=0x10000u;b.context=&q;
+        b.speech.speech.sentence.speech.original_vtable=0x2249aaa4;
+        b.shared=[](void* p,void* a,const void* ev,unsigned en) noexcept -> int{
+            auto& q=*static_cast<EventGateFixture*>(p);assert(a==q.actor&&ev==q.raw&&en==8);++q.shared;return 1;};
+        b.special=[](void* p,void* a,void* v,unsigned n,std::uint32_t entry,const void* ev,unsigned en) noexcept -> int{
+            auto& q=*static_cast<EventGateFixture*>(p);assert(a==q.actor&&ev==q.raw&&en==8&&n>=0x10);
+            auto* x=static_cast<unsigned char*>(v);assert(x[8]==1);if(q.clear)x[8]=0;++q.special;q.entry=entry;return 1;};
+        b.event43=[](void* p,void* a,const void* ev,unsigned en) noexcept -> int{
+            auto& q=*static_cast<EventGateFixture*>(p);assert(a==q.actor&&ev==q.raw&&en==8);++q.bypass;return 1;};
+        f.put(q.actor,0xc14,0x2249aa40u);
+        auto configure=[&](unsigned off,unsigned vt){f.put(q.actor,0xc18,0x10000u+off);f.put(q.actor,off,vt);f.put(q.actor,off+4,0x10000u);f.put(q.actor,off+0xc,0x10c14u);};
+        ServerNpcGruntBehaviorEventResult o{};
+        auto run=[&](int id,float arg=2.f){f.put(q.raw,0,id);f.put(q.raw,4,arg);return api->run(q.actor,sizeof(q.actor),q.raw,sizeof(q.raw),10,&b,&o);};
+        const unsigned offsets[]{0xcfc,0xcd8,0xd20,0xda0,0xf88,0xdb8,0xde8,0xeb8};
+        const unsigned tables[]{0x223f956c,0x224abec4,0x224ae624,0x224ab88c,0x224ab494,0x223f5544,0x22495344,0x223f6b7c};
+        for(unsigned i=0;i<8;++i){
+            configure(offsets[i],tables[i]);assert(run(0x54,2.9f)&&o.identity_valid&&o.marker_set&&o.marker_cleared&&o.parent_called&&o.speech_native&&o.argument==2&&o.speech.ignored&&!o.special_called);
+            assert(run(99)&&o.marker_cleared&&o.parent_called&&!o.speech_native);
+        }
+        assert(q.shared==8&&!q.special&&!q.bypass);
+        configure(0xcfc,0x223f956c);
+        assert(run(13)&&o.special_called&&o.special_entry==0x220dea80&&o.marker_cleared&&o.parent_called);
+        assert(run(100001)&&o.special_called&&o.consumed&&q.entry==0x220debcd&&!o.parent_called);
+        q.clear=true;assert(run(100002)&&o.special_called&&o.marker_cleared&&o.parent_called);q.clear=false;
+        configure(0xcd8,0x224abec4);assert(run(100006)&&q.entry==0x22392999&&o.consumed);assert(run(100007)&&o.marker_cleared&&o.parent_called);
+        configure(0xdb8,0x223f5544);const unsigned before=q.special;assert(run(100010)&&o.consumed&&!o.special_called&&q.special==before);
+        configure(0xde8,0x22495344);q.actor[0xde8+0x60]=1;assert(run(0x62)&&o.marker_cleared&&o.parent_called);
+        q.actor[0xde8+0x60]=0;f.put(q.actor,0xde8+0x88,11.f);f.put(q.actor,0xde8+0x98,11.f);assert(run(0x62)&&o.special_entry==0x220e02e7&&o.consumed);
+        f.put(q.actor,0xde8+0x88,9.f);assert(run(0x62)&&o.marker_cleared&&o.parent_called);
+        configure(0xeb8,0x223f6b7c);assert(run(100010)&&q.entry==0x220d76b3&&o.consumed);
+        f.put(q.actor,0xc18,0x9999u);assert(run(0x43)&&o.bypass&&!o.marker_set&&q.bypass==1);assert(!run(0x54));
+        f.put(q.actor,0xc18,0u);assert(run(0x54,-2.9f)&&o.speech_native&&o.argument==-2&&o.speech.ignored&&!o.marker_set);
+        assert(run(0x54,std::numeric_limits<float>::infinity())&&o.argument==std::numeric_limits<int>::min()&&o.speech.ignored);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

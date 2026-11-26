@@ -2252,4 +2252,27 @@ struct ServerNpcGruntBehaviorActivityApi {
     int (__cdecl *run)(void*,unsigned,int,const ServerNpcGruntBehaviorActivityBindings*,ServerNpcGruntBehaviorActivityResult*) noexcept;
 };
 using GetServerNpcGruntBehaviorActivityApi=const ServerNpcGruntBehaviorActivityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_behavior_event_export[]="SiN_GetServerNpcGruntBehaviorEventApi";
+struct ServerNpcGruntBehaviorEventBindings {
+    ServerNpcGruntEventSpeechBindings speech;
+    std::uint32_t actor_token;
+    void* context;
+    // Case entry is provenance, not a callable retail address; same component storage must remain valid.
+    int (__cdecl *special)(void*,void*,void*,unsigned,std::uint32_t,const void*,unsigned) noexcept;
+    int (__cdecl *shared)(void*,void*,const void*,unsigned) noexcept;
+    int (__cdecl *event43)(void*,void*,const void*,unsigned) noexcept;
+};
+struct ServerNpcGruntBehaviorEventResult {
+    ServerNpcGruntEventSpeechResult speech;
+    std::uint32_t active_token,behavior_vtable,special_entry;
+    int event,argument;
+    unsigned completed,identity_valid,embedded_offset,marker_set,marker_cleared,special_called,consumed,parent_called,speech_native,bypass;
+};
+struct ServerNpcGruntBehaviorEventApi {
+    std::uint32_t version,size;
+    // Original 2202d930 gate; raw event begins with i32 ID and f32 argument.
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntBehaviorEventBindings*,ServerNpcGruntBehaviorEventResult*) noexcept;
+};
+using GetServerNpcGruntBehaviorEventApi=const ServerNpcGruntBehaviorEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

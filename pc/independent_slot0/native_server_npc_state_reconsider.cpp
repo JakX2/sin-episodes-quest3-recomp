@@ -4166,6 +4166,75 @@ int embedded_behavior_identity(void* a,unsigned n,std::uint32_t actor_vtable,std
        read<unsigned>(component,4)!=actor_token||read<unsigned>(component,0xc)!=parent)return 0;
     return 1;
 }
+int __cdecl grunt_behavior_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntBehaviorEventBindings* b,ServerNpcGruntBehaviorEventResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0xc1c||!ev||en<8||!b||!std::isfinite(now))return 0;
+    const auto vt=b->speech.speech.sentence.speech.original_vtable;
+    if(!relation_grunt_class(vt))return 0;
+    const int id=out->event=read<int>(ev,0);
+    auto done=[&](){out->completed=1;return 1;};
+    if(id==0x43){
+        out->bypass=1;if(!b->event43||!b->event43(b->context,a,ev,en))return 0;return done();
+    }
+    const auto active=out->active_token=read<unsigned>(a,0xc18);
+    if(active){
+        EmbeddedBehaviorIdentity identity{};
+        if(!embedded_behavior_identity(a,n,vt,b->actor_token,active,false,identity))return 0;
+        out->identity_valid=1;out->embedded_offset=identity.embedded_offset;out->behavior_vtable=identity.behavior_vtable;
+        auto* p=static_cast<unsigned char*>(a)+identity.embedded_offset;
+        const unsigned extent=n-identity.embedded_offset;
+        const auto index=static_cast<std::uint32_t>(id)-100000u;
+        std::uint32_t entry=0;bool force_default=false,no_op=false;
+        switch(identity.behavior_vtable){
+        case 0x223f956c:
+            if(id==13){entry=0x220dea80;force_default=true;}
+            else if(index<3){constexpr std::uint32_t k[]{0x220deab5,0x220debcd,0x220debae};entry=k[index];}
+            break;
+        case 0x224abec4:
+            if(index<7){constexpr std::uint32_t k[]{0x223929d1,0x22392a9a,0x22392b81,0x22392bb5,0x22392c6b,0x22392d85,0x22392999};entry=k[index];}break;
+        case 0x224ae624:
+            if(index<6){constexpr std::uint32_t k[]{0x2239971e,0x2239982d,0x22399940,0x22399955,0x223996e5,0x22399678};entry=k[index];}break;
+        case 0x224ab494:
+            if(index<6){constexpr std::uint32_t k[]{0x2238eb62,0x2238eda1,0x2238ee4c,0x2238eeb8,0x2238ef4e,0x2238ef97};entry=k[index];}break;
+        case 0x223f5544:
+            if(index<12){constexpr std::uint32_t k[]{0x220cf21e,0x220cf1d9,0x220cf2f6,0x220cf4aa,0x220cf424,0x220cf4ff,0x220cf67d,0x220cf631,0x220cf5a2,0x220cf600,0x220cf740,0x220cf582};entry=k[index];no_op=index==10;}break;
+        case 0x22495344:
+            if(id==0x62){
+                if(extent<0x9c)return 0;
+                if(!read<std::uint8_t>(p,0x60)){
+                    const float stamp=read<float>(p,0x88),deadline=read<float>(p,0x98);
+                    if(!std::isfinite(stamp)||!std::isfinite(deadline))return 0;
+                    if(static_cast<double>(now)-stamp<=-0.001||static_cast<double>(now)-deadline>-0.001)entry=0x220e02e7;
+                }
+            }break;
+        case 0x223f6b7c:
+            if(id==0x62)entry=0x220d705b;
+            else if(index<11){constexpr std::uint32_t k[]{0x220d703e,0x220d72df,0x220d71b0,0x220d714b,0x220d725d,0x220d72df,0x220d7589,0x220d75ae,0x220d76dc,0x220d75d8,0x220d76b3};entry=k[index];}break;
+        case 0x224ab88c:break;
+        default:return 0;
+        }
+        out->special_entry=entry;
+        if(entry&&!no_op&&!b->special)return 0;
+        write<std::uint8_t>(p,8,1);out->marker_set=1;
+        if(entry&&!no_op){
+            out->special_called=1;if(!b->special(b->context,a,p,extent,entry,ev,en))return 0;
+        }
+        if(!entry||force_default)write<std::uint8_t>(p,8,0);
+        out->marker_cleared=read<std::uint8_t>(p,8)==0;
+        if(!out->marker_cleared){out->consumed=1;return done();}
+    }
+    out->parent_called=1;
+    if(id==0x54){
+        const double value=std::trunc(static_cast<double>(read<float>(ev,4)));
+        out->argument=std::numeric_limits<int>::min();
+        if(std::isfinite(value)&&value>=std::numeric_limits<int>::min()&&value<=std::numeric_limits<int>::max())out->argument=static_cast<int>(value);
+        out->speech_native=1;
+        if(!grunt_event_speech(a,n,static_cast<unsigned>(out->argument),now,&b->speech,&out->speech))return 0;
+    }else if(!b->shared||!b->shared(b->context,a,ev,en))return 0;
+    return done();
+}
+const ServerNpcGruntBehaviorEventApi behavior_event_api{1,sizeof(ServerNpcGruntBehaviorEventApi),&grunt_behavior_event};
+
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
     auto& result=*route.behavior->result;
@@ -5961,4 +6030,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorActivityApi=_SiN_GetServerNpcGruntBehaviorActivityApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorActivityApi* __cdecl SiN_GetServerNpcGruntBehaviorActivityApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorActivityApi)?&behavior_activity_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorEventApi=_SiN_GetServerNpcGruntBehaviorEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorEventApi* __cdecl SiN_GetServerNpcGruntBehaviorEventApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorEventApi)?&behavior_event_api:nullptr;
 }
