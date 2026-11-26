@@ -526,7 +526,13 @@ int logic_kill_requested(unsigned,unsigned,const ServerEntityAcceptInputBindings
 int __cdecl search_named(void*,unsigned,void*,void*,const ServerEntitySearchBindings*,ServerEntitySearchResult*) noexcept;
 int __cdecl search_class(void*,unsigned,const ServerEntitySearchBindings*,ServerEntitySearchResult*) noexcept;
 int __cdecl accept_input(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*) noexcept;
-int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings* b,ServerEntityEventServiceResult* o) noexcept {
+int accept_input_impl(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*,
+    const native_map::CampaignFilterInputBindings*,native_map::CampaignFilterInputResult*) noexcept;
+int service_events_impl(void* sentinel,unsigned n,std::uint32_t root,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings* b,ServerEntityEventServiceResult* o,
+    const native_map::CampaignFilterInputBindings* filters=nullptr,CampaignFilterServiceSummary* summary=nullptr) noexcept {
+    if(summary)*summary={};
+    if(filters&&(!summary||!b||!b->native_input||!b->native_search||!filters->predicate||!filters->native_queue||
+        filters->native_queue->root!=sentinel||filters->native_queue->root_token!=root))return 0;
     if(!o)return 0;*o={};
     if(!sentinel||n<0x38||!root||!b||(!b->live_now&&!std::isfinite(now))||((single_step||b->live_single_step)&&!steps))return 0;
     if(b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
@@ -559,7 +565,7 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
             const unsigned vt=rd<unsigned>(entity,0);
             const int shared_kill=logic_kill_requested(vt,input,*b->native_input);
             if(shared_kill<0)return false;
-            if(shared_kill||input_datamap(vt)||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)||
+            if(shared_kill||input_datamap(vt)||(filters&&native_map::campaign_filter_class(vt))||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)||
                (vt==sin_port::native_map::relay_vtable&&b->native_input->relay)||
                (vt==sin_port::native_map::timer_vtable&&b->native_input->timer)||
                (vt==sin_port::native_map::branch_vtable&&b->native_input->branch)||
@@ -692,7 +698,16 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                     bound.timer=&timer;
                 }
                 ServerEntityAcceptInputResult result{};
-                if(!accept_input(entity,bytes,vt,input,activator,caller,variant,0x14,id,&bound,&result)||!result.completed)return false;
+                if(filters&&native_map::campaign_filter_class(vt)){
+                    auto pred=*filters->predicate;pred.entries=b->entities.entries;pred.entry_count=b->entities.count;
+                    auto queue=*filters->native_queue;queue.root_bytes=n;queue.entries=b->entities.entries;queue.entry_count=b->entities.count;
+                    queue.now=b->live_now?b->live_now:&bound.now;queue.protected_node=&dispatch_token;
+                    auto route=*filters;route.predicate=&pred;route.native_queue=&queue;
+                    native_map::CampaignFilterInputResult fr{};++summary->attempted;
+                    const bool ok=accept_input_impl(entity,bytes,vt,input,activator,caller,variant,0x14,id,&bound,&result,&route,&fr)!=0;
+                    summary->completed+=fr.completed;summary->passed+=fr.pass_output;summary->failed+=fr.fail_output;summary->queued+=fr.native_queued;
+                    if(!ok||!result.completed)return false;
+                }else if(!accept_input(entity,bytes,vt,input,activator,caller,variant,0x14,id,&bound,&result)||!result.completed)return false;
                 // Retail ignores the virtual AcceptInput return. A rejected
                 // input is a completed delivery, not a missing target.
                 ++o->native_inputs;if(!result.accepted)++o->rejected_inputs;return true;
@@ -772,6 +787,9 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
     if(!rd<unsigned>(sentinel,0x30)){o->completed=1;return 1;}
     return 0;
 }
+int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings* b,ServerEntityEventServiceResult* o) noexcept {
+    return service_events_impl(sentinel,n,root,now,single_step,steps,b,o);
+}
 const ServerEntityEventServiceApi event_service_api{1,sizeof(ServerEntityEventServiceApi),&service_events};
 // Verified +34 datamap getters and +90 AcceptInput on the eight Grunt
 // primary tables. Unknown classes are not silently treated as a Grunt.
@@ -843,7 +861,7 @@ bool search_handle(void* entity,const ServerEntitySearchBindings& b,unsigned& ha
     // Search continuation must read the same full serial handle, not
     // delegate the second FindEntityByName call to a foreign callback.
     if(input_datamap(vt)||vt==sin_port::native_resupply::resupply_vtable||
-       sin_port::native_map::campaign_player_marker(vt)!=sin_port::native_map::PlayerPredicate::Unknown){
+       sin_port::native_map::campaign_player_marker(vt)!=sin_port::native_map::PlayerPredicate::Unknown||sin_port::native_map::campaign_filter_class(vt)){
         if(bytes<0x37c)return false;handle=rd<unsigned>(entity,0x378);return true;
     }
     return b.foreign_handle&&b.foreign_handle(b.context,entity,&handle)!=0;
@@ -2447,7 +2465,7 @@ constexpr NativeInputRow trigger_control_inputs[]{
 };
 constexpr NativeInputRow filter_inputs[]{{1,20,0x22414844u,0x2216b300u,"TestActivator"}};
 constexpr NativeInputMap filter_base_map{0x224f8a44u,0x224f0350u,4,filter_inputs,1};
-constexpr NativeInputMap filter_multi_map{0x224f8a5cu,0x224f8a44u,11,nullptr,0};
+constexpr NativeInputMap filter_multi_map{0x224f8a5cu,0x224f8a44u,7,nullptr,0};
 constexpr NativeInputMap filter_name_map{0x224f8a74u,0x224f8a44u,1,nullptr,0};
 constexpr NativeInputMap filter_class_map{0x224f8a8cu,0x224f8a44u,1,nullptr,0};
 const NativeInputMap* filter_input_map(unsigned token) noexcept {
@@ -3041,4 +3059,12 @@ extern "C" int __cdecl SiN_AcceptCampaignFilterInput(void* a,unsigned n,unsigned
     const sin_port::native_map::CampaignFilterInputBindings* filters,sin_port::native_map::CampaignFilterInputResult* result) noexcept {
     if(o)*o={};if(result)*result={};
     return filters&&result&&sin_port::native_weapon_tables::accept_input_impl(a,n,vt,input,activator,caller,variant,vn,id,b,o,filters,result);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_ServiceCampaignFilterEvents=_SiN_ServiceCampaignFilterEvents")
+extern "C" int __cdecl SiN_ServiceCampaignFilterEvents(void* root,unsigned bytes,unsigned token,float now,bool stepping,int* steps,
+    const sin_port::native_weapon_tables::ServerEntityEventServiceBindings* b,sin_port::native_weapon_tables::ServerEntityEventServiceResult* o,
+    const sin_port::native_map::CampaignFilterInputBindings* filters,sin_port::native_weapon_tables::CampaignFilterServiceSummary* summary) noexcept {
+    if(o)*o={};if(summary)*summary={};
+    return filters&&summary&&sin_port::native_weapon_tables::service_events_impl(root,bytes,token,now,stepping,steps,b,o,filters,summary);
 }
