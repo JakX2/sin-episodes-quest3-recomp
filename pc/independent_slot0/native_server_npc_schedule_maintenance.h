@@ -101,4 +101,10 @@ struct ServerNpcGatherSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerNpcGatherSchedulerBindings*,ServerNpcGatherSchedulerResult*) noexcept;
 };
 using GetServerNpcGatherSchedulerApi=const ServerNpcGatherSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Internal synchronous route; no change to legacy scheduler binding layouts.
+struct ServerNpcNativeGatherRoute {
+    const ServerNpcGruntGatherNativeBindings* bindings;
+    ServerNpcGruntGatherNativeResult* result;
+    unsigned* calls;
+};
 }

@@ -158,4 +158,15 @@ struct ServerNpcTacticalCoverCatalogSchedulerApi {
     int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,ServerNpcTacticalCoverCatalogSchedulerResult*) noexcept;
 };
 using GetServerNpcTacticalCoverCatalogSchedulerApi=const ServerNpcTacticalCoverCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_native_gather_catalog_scheduler_export[]="SiN_GetServerNpcNativeGatherCatalogSchedulerApi";
+struct ServerNpcNativeGatherCatalogSchedulerResult {
+    ServerNpcTacticalCoverCatalogSchedulerResult scheduler;
+    ServerNpcGruntGatherNativeResult gather;
+    unsigned gather_calls;
+};
+struct ServerNpcNativeGatherCatalogSchedulerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,float,const ServerScheduleImage*,const ServerNpcScheduleServicesBindings*,const ServerGruntHelperTaskBindings*,const ServerNpcSharedAttackBindings*,const ServerNpcSharedFacingBindings*,const ServerNpcSharedTargetAnimationBindings*,const ServerNpcSharedMovementBindings*,const ServerNpcSharedCueBindings*,const ServerNpcSharedObservationBindings*,const ServerNpcSharedSoundCoverBindings*,const ServerNpcSharedTacticalCoverBindings*,const ServerNpcGruntGatherNativeBindings*,ServerNpcNativeGatherCatalogSchedulerResult*) noexcept;
+};
+using GetServerNpcNativeGatherCatalogSchedulerApi=const ServerNpcNativeGatherCatalogSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
