@@ -568,8 +568,8 @@ int main(int argc,char** argv){
     // Active, equipped NPC with no enemy: native ammo must run at both +420
     // call sites. Deliberately stop after the second gather at ideal-state query.
     {
-        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{};unsigned queries=0;} equipped{&f};
-        sin_independent::EntityHandleEntry equipped_entries[2]{};
+        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{};unsigned queries=0,traces=0;} equipped{&f};
+        sin_independent::EntityHandleEntry equipped_entries[3]{};
         equipped_entries[0].serial=3;equipped_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
         equipped_entries[1].serial=7;equipped_entries[1].entity=reinterpret_cast<CBaseEntity*>(equipped.weapon);
         const auto previous_entities=selection.state.entities;
@@ -583,7 +583,7 @@ int main(int argc,char** argv){
         };
         auto extent=[](void* p,void* e,unsigned* n) noexcept -> int{
             auto& q=*static_cast<EquippedThinkFixture*>(p);
-            if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.weapon)*n=sizeof(q.weapon);else return 0;return 1;
+            if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.weapon)*n=sizeof(q.weapon);else if(e==q.enemy)*n=sizeof(q.enemy);else return 0;return 1;
         };
         req_schedule.admission.context=&equipped;req_schedule.admission.extent=extent;
         auto active=combat_bind;
@@ -613,6 +613,84 @@ int main(int argc,char** argv){
         assert(cycle.maintenance_called&&cycle.scheduler.gather_calls==1&&cycle.scheduler.gather.gather.completed&&equipped.queries==1);
         assert(outer_weapon.primary.reserve==3&&inner_weapon.primary.reserve==3&&outer_weapon.primary.available&&inner_weapon.primary.available);
         assert(outer_weapon.secondary.completed&&inner_weapon.secondary.completed&&!outer_weapon.secondary.available&&!inner_weapon.secondary.available);
+        // Repeat the same full exported route with a visible living enemy.
+        // A pre-existing enemy-memory record avoids requiring a hosted allocator.
+        equipped_entries[2].serial=8;equipped_entries[2].entity=reinterpret_cast<CBaseEntity*>(equipped.enemy);
+        selection.state.entities.count=3;
+        auto storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);
+            switch(token){
+            case 601:*out=q.memory;*n=sizeof(q.memory);return 1;
+            case 602:*out=q.node;*n=sizeof(q.node);return 1;
+            case 603:*out=q.record;*n=sizeof(q.record);return 1;
+            case 604:*out=q.nav;*n=sizeof(q.nav);return 1;
+            case 605:*out=q.path;*n=sizeof(q.path);return 1;
+            default:return 0;
+            }
+        };
+        auto key=[](void* p,void* e,std::uint32_t* out) noexcept -> int{
+            if(e!=static_cast<EquippedThinkFixture*>(p)->enemy)return 0;*out=1000;return 1;
+        };
+        auto center=[](void* p,void* e,float* v) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);
+            if(e!=q.enemy&&e!=q.f->actor)return 0;
+            v[0]=e==q.enemy?100.f:0.f;v[1]=v[2]=0;return 1;
+        };
+        auto& post=gather.base.post;
+        auto& vis=post.aux.visibility;
+        vis.memory.context=&equipped;vis.memory.storage.context=&equipped;vis.memory.storage.storage=storage;vis.memory.entity_key=key;
+        vis.trace=[](void* p,void* a,void* e,unsigned mask,bool* yes,void** blocker) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(a==q.f->actor&&e==q.enemy&&mask==0x4081u);*yes=true;*blocker=nullptr;return 1;
+        };
+        vis.in_view=[](void*,void*,void*,bool* yes) noexcept -> int{*yes=true;return 1;};
+        post.combat.range.visibility=vis;
+        post.combat.range.context=&equipped;post.combat.range.center=center;post.combat.range.origin=center;
+        post.combat.range.velocity=[](void*,void*,float* v) noexcept -> int{v[0]=v[1]=v[2]=0;return 1;};
+        post.combat.range.enemy_facing_actor=[](void*,void*,void*,bool* yes) noexcept -> int{*yes=true;return 1;};
+        auto& mutation=post.combat.range.report.mutation;
+        mutation.context=&equipped;mutation.storage=vis.memory.storage;mutation.entity_key=key;
+        post.aux.goals.memory=vis.memory;float refresh_deadline=1000.f;post.aux.goals.global_deadline=&refresh_deadline;
+        auto& attack_binding=post.combat.attack;
+        attack_binding.context=&equipped;attack_binding.origin=center;
+        attack_binding.forward=[](void*,void*,float* v) noexcept -> int{v[0]=1;v[1]=v[2]=0;return 1;};
+        attack_binding.aim_point=[](void*,void*,const float*,float* v) noexcept -> int{v[0]=100;v[1]=v[2]=0;return 1;};
+        attack_binding.line=nullptr;attack_binding.weapon_caps=nullptr;attack_binding.weapon_condition=nullptr;
+        auto engaged_line=req_line;engaged_line.context=&equipped;
+        engaged_line.shoot_position=[](void*,void*,float* v) noexcept -> int{v[0]=v[1]=v[2]=0;return 1;};
+        engaged_line.line_trace=[](void* p,void* a,const float*,const float* end,unsigned mask,int group,float* fraction,void** hit) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(a==q.f->actor&&end[0]==100&&mask==0x46004003u&&group==6);++q.traces;*fraction=1;*hit=nullptr;return 1;
+        };
+        auto engaged_cone=req_cone;engaged_cone.line=&engaged_line;
+        auto engaged_combat=think_line;engaged_combat.line=&engaged_line;engaged_combat.cone=&engaged_cone;
+        active.cone=&engaged_cone;active.combat_line=&engaged_combat;
+        auto prepare_engaged=[&](int clip,int reserve){
+            std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);
+            f.put(f.actor,0x908,88u);f.put(f.actor,0xccc,-1);f.put(f.actor,0x8a0,0x8002u);f.put(f.actor,0x8a8,0xffffffffu);
+            f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x650,reserve);f.put(f.actor,0x988,0x20000u);
+            f.put(f.actor,0x984,601u);f.put(f.actor,0x8f8,604u);f.put(f.actor,0xa20,300.f);
+            f.put(equipped.weapon,0x4ec,clip);f.put(equipped.weapon,0x4f0,1);
+            f.put(equipped.weapon,0x4f8,50.f);f.put(equipped.weapon,0x500,300.f);
+            f.put(equipped.memory,0,0x22068d70u);f.put(equipped.memory,4,602u);f.put(equipped.memory,8,1u);
+            f.put(equipped.memory,0x18,0x22068b40u);equipped.memory[0x10]=0;
+            equipped.node[0]=equipped.node[1]=255;f.put(equipped.node,4,1000u);f.put(equipped.node,8,603u);
+            f.put(equipped.record,0,0x8002u);f.put(equipped.record,4,100.f);f.put(equipped.record,0x1c,69.f);
+            f.put(equipped.nav,0x24,605u);equipped.nav[0x3a]=1;
+            equipped.queries=equipped.traces=0;
+        };
+        auto run_engaged=[&](float now){
+            return weapon_think->run(f.actor,sizeof(f.actor),now,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&active,&req_run,&outer_line,&inner_line,&policy,&outer_weapon,&inner_weapon);
+        };
+        for(int mode=0;mode<3;++mode){
+            prepare_engaged(mode==0?2:0,mode==1?3:0);
+            const int expected=mode==2?4:20;
+            assert(!run_engaged(69.4962f));
+            assert(cycle.outer_gather.gather.completed&&cycle.scheduler.gather.gather.completed&&cycle.maintenance_called&&cycle.scheduler.gather_calls==1&&equipped.queries==1);
+            assert(cycle.outer_gather.gather.base.post.combat.attack_called&&cycle.scheduler.gather.gather.base.post.combat.attack_called);
+            assert(outer_line.attack.conditions[0]==expected&&inner_line.attack.conditions[0]==expected&&outer_line.attack.line_clear&&inner_line.attack.line_clear&&equipped.traces==2);
+            assert(outer_weapon.primary.available==(mode!=2)&&inner_weapon.primary.available==(mode!=2));
+            assert(cycle.outer_gather.gather.base.post.combat.range.report.mutation.updated&&cycle.scheduler.gather.gather.base.post.combat.range.report.mutation.updated);
+            assert(outer_weapon.secondary.clip_positive&&inner_weapon.secondary.clip_positive);
+        }
         selection.state.entities=previous_entities;selection.state.state_query=previous_query;selection.state.context=previous_context;
         req_schedule.admission=previous_admission;
     }

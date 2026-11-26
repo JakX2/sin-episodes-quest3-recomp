@@ -1,0 +1,3 @@
+# Phase 1308: Enemy-engaged weapon policy through both gathers
+
+Extend the Phase1303 exported outer-think fixture with a live visible enemy, existing native memory record, registered weapon owner and deterministic line trace. Three scenarios: loaded primary clip, empty clip with owner reserve, completely depleted primary. Expect native attack conditions 20/20/4 in both gathers, secondary clip availability and updated memory record. Intentionally fail the state query after the second completed gather to isolate combat integration; no claim of complete task execution or real engine parity. Existing engine callbacks are synthetic. Windows CI pending.
