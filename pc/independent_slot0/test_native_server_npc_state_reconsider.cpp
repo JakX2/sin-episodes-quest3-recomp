@@ -3883,5 +3883,55 @@ int main(int argc,char** argv){
         q.target=false;q.primary[0x3b9]=0;assert(admit(20)&&!o.admitted&&!o.hold_checked&&p[0x26]);
         p[0x26]=0;assert(admit(20)&&o.admitted&&!o.hold_checked);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntAssaultScheduleApi>(GetProcAddress(s,server_npc_grunt_assault_schedule_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_assault_schedule_export)&&!g(0,sizeof(ServerNpcGruntAssaultScheduleApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntAssaultScheduleApi));assert(api);
+        struct ScheduleFixture {
+            alignas(4) unsigned char a[0xde8]{},primary[0x3c0]{},secondary[0x3c0]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[4]{};
+            float dx=36,dy=0,dz=100;bool target=false,raise4=false;unsigned parents=0;
+            static ScheduleFixture& self(void* p){return *static_cast<ScheduleFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.secondary);
+        q.entries[3].serial=3;q.entries[3].entity=reinterpret_cast<CBaseEntity*>(q.a);
+        ServerNpcGruntAssaultScheduleBindings b{};auto& ab=b.admission;
+        ab.entries=q.entries;ab.count=4;ab.actor_vtable=0x2249aaa4;ab.actor_token=0x10000;ab.context=&q;b.context=&q;
+        ab.conditions.context=&q;ab.conditions.descriptor=[](void* p,void*,const void** d,unsigned* n) noexcept -> int{auto& q=ScheduleFixture::self(p);*d=q.desc;*n=sizeof(q.desc);return 1;};
+        ab.owner_target=[](void* p,void*,bool* v) noexcept -> int{*v=ScheduleFixture::self(p).target;return 1;};
+        ab.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& q=ScheduleFixture::self(p);assert(e==q.primary||e==q.secondary);*n=sizeof(q.primary);return 1;};
+        b.origin=[](void* p,void* e,float* v) noexcept -> int{auto& q=ScheduleFixture::self(p);assert(e==q.a||e==q.primary||e==q.secondary);v[0]=e==q.a?q.dx:0;v[1]=e==q.a?q.dy:0;v[2]=e==q.a?q.dz:0;if(q.raise4){std::uint32_t x=16;std::memcpy(q.a+0x7cc,&x,4);}return 1;};
+        b.parent_schedule=[](void* p,void*,int* v) noexcept -> int{++ScheduleFixture::self(p).parents;*v=1234;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
+        auto* p=q.a+0xdb8;f.put(p,0x14,0x1001u);f.put(p,0x18,0x2002u);f.put(p,0x1c,3);f.put(p,0x20,2);
+        ServerNpcGruntAssaultScheduleResult o{};
+        auto select=[&](int expected){assert(api->select(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.schedule==expected);};
+        f.put(q.a,0x7d0,(1u<<30)|(1u<<16));f.put(q.a,0x7cc,1u<<22);select(100007);assert(o.condition_tests==1);
+        f.put(q.a,0x7d0,1u<<16);select(26);assert(o.condition_tests==2);
+        f.put(q.a,0x7d0,0u);select(39);f.put(q.a,0x7cc,16u);select(49);f.put(q.a,0x7cc,0u);
+        select(100000);assert(o.signal==1002&&o.signal_ignored&&!o.distance_called);
+        p[0x24]=1;q.dx=36.01f;select(100000);assert(o.secondary_flag_cleared&&o.distance_squared>1296&&!o.signal_ignored);
+        p[0x24]=1;q.dx=36;select(100004);assert(o.distance_squared==1296&&p[0x24]);
+        f.put(q.a,0x7cc,1u<<20);select(41);f.put(q.a,0x7cc,1u<<16);select(5);assert(o.signal==1005);
+        f.put(q.a,0x7cc,1u<<17);select(5);assert(o.signal==1005);
+        f.put(q.a,0x7cc,0u);q.target=true;select(11);f.put(q.a,0x7cc,1u<<21);select(100004);
+        f.put(q.a,0x7cc,0u);q.target=false;f.put(p,0x20,3);f.put(q.secondary,0x3bc,0x3003u);
+        select(100003);assert(o.signal==1003&&o.reservation_released);
+        f.put(q.secondary,0x3bc,0x1001u);select(100003);assert(o.reservation_checked&&!o.reservation_released);
+        f.put(p,0x20,4);select(100003);
+        f.put(p,0x20,2);p[0x25]=1;q.dx=36.01f;select(100004);assert(o.primary_flag_cleared);
+        p[0x25]=1;q.dx=36;q.primary[0xb4]=1;select(100008);q.primary[0xb4]=0;
+        select(100006);q.target=true;f.put(q.a,0x7cc,1u<<10);select(1234);assert(o.parent_called&&q.parents==1);
+        f.put(q.a,0x7cc,0u);q.raise4=true;select(48);assert(o.signal==1004);q.raise4=false;f.put(q.a,0x7cc,0u);
+        p[0x25]=0;q.raise4=true;select(49);q.raise4=false;f.put(q.a,0x7cc,0u);
+        p[0x24]=p[0x25]=p[0x26]=1;f.put(q.secondary,0x3bc,0x3003u);
+        assert(api->deactivate(q.a,sizeof(q.a),&b,&o)&&o.reservation_released&&!p[0x24]&&!p[0x25]&&p[0x26]);
+        f.put(q.secondary,0x3bc,0x1001u);assert(api->deactivate(q.a,sizeof(q.a),&b,&o)&&o.reservation_checked&&!o.reservation_released);
+        f.put(q.secondary,0x3bc,0x9001u);assert(api->deactivate(q.a,sizeof(q.a),&b,&o)&&o.reservation_released);
+        f.put(p,0x18,0x9002u);assert(api->deactivate(q.a,sizeof(q.a),&b,&o)&&!o.reservation_checked);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

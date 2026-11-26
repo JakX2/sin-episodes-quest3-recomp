@@ -4929,6 +4929,99 @@ int __cdecl assault_admit(void* a,unsigned n,float now,const ServerNpcGruntAssau
 }
 const ServerNpcGruntAssaultAdmissionApi assault_admission_api{1,sizeof(ServerNpcGruntAssaultAdmissionApi),&assault_validate,&assault_set_submode,&assault_admit};
 
+
+bool assault_schedule_init(void* a,unsigned n,const ServerNpcGruntAssaultScheduleBindings* b,ServerNpcGruntAssaultScheduleResult* o,void*& p) noexcept{
+    if(!o)return false;*o={};o->schedule=o->last_condition=o->signal=-1;o->reservation=0xffffffffu;
+    o->condition.global=o->condition.bit=-1;
+    return b&&assault_admission_init(a,n,&b->admission,&o->admission,p);
+}
+// Original 220ce4a0: release only an unowned/stale reservation or the requesting actor's.
+bool assault_release_reservation(void* a,void* node,const sin_independent::EntityHandleView& registry,std::uint32_t& handle) noexcept{
+    handle=read<unsigned>(node,0x3bc);
+    if(registry.Resolve(handle)&&registry.Resolve(read<unsigned>(node,0x3bc))!=a)return false;
+    write(node,0x3bc,0xffffffffu);return true;
+}
+bool assault_schedule_release(void* a,void* p,const ServerNpcGruntAssaultScheduleBindings& b,ServerNpcGruntAssaultScheduleResult& o) noexcept{
+    const auto& ab=b.admission;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    void* q=registry.Resolve(read<unsigned>(p,0x18));if(!q)return true;
+    q=registry.Resolve(read<unsigned>(p,0x18));unsigned size=0;
+    if(!q||!ab.extent||!ab.extent(ab.context,q,&size)||size<0x3c0)return false;
+    o.reservation_checked=1;o.reservation_released=assault_release_reservation(a,q,registry,o.reservation);return true;
+}
+int __cdecl assault_deactivate(void* a,unsigned n,const ServerNpcGruntAssaultScheduleBindings* b,ServerNpcGruntAssaultScheduleResult* o) noexcept{
+    void* p=nullptr;if(!assault_schedule_init(a,n,b,o,p))return 0;
+    write<std::uint8_t>(p,0x24,0);write<std::uint8_t>(p,0x25,0);
+    o->secondary_flag_cleared=o->primary_flag_cleared=1;
+    if(!assault_schedule_release(a,p,*b,*o))return 0;
+    o->completed=1;return 1;
+}
+int __cdecl assault_select_schedule(void* a,unsigned n,const ServerNpcGruntAssaultScheduleBindings* b,ServerNpcGruntAssaultScheduleResult* o) noexcept{
+    void* p=nullptr;if(!assault_schedule_init(a,n,b,o,p))return 0;
+    const auto& ab=b->admission;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](int schedule){o->schedule=schedule;o->completed=1;return 1;};
+    auto cond=[&](int id,bool& yes){o->last_condition=id;++o->condition_tests;
+        if(!api->test(a,n,id,NpcConditionCurrent,&ab.conditions,&o->condition))return false;
+        yes=o->condition.value!=0;return true;};
+    auto mismatch=[&](){return read<int>(p,0x20)!=read<int>(p,0x1c);};
+    auto distance=[&](unsigned offset,bool& far){
+        void* q=registry.Resolve(read<unsigned>(p,offset));float node[3]{},owner[3]{};
+        if(!q||!b->origin||!b->origin(b->context,q,node))return false;++o->origin_calls;
+        if(!b->origin(b->context,a,owner))return false;++o->origin_calls;
+        const float dx=static_cast<float>(static_cast<double>(owner[0])-node[0]);
+        const float dy=static_cast<float>(static_cast<double>(owner[1])-node[1]);
+        o->distance_squared=static_cast<double>(dx)*dx+static_cast<double>(dy)*dy;o->distance_called=1;
+        far=o->distance_squared>1296.0;return true;
+    };
+    auto signal=[&](int id){o->signal=id;o->signal_ignored=1;}; // all 8 admitted +5a8 targets ignore 1002..1005
+    auto target=[&](bool& yes){
+        if(!ab.owner_target||!ab.owner_target(ab.context,a,&yes))return false;
+        o->target_called=1;o->target_present=yes;return true;
+    };
+    bool yes=false;
+    if(!cond(0x3e,yes))return 0;if(yes)return done(100007);
+    if(!cond(0x30,yes))return 0;if(yes)return done(26);
+    if(!cond(0x16,yes))return 0;if(yes)return done(39);
+    if(!cond(4,yes))return 0;if(yes)return done(49);
+    if(read<std::uint8_t>(p,0x24)&&!read<std::uint8_t>(p,0x25)&&mismatch()){
+        if(!distance(0x18,yes))return 0;
+        if(yes){write<std::uint8_t>(p,0x24,0);o->secondary_flag_cleared=1;return done(100000);}
+    }else if(read<std::uint8_t>(p,0x25)){
+        if(!distance(0x14,yes))return 0;
+        if(yes){write<std::uint8_t>(p,0x25,0);o->primary_flag_cleared=1;}
+    }
+    if(!read<std::uint8_t>(p,0x24)&&mismatch()){signal(1002);return done(100000);}
+    if(!read<std::uint8_t>(p,0x25)){
+        if(!mismatch()||read<int>(p,0x20)==4){
+            signal(1003);if(!assault_schedule_release(a,p,*b,*o))return 0;return done(100003);
+        }
+        if(!cond(0x14,yes))return 0;if(yes)return done(41);
+        if(!cond(4,yes))return 0;if(yes)return done(49);
+        if(!cond(0x10,yes))return 0;if(yes){signal(1005);return done(5);}
+        if(!cond(0x11,yes))return 0;if(yes){signal(1005);return done(5);}
+        if(!target(yes))return 0;
+        if(yes){
+            if(!cond(0x14,yes))return 0;if(!yes){
+                if(!cond(0x15,yes))return 0;if(!yes)return done(11);
+            }
+        }
+        return done(100004);
+    }
+    if(!cond(4,yes))return 0;if(yes){signal(1004);return done(48);}
+    void* q=registry.Resolve(read<unsigned>(p,0x14));unsigned size=0;
+    if(!q||!ab.extent||!ab.extent(ab.context,q,&size)||size<0xb5)return 0;
+    if(read<std::uint8_t>(q,0xb4)&1u)return done(100008);
+    if(!target(yes))return 0;
+    if(yes){
+        if(!cond(0xa,yes))return 0;
+        if(yes){int result=-1;if(!b->parent_schedule||!b->parent_schedule(b->context,a,&result))return 0;o->parent_called=1;return done(result);}
+    }
+    return done(100006);
+}
+const ServerNpcGruntAssaultScheduleApi assault_schedule_api{1,sizeof(ServerNpcGruntAssaultScheduleApi),&assault_deactivate,&assault_select_schedule};
+
 struct AssaultNodeRoute {const ServerNpcGruntAssaultNodeBindings* bindings;ServerNpcGruntAssaultNodeResult* result;};
 int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const AssaultNodeRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& ab=b.events;
@@ -4963,10 +5056,8 @@ int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const Assaul
     }
     write(p,0x1c,0);o.mode_cleared=1;
     void* secondary=resolve(0x18);if(!span(secondary,0x3c0))return 0;
-    o.secondary_checked=1;o.reservation=read<unsigned>(secondary,0x3bc);
-    if(!registry.Resolve(o.reservation)||registry.Resolve(read<unsigned>(secondary,0x3bc))==a){
-        write(secondary,0x3bc,0xffffffffu);o.secondary_cleared=1;
-    }
+    o.secondary_checked=1;
+    o.secondary_cleared=assault_release_reservation(a,secondary,registry,o.reservation);
     primary=resolve(0x14);if(!span(primary,0x398))return 0;
     if(read<unsigned>(primary,0x394)){
         if(!ab.script||!ab.script(ab.context,a,0))return 0;o.script_called=1;
@@ -7393,4 +7484,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultAdmissionApi=_SiN_GetServerNpcGruntAssaultAdmissionApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultAdmissionApi* __cdecl SiN_GetServerNpcGruntAssaultAdmissionApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultAdmissionApi)?&assault_admission_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultScheduleApi=_SiN_GetServerNpcGruntAssaultScheduleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultScheduleApi* __cdecl SiN_GetServerNpcGruntAssaultScheduleApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultScheduleApi)?&assault_schedule_api:nullptr;
 }
