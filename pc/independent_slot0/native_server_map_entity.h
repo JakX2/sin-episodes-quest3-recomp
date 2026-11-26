@@ -9,9 +9,9 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
-struct FactoryDictionary {const FactorySpec* slots[20]{};unsigned count=0;bool registered=false;};
+struct FactoryDictionary {const FactorySpec* slots[21]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
     void* context;
     // Fresh allocation must supply zeroed derived extension, as expected
@@ -36,6 +36,7 @@ struct FactoryBindings {
     const RelayFactoryBindings* logic_compare;
     const RelayFactoryBindings* math_counter;
     const RelayFactoryBindings* logic_menu;
+    const RelayFactoryBindings* logic_navigation;
 };
 struct FactoryResult {
     const FactorySpec* spec;
@@ -242,6 +243,7 @@ struct AutoPrimaryResult {
     float recorded_time,last_time;
 };
 struct MenuBindings;
+struct NavigationBindings;
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
@@ -270,6 +272,7 @@ struct SpawnBindings {
     const TimerBindings* logic_timer;
     bool native_math_counter;
     const MenuBindings* logic_menu;
+    const NavigationBindings* logic_navigation;
 };
 struct SpawnResult {
     unsigned completed,ranked,parent_reads,parents,debugged,spawned,failed,pruned,cleanups,activated,
@@ -379,6 +382,8 @@ struct Api {
     int (__cdecl *navigation_activate)(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
     int (__cdecl *navigation_created)(void*,unsigned,void*,const NavigationBindings*,NavigationResult*) noexcept;
     int (__cdecl *navigation_remove)(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
+    int (__cdecl *register_navigation)(FactoryDictionary*) noexcept;
+    int (__cdecl *destroy_navigation)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -109,11 +109,12 @@ constexpr FactorySpec case_spec{"logic_case",Family::LogicCase,0x224fb620,0x2241
 constexpr FactorySpec compare_spec{"logic_compare",Family::LogicCompare,0x224fb624,0x2241f5f0,compare_extent};
 constexpr FactorySpec counter_spec{"math_counter",Family::MathCounter,0x224fb61c,0x2241f5d8,counter_extent};
 constexpr FactorySpec menu_spec{"logic_menulistener",Family::LogicMenuListener,0x224fb634,0x2241f620,menu_extent};
+constexpr FactorySpec navigation_spec{"logic_navigation",Family::LogicNavigation,0x224fb0e0,0x2241ece4,navigation_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||d->count<12||d->count>20)return false;
+    if(!d||!d->registered||d->count<12||d->count>21)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false;
-    for(unsigned i=12;i<20;++i){
+    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false;
+    for(unsigned i=12;i<21;++i){
         if(i>=d->count){if(d->slots[i])return false;continue;}
         if(d->slots[i]==&relay_spec&&!relay)relay=true;
         else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
@@ -123,12 +124,13 @@ bool valid_dictionary(const FactoryDictionary* d) noexcept {
         else if(d->slots[i]==&compare_spec&&!logic_compare)logic_compare=true;
         else if(d->slots[i]==&counter_spec&&!math_counter)math_counter=true;
         else if(d->slots[i]==&menu_spec&&!logic_menu)logic_menu=true;
+        else if(d->slots[i]==&navigation_spec&&!logic_navigation)logic_navigation=true;
         else return false;
     }
     return true;
 }
 int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
-    if(!valid_dictionary(d)||d->count==20)return 0;
+    if(!valid_dictionary(d)||d->count==21)return 0;
     for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
     d->slots[d->count++]=spec;return 1;
 }
@@ -140,6 +142,7 @@ int __cdecl register_case(FactoryDictionary* d) noexcept {return register_option
 int __cdecl register_compare(FactoryDictionary* d) noexcept {return register_optional(d,&compare_spec);}
 int __cdecl register_counter(FactoryDictionary* d) noexcept {return register_optional(d,&counter_spec);}
 int __cdecl register_menu(FactoryDictionary* d) noexcept {return register_optional(d,&menu_spec);}
+int __cdecl register_navigation(FactoryDictionary* d) noexcept {return register_optional(d,&navigation_spec);}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -177,6 +180,20 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         const unsigned zero=0,invalid=0xffffffffu,vt=relay_vtable;
         std::memcpy(a,&vt,4);std::memcpy(a+0x394,&zero,4);
         std::memcpy(a+0x3a0,&invalid,4);std::memcpy(a+0x3a4,&zero,4);
+        if(!r->initialize(r->context,a,name))return 0;
+        o->networkable=a+0x160;o->completed=1;return 1;
+    }
+    if(o->spec->family==Family::LogicNavigation){
+        const auto* r=b->logic_navigation;
+        if(!r||!r->allocate||!r->base_construct||!r->initialize||
+           !r->allocate(r->context,navigation_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<navigation_extent)return 0;
+        auto* a=static_cast<unsigned char*>(o->actor);
+        // Original 221782e0 base(1) and secondary listener constructor.
+        if(!r->base_construct(r->context,a,1))return 0;
+        unsigned property=0;std::memcpy(&property,a+0x39c,4);
+        if(a[0x398]||property)return 0;
+        const unsigned vt=navigation_vtable,listener_base=0x223ec0dc,listener=navigation_listener_vtable;
+        std::memcpy(a+0x394,&listener_base,4);std::memcpy(a,&vt,4);std::memcpy(a+0x394,&listener,4);
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
     }
@@ -380,6 +397,12 @@ int __cdecl destroy_counter(void* actor,unsigned bytes,void* networkable,const R
 int __cdecl destroy_menu(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
     if(!networkable)return 1;
     if(!actor||bytes<menu_extent||entity_vtable(actor)!=menu_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
+    return b->release_networkable(b->context,networkable);
+}
+int __cdecl destroy_navigation(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!actor||bytes<navigation_extent||entity_vtable(actor)!=navigation_vtable||
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
@@ -629,6 +652,7 @@ bool find_parent(const SpawnBindings& b,SpawnResult& o,void* a,void** parent) no
 int __cdecl timer_spawn(void*,unsigned,const TimerBindings*,TimerResult*) noexcept;
 int __cdecl counter_spawn(void*,unsigned,CounterResult*) noexcept;
 int __cdecl menu_listen(void*,unsigned,bool,const MenuBindings*,MenuResult*) noexcept;
+int __cdecl navigation_activate(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
 bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) noexcept {
     const auto vt=read_field<unsigned>(a,0);
     if(vt==timer_vtable&&b.logic_timer){native=true;TimerResult r{};return timer_spawn(a,n,b.logic_timer,&r)!=0;}
@@ -898,6 +922,8 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
                 AutoPrimaryResult r{};ok=b->logic_auto_interval&&auto_primary_activate(a,n,*b->logic_auto_interval,b->logic_auto_primary,&r);if(ok)++o->native_activations;
             }else if(ok&&read_field<unsigned>(a,0)==auto_vtable&&b->logic_auto){
                 AutoResult r{};ok=auto_activate(a,n,b->logic_auto,&r)!=0;if(ok)++o->native_activations;
+            }else if(ok&&read_field<unsigned>(a,0)==navigation_vtable&&b->logic_navigation){
+                NavigationResult r{};ok=navigation_activate(a,n,b->logic_navigation,&r)!=0;if(ok)++o->native_activations;
             }else if(ok)ok=b->activate&&b->activate(b->context,a);
             const bool closed=b->engine_scope(b->context,false)!=0;if(closed)++o->engine_closes;
             ok=ok&&closed;if(ok)++o->activated;
@@ -1467,9 +1493,11 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
         case compare_vtable:first=0x39c;count=4;extent=compare_extent;break;
         case counter_vtable:first=0x3a0;count=3;extent=counter_extent;break;
         case menu_vtable:first=0x398;count=16;extent=menu_extent;break;
+        case navigation_vtable:extent=navigation_extent;break;
         default:return 0;
     }
-    if(n<extent||(menu&&(!b->unregister_menu||read_field<unsigned>(a,0x394)!=menu_listener_vtable)))return 0;
+    if(n<extent||(menu&&(!b->unregister_menu||read_field<unsigned>(a,0x394)!=menu_listener_vtable))||
+       (vt==navigation_vtable&&read_field<unsigned>(a,0x394)!=navigation_listener_vtable))return 0;
     constexpr unsigned max_per_output=256,max_actions=17*max_per_output;
     struct Record {unsigned token;void* row;};
     Record plan[max_actions]{};
@@ -1661,7 +1689,7 @@ int __cdecl navigation_remove(void* a,unsigned n,const NavigationBindings* b,Nav
     if(!b->base_remove(b->context,a))return 0;
     o->base_called=o->handled=o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
