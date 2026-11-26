@@ -1691,6 +1691,49 @@ int main(int argc,char** argv){
     assert(assault_input(901u)&&catalog_o.assault_missing&&!catalog_o.assault_selected&&!catalog_o.assault_reset&&assault_f.last_warning==0x223f3cd0u);
     assert(f.get<unsigned>(f.actor,0x798)==321u);
     f.put(f.actor,0x378,saved_handle);
+    // Break lifecycle keeps engine collision and fragment work external.
+    // Native request fields, order and deferred removal are verified.
+    struct BreakFixture {F* f;unsigned physics{},refreshes{};std::vector<unsigned> order;} break_f{&f};
+    ServerNpcInputBreakBindings break_services{};break_services.context=&break_f;
+    break_services.non_solid=[](void* p,void* a,unsigned flags) noexcept -> int{
+        auto& q=*static_cast<BreakFixture*>(p);assert(a==q.f->actor&&flags==0x44u&&!q.f->get<int>(a,0x94));
+        q.order.push_back(1);return 1;
+    };
+    break_services.refresh_transform=[](void* p,void* a,unsigned original) noexcept -> int{
+        auto& q=*static_cast<BreakFixture*>(p);assert(a==q.f->actor);
+        assert(original==0x2213d750u||original==0x2213fa60u);++q.refreshes;
+        q.f->put(a,0xb8,q.f->get<unsigned>(a,0xb8)&~(original==0x2213d750u?0x1000u:0x800u));q.order.push_back(2);return 1;
+    };
+    break_services.physics_snapshot=[](void* p,unsigned token,float* v,float* av,float* origin,float* angles) noexcept -> int{
+        auto& q=*static_cast<BreakFixture*>(p);assert(token==0x7777u);++q.physics;q.order.push_back(3);
+        for(unsigned i=0;i<3;++i){v[i]=float(10+i);av[i]=float(20+i);origin[i]=-1.f;angles[i]=-2.f;}
+        return 1;
+    };
+    break_services.effect=[](void* p,const ServerNpcBreakEffectRequest* req) noexcept -> int{
+        auto& q=*static_cast<BreakFixture*>(p);assert(req->actor==q.f->actor&&req->activator==q.f->weapon);
+        assert(req->model==42u&&req->skin==6u&&req->scale==100.f&&req->limit==-1&&!req->ignore_limit);
+        assert(req->origin[0]==30.f&&req->angles[0]==40.f&&req->collision_group==(req->physics?7u:4u));
+        assert(req->velocity[0]==(req->physics?10.f:1.f)&&req->angular_velocity[0]==(req->physics?20.f:2.f));
+        q.order.push_back(4);return 1;
+    };
+    break_services.defer_remove=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<BreakFixture*>(p);assert(a==q.f->actor&&!q.f->get<std::uint8_t>(a,0x200));
+        q.order.push_back(5);return 1;
+    };
+    auto break_b=leaves;break_b.break_input=&break_services;
+    std::memset(inp.variant,0,sizeof(inp.variant));
+    auto break_run=[&](){return accept->run(f.actor,sizeof(f.actor),ground_vt,0x223db360u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&break_b,&catalog_o);};
+    f.put(f.actor,0x94,2);f.put(f.actor,0x120,std::uint16_t{0x40});f.put(f.actor,0x218,0u);f.put(f.actor,0x214,0u);
+    f.put(f.actor,0x38,42u);f.put(f.actor,0x62c,6u);f.put(f.actor,0x250,1.f);f.put(f.actor,0x25c,2.f);
+    f.put(f.actor,0x2bc,30.f);f.put(f.actor,0x354,40.f);f.put(f.actor,0xb8,0x1800u);f.actor[0x200]=0;
+    assert(break_run()&&catalog_o.native_handler&&catalog_o.break_damage_disabled&&catalog_o.break_non_solid&&catalog_o.break_effect&&catalog_o.break_removed&&!catalog_o.break_physics_snapshot);
+    assert((break_f.order==std::vector<unsigned>{1,2,2,4,5})&&f.actor[0x200]&&break_f.refreshes==2);
+    break_f.order.clear();f.actor[0x200]=0;f.put(f.actor,0x218,0x7777u);f.put(f.actor,0x214,7u);
+    assert(break_run()&&catalog_o.native_handler&&!catalog_o.break_damage_disabled&&catalog_o.break_physics_snapshot&&catalog_o.break_removed);
+    assert((break_f.order==std::vector<unsigned>{1,3,4,5})&&break_f.physics==1&&f.actor[0x200]);
+    break_services.defer_remove=nullptr;break_f.order.clear();f.put(f.actor,0x94,2);
+    assert(!break_run()&&!catalog_o.completed&&f.get<int>(f.actor,0x94)==2&&break_f.order.empty());
+    f.put(f.actor,0x218,0u);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
