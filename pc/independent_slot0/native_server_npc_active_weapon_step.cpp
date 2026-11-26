@@ -764,6 +764,47 @@ constexpr NativeInputMap npc_input_maps[]{
     {0x22534674u,0x22534da4u,2,nullptr,0},
     {0x22535b28u,0x22534da4u,26,jet_inputs,7}
 };
+// Original concrete handlers, independent from the descriptor projection.
+// Return -1 for a handler not implemented here, 0 for malformed storage,
+// and 1 for a successfully executed native leaf.
+int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const ServerEntityInputData& d,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    if(!input_datamap(vt))return 0;
+    auto byte=[&](unsigned offset,std::uint8_t value){
+        if(n<=offset)return 0;
+        wr<std::uint8_t>(a,offset,value);return 1;
+    };
+    auto flag=[&](unsigned mask,bool set){
+        if(n<0x204)return 0;
+        const unsigned old=rd<unsigned>(a,0xb4),value=set?old|mask:old&~mask;
+        if(old!=value){
+            if(!dirty(a,*b.storage))return 0;
+            ++o.handler_dirty;wr<unsigned>(a,0xb4,value);
+        }
+        return 1;
+    };
+    switch(handler){
+    case 0x2202e7d0u:return byte(0x968,1); // StartScripting
+    case 0x2202e7e0u:return byte(0x968,0); // StopScripting
+    case 0x22044d80u:return flag(2u,true);  // GagEnable
+    case 0x22042c00u:return flag(2u,false);
+    case 0x2235f260u:return flag(0x10000u,true); // LookOff
+    case 0x2235ddc0u:return flag(0x10000u,false);
+    case 0x22357e30u:return byte(0xc65,1); // StartPatrolling
+    case 0x22357e40u:return byte(0xc65,0);
+    case 0x22357ea0u: // ThrowGrenades: clear height even on false
+        if(n<0xc74)return 0;
+        wr<unsigned>(a,0xc70,0u);
+        wr<std::uint8_t>(a,0xc6c,rd<unsigned>(d.variant,0x10)==6u?rd<std::uint8_t>(d.variant,0):0u);
+        return 1;
+    case 0x220320c0u:{ // IgnoreDangerSounds: positive duration else 10
+        if(n<0xc10||!std::isfinite(b.now))return 0;
+        const float requested=rd<unsigned>(d.variant,0x10)==1u?rd<float>(d.variant,0):0.f;
+        const float duration=requested>0.f?requested:10.f;
+        wr<float>(a,0xc0c,static_cast<float>(double(b.now)+duration));return 1;
+    }
+    default:return -1;
+    }
+}
 const NativeInputMap* native_input_map(unsigned token) noexcept {
     for(const auto& m:npc_input_maps)if(m.token==token)return &m;
     return nullptr;
@@ -831,7 +872,12 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 auto* result=b->wake_result?b->wake_result:&local;
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
                 o->native_wake=1;
-            }else if(o->handler){if(!b->handler||!b->handler(b->context,a,o->handler,&data))return 0;}
+            }else if(o->handler){
+                const int status=b->native_npc_handlers?native_npc_input(a,n,vt,o->handler,data,*b,*o):-1;
+                if(status==0)return 0;
+                if(status>0)o->native_handler=1;
+                else if(!b->handler||!b->handler(b->context,a,o->handler,&data))return 0;
+            }
             else if(flags&4u){if(!input_write(a,n,rd<unsigned>(row,8),data.variant,*b,o->written))return 0;}
             if(!dirty(a,*b->storage))return 0;
             o->dirty=o->accepted=o->completed=1;return 1;
