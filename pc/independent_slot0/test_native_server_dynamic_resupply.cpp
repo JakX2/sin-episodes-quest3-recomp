@@ -1277,7 +1277,7 @@ int main(int argc,char** argv){
     arb.allow_corner=[](void*,void*,bool* yes) noexcept ->int{*yes=true;return 1;};
     arb.corner_trace=[](void*,void*,void*,const float*,const float*,AntigenRadiusTrace* tr) noexcept ->int{tr->fraction=1;tr->hit=nullptr;return 1;};
     arb.mass=[](void* p,void* e,float* mass) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(e==q.blocker);*mass=q.mass;return 1;};
-    arb.prepare_force=[](void* p,void* gas,void* info,const float*,const float* direction,float scale) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(gas==q.gas->gas&&scale==1&&direction[0]==25&&EvalFixture::rd(info,0x24)==0xf000&&EvalFixture::rd(info,0x28)==0xf000&&EvalFixture::rd(info,0x38)==0x400000);++q.force;return 1;};
+    arb.prepare_force=[](void* p,void* gas,void* info,const float*,const float* direction,float scale) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(gas==q.gas->gas&&scale==1&&direction[0]==1&&EvalFixture::rd(info,0x24)==0xf000&&EvalFixture::rd(info,0x28)==0xf000&&EvalFixture::rd(info,0x38)==0x400000);++q.force;return 1;};
     arb.take_damage=[](void* p,void* e,const void* info) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(e==q.player);std::memcpy(&q.damage,static_cast<const unsigned char*>(info)+0x2c,4);++q.direct;return 1;};
     arb.clear_multi=[](void* p) noexcept ->int{++static_cast<RadiusFixture*>(p)->clear;return 1;};
     arb.apply_multi=[](void* p) noexcept ->int{++static_cast<RadiusFixture*>(p)->apply;return 1;};
@@ -1312,5 +1312,41 @@ int main(int argc,char** argv){
     assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&!agras.radius_called);
     agf.now=90.625f;
     assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&agras.radius_result.completed&&agras.radius_result.direct_attacks==1&&agras.radius_result.last_amount==2.5f);
+    // Exact antigen admission in the SiN player +d8 virtual: a pure
+    // 0x400000 damage-info packet heals and rejects normal damage.
+    arb.native_player_health=&ph;arb.take_damage=nullptr;arb.trace_attack=nullptr;
+    EvalFixture::u(hf2.player,0,0x224aec3c);EvalFixture::u(hf2.player,0x8c,0);
+    EvalFixture::u(hf2.player,0x94,2);EvalFixture::u(hf2.player,0x98,100);EvalFixture::u(hf2.player,0x9c,40);
+    EvalFixture::u(hf2.player,0x12a1,0);EvalFixture::u(hf2.player,0x9d0,0xffffffffu);
+    arf.mode=0;arf.strict=true;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5,150,&arb,&arr)&&arr.completed&&arr.native_admissions==1&&arr.native_heals==1&&arr.native_rejected==1&&!arr.direct_attacks&&arr.player.healing.after==45&&hf2.flags==0x400000u);
+    assert(EvalFixture::rd(hf2.player,0x9d0)==0xffbfffffu);
+    // Trace path invokes the same admission, skipping the virtual damage
+    // leaf but preserving clear/apply multidamage and after-effect ordering.
+    unsigned before_clear=arf.clear,before_apply=arf.apply;arf.mode=1;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,2.75f,150,&arb,&arr)&&arr.native_heals==1&&arr.player.healing.after==47&&!arr.trace_attacks&&arf.clear==before_clear+1&&arf.apply==before_apply+1);
+    EvalFixture::u(hf2.player,0x8c,1);arf.mode=0;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5,150,&arb,&arr)&&arr.native_admissions==1&&arr.player.dead&&!arr.native_heals&&EvalFixture::rd(hf2.player,0x9c)==47);
+    EvalFixture::u(hf2.player,0x8c,0);EvalFixture::u(hf2.player,0,0x2245222c);
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5,150,&arb,&arr)&&arr.player.base_player&&arr.native_rejected==1&&!arr.native_heals);
+    EvalFixture::u(hf2.player,0,0x224aec3c);EvalFixture::u(hf2.player,0x9c,100);
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5,150,&arb,&arr)&&arr.native_heals==1&&!arr.player.healing.accepted&&arr.native_rejected==1);
+    // Do not accept the same flag mixed with unrelated damage or a stale
+    // gas identity. Such paths must go through the original host boundary.
+    unsigned char gate_info[0x48]{};
+    EvalFixture::u(gate_info,0x24,0xf000);EvalFixture::u(gate_info,0x28,0xf000);EvalFixture::u(gate_info,0x38,0x400002);
+    AntigenPlayerAdmissionResult apar{};
+    assert(!api->antigen_player_admission(hf2.player,sizeof(hf2.player),gate_info,sizeof(gate_info),&arb,&apar));
+    EvalFixture::u(gate_info,0x38,0x400000);EvalFixture::u(gate_info,0x28,0xe000);
+    assert(!api->antigen_player_admission(hf2.player,sizeof(hf2.player),gate_info,sizeof(gate_info),&arb,&apar));
+    // A real gas-think pulse changes HP without hosted damage or heal.
+    EvalFixture::u(hf2.player,0x9c,50);agf.now=100.f;
+    assert(api->antigen_gas_create(gas_origin,1,150,-1,-1,&native_gas,&agras));
+    EvalFixture::u(agf.gas,0x378,0xf000);agf.now=100.125f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&!agras.radius_called);
+    agf.now=100.625f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&agras.radius_result.native_heals==1&&agras.radius_result.player.healing.after==52&&agras.amount==2.5f);
+    agf.now=101.125f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&agras.radius_result.native_heals==1&&agras.radius_result.player.healing.after==54&&agras.expired&&agras.removed);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
