@@ -1,5 +1,8 @@
 #include "native_server_level.h"
 extern "C" int __cdecl SiN_ActivateCampaignFilter(void*,unsigned,const sin_port::native_map::CampaignFilterActivationBindings*,sin_port::native_map::CampaignFilterActivationResult*) noexcept;
+extern "C" int __cdecl SiN_ActivateScriptedSequence(void*,unsigned,const sin_port::native_map::ScriptedSequenceActivateBindings*,sin_port::native_map::ScriptedSequenceActivateResult*) noexcept;
+int __cdecl SinParseMapWithSequencesInternal(const char*,unsigned,const sin_port::native_map::PipelineBindings*,
+    sin_port::native_map::PipelineResult*,void*,const sin_port::native_map::ScriptedSequenceMapBindings*) noexcept;
 #include "server_fixed_difficulty_service.h"
 #include <cstring>
 #include <cstdio>
@@ -95,7 +98,7 @@ bool map_event(const Bindings& b,void* manager,int descriptor,const char* map,co
     return b.map_event&&b.map_event(b.context,descriptor,map,filename);
 }
 int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void* event_manager,
-    const native_map::CampaignFilterFactoryBindings* filters=nullptr) noexcept {
+    const native_map::CampaignFilterFactoryBindings* filters=nullptr,const native_map::ScriptedSequenceMapBindings* sequences=nullptr) noexcept {
     if(!o)return 0;*o={};
     if(!ready(s,b,o)||!a||!a->map||s->level_ready||!b->scope)return 0;
     s->busy=true;
@@ -116,7 +119,9 @@ int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void
         else{
             if(!a->entities||!b->native_map_pipeline||!b->entity_text_bytes)return false;
             const auto* api=SiN_GetServerMapEntityApi(1,sizeof(native_map::Api));
-            if(event_manager){
+            if(sequences){
+                if(!SinParseMapWithSequencesInternal(a->entities,b->entity_text_bytes,b->native_map_pipeline,&o->map_pipeline,event_manager,sequences))return false;
+            }else if(event_manager){
                 if(filters){
                     if(!SinParseMapWithFiltersInternal(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline,event_manager,filters))return false;
                 }else if(!SinParseMapWithEventsInternal(a->entities,b->entity_text_bytes,false,b->native_map_pipeline,&o->map_pipeline,event_manager))return false;
@@ -152,7 +157,10 @@ int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) 
     return level_init_impl(s,a,b,o,nullptr);
 }
 int server_activate_impl(State* s,const Bindings* b,Result* o,void* event_manager,
-    const native_map::CampaignFilterActivationBindings* filters=nullptr,CampaignFilterActivationSummary* filter_summary=nullptr) noexcept {
+    const native_map::CampaignFilterActivationBindings* filters=nullptr,CampaignFilterActivationSummary* filter_summary=nullptr,
+    const native_map::ScriptedSequenceActivateBindings* sequence=nullptr,ScriptedSequenceActivationSummary* sequence_summary=nullptr) noexcept {
+    if(sequence_summary)*sequence_summary={};
+    if(sequence&&!sequence_summary)return 0;
     if(filter_summary)*filter_summary={};
     if(filters&&!filter_summary)return 0;
     if(!o)return 0;*o={};
@@ -176,6 +184,12 @@ int server_activate_impl(State* s,const Bindings* b,Result* o,void* event_manage
         if(read<unsigned>(current,0)==native_resupply::resupply_vtable&&b->resupply&&n>=0x3b0){
             const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));
             ok=api&&api->activate(current,n,b->resupply,&o->resupply);if(ok)++o->resupply_activated;
+        }else if(sequence&&read<unsigned>(current,0)==native_map::scripted_sequence_vtable){
+            ++sequence_summary->attempted;
+            auto& last=sequence_summary->last;
+            ok=SiN_ActivateScriptedSequence(current,n,sequence,&last)!=0;
+            sequence_summary->completed+=last.completed;sequence_summary->npc_found+=last.npc_found;
+            sequence_summary->next_found+=last.next_found;sequence_summary->next_name_cleared+=last.next_name_cleared;
         }else if(filters&&(read<unsigned>(current,0)==native_map::dynamic_trigger_vtable||
             read<unsigned>(current,0)==native_map::secret_trigger_vtable||native_map::campaign_filter_class(read<unsigned>(current,0)))){
             ++filter_summary->attempted;
@@ -246,4 +260,14 @@ int __cdecl SinServerActivateWithCampaignFiltersInternal(sin_port::native_level:
 int __cdecl SinLevelInitWithFiltersInternal(sin_port::native_level::State* s,const sin_port::native_level::LevelArgs* a,
     const sin_port::native_level::Bindings* b,sin_port::native_level::Result* o,void* manager,const sin_port::native_map::CampaignFilterFactoryBindings* filters) noexcept {
     return manager&&filters&&b&&!b->parse_entities&&sin_port::native_level::level_init_impl(s,a,b,o,manager,filters);
+}
+
+int __cdecl SinLevelInitWithSequencesInternal(sin_port::native_level::State* s,const sin_port::native_level::LevelArgs* a,
+    const sin_port::native_level::Bindings* b,sin_port::native_level::Result* o,void* manager,const sin_port::native_map::ScriptedSequenceMapBindings* sequences) noexcept {
+    return sequences&&b&&!b->parse_entities&&sin_port::native_level::level_init_impl(s,a,b,o,manager,nullptr,sequences);
+}
+int __cdecl SinServerActivateWithSequencesInternal(sin_port::native_level::State* s,const sin_port::native_level::Bindings* b,
+    sin_port::native_level::Result* o,void* manager,const sin_port::native_level::ScriptedSequenceActivationRoute* route,
+    sin_port::native_level::ScriptedSequenceActivationSummary* summary) noexcept {
+    return route&&route->sequence&&summary&&sin_port::native_level::server_activate_impl(s,b,o,manager,route->filters,route->filter_summary,route->sequence,summary);
 }

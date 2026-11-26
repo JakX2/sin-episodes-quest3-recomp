@@ -630,6 +630,12 @@ inline constexpr char scripted_sequence_spawn_export[]="SiN_SpawnScriptedSequenc
 inline constexpr char scripted_sequence_activate_export[]="SiN_ActivateScriptedSequence";
 using SpawnScriptedSequence=int (__cdecl *)(void*,unsigned,const ScriptedSequenceSpawnBindings*,ScriptedSequenceSpawnResult*) noexcept;
 using ActivateScriptedSequence=int (__cdecl *)(void*,unsigned,const ScriptedSequenceActivateBindings*,ScriptedSequenceActivateResult*) noexcept;
+// Opt-in route, outside the size-pinned map Api and dictionary.
+struct ScriptedSequenceMapBindings {
+    const RelayFactoryBindings* factory;
+    const ScriptedSequenceSpawnBindings* spawn;
+    const CampaignFilterFactoryBindings* filters; // optional existing filter factories
+};
 struct ScriptedSequenceEventBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     const RelayQueueBindings* native_queue;
