@@ -14,6 +14,9 @@ extern "C" int __cdecl SiN_ServiceScriptedSequenceEvents(void*,unsigned,unsigned
     const sin_port::native_map::CampaignFilterInputBindings*,sin_port::native_weapon_tables::CampaignFilterServiceSummary*) noexcept;
 extern "C" int __cdecl SiN_RunScriptedSequencePrimaryThink(void*,unsigned,int,
     const sin_port::native_map::ScriptedSequencePrimaryBindings*,sin_port::native_map::ScriptedSequencePrimaryResult*) noexcept;
+extern "C" int __cdecl SiN_RunScriptedSequencePrimaryWithRemoval(void*,unsigned,int,
+    const sin_port::native_map::ScriptedSequencePrimaryBindings*,sin_port::native_map::ScriptedSequencePrimaryResult*,
+    const sin_port::native_map::ScriptedSequenceRemovalThinkBindings*,sin_port::native_map::ScriptedSequenceRemovalThinkResult*) noexcept;
 namespace sin_port::native_game_frame {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -122,6 +125,8 @@ struct SequenceFrameRoute {
     native_map::ScriptedSequencePrimaryBindings primary{};
     native_map::ScriptedSequenceNativeControlBindings input{};
     ServerEntitySearchBindings search{};
+    native_map::ScriptedSequenceRemovalThinkBindings removal{};
+    ScriptedSequenceFrameRemovalResult* removed=nullptr;
 };
 bool bind_sequence_frame(const State& s,const Bindings& b,const ScriptedSequenceFrameBindings& route,SequenceFrameRoute& bound) noexcept {
     if(!route.primary||!route.primary->think||!route.primary->think->acquire||!route.control||
@@ -154,7 +159,11 @@ bool actor(void* a,const State& s,const Bindings& b,Result& o,SequenceFrameRoute
         // stay with owner callbacks instead of inventing movement.
         if(!read<unsigned>(a,0x16c)&&read<int>(a,0x50)<=0){
             ++sr->primary_calls;
-            if(!SiN_RunScriptedSequencePrimaryThink(a,bytes,s.globals->tick,&sequence->primary,&sr->last))return false;
+            if(sequence->removed){
+                auto& result=*sequence->removed;
+                if(!SiN_RunScriptedSequencePrimaryWithRemoval(a,bytes,s.globals->tick,&sequence->primary,&sr->last,&sequence->removal,&result.last))return false;
+                result.removal_thinks+=result.last.completed;result.queued+=result.last.removal.queued;
+            }else if(!SiN_RunScriptedSequencePrimaryThink(a,bytes,s.globals->tick,&sequence->primary,&sr->last))return false;
             sr->invoked+=sr->last.invoked;sr->acquired+=sr->last.behavior.acquired;sr->retries+=sr->last.behavior.retry_scheduled;return true;
         }
         if(read<int>(a,0x50)>0)++o.named_context_fallbacks;
@@ -264,8 +273,9 @@ bool events(const State& s,const Bindings& b,Result& o,const native_map::Campaig
 }
 int run_impl(bool simulating,const State* s,const Bindings* b,Result* o,
     const native_map::CampaignFilterInputBindings* filters=nullptr,CampaignFilterServiceSummary* summary=nullptr,
-    const ScriptedSequenceFrameBindings* sequence=nullptr,ScriptedSequenceFrameResult* sr=nullptr) noexcept {
-    if(sr)*sr={};if(summary)*summary={};
+    const ScriptedSequenceFrameBindings* sequence=nullptr,ScriptedSequenceFrameResult* sr=nullptr,
+    const native_map::ScriptedSequenceRemovalThinkBindings* removal=nullptr,ScriptedSequenceFrameRemovalResult* removed=nullptr) noexcept {
+    if(sr)*sr={};if(summary)*summary={};if(removed)*removed={};
     if(!o)return 0;*o={};
     if(!s||!b||!s->globals||!s->level_transition||!s->skip_next||!s->double_step||
        !s->think_profile||!s->profile_enabled||!s->iteration_depth)return 0;
@@ -279,6 +289,12 @@ int run_impl(bool simulating,const State* s,const Bindings* b,Result* o,
     if(!coherent_removal(*b))return finish(false);
     SequenceFrameRoute sequence_bound{};
     if(sequence&&(!sr||!bind_sequence_frame(*s,*b,*sequence,sequence_bound)))return finish(false);
+    if(removal){
+        if(!sequence||!removed||!b->deferred||removal->deferred!=b->deferred||
+           removal->cancel!=sequence->control->cancel)return finish(false);
+        sequence_bound.removal=*removal;sequence_bound.removal.cancel=&sequence_bound.cancel;
+        sequence_bound.removal.deferred=b->deferred;sequence_bound.removed=removed;
+    }
     if(filters&&(!summary||!filters->predicate||!filters->output||!filters->native_queue||!b->queue||
         !b->queue->bindings||!b->queue->bindings->native_input||!b->queue->bindings->native_search||
         filters->native_queue->root!=b->queue->sentinel||filters->native_queue->root_token!=b->queue->token))return finish(false);
@@ -319,4 +335,12 @@ int __cdecl SinGameFrameWithSequencesInternal(bool simulating,const sin_port::na
     sin_port::native_game_frame::Result* o,const sin_port::native_game_frame::ScriptedSequenceFrameBindings* sequence,
     sin_port::native_game_frame::ScriptedSequenceFrameResult* sr) noexcept {
     return sequence&&sr&&sin_port::native_game_frame::run_impl(simulating,s,b,o,sequence->filters,&sr->filters,sequence,sr);
+}
+int __cdecl SinGameFrameWithSequenceRemovalInternal(bool simulating,const sin_port::native_game_frame::State* s,const sin_port::native_game_frame::Bindings* b,
+    sin_port::native_game_frame::Result* o,const sin_port::native_game_frame::ScriptedSequenceFrameBindings* sequence,
+    sin_port::native_game_frame::ScriptedSequenceFrameResult* sr,const sin_port::native_map::ScriptedSequenceRemovalThinkBindings* removal,
+    sin_port::native_game_frame::ScriptedSequenceFrameRemovalResult* removed) noexcept {
+    if(!sequence||!sr||!removal||!removed)return 0;
+    const int ok=sin_port::native_game_frame::run_impl(simulating,s,b,o,sequence->filters,&sr->filters,sequence,sr,removal,removed);
+    removed->completed=ok;return ok;
 }

@@ -411,6 +411,8 @@ int main(int argc,char** argv){
             Fixture* frame=nullptr;CampaignFixture* campaign=nullptr;
             unsigned records=0,enters=0,leaves=0,notifications=0,flags=0,reports=0,cancels=0;
             unsigned char rules=0;
+            void* removal_slots[1]{};nm::DeferredRemovalQueue removal_queue{removal_slots,1};
+            unsigned updates=0,releases=0;
             float stale_now=-100.f,stale_interval=.5f;
         } sf;
         sf.frame=&f;sf.campaign=&camp;
@@ -493,7 +495,34 @@ int main(int argc,char** argv){
         unsigned empty[5]{0,0,0,0xffffffffu,0};
         assert(camp.api->enqueue_direct(camp.root,sizeof(camp.root),99,f.g.curtime,0x8000u,304,0x9001u,0x9001u,empty,sizeof(empty),0.f,99,&camp.queue,&qr));
         assert(tick()&&sr.last.no_think&&sr.events.cancelled==1&&sf.cancels==1&&word(sf.npc,0x970)==0xffffffffu&&word(sf.seq,0x3d0)==0xffffffffu&&camp.event_releases==2&&out.cleanup_calls==3&&!camp.locked&&!f.depth);
+        // Real slot 4 executes scheduled SUB_Remove inside the actor
+        // scope and releases the marked sequence only after event service.
+        const auto frame_remove=reinterpret_cast<InvokeSequenceRemovalBoundary>(GetProcAddress(server,sequence_removal_boundary_export));
+        assert(frame_remove&&!GetProcAddress(client,sequence_removal_boundary_export));
+        nm::DeferredRemovalBindings deferred{};deferred.context=&sf;deferred.queue=&sf.removal_queue;
+        deferred.update=[](void* p,void* a,unsigned handler) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);
+            assert(a==sf.seq&&handler==0x221446f0u&&sf.frame->depth==1&&!sf.campaign->locked&&sf.seq[0xb8]&1u);
+            ++sf.updates;return 1;
+        };
+        deferred.release=[](void* p,void* net) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);
+            assert(net==sf.seq+0x160&&!sf.frame->depth&&!sf.campaign->locked&&sf.removal_queue.handle_access_disabled&&sf.updates==1);
+            ++sf.releases;sf.frame->slots[0]=nullptr;sf.entries[0].entity=nullptr;return 1;
+        };
+        nm::ScriptedSequenceRemovalThinkBindings removal{&deferred,&cancel,&sf};
+        ScriptedSequenceFrameRemovalResult removed{};
+        frame.deferred=&deferred;
+        put(sf.seq,0x160,0x22454f00u);put(sf.seq,0x168,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(sf.seq)));
+        put(sf.seq,8,0x221c0d40u);put(sf.seq,0x74,330);put(sf.seq,0xb8,0u);
+        auto removal_tick=[&](){return frame_remove(true,&state,&frame,&out,&seq_frame,&sr,&removal,&removed);};
+        auto wrong=removal;wrong.deferred=nullptr;
+        assert(!frame_remove(true,&state,&frame,&out,&seq_frame,&sr,&wrong,&removed)&&!sf.updates&&!sf.releases&&!f.depth);
+        assert(removal_tick()&&removed.completed&&!removed.removal_thinks&&sr.last.not_due&&!sf.updates&&!sf.releases);
+        f.g.curtime=41.25f;f.g.tick=330;
+        assert(removal_tick()&&removed.completed&&removed.removal_thinks==1&&removed.queued==1&&removed.last.cancelled.missing&&removed.last.cancelled.count_reset&&sr.invoked==1&&!sr.last.native_result&&out.native_cleanup_calls==3&&out.native_released==1&&sf.updates==1&&sf.releases==1&&!sf.removal_queue.count&&!f.depth);
         // Original owner bindings were never modified by scoped rebinding.
+        assert(removal.cancel==&cancel&&removal.deferred==&deferred);
         assert(!c.entries&&!pos.entries&&c.now==&sf.stale_now&&c.interval==&sf.stale_interval&&sf.stale_now==-100.f);
         f.order[0]=saved_index;f.slots[0]=saved_slot;
         camp.queue.string_nonempty=saved_nonempty;

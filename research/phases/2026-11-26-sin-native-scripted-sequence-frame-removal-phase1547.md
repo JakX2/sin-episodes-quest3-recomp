@@ -1,0 +1,3 @@
+# Phase 1547: actual GameFrame scheduled removal
+
+Separate slot-4 boundary export keeps existing sizes pinned. Rebind optional SUB_Remove sidecar to the same scoped live registry and cancellation graph used by input/acquisition; require same authoritative deferred queue as the frame cleanup. The actor stage executes due removal, marks and queues while inside snapshot scope, then post-event cleanup releases the networkable. New loaded regression uses the previous scripted acquisition/cancel fixture and asserts premature tick, mismatched queue refusal, due removal and release ordering, unchanged owner bindings. No new code digests. Native NPC animation tasks and generic inherited Kill still outstanding. CI pending.
