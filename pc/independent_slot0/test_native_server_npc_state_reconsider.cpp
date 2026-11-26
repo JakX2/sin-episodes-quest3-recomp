@@ -4950,6 +4950,7 @@ int main(int argc,char** argv){
         const auto combat_line_getter=reinterpret_cast<GetServerNpcGruntCombatLineApi>(GetProcAddress(s,server_npc_grunt_combat_line_export));
         assert(combat_line_getter&&!GetProcAddress(c,server_npc_grunt_combat_line_export)&&!combat_line_getter(0,sizeof(ServerNpcGruntCombatLineApi))&&!combat_line_getter(1,0));
         const auto* combat_line=combat_line_getter(1,sizeof(ServerNpcGruntCombatLineApi));assert(combat_line);
+        ab.conditions=ac.schedule.conditions; // same original namespace as schedule acquisition
         ServerNpcGruntCombatLineBindings cl{};cl.admission=&ab;cl.line=&line;cl.cone=&cone;cl.context=&lf;
         cl.point_blocker=[](void* p,void*,const float*,unsigned mask,void** out) noexcept -> int{
             assert(mask==0x46004003u);*out=static_cast<LineFixture*>(p)->hit;return 1;
