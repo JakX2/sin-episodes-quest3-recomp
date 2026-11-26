@@ -3835,5 +3835,53 @@ int main(int argc,char** argv){
         q.primary[0xb4]=0;q.primary[0x3ba]=1;
         assert(run()&&!o.entered&&o.events.reset_called&&!o.events.advance_called);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntAssaultAdmissionApi>(GetProcAddress(s,server_npc_grunt_assault_admission_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_assault_admission_export)&&!g(0,sizeof(ServerNpcGruntAssaultAdmissionApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntAssaultAdmissionApi));assert(api);
+        struct AdmissionFixture {
+            alignas(4) unsigned char a[0xde8]{},primary[0x3ba]{},secondary[4]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            bool ready=true,target=false;unsigned readiness=0,targets=0;
+            static AdmissionFixture& self(void* p){return *static_cast<AdmissionFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.secondary);
+        ServerNpcGruntAssaultAdmissionBindings b{};b.entries=q.entries;b.count=3;b.actor_vtable=0x2249aaa4;b.actor_token=0x10000;b.context=&q;
+        b.conditions.context=&q;b.conditions.descriptor=[](void* p,void*,const void** d,unsigned* n) noexcept -> int{auto& q=AdmissionFixture::self(p);*d=q.desc;*n=sizeof(q.desc);return 1;};
+        b.owner_ready=[](void* p,void* a,bool* v) noexcept -> int{auto& q=AdmissionFixture::self(p);assert(a==q.a);*v=q.ready;++q.readiness;return 1;};
+        b.owner_target=[](void* p,void* a,bool* v) noexcept -> int{auto& q=AdmissionFixture::self(p);assert(a==q.a);*v=q.target;++q.targets;return 1;};
+        b.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& q=AdmissionFixture::self(p);assert(e==q.primary);*n=sizeof(q.primary);return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
+        auto* p=q.a+0xdb8;
+        auto read32=[](const void* p,unsigned off){std::uint32_t v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;};
+        auto reset_links=[&](){f.put(p,0x14,0x1001u);f.put(p,0x18,0x2002u);f.put(p,0x1c,3);p[0x24]=p[0x25]=1;};
+        ServerNpcGruntAssaultAdmissionResult o{};
+        assert(!api->validate(q.a,sizeof(q.a)-1,&b,&o));
+        reset_links();assert(api->validate(q.a,sizeof(q.a),&b,&o)&&o.admitted&&o.primary_valid&&o.secondary_valid&&p[0x24]&&p[0x25]);
+        f.put(p,0x14,0x9001u);assert(api->validate(q.a,sizeof(q.a),&b,&o)&&!o.admitted&&!o.secondary_checked&&o.mode_cleared&&!p[0x24]&&!p[0x25]);
+        reset_links();f.put(p,0x18,0xffffffffu);assert(api->validate(q.a,sizeof(q.a),&b,&o)&&!o.admitted&&o.secondary_checked&&!o.secondary_valid);
+        reset_links();f.put(q.a,0x864,11u);f.put(q.a,0x85c,22u);f.put(q.a,0x860,33u);
+        assert(api->set_submode(q.a,sizeof(q.a),7,&b,&o)&&o.submode_written&&o.condition_set&&read32(p,0x20)==7&&read32(q.a,0x864)==0&&read32(q.a,0x85c)==0&&read32(q.a,0x860)==33);
+        assert(read32(q.a,0x7cc)&(1u<<24));f.put(q.a,0x7cc,0u);
+        auto admit=[&](float now){return api->admit(q.a,sizeof(q.a),now,&b,&o);};
+        q.ready=false;assert(admit(10)&&!o.admitted&&!o.condition_checked&&!o.target_called);q.ready=true;
+        f.put(q.a,0x7d0,1u<<27);assert(admit(10)&&!o.admitted&&o.condition_checked&&!o.primary_checked);f.put(q.a,0x7d0,0u);
+        f.put(p,0x2c,10.01f);assert(admit(10)&&!o.admitted&&o.deadline_blocked);
+        f.put(p,0x2c,10.f);assert(admit(10)&&o.admitted&&o.target_called&&!o.deadline_blocked);
+        f.put(p,0x2c,std::numeric_limits<float>::quiet_NaN());assert(admit(10)&&o.admitted);
+        f.put(p,0x2c,0.f);f.put(p,0x1c,0);assert(admit(10)&&!o.admitted&&!o.primary_checked);
+        reset_links();f.put(p,0x18,0x9002u);assert(admit(10)&&!o.admitted&&o.mode_cleared&&!o.target_called);
+        reset_links();q.primary[0x3b9]=1;f.put(p,0x28,6.01f);
+        assert(admit(10)&&!o.admitted&&o.hold_set&&p[0x26]);
+        f.put(p,0x28,6.f);assert(admit(10)&&o.admitted&&o.hold_cleared&&o.condition_set&&!p[0x26]);
+        f.put(q.a,0x7cc,0u);p[0x26]=1;f.put(p,0x28,0.f);assert(admit(10)&&o.admitted&&o.condition_set);
+        f.put(q.a,0x7cc,0u);p[0x26]=1;f.put(p,0x28,std::numeric_limits<float>::quiet_NaN());assert(admit(10)&&o.admitted&&o.condition_set);
+        q.target=true;assert(admit(10)&&!o.admitted&&o.stamp_written&&o.stamp==10.f&&o.hold_set);
+        q.target=false;q.primary[0x3b9]=0;assert(admit(20)&&!o.admitted&&!o.hold_checked&&p[0x26]);
+        p[0x26]=0;assert(admit(20)&&o.admitted&&!o.hold_checked);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

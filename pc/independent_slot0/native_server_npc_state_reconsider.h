@@ -2592,4 +2592,32 @@ struct ServerNpcGruntAssaultNodeApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntAssaultNodeBindings*,ServerNpcGruntAssaultNodeResult*) noexcept;
 };
 using GetServerNpcGruntAssaultNodeApi=const ServerNpcGruntAssaultNodeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_admission_export[]="SiN_GetServerNpcGruntAssaultAdmissionApi";
+struct ServerNpcGruntAssaultAdmissionBindings {
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    std::uint32_t actor_vtable,actor_token;
+    ServerNpcConditionMapBindings conditions;
+    void* context;
+    int (__cdecl *owner_ready)(void*,void*,bool*) noexcept; // actor +450
+    int (__cdecl *owner_target)(void*,void*,bool*) noexcept; // actor +154, pointer nonzero
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+};
+struct ServerNpcGruntAssaultAdmissionResult {
+    ServerNpcConditionResult condition;
+    std::uint32_t primary_handle,secondary_handle;
+    float deadline,stamp;
+    int mode,submode;
+    unsigned identity_valid,completed,admitted,ready_called,ready,condition_checked,deadline_blocked,
+        primary_checked,primary_valid,secondary_checked,secondary_valid,mode_cleared,flags_cleared,
+        target_called,target_present,stamp_written,hold_checked,hold_set,hold_cleared,condition_set,submode_written;
+};
+struct ServerNpcGruntAssaultAdmissionApi {
+    std::uint32_t version,size;
+    int (__cdecl *validate)(void*,unsigned,const ServerNpcGruntAssaultAdmissionBindings*,ServerNpcGruntAssaultAdmissionResult*) noexcept; // 220ce550
+    int (__cdecl *set_submode)(void*,unsigned,int,const ServerNpcGruntAssaultAdmissionBindings*,ServerNpcGruntAssaultAdmissionResult*) noexcept; // 220ce520
+    int (__cdecl *admit)(void*,unsigned,float,const ServerNpcGruntAssaultAdmissionBindings*,ServerNpcGruntAssaultAdmissionResult*) noexcept; // 220ceaf0
+};
+using GetServerNpcGruntAssaultAdmissionApi=const ServerNpcGruntAssaultAdmissionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -4854,6 +4854,81 @@ bool assault_end_schedule(void* a,unsigned n) noexcept{
     for(unsigned off=0x82c;off<0x84c;off+=4)write(a,off,0xffffffffu);
     return true;
 }
+
+bool assault_admission_init(void* a,unsigned n,const ServerNpcGruntAssaultAdmissionBindings* b,ServerNpcGruntAssaultAdmissionResult* o,void*& p) noexcept{
+    if(!o)return false;*o={};o->primary_handle=o->secondary_handle=0xffffffffu;
+    o->condition.global=o->condition.bit=-1;
+    if(!a||n<0xde8||!b||b->count>sin_independent::kEntityHandleCapacity||(b->count&&!b->entries))return false;
+    EmbeddedBehaviorIdentity identity{};
+    if(!embedded_behavior_identity(a,n,b->actor_vtable,b->actor_token,b->actor_token+0xdb8,false,identity))return false;
+    p=static_cast<unsigned char*>(a)+0xdb8;o->identity_valid=1;return true;
+}
+bool assault_admission_links(void* p,const ServerNpcGruntAssaultAdmissionBindings& b,ServerNpcGruntAssaultAdmissionResult& o) noexcept{
+    const sin_independent::EntityHandleView registry(b.entries,b.count);
+    o.primary_handle=read<unsigned>(p,0x14);o.primary_checked=1;o.primary_valid=registry.Resolve(o.primary_handle)!=nullptr;
+    if(o.primary_valid){
+        o.secondary_handle=read<unsigned>(p,0x18);o.secondary_checked=1;o.secondary_valid=registry.Resolve(o.secondary_handle)!=nullptr;
+        if(o.secondary_valid)return true;
+    }
+    write(p,0x1c,0);write<std::uint8_t>(p,0x24,0);write<std::uint8_t>(p,0x25,0);
+    o.mode_cleared=o.flags_cleared=1;return false;
+}
+int __cdecl assault_validate(void* a,unsigned n,const ServerNpcGruntAssaultAdmissionBindings* b,ServerNpcGruntAssaultAdmissionResult* o) noexcept{
+    void* p=nullptr;if(!assault_admission_init(a,n,b,o,p))return 0;
+    o->admitted=assault_admission_links(p,*b,*o);o->completed=1;return 1;
+}
+bool assault_set_condition24(void* a,unsigned n,const ServerNpcGruntAssaultAdmissionBindings& b,ServerNpcGruntAssaultAdmissionResult& o) noexcept{
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    if(!api||!api->store(a,n,0x18,NpcConditionCurrent,true,&b.conditions,&o.condition))return false;
+    o.condition_set=1;return true;
+}
+int __cdecl assault_set_submode(void* a,unsigned n,int value,const ServerNpcGruntAssaultAdmissionBindings* b,ServerNpcGruntAssaultAdmissionResult* o) noexcept{
+    void* p=nullptr;if(!assault_admission_init(a,n,b,o,p))return 0;
+    write(a,0x864,0);write(a,0x85c,0);write(p,0x20,value);
+    o->submode=value;o->submode_written=1;
+    if(!assault_set_condition24(a,n,*b,*o))return 0;
+    o->completed=1;return 1;
+}
+int __cdecl assault_admit(void* a,unsigned n,float now,const ServerNpcGruntAssaultAdmissionBindings* b,ServerNpcGruntAssaultAdmissionResult* o) noexcept{
+    void* p=nullptr;if(!assault_admission_init(a,n,b,o,p)||!std::isfinite(now))return 0;
+    auto done=[&](bool yes){o->admitted=yes;o->completed=1;return 1;};
+    bool ready=false;
+    if(!b->owner_ready||!b->owner_ready(b->context,a,&ready))return 0;
+    o->ready_called=1;o->ready=ready;if(!ready)return done(false);
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    if(!api||!api->test(a,n,0x3b,NpcConditionCurrent,&b->conditions,&o->condition))return 0;
+    o->condition_checked=1;if(o->condition.value)return done(false);
+    o->deadline=read<float>(p,0x2c);
+    // FCOMP + TEST AH,41h: only ordered greater-than blocks.
+    if(o->deadline>now){o->deadline_blocked=1;return done(false);}
+    o->mode=read<int>(p,0x1c);if(!o->mode)return done(false);
+    if(!assault_admission_links(p,*b,*o))return done(false);
+    bool target=false;
+    if(!b->owner_target||!b->owner_target(b->context,a,&target))return 0;
+    o->target_called=1;o->target_present=target;
+    if(target){write(p,0x28,now);o->stamp_written=1;}
+    o->stamp=read<float>(p,0x28);
+    const sin_independent::EntityHandleView registry(b->entries,b->count);
+    void* primary=registry.Resolve(read<unsigned>(p,0x14));
+    if(primary){
+        unsigned bytes=0;
+        if(!b->extent||!b->extent(b->context,primary,&bytes)||bytes<0x3ba)return 0;
+        if(read<std::uint8_t>(primary,0x3b9)){
+            o->hold_checked=1;
+            // FUCOMPP timestamp vs zero rejects equality only. The second
+            // FCOMP admits strictly less than 4 seconds, excluding unordered.
+            if(o->stamp!=0.f&&static_cast<double>(now)-o->stamp<4.0){
+                write<std::uint8_t>(p,0x26,1);o->hold_set=1;
+            }else{
+                if(read<std::uint8_t>(p,0x26)&&!assault_set_condition24(a,n,*b,*o))return 0;
+                write<std::uint8_t>(p,0x26,0);o->hold_cleared=1;
+            }
+        }
+    }
+    return done(!read<std::uint8_t>(p,0x26));
+}
+const ServerNpcGruntAssaultAdmissionApi assault_admission_api{1,sizeof(ServerNpcGruntAssaultAdmissionApi),&assault_validate,&assault_set_submode,&assault_admit};
+
 struct AssaultNodeRoute {const ServerNpcGruntAssaultNodeBindings* bindings;ServerNpcGruntAssaultNodeResult* result;};
 int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const AssaultNodeRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& ab=b.events;
@@ -7313,4 +7388,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultNodeApi=_SiN_GetServerNpcGruntAssaultNodeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultNodeApi* __cdecl SiN_GetServerNpcGruntAssaultNodeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultNodeApi)?&assault_node_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultAdmissionApi=_SiN_GetServerNpcGruntAssaultAdmissionApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultAdmissionApi* __cdecl SiN_GetServerNpcGruntAssaultAdmissionApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultAdmissionApi)?&assault_admission_api:nullptr;
 }
