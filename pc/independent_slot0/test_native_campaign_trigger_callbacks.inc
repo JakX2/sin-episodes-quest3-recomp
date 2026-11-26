@@ -1054,3 +1054,62 @@
         // Starting after cached candidate, no wrap to earlier rows.
         assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&!o.found&&word(f.seq,0x3dc)==0xffffffffu);
     }
+
+    // Actual acquisition think and cancel leaf: rules gate, retry
+    // using clock mutated during warning, successful no-reschedule,
+    // normal cleanup and scripted-state cancellation.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct ThinkFixture {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x974]{},other[scripted_sequence_extent]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float now=10.f,interval=.125f;
+            unsigned reports=0,flags=0,restores=0,cleanup=0,schedule=0;
+            unsigned char rules=0;
+        } f;
+        const auto think=reinterpret_cast<RunScriptedSequenceAcquisitionThink>(GetProcAddress(server,scripted_sequence_think_export));
+        const auto cancel=reinterpret_cast<CancelScriptedSequenceNpc>(GetProcAddress(server,scripted_sequence_cancel_export));
+        assert(think&&cancel&&!GetProcAddress(client,scripted_sequence_think_export));
+        void* actors[]{f.seq,f.npc,f.other};
+        for(unsigned i=0;i<3;++i){
+            f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;put(actors[i],0x378,((3+i)<<12)|i);
+            if(i)f.entries[i].previous=&f.entries[i-1];if(i<2)f.entries[i].next=&f.entries[i+1];
+        }
+        put(f.seq,0,scripted_sequence_vtable);put(f.seq,0xc,0x2242ee1cu);put(f.seq,8,0x221afc90u);put(f.seq,0x3a8,21u);
+        put(f.seq,0x3d0,0xffffffffu);put(f.seq,0x3dc,0xffffffffu);
+        put(f.other,0,scripted_sequence_vtable);put(f.other,0xc,0x2242ee1cu);put(f.other,0x3d0,0xffffffffu);
+        put(f.npc,0,0x224954a4u);put(f.npc,0x970,0xffffffffu);put(f.npc,0xc,22u);
+        auto extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<ThinkFixture*>(p);*bytes=actor==f.seq||actor==f.other?sizeof(f.seq):actor==f.npc?sizeof(f.npc):0;return *bytes!=0;
+        };
+        nw::ServerEntitySearchBindings search{};search.context=&f;search.head=f.entries;search.extent=extent;
+        search.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==21?"target":token==22?"npc_sintek_grunt":token==23?"group":token==0x2242ee1c?"scripted_sequence":token==0?"":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nw::ServerNpcOuterCadenceBindings cadence{};
+        ScriptedSequenceControlBindings c{};c.context=&f;c.entries=f.entries;c.entry_count=3;c.extent=extent;c.now=&f.now;c.interval=&f.interval;c.cadence=&cadence;
+        ScriptedSequenceAcquireBindings ac{&c,&search,&f};
+        ScriptedSequencePossessionBindings pos{};pos.context=&f;pos.entries=f.entries;pos.entry_count=3;pos.extent=extent;pos.now=&f.now;pos.search=&search;
+        pos.add_flags=[](void* p,void*,unsigned) noexcept ->int{++static_cast<ThinkFixture*>(p)->flags;return 1;};
+        ScriptedSequenceCancelBindings cb{&c,&search,&f};
+        cb.restore_flags=[](void* p,void* npc,unsigned flags) noexcept ->int{auto& f=*static_cast<ThinkFixture*>(p);assert(npc==f.npc);put(npc,0x78,flags);++f.restores;return 1;};
+        cb.cleanup_script_state=[](void* p,void* npc) noexcept ->int{auto& f=*static_cast<ThinkFixture*>(p);assert(npc==f.npc&&f.npc[0x96c]==3);++f.cleanup;return 1;};
+        cb.cancel_schedule=[](void* p,void* seq,void* npc,unsigned flags) noexcept ->int{auto& f=*static_cast<ThinkFixture*>(p);assert(seq==f.seq&&npc==f.npc&&flags==0x1234&&f.cleanup==1);++f.schedule;return 1;};
+        ScriptedSequenceThinkBindings b{&ac,&pos,&cb,&f.rules,&f};
+        b.report=[](void* p,void* seq,unsigned stage,void* npc,unsigned) noexcept ->int{
+            auto& f=*static_cast<ThinkFixture*>(p);assert(seq==f.seq);
+            if(stage==1)assert(npc==f.npc);else {assert(!npc);if(stage==3)f.now+=.25f;}
+            ++f.reports;return 1;
+        };
+        ScriptedSequenceThinkResult o{};ScriptedSequenceCancelResult cr{};
+        assert(think(f.seq,sizeof(f.seq),&b,&o)&&o.rules_blocked&&o.retry_scheduled&&o.due_tick==88&&!f.reports);
+        f.rules=1;put(f.seq,0xc0,23u);put(f.other,0xc0,23u);put(f.seq,0x3b8,2u);put(f.other,0x3b8,3u);
+        assert(think(f.seq,sizeof(f.seq),&b,&o)&&!o.acquired&&o.cancelled==2&&o.retry_time==11.25f&&o.due_tick==90&&f.reports==2&&!word(f.seq,0x3b8)&&!word(f.other,0x3b8));
+        put(f.npc,0xc0,21u);put(f.seq,0x74,0xffffffffu);
+        assert(think(f.seq,sizeof(f.seq),&b,&o)&&o.acquired&&o.possessed&&!o.retry_scheduled&&f.flags==1&&f.reports==3&&word(f.seq,0x74)==0xffffffffu&&word(f.seq,0x3b8)==2);
+        put(f.seq,0x3c4,7u);
+        assert(cancel(f.seq,sizeof(f.seq),&cb,&cr)&&cr.cleared&&cr.restored_flags&&f.restores==1&&word(f.npc,0x78)==7&&word(f.npc,0x970)==0xffffffffu&&word(f.seq,0x3d0)==0xffffffffu);
+        put(f.seq,0x3d0,0x4001u);put(f.npc,0x970,0x5002u);put(f.other,0x3c8,0x1234u);put(f.npc,0x850,4);
+        assert(cancel(f.seq,sizeof(f.seq),&cb,&cr)&&cr.scripted_state&&cr.cleanup&&!cr.cleared&&f.cleanup==1&&f.schedule==1);
+    }
