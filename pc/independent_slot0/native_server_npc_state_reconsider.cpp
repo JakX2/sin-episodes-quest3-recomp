@@ -2783,6 +2783,138 @@ int __cdecl squad_destroy(std::uint32_t* head,std::uint32_t token,const ServerNp
     if(!b->registry.release(b->registry.context,token))return 0;
     out->group_released=1;return done();
 }
+bool slots_init(float now,const ServerNpcGruntSquadSlotsBindings* b,ServerNpcGruntSquadSlotsResult* out) noexcept{
+    if(!out)return false;*out={};out->selected=out->index=-1;
+    return b&&std::isfinite(now)&&b->count<=sin_independent::kEntityHandleCapacity&&(!b->count||b->entries);
+}
+bool slots_get(std::uint32_t token,void* target,float now,const ServerNpcGruntSquadSlotsBindings& b,ServerNpcGruntSquadSlotsResult& out,void*& selected) noexcept{
+    selected=nullptr;++out.accesses;
+    void* group=nullptr;unsigned n=0;
+    if(!memory_storage(&b.storage,token,0x78,group,n))return false;
+    int count=read<int>(group,0x6c),capacity=read<int>(group,0x64);
+    auto base=read<unsigned>(group,0x60);void* storage=nullptr;
+    if(count<0||capacity<0||count>capacity||capacity>4096)return false;
+    if(capacity&&(!base||base>0xffffffffu-8u*static_cast<unsigned>(capacity)||!memory_storage(&b.storage,base,8*capacity,storage,n)))return false;
+    auto row=[&](int i){return static_cast<unsigned char*>(storage)+8*i;};
+    const auto registry=sin_independent::EntityHandleView(b.entries,b.count);
+    auto choose=[&](int i){
+        selected=row(i);out.index=i;out.record_token=base+8u*static_cast<unsigned>(i);out.bitmap=read<unsigned>(selected,4);
+        write(group,0x5c,out.record_token);return true;
+    };
+    out.deadline=read<float>(group,0x74);if(!std::isfinite(out.deadline))return false;
+    if(now>out.deadline){
+        ++out.refreshed;
+        if(count){
+            const int members=read<int>(group,0x48);if(members<0||members>16)return false;
+            write(group,0x5c,0u);
+            void* active[16]{};unsigned active_count=0;
+            // Native temporary pointer-key tree only needs membership here.
+            for(int i=0;i<members;++i){
+                void* member=registry.Resolve(read<unsigned>(group,8+4*i));if(!member)return false;
+                ++out.refresh_members;
+                unsigned vt=0,extent=0;void* enemy=nullptr;
+                if(!b.member_class||!b.member_class(b.context,member,&vt,&extent))return false;
+                if(relation_grunt_class(vt)){if(extent<0x8a4)return false;enemy=registry.Resolve(read<unsigned>(member,0x8a0));}
+                else if(!b.other_enemy||!b.other_enemy(b.context,member,&enemy))return false;
+                if(enemy)active[active_count++]=enemy;
+            }
+            for(int i=count-1;i>=0;--i){
+                void* e=registry.Resolve(read<unsigned>(row(i),0));bool keep=false;
+                if(e)for(unsigned j=0;j<active_count;++j)if(active[j]==e){keep=true;break;}
+                if(!keep){
+                    --count;if(i!=count)std::memcpy(row(i),row(count),8);
+                    write(group,0x6c,count);++out.pruned;
+                }
+            }
+        }
+        out.deadline=static_cast<float>(static_cast<double>(now)+30.0);if(!std::isfinite(out.deadline))return false;
+        write(group,0x74,out.deadline);
+    }
+    const auto cached=read<unsigned>(group,0x5c);
+    if(cached){
+        if(!storage||cached<base||(cached-base)%8||((cached-base)/8)>=static_cast<unsigned>(count))return false;
+        const int i=static_cast<int>((cached-base)/8);
+        if(registry.Resolve(read<unsigned>(row(i),0))==target){++out.cached;return choose(i);}
+    }
+    for(int i=0;i<count;++i){++out.scanned;if(registry.Resolve(read<unsigned>(row(i),0))==target)return choose(i);}
+    write(group,0x5c,0u);
+    if(count==capacity){
+        const int growth=read<int>(group,0x68);if(growth<0||!b.resize)return false;
+        int next=capacity?capacity:4;
+        if(capacity){if(growth){if(growth>4096-capacity)return false;next=capacity+growth;}else next=capacity*2;}
+        if(next<=capacity||next>4096)return false;
+        std::uint32_t new_base=0;void* new_storage=nullptr;unsigned extent=0;
+        if(!b.resize(b.context,base,static_cast<unsigned>(next),&new_base,&new_storage,&extent)||!new_base||!new_storage||extent<8u*static_cast<unsigned>(next)||new_base>0xffffffffu-8u*static_cast<unsigned>(next))return false;
+        void* verified=nullptr;
+        if(!memory_storage(&b.storage,new_base,8*next,verified,extent)||verified!=new_storage)return false;
+        base=new_base;storage=new_storage;capacity=next;write(group,0x60,base);write(group,0x64,capacity);++out.grown;
+    }
+    unsigned handle=0xffffffffu;
+    if(target&&(!b.entity_handle||!b.entity_handle(b.context,target,&handle)||registry.Resolve(handle)!=target))return false;
+    write(group,0x6c,count+1);write(group,0x70,base);write(row(count),0,handle);write(row(count),4,0u);++out.appended;
+    return choose(count);
+}
+int __cdecl slots_read(std::uint32_t token,void* target,float now,const ServerNpcGruntSquadSlotsBindings* b,ServerNpcGruntSquadSlotsResult* out) noexcept{
+    if(!slots_init(now,b,out))return 0;void* row=nullptr;
+    if(!slots_get(token,target,now,*b,*out,row))return 0;out->completed=1;return 1;
+}
+bool slots_valid_bit(int bit) noexcept{return bit>=0&&bit<32;}
+int __cdecl slots_bit(std::uint32_t token,void* target,int bit,unsigned op,float now,const ServerNpcGruntSquadSlotsBindings* b,ServerNpcGruntSquadSlotsResult* out) noexcept{
+    if(!slots_init(now,b,out)||!slots_valid_bit(bit)||op>NpcSquadBitClear)return 0;void* row=nullptr;
+    if(!slots_get(token,target,now,*b,*out,row))return 0;
+    const auto mask=1u<<bit;out->bit_value=(out->bitmap&mask)!=0;
+    if(op==NpcSquadBitSet){out->bitmap|=mask;write(row,4,out->bitmap);}
+    else if(op==NpcSquadBitClear){out->bitmap&=~mask;write(row,4,out->bitmap);}
+    out->completed=1;return 1;
+}
+int __cdecl slots_reserve(void* a,unsigned n,int first,int last,float now,const ServerNpcGruntSquadSlotsBindings* b,ServerNpcGruntSquadSlotsResult* out) noexcept{
+    if(!slots_init(now,b,out)||!a||n<0x9d0)return 0;
+    auto done=[&](bool yes){out->allowed=yes;out->completed=1;return 1;};
+    const auto token=read<unsigned>(a,0x9c4);out->selected=read<int>(a,0x9cc);
+    if(!token){out->ungrouped=1;return done(true);}
+    if(first>last)return done(false);
+    if(!slots_valid_bit(first)||!slots_valid_bit(last))return 0;
+    if(out->selected>=first&&out->selected<=last){out->retained=1;return done(true);}
+    if(out->selected!=-1&&!slots_valid_bit(out->selected))return 0;
+    void* target=sin_independent::EntityHandleView(b->entries,b->count).Resolve(read<unsigned>(a,0x8a0));void* row=nullptr;
+    for(int bit=first;bit<=last;++bit){
+        if(!slots_get(token,target,now,*b,*out,row))return 0;
+        const auto mask=1u<<bit;if(out->bitmap&mask)continue;
+        const int old=read<int>(a,0x9cc);
+        if(old!=-1){
+            if(!slots_get(token,target,now,*b,*out,row))return 0;
+            out->old_unmarked=(out->bitmap&(1u<<old))==0;
+            if(!slots_get(token,target,now,*b,*out,row))return 0;
+            write(row,4,out->bitmap&~(1u<<old));out->old_cleared=1;
+        }
+        if(!slots_get(token,target,now,*b,*out,row))return 0;
+        out->bitmap|=mask;write(row,4,out->bitmap);write(a,0x9cc,bit);out->selected=bit;out->new_set=1;
+        return done(true);
+    }
+    return done(false);
+}
+int __cdecl slots_occupied(std::uint32_t token,void* target,int first,int last,float now,const ServerNpcGruntSquadSlotsBindings* b,ServerNpcGruntSquadSlotsResult* out) noexcept{
+    if(!slots_init(now,b,out))return 0;
+    if(first<=last&&(!slots_valid_bit(first)||!slots_valid_bit(last)))return 0;
+    out->allowed=1;void* row=nullptr;
+    for(int bit=first;bit<=last;++bit){
+        if(!slots_get(token,target,now,*b,*out,row))return 0;
+        if(!(out->bitmap&(1u<<bit))){out->allowed=0;break;}
+    }
+    out->completed=1;return 1;
+}
+int __cdecl slots_release(std::uint32_t token,void* target,int bit,float now,const ServerNpcGruntSquadSlotsBindings* b,ServerNpcGruntSquadSlotsResult* out) noexcept{
+    if(!slots_init(now,b,out))return 0;
+    if(bit!=-1){
+        if(!slots_valid_bit(bit))return 0;void* row=nullptr;
+        if(!slots_get(token,target,now,*b,*out,row))return 0;
+        const auto mask=1u<<bit;out->old_unmarked=(out->bitmap&mask)==0;
+        if(!slots_get(token,target,now,*b,*out,row))return 0;
+        out->bitmap&=~mask;write(row,4,out->bitmap);out->old_cleared=1;
+    }
+    out->completed=1;return 1;
+}
+const ServerNpcGruntSquadSlotsApi squad_slots_api{1,sizeof(ServerNpcGruntSquadSlotsApi),&slots_read,&slots_bit,&slots_reserve,&slots_occupied,&slots_release};
 const ServerNpcGruntSquadDestroyApi squad_destroy_api{1,sizeof(ServerNpcGruntSquadDestroyApi),&squad_destroy};
 const ServerNpcGruntSquadRegistryApi squad_registry_api{1,sizeof(ServerNpcGruntSquadRegistryApi),&squad_lookup,&squad_create,&squad_attach};
 const ServerNpcGruntSquadJoinApi squad_join_api{1,sizeof(ServerNpcGruntSquadJoinApi),&grunt_squad_join,&grunt_squad_detach};
@@ -3186,4 +3318,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadDestroyApi=_SiN_GetServerNpcGruntSquadDestroyApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadDestroyApi* __cdecl SiN_GetServerNpcGruntSquadDestroyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadDestroyApi)?&squad_destroy_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadSlotsApi=_SiN_GetServerNpcGruntSquadSlotsApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadSlotsApi* __cdecl SiN_GetServerNpcGruntSquadSlotsApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadSlotsApi)?&squad_slots_api:nullptr;
 }

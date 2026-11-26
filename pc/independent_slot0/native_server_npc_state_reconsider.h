@@ -1116,4 +1116,34 @@ struct ServerNpcGruntSquadDestroyApi {
     int (__cdecl *destroy)(std::uint32_t*,std::uint32_t,const ServerNpcGruntSquadDestroyBindings*,ServerNpcGruntSquadDestroyResult*) noexcept;
 };
 using GetServerNpcGruntSquadDestroyApi=const ServerNpcGruntSquadDestroyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_slots_export[]="SiN_GetServerNpcGruntSquadSlotsApi";
+struct ServerNpcGruntSquadSlotsBindings {
+    ServerNpcEnemyMemoryBindings storage;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    void* context;
+    int (__cdecl *member_class)(void*,void*,std::uint32_t*,unsigned*) noexcept;
+    int (__cdecl *other_enemy)(void*,void*,void**) noexcept; // non-Grunt +154
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept;
+    // Resize an owned 8-byte record array, preserving old rows. Token must allow
+    // contiguous +8*index arithmetic for original cached-pointer representation.
+    int (__cdecl *resize)(void*,std::uint32_t,unsigned,std::uint32_t*,void**,unsigned*) noexcept;
+};
+enum ServerNpcGruntSquadBitOperation : unsigned {NpcSquadBitTest=0,NpcSquadBitSet=1,NpcSquadBitClear=2};
+struct ServerNpcGruntSquadSlotsResult {
+    unsigned completed,allowed,ungrouped,retained,refreshed,refresh_members,pruned,cached,scanned,appended,grown,accesses,old_unmarked,old_cleared,new_set,bit_value;
+    int selected,index;
+    std::uint32_t bitmap,record_token;
+    float deadline;
+};
+struct ServerNpcGruntSquadSlotsApi {
+    std::uint32_t version,size;
+    int (__cdecl *get)(std::uint32_t,void*,float,const ServerNpcGruntSquadSlotsBindings*,ServerNpcGruntSquadSlotsResult*) noexcept;
+    int (__cdecl *bit)(std::uint32_t,void*,int,unsigned,float,const ServerNpcGruntSquadSlotsBindings*,ServerNpcGruntSquadSlotsResult*) noexcept;
+    // Original 22054d40 and 220aaeb0; singleton range is the Grunt condition gate.
+    int (__cdecl *reserve)(void*,unsigned,int,int,float,const ServerNpcGruntSquadSlotsBindings*,ServerNpcGruntSquadSlotsResult*) noexcept;
+    int (__cdecl *occupied)(std::uint32_t,void*,int,int,float,const ServerNpcGruntSquadSlotsBindings*,ServerNpcGruntSquadSlotsResult*) noexcept;
+    int (__cdecl *release)(std::uint32_t,void*,int,float,const ServerNpcGruntSquadSlotsBindings*,ServerNpcGruntSquadSlotsResult*) noexcept;
+};
+using GetServerNpcGruntSquadSlotsApi=const ServerNpcGruntSquadSlotsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
