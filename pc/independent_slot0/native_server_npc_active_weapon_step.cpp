@@ -564,7 +564,8 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
                (vt==sin_port::native_map::counter_vtable&&b->native_input->math_counter)||
                (vt==sin_port::native_map::navigation_vtable&&b->native_input->logic_navigation)||
                (vt==sin_port::native_map::autosave_vtable&&b->native_input->logic_autosave)||
-               (vt==sin_port::native_map::multicompare_vtable&&b->native_input->logic_multicompare)){
+               (vt==sin_port::native_map::multicompare_vtable&&b->native_input->logic_multicompare)||
+               (vt==sin_port::native_map::remap_vtable&&b->native_input->math_remap)){
                 auto bound=*b->native_input;bound.entities=b->entities;bound.search=&native_search;bound.now=clock();if(!std::isfinite(bound.now))return false;
                 sin_port::native_map::RelayBindings relay{};
                 sin_port::native_map::RelayQueueBindings relay_queue{};
@@ -957,6 +958,7 @@ constexpr NativeInputRow relay_inputs[]{
     {6,0,0x22422b7cu,0x2217df50u,"Trigger"},
     {7,0,0x22422b58u,0x2217def0u,"CancelPending"}
 };
+constexpr NativeInputRow remap_inputs[]{{0,1,0x2242014cu,0x2217a610u,"InValue"}};
 constexpr NativeInputRow multicompare_inputs[]{
     {5,20,0x2241ffb8u,0x2217a080u,"InputValue"},
     {6,20,0x2241ff14u,0x22179270u,"CompareValues"}
@@ -2290,6 +2292,13 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
     default:return -1;
     }
 }
+constexpr NativeInputMap remap_map{0x224fb4f8u,0x224f0350u,6,remap_inputs,1};
+int native_remap_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
+    if(!b.math_remap||handler!=0x2217a610u)return -1;
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+    sin_port::native_map::RemapResult result{};
+    return api&&api->remap_input(a,n,"InValue",data.activator,rd<unsigned>(data.variant,0x10),rd<float>(data.variant,0),b.math_remap,&result)&&result.completed&&result.handled?1:0;
+}
 constexpr NativeInputMap multicompare_map{0x224fb4b0u,0x224f0350u,7,multicompare_inputs,2};
 int native_multicompare_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
     if(!b.logic_multicompare)return -1;
@@ -2419,7 +2428,8 @@ const NativeInputMap* native_input_map(unsigned token) noexcept {
 int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
-    unsigned token=vt==sin_port::native_map::multicompare_vtable&&b&&b->logic_multicompare?multicompare_map.token:
+    unsigned token=vt==sin_port::native_map::remap_vtable&&b&&b->math_remap?remap_map.token:
+        vt==sin_port::native_map::multicompare_vtable&&b&&b->logic_multicompare?multicompare_map.token:
         vt==sin_port::native_map::autosave_vtable&&b&&b->logic_autosave?autosave_map.token:
         vt==sin_port::native_map::navigation_vtable&&b&&b->logic_navigation?navigation_map.token:
         vt==sin_port::native_map::counter_vtable&&b&&b->math_counter?counter_map.token:
@@ -2438,6 +2448,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
     if(vt==sin_port::native_map::navigation_vtable&&(!a||n<sin_port::native_map::navigation_extent||rd<unsigned>(a,0)!=vt||rd<unsigned>(a,0x394)!=sin_port::native_map::navigation_listener_vtable))return 0;
     if(vt==sin_port::native_map::autosave_vtable&&(!a||n<sin_port::native_map::autosave_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(vt==sin_port::native_map::multicompare_vtable&&(!a||n<sin_port::native_map::multicompare_extent||rd<unsigned>(a,0)!=vt))return 0;
+    if(vt==sin_port::native_map::remap_vtable&&(!a||n<sin_port::native_map::remap_extent||rd<unsigned>(a,0)!=vt))return 0;
     if(!a||n<0x204||!token||!variant||vn<0x14||!b||!b->storage||(!b->name_equal&&!b->string_text))return 0;
     if(vt==sin_port::native_map::timer_vtable&&b->timer&&b->timer->cadence){
         const auto& t=*b->timer;
@@ -2466,6 +2477,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             else{const char* actual=nullptr;if(!input_text(*b,input,&actual))return 0;base_kill=search_equal("Kill",actual);}
         }
         const auto* native=base_kill?&logic_base_kill_map:
+            token==remap_map.token&&b->math_remap?&remap_map:
             token==multicompare_map.token&&b->logic_multicompare?&multicompare_map:
             token==autosave_map.token&&b->logic_autosave?&autosave_map:
             token==navigation_map.token&&b->logic_navigation?&navigation_map:
@@ -2538,7 +2550,8 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
                 o->native_wake=1;
             }else if(o->handler){
-                const int status=vt==sin_port::native_map::multicompare_vtable?native_multicompare_input(a,n,o->handler,data,*b):
+                const int status=vt==sin_port::native_map::remap_vtable?native_remap_input(a,n,o->handler,data,*b):
+                    vt==sin_port::native_map::multicompare_vtable?native_multicompare_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::autosave_vtable?native_autosave_input(a,n,o->handler,*b):
                     vt==sin_port::native_map::navigation_vtable?native_navigation_input(a,n,o->handler,*b):
                     vt==sin_port::native_map::counter_vtable?native_counter_input(a,n,o->handler,data,*b):

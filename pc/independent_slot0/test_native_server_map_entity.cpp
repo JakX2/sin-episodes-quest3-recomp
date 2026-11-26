@@ -2267,5 +2267,69 @@ int main(int argc,char** argv){
         put(pool.rows[0],0x18,0);
         assert(api->destroy_remap(f.storage,remap_extent,f.storage+0x160,&owner)&&f.destroyed.completed&&f.destroyed.outputs==1&&f.destroyed.released==1&&f.freed==1);
     }
+    {
+        alignas(4) unsigned char actor[remap_extent]{},target[compare_extent]{};
+        put(actor,0,remap_vtable);put(actor,0x378,0x4001u);actor[0x1f0]=1;
+        put(target,0,compare_vtable);put(target,0x378,0x3000u);target[0x1f0]=1;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=remap_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            if(!std::strcmp(text,"sink"))*token=201;
+            else if(!std::strcmp(text,"SetValue"))*token=0x224202e4u;
+            else return 0;return 1;
+        };
+        assert(api->key_value(actor,"in1","2",&keys,&kr)&&api->key_value(actor,"in2","6",&keys,&kr)&&api->key_value(actor,"out1","10",&keys,&kr)&&api->key_value(actor,"out2","30",&keys,&kr));
+        assert(api->key_value(actor,"OutValue","sink,SetValue,,0,-1",&keys,&kr));
+        struct RemapQueue {ConnectedOutput* queue;ActionPool* pool;void* actor;void* target;unsigned fired=0;} f{&co,&pool,actor,target};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<RemapQueue*>(p);if(token!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[0])))return 0;*row=f.pool->rows[0];*bytes=0x1c;return 1;
+        };
+        fire.enqueue_variant=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
+            auto& f=*static_cast<RemapQueue*>(p);assert(a==f.target&&c==f.actor&&bytes==0x14&&action->variant_type==1&&action->action_id==41);
+            ++f.fired;auto& q=*f.queue;nw::ServerEntityNamedEventQueueResult out{};
+            return q.api->enqueue_variant(q.root,sizeof(q.root),99,q.now,0x3000u,0x4001u,action,variant,bytes,&q.queue,&out);
+        };
+        RemapBindings remap{&fire};CompareBindings comparison{};
+        nw::ServerNpcActivePostAnimationBindings storage{};
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&storage;input.math_remap=&remap;input.logic_compare=&comparison;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            switch(token){
+                case 0x2242014cu:*text="InValue";break;
+                case 0x224202e4u:*text="SetValue";break;
+                case 401:*text="4 trailing";break;
+                case 402:*text="iNvAlUe";break;
+                default:return 0;
+            }
+            *bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(target);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        nw::ServerEntitySearchBindings search{};search.context=&f;
+        search.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<RemapQueue*>(p);*bytes=actor==f.actor?remap_extent:actor==f.target?compare_extent:0;return *bytes!=0;
+        };
+        nw::ServerEntityEventServiceBindings delivery{};delivery.context=&f;delivery.entities.entries=entries;delivery.entities.count=2;delivery.native_input=&input;delivery.native_search=&search;delivery.live_now=&co.now;
+        delivery.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<RemapQueue*>(p)->queue;return q.queue.resolve(q.queue.context,token,row,bytes);};
+        delivery.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<RemapQueue*>(p)->queue;assert(q.locked!=enter);q.locked=enter;return 1;};
+        delivery.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** out) noexcept ->int{
+            auto& f=*static_cast<RemapQueue*>(p);assert(f.queue->locked&&name==201&&a==f.target&&c==f.actor);*out=prev?nullptr:f.target;return 1;
+        };
+        delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<RemapQueue*>(p)->queue;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=180.f;
+        co.queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};
+        unsigned incoming[5]{401,0,0,0xffffffffu,2};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2242014cu,0x3000,0x3000,incoming,sizeof(incoming),0.f,17,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==2&&es.native_inputs==2&&!es.foreign_inputs&&!es.rejected_inputs&&f.fired==1&&co.released==2&&!word(co.root,0x30));
+        assert(word(actor,0x3a4)==0x41a00000u&&word(target,0x394)==0x41a00000u&&actor[0x200]&&target[0x200]);
+        assert(word(co.rows[1],0x1c)==0x41a00000u&&word(co.rows[1],0x2c)==1&&word(co.rows[1],0x14)==41&&word(co.rows[1],0xc)==0x3000u&&word(co.rows[1],0x10)==0x4001u);
+        // Generic integer -> FLOAT conversion, then suppression by spawnflag.
+        put(actor,0xb4,1u);actor[0x200]=0;target[0x200]=0;
+        unsigned outside[5]{9,0,0,0xffffffffu,5};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,402,0x3000,0x3000,outside,sizeof(outside),0.f,18,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==1&&es.native_inputs==1&&!es.rejected_inputs&&f.fired==1&&co.released==3&&!word(co.root,0x30));
+        assert(actor[0x200]&&!target[0x200]&&word(actor,0x3a4)==0x41a00000u&&word(target,0x394)==0x41a00000u);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
