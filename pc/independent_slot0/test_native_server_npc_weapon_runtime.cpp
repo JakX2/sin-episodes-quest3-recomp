@@ -1561,6 +1561,67 @@ int main(int argc,char** argv){
     assert(relationship_input(808u)&&catalog_o.relationship_added==1&&f.get<int>(f.actor,0x644)==5&&f.get<unsigned>(rel.rows+64,0)==0x7001u);
     assert(relationship_input(0u,0u)&&catalog_o.native_handler&&!catalog_o.relationship_specs);
     f.put(f.actor,0x378,saved_handle);
+    // ForgetEntity drives the actual native enemy-memory tree and setter.
+    auto get_memory_control=reinterpret_cast<GetServerNpcEnemyMemoryControlApi>(GetProcAddress(server,server_npc_enemy_memory_control_export));
+    auto get_memory_tree=reinterpret_cast<GetServerNpcEnemyMemoryTreeApi>(GetProcAddress(server,server_npc_enemy_memory_tree_export));
+    assert(get_memory_control&&get_memory_tree);
+    const auto* forget_control=get_memory_control(1,sizeof(ServerNpcEnemyMemoryControlApi));
+    const auto* forget_tree=get_memory_tree(1,sizeof(ServerNpcEnemyMemoryTreeApi));
+    assert(forget_control&&forget_tree);
+    struct ForgetFixture {
+        F* f;void* target;
+        alignas(4) unsigned char memory[0x40]{},nodes[8*12]{},descriptor[0x48]{};
+        unsigned warnings{},released{},last{};
+    } forget_f{&f,wt.member};
+    ServerNpcInputForgetBindings forget_services{};forget_services.context=&forget_f;forget_services.developer=true;
+    forget_services.warning=[](void* p,unsigned token) noexcept -> int{
+        auto& q=*static_cast<ForgetFixture*>(p);assert(token==0x223da448u);++q.warnings;return 1;
+    };
+    forget_services.memory.storage.context=&forget_f;
+    forget_services.memory.storage.storage=[](void* p,unsigned token,void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<ForgetFixture*>(p);
+        if(token==0x9910u){*data=q.memory;*bytes=sizeof(q.memory);return 1;}
+        if(token==0x9920u){*data=q.nodes;*bytes=sizeof(q.nodes);return 1;}
+        return 0;
+    };
+    forget_services.memory.context=&forget_f;
+    forget_services.memory.entity_key=[](void* p,void* target,unsigned* key) noexcept -> int{
+        auto& q=*static_cast<ForgetFixture*>(p);if(target==q.target)*key=0x8100u;else if(target==q.f->actor)*key=0x8200u;else return 0;return 1;
+    };
+    forget_services.memory.release=[](void* p,unsigned token) noexcept -> int{
+        auto& q=*static_cast<ForgetFixture*>(p);assert(token==0x9100u||token==0x9200u);
+        if(token==0x9100u)assert(q.f->get<unsigned>(q.f->actor,0x8a0)==0xffffffffu&&q.f->get<int>(q.f->actor,0x858)==2);
+        ++q.released;q.last=token;return 1;
+    };
+    forget_services.enemy.conditions.context=&forget_f;
+    forget_services.enemy.conditions.descriptor=[](void* p,void* a,const void** data,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<ForgetFixture*>(p);assert(a==q.f->actor);*data=q.descriptor;*bytes=sizeof(q.descriptor);return 1;
+    };
+    f.put(forget_f.descriptor,0x34,npc_global_condition_base);f.put(forget_f.descriptor,0x38,0);f.put(forget_f.descriptor,0x3c,63);
+    const float initial_memory[3]{};
+    assert(forget_control->initialize(forget_f.memory,sizeof(forget_f.memory),0x9920u,8,initial_memory,&forget_services.memory.storage));
+    ServerNpcEnemyMemoryTreeResult forget_result{};
+    assert(forget_tree->insert(forget_f.memory,sizeof(forget_f.memory),0x8100u,0x9100u,&forget_services.memory.storage,&forget_result));
+    assert(forget_tree->insert(forget_f.memory,sizeof(forget_f.memory),0x8200u,0x9200u,&forget_services.memory.storage,&forget_result));
+    auto forget_b=leaves;forget_b.forget=&forget_services;forget_b.search=&search_bind;forget_b.entities=scripted.input.entities;forget_b.now=55.f;
+    forget_b.string_text=search_bind.string_text;forget_b.context=search_bind.context;
+    f.put(f.actor,0x378,0x8002u);f.put(wt.member,0x378,0x7001u);
+    f.put(f.actor,0xc0,501u);f.put(wt.member,0xc0,500u);
+    f.put(f.actor,0x984,0x9910u);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x858,3);f.put(f.actor,0x9c4,0u);
+    f.put(f.actor,0x7cc,0xffffffffu);f.put(f.actor,0x7d0,0xffffffffu);f.actor[0x8b0]=1;
+    auto forget_input=[&](unsigned token){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,token);f.put(inp.variant,0x10,2u);
+        return accept->run(f.actor,sizeof(f.actor),ground_vt,0x223db3a0u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&forget_b,&catalog_o);
+    };
+    assert(forget_input(506u)&&catalog_o.native_handler&&!catalog_o.forget_found&&!forget_f.released);
+    assert(forget_input(501u)&&catalog_o.forget_found&&catalog_o.forget_removed&&!catalog_o.forget_cleared&&forget_f.last==0x9200u);
+    assert(f.get<unsigned>(f.actor,0x8a0)==0x7001u&&f.get<int>(f.actor,0x858)==3);
+    assert(forget_input(502u)&&catalog_o.forget_found&&catalog_o.forget_cleared&&catalog_o.forget_removed&&forget_f.last==0x9100u);
+    assert(f.get<unsigned>(f.actor,0x8a0)==0xffffffffu&&f.get<float>(f.actor,0x8a4)==55.f&&f.get<float>(f.actor,0xbf8)==-1.f&&!f.actor[0x8b0]);
+    assert(f.get<unsigned>(f.actor,0x7cc)&(1u<<21));assert(!(f.get<unsigned>(f.actor,0x7cc)&(1u<<25)));
+    assert(forget_tree->validate(forget_f.memory,sizeof(forget_f.memory),&forget_services.memory.storage,&forget_result)&&forget_result.count==0);
+    assert(forget_input(500u)&&catalog_o.forget_found&&!catalog_o.forget_removed&&!catalog_o.forget_cleared&&forget_f.released==2);
+    f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
