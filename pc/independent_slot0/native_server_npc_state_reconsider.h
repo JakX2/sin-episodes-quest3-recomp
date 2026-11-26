@@ -909,4 +909,28 @@ struct ServerNpcGruntPrescheduleApi {
     int (__cdecl *pending)(void*,unsigned,float,const ServerNpcGruntPrescheduleBindings*,ServerNpcGruntPrescheduleResult*) noexcept;
 };
 using GetServerNpcGruntPrescheduleApi=const ServerNpcGruntPrescheduleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_speech_queue_export[]="SiN_GetServerNpcGruntSpeechQueueApi";
+struct ServerNpcGruntSpeechQueueBindings {
+    std::uint32_t original_vtable;
+    void* context;
+    // Original 22359170/22359180 read mutable globals; initial file values 1 and 75.
+    float volume;
+    int level;
+    int (__cdecl *squad_storage)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    // 221b37c0: engine-owned sentence delivery. The raw member +8 is the final argument.
+    int (__cdecl *deliver)(void*,std::uint32_t,int,float,int,int,std::uint32_t) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+};
+struct ServerNpcGruntSpeechQueueResult {
+    unsigned completed,empty,expired,priority_blocked,state_blocked,squad_used,delivered,owner_written,squad_written,cleared;
+    int index,priority;
+    float owner_deadline,squad_deadline;
+};
+struct ServerNpcGruntSpeechQueueApi {
+    std::uint32_t version,size;
+    int (__cdecl *tick)(void*,unsigned,float,const ServerNpcGruntSpeechQueueBindings*,ServerNpcGruntSpeechQueueResult*) noexcept;
+    // Same original preschedule sequence with native 220a3370 in place of the legacy callback.
+    int (__cdecl *preschedule)(void*,unsigned,float,const ServerNpcGruntPrescheduleBindings*,const ServerNpcGruntSpeechQueueBindings*,ServerNpcGruntPrescheduleResult*,ServerNpcGruntSpeechQueueResult*) noexcept;
+};
+using GetServerNpcGruntSpeechQueueApi=const ServerNpcGruntSpeechQueueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
