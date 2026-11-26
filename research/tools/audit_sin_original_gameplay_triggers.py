@@ -57,7 +57,19 @@ ORIGINAL_METHODS={
   "trigger_npc_query":(0x22139F60,19,"d5ea9253030765bcd70227e7860e4620758e52644047e564b5756b5d78eaef44"),
   "trigger_vehicle_query":(0x22035100,56,"53a6bdb618de249bc00c327d2326511c8dd944c26a2f4692f3e366f8fd756c6a"),
   "trigger_custom_filter":(0x2216B2A0,46,"e3cf0c2990ba6e8464a74f92378827c0e2d2123b27cab476a05fcdbc5acf2324"),
+  "base_filter_raw":(0x2216B290,5,"f4c6d7ae520f88aecb3ea65952e885437fa4a6ce4b5c3439a161d1c5d8e42863"),
+  "name_filter_raw":(0x2216BDB0,139,"0040852e4e4dd65b0a35c530d22e3894599441c146d65b3b23e02ab80a6c7f48"),
+  "class_filter_raw":(0x2216BEF0,38,"ffeb9f83148ef71a7ab6d225b4dedcd6911da474b47e0b98322441d7323e7ba8"),
+  "multi_filter_raw":(0x2216B5D0,238,"4c1eb94c4e0325d494a73c075963abff90ffd65f19f6bf38acd47b36438b32cb"),
+  "filter_targetname_compare":(0x22138740,164,"eef6cd79c9ad7cbfeb9fccc98f7cc219c1093f25af066fdb82d6fb30cda7f6ef"),
+  "filter_vehicle_handle_resolve":(0x220280A0,42,"3e1f38e2f06c1fd7b15f8268e7eecf5e4e21067cfa73e45348e71183740c9fa6"),
 }
+CUSTOM_FILTER_ROWS=(
+    (0x224149a4,0x224bd6c4,0x224ecf0c,0x2216b290,".?AVCBaseFilter@@"),
+    (0x22414ed4,0x224bd784,0x224f9080,0x2216bdb0,".?AVCFilterName@@"),
+    (0x2241516c,0x224bd7e4,0x224f909c,0x2216bef0,".?AVCFilterClass@@"),
+    (0x22414c3c,0x224bd724,0x224f9060,0x2216b5d0,".?AVCFilterMultiple@@"),
+)
 PLAYER_ROWS=(
     (0x224aec3c,0x224d3ff0,0x2251e69c,0x22253c30,".?AVCHL2_Player@@"),
     (0x2245222c,0x224c8498,0x224e5e60,0x22253c30,".?AVCBasePlayer@@"),
@@ -219,6 +231,17 @@ def verify_contact_slots(read_u32):
             raise EvidenceRefused("campaign contact dispatch slot changed")
     return 8
 
+def verify_custom_filter_slots(read_u32,read_text):
+    for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
+        if (read_u32(table-4),read_u32(col),read_u32(col+4),read_u32(col+12),
+            read_u32(table+0x28c))!=(col,0,0,typedesc,target):
+            raise EvidenceRefused("custom filter RTTI or predicate slot changed "+name)
+        if not read_text(typedesc+8,name):
+            raise EvidenceRefused("custom filter RTTI name changed "+name)
+    if not read_text(0x223d994c,"!player"):
+        raise EvidenceRefused("custom filter special player literal changed")
+    return len(CUSTOM_FILTER_ROWS)
+
 def verify_player_predicates(read_u32,read_text):
     for table,col,typedesc,target,name in PLAYER_ROWS:
         if (read_u32(table-4),read_u32(col),read_u32(col+4),
@@ -272,6 +295,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
     control_rows,control_slots=verify_trigger_control(pe.u32,pe.text)
     subject_sites=verify_subject_operands(pe.at,pe.text)
     player_rows=verify_player_predicates(pe.u32,pe.text)
+    custom_rows=verify_custom_filter_slots(pe.u32,pe.text)
     if not pe.text(0x22423278,"func_pushable"):
         raise EvidenceRefused("original trigger pushable literal changed")
     contact_slots=verify_contact_slots(pe.u32)
@@ -310,6 +334,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "trigger_control_virtual_slots":control_slots,
         "subject_operand_sites":subject_sites,
         "player_predicate_primary_rows":player_rows,
+        "custom_filter_primary_rows":custom_rows,
         "campaign_contact_dispatch_slots":contact_slots,
         "base_toggle_rows_without_inputs":15,
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
@@ -416,6 +441,22 @@ def self_test()->None:
         try:verify_contact_slots(bad.get)
         except EvidenceRefused:pass
         else:raise AssertionError("mutated campaign contact slot accepted")
+    filter_words={}
+    filter_text={0x223d994c:"!player"}
+    for table,col,typedesc,target,name in CUSTOM_FILTER_ROWS:
+        filter_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x28c:target})
+        filter_text[typedesc+8]=name
+    assert verify_custom_filter_slots(filter_words.get,lambda va,s:filter_text.get(va)==s)==4
+    for key in filter_words:
+        bad=dict(filter_words);bad[key]^=1
+        try:verify_custom_filter_slots(bad.get,lambda va,s:filter_text.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated custom filter slot accepted")
+    for key in filter_text:
+        bad=dict(filter_text);bad[key]="invalid"
+        try:verify_custom_filter_slots(filter_words.get,lambda va,s:bad.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated custom filter literal accepted")
     player_words={}
     player_text={}
     for table,col,typedesc,target,name in PLAYER_ROWS:
