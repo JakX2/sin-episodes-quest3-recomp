@@ -8,6 +8,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <string>
 using namespace sin_port::native_map;
@@ -685,6 +686,14 @@ int main(int argc,char** argv){
         switch(token){
             case 301:case 0x22420054:*text="FireTimer";break;
             case 302:*text="-3";break;
+            case 303:*text="  +2.5e-1 seconds";break;
+            case 304:*text="1.25D+1 trailing";break;
+            case 305:*text="garbage";break;
+            case 306:*text="-0.0";break;
+            case 307:*text="0x1p+2";break;
+            case 308:*text="3.5e+";break;
+            case 309:*text="1e9999";break;
+            case 310:*text="-1e-9999";break;
             case 0x22420090:*text="RefireTime";break;
             case 0x223edd00:*text="Enable";break;
             case 0x223edce8:*text="Disable";break;
@@ -755,5 +764,56 @@ int main(int argc,char** argv){
     te.serial=4;
     assert(!api->timer_primary_run(timer,sizeof(timer),568,&tpb,&tpr)&&!tpr.completed);
     assert(!timer_ai(0x22420030,5,1)&&!word(timer,0x3e8));
+    // Real map parameter strings reach the FLOAT input without a hosted
+    // converter. Preserve decimal prefix, old D exponent and null token.
+    te.serial=3;tf.now=80.f;
+    assert(timer_ai(0x223edce8,0,0)&&word(timer,0x74)==0xffffffffu);
+    const int decimal_status=timer_ai(0x22420090,2,303);
+    std::fprintf(stderr,"decimal input status=%d completed=%u accepted=%u maps=%u row=%u handler=%08x expected=%u actual=%u converted=%u native=%u reason=%u state=%08x disabled=%08x\n",
+        decimal_status,tair.completed,tair.accepted,tair.maps,tair.row,tair.handler,tair.expected_type,tair.actual_type,tair.converted,tair.native_handler,tair.reason,word(timer,0x3e0),word(timer,0x3dc));
+    assert(decimal_status&&tair.converted&&tair.native_handler&&word(timer,0x3e0)==0x3e800000u);
+    assert(timer_ai(0x22420004,2,304)&&tair.converted&&tair.written==4&&word(timer,0x3ec)==0x41480000u);
+    assert(timer_ai(0x22420004,2,305)&&tair.written==4&&!word(timer,0x3ec));
+    assert(timer_ai(0x22420004,2,306)&&word(timer,0x3ec)==0x80000000u);
+    assert(timer_ai(0x22420004,2,307)&&!word(timer,0x3ec));
+    assert(timer_ai(0x22420004,2,308)&&word(timer,0x3ec)==0x40600000u);
+    assert(timer_ai(0x22420004,2,309)&&word(timer,0x3ec)==0x7f800000u);
+    assert(timer_ai(0x22420004,2,310)&&word(timer,0x3ec)==0x80000000u);
+    assert(timer_ai(0x22420004,2,0)&&!word(timer,0x3ec));
+    // Queue named action with parameter override (FIELD_STRING) from an
+    // actual map output row; native service converts and re-arms timer.
+    std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=90.f;
+    assert(timer_ai(0x223edd00,0,0)&&word(timer,0x74)==642);
+    ActionPool decimal_pool{};OutputActionBindings dpo=output;dpo.context=&decimal_pool;dpo.next_id=&decimal_pool.id;
+    auto dk=tk;dk.native_output=&dpo;
+    dk.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+        if(!std::strcmp(text,"timer"))*token=311;
+        else if(!std::strcmp(text,"RefireTime"))*token=0x22420090;
+        else if(!std::strcmp(text,"1.25D+1 trailing"))*token=304;
+        else return 0;return 1;
+    };
+    // Empty prior OnTimer head before attaching this independent row.
+    put(timer,0x3a8,0u);
+    assert(api->key_value(timer,"OnTimer","timer,RefireTime,1.25D+1 trailing,0,1",&dk,&kr)&&kr.output);
+    struct DecimalQueue {ActionPool* pool;ConnectedOutput* queue;void* actor;} dq{&decimal_pool,&co,timer};
+    nw::ServerEntityVoidOutputBindings decimal_fire_bind{};decimal_fire_bind.context=&dq;
+    decimal_fire_bind.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+        auto& f=*static_cast<DecimalQueue*>(p);if(token!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[0])))return 0;
+        *row=f.pool->rows[0];*bytes=0x1c;return 1;
+    };
+    decimal_fire_bind.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+        auto& f=*static_cast<DecimalQueue*>(p);assert(a==f.actor&&c==f.actor&&action->parameter==304&&action->variant_type==2);
+        nw::ServerEntityNamedEventQueueResult out{};auto& q=*f.queue;
+        return q.api->enqueue(q.root,sizeof(q.root),99,q.now,0x3000u,0x3000u,action,&q.queue,&out);
+    };
+    decimal_fire_bind.release=[](void* p,unsigned,void* row) noexcept ->int{
+        auto& f=*static_cast<DecimalQueue*>(p);assert(row==f.pool->rows[0]);++f.pool->released;return 1;
+    };
+    tes.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** target) noexcept ->int{
+        auto& f=*static_cast<ConnectedOutput*>(p);assert(f.locked&&name==311&&a==f.actor&&c==f.actor);*target=prev?nullptr:f.actor;return 1;
+    };
+    nw::ServerEntityVoidOutputResult decimal_fire{};
+    assert(fire_api->fire(timer+0x394,0x18,timer,timer,sizeof(timer),0.f,&decimal_fire_bind,&decimal_fire)&&decimal_fire.queued==1&&decimal_fire.removed==1&&decimal_pool.released==1);
+    assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&tes,&es)&&es.native_inputs==1&&word(timer,0x3e0)==0x41480000u&&word(timer,0x74)==820&&co.released==1);
     FreeLibrary(server);FreeLibrary(client);
 }

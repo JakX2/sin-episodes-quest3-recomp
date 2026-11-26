@@ -6,6 +6,7 @@ extern "C" __declspec(dllexport) const sin_port::native_resupply::Api* __cdecl S
 #include <cstring>
 #include <limits>
 #include <initializer_list>
+#include <charconv>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerWeaponActivityApi* __cdecl SiN_GetServerWeaponActivityApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcSubclassSchedulerApi* __cdecl SiN_GetServerNpcSubclassSchedulerApi(std::uint32_t,std::uint32_t) noexcept;
@@ -759,6 +760,53 @@ unsigned input_decimal(const char* p) noexcept {
     unsigned v=0;
     while(*p>='0'&&*p<='9'){v=v*10u+static_cast<unsigned>(*p-'0');++p;}
     return negative?0u-v:v;
+}
+// 22155fad -> 223a5c8b -> 223b02f6. The original C-locale
+// grammar is decimal prefix, including D/d exponent, not modern
+// hex-float / NaN / Inf syntax. input_text bounds its NUL to 4096 bytes.
+// Normalize only the accepted prefix; host from_chars rounds to double
+// without depending on locale, then store the original float payload.
+// Rare extreme decimal rounding differences from the old CRT remain.
+bool input_decimal_float(const char* p,float& value) noexcept {
+    while(*p==' '||(*p>='\t'&&*p<='\r'))++p;
+    const bool neg=*p=='-';if(neg||*p=='+')++p;
+    char decimal[4097]{};unsigned used=0,digits=0,before=0,first_nonzero=4096;
+    if(neg)decimal[used++]='-';
+    auto digit=[](char ch){return ch>='0'&&ch<='9';};
+    auto append_digit=[&](){
+        if(*p!='0'&&first_nonzero==4096)first_nonzero=digits;
+        decimal[used++]=*p++;++digits;
+    };
+    while(digit(*p))append_digit();
+    before=digits;
+    if(*p=='.'){
+        decimal[used++]=*p++;
+        while(digit(*p))append_digit();
+    }
+    if(!digits){value=0.f;return true;}
+    int exponent=0;
+    if(*p=='e'||*p=='E'||*p=='d'||*p=='D'){
+        const char* e=p+1;const bool minus=*e=='-';
+        if(minus||*e=='+')++e;
+        if(digit(*e)){
+            decimal[used++]='e';if(minus)decimal[used++]='-';
+            while(digit(*e)){
+                if(exponent<10000){exponent=exponent*10+(*e-'0');if(exponent>10000)exponent=10000;}
+                decimal[used++]=*e++;
+            }
+            if(minus)exponent=-exponent;
+        }
+    }
+    if(first_nonzero==4096){value=neg?-0.f:0.f;return true;}
+    double converted=0;
+    const auto parsed=std::from_chars(decimal,decimal+used,converted,std::chars_format::general);
+    if(parsed.ec==std::errc::result_out_of_range){
+        const int magnitude=static_cast<int>(before)-static_cast<int>(first_nonzero)-1+exponent;
+        value=std::copysign(magnitude>=0?std::numeric_limits<float>::infinity():0.f,neg?-1.f:1.f);
+        return true;
+    }
+    if(parsed.ec!=std::errc{}||parsed.ptr!=decimal+used)return false;
+    value=static_cast<float>(converted);return true;
 }
 // Pure conversion leaves of 22155e60. Return false only for missing host
 // services, distinguish a rejected conversion from a malformed binding.
@@ -2278,9 +2326,22 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             o->matched=1;o->map=token;o->row=static_cast<unsigned>(i);o->handler=rd<unsigned>(row,0x1c);
             o->expected_type=rd<unsigned>(row,0);o->actual_type=rd<unsigned>(data.variant,0x10);
             if(o->actual_type!=o->expected_type&&!(o->actual_type==0&&o->expected_type==2)){
-                bool ok=false;if(!input_convert(data.variant,o->expected_type,*b,ok))return 0;
-                if(!ok)return rejected(EntityInputBadConversion);
-                o->converted=1;o->actual_type=rd<unsigned>(data.variant,0x10);
+                if(o->actual_type==2u&&o->expected_type==1u&&!b->convert){
+                    // Decode before handler dispatch; preserve all other
+                    // variant words. Verify the actual converted type.
+                    const char* text=nullptr;float value=0.f;
+                    if(!input_text(*b,rd<unsigned>(data.variant,0),&text)||!input_decimal_float(text,value))return 0;
+                    const unsigned float_type=1;
+                    std::memcpy(data.variant,&value,sizeof(value));
+                    std::memcpy(data.variant+0x10,&float_type,sizeof(float_type));
+                    o->actual_type=rd<unsigned>(data.variant,0x10);
+                    if(o->actual_type!=float_type)return 0;
+                    o->converted=1;
+                }else{
+                    bool ok=false;if(!input_convert(data.variant,o->expected_type,*b,ok))return 0;
+                    if(!ok)return rejected(EntityInputBadConversion);
+                    o->converted=1;o->actual_type=rd<unsigned>(data.variant,0x10);
+                }
             }
             if(o->handler==0x220320b0u&&b->wake){
                 // InputWake replaces the inputdata stack argument with true,
