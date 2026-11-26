@@ -4769,7 +4769,157 @@ int follow_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const v
     }
     return 0; // shared search events 100001/100005 are deliberately routed to the older explicit leaf
 }
-struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;const TakecoverEventRoute* cover=nullptr;const StandoffEventRoute* standoff=nullptr;const ActBusyEventRoute* busy=nullptr;const FollowEventRoute* follow=nullptr;};
+
+struct AssaultEventRoute {const ServerNpcGruntAssaultEventBindings* bindings;ServerNpcGruntAssaultEventResult* result;};
+int assault_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const void* ev,float now,const AssaultEventRoute& route,const RappelScheduleRoute* schedule) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;
+    const auto& busy=b.events.events;const auto& tb=busy.events.events.events;
+    const auto& rb=tb.events.events;const auto& re=rb.events;const auto& e=re.events;
+    const auto& sb=e.gate.speech.speech.sentence;
+    if(n<0xc1c||extent<0x30||id<100000||id>100011)return 0;
+    o.entered=1;o.sequence_id=-1;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto done=[&](){o.completed=1;return 1;};
+    auto resolve=[&](bool rally){
+        ++o.lookups;auto& handle=rally?o.rally_handle:o.assault_handle;
+        handle=read<unsigned>(p,rally?0x18:0x14);return static_cast<void*>(registry.Resolve(handle));
+    };
+    auto span=[&](void* t,unsigned min){unsigned bytes=0;return t&&b.extent&&b.extent(b.context,t,&bytes)&&bytes>=min;};
+    auto request=[&](bool rally){
+        o.request_value=rally?0x223f3bf8u:0x223f3c08u;
+        if(!tb.request||!tb.request(tb.context,a,o.request_value))return false;
+        o.request_called=1;return true;
+    };
+    auto reset=[&](){if(!schedule||!rappel_schedule_reset(a,n,now,*schedule))return false;o.reset_called=1;return true;};
+    auto angles=[&](bool rally){
+        void* t=resolve(rally);return t&&b.orientation&&b.orientation(b.context,t,o.angles)&&finite_vec(o.angles);
+    };
+    auto orient=[&](bool rally){
+        if(!angles(rally)||!b.nav_orientation||!b.nav_orientation(b.context,a,o.angles))return false;
+        o.orientation_called=1;return true;
+    };
+    auto nav=[&](bool rally){
+        if(!angles(rally))return false;
+        void* storage=nullptr;unsigned bytes=0;
+        if(!memory_storage(&re.navigation,read<unsigned>(a,0x908),0x18,storage,bytes))return false;
+        write(storage,0x14,o.angles[1]);o.nav_written=1;
+        if(!b.nav_arrival||!b.nav_arrival(b.context,a))return false;
+        o.arrival_called=1;return true;
+    };
+    auto condition=[&](int id,bool clear){
+        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return false;
+        if(clear){
+            if(!api->store(a,n,id,NpcConditionCurrent,false,&rb.conditions,&o.condition))return false;
+            o.condition_cleared=1;
+        }else{
+            if(!api->test(a,n,id,NpcConditionCurrent,&rb.conditions,&o.condition))return false;
+            o.condition_checked=1;
+        }
+        return true;
+    };
+    if(id==100010)return done(); // outer gate normally consumes without calling this
+    if(id==100011){
+        o.deadline=static_cast<float>(static_cast<double>(now)+read<float>(ev,4));
+        if(!std::isfinite(o.deadline))return 0;
+        write(p,0x2c,o.deadline);o.timer_written=1;
+        return reset()?done():0;
+    }
+    if(id==100000||id==100002){
+        const bool rally=id==100000;void* target=resolve(rally);o.target_valid=target!=nullptr;
+        if(!target)return rally?0:(request(false)?done():0);
+        auto goal=[&](unsigned mode,float range,bool retry,bool& accepted){
+            void* t=resolve(rally);
+            if(!t||!b.origin||!b.origin(b.context,t,o.point)||!finite_vec(o.point)||!b.goal)return false;
+            // Original first goal also embeds a live serial-resolved target; fallback mode5 does not.
+            void* subject=retry?nullptr:resolve(rally);
+            if(!retry&&!subject)return false;
+            ++o.goals;return b.goal(b.context,a,subject,o.point,mode,range,retry,&accepted)!=0;
+        };
+        bool first=false;if(!goal(0,-1.f,false,first))return 0;o.goal_first=first;
+        if(first)return orient(rally)?done():0;
+        bool second=false;if(!goal(5,256.f,true,second))return 0;o.goal_second=second;
+        if(second&&!condition(0x21,true))return 0;
+        if(!orient(rally))return 0;
+        return (!second||reset())?done():0;
+    }
+    if(id==100001||id==100003){
+        const bool rally=id==100001;
+        if(!rally){
+            if(!condition(0x14,false))return 0;
+            if(o.condition.value)return reset()?done():0;
+        }
+        void* t=resolve(rally);o.target_valid=t!=nullptr;
+        if(!t)return (rally?request(true):reset())?done():0;
+        return nav(rally)?done():0;
+    }
+    if(id==100004||id==100005){
+        const bool rally=id==100005;
+        void* t=resolve(rally);o.target_valid=t!=nullptr;
+        if(!t)return request(rally)?done():0;
+        // Verified +5a8 target 2235ae30 ignores the retail 1000/1001 signal.
+        o.ignored_signal=1;
+        write<std::uint8_t>(p,rally?0x24:0x25,1);o.flag_written=1;
+        void* activator=resolve(rally);t=resolve(rally);
+        if(!activator||!t||!b.output||!b.output(b.context,t,a,rally?0x3a4:0x3bc))return 0;
+        o.output_called=1;
+        if(!rally){
+            t=resolve(false);if(!span(t,0x398))return 0;
+            if(read<unsigned>(t,0x394)){
+                t=resolve(false);if(!span(t,0x398)||!b.named_action||!b.named_action(b.context,a,read<unsigned>(t,0x394),false))return 0;
+                o.action_called=1;
+            }
+        }
+        return reset()?done():0;
+    }
+    if(id==100007||id==100009){
+        const bool rally=id==100009;void* t=resolve(rally);o.target_valid=t!=nullptr;
+        if(!t)return (rally?reset():request(false))?done():0;
+        const unsigned off=rally?0x39c:0x3b4;
+        t=resolve(rally);if(!span(t,off+4))return 0;
+        o.duration=read<float>(t,off);
+        if(!std::isfinite(o.duration)||!busy.duration||!busy.duration(busy.context,a,o.duration,false))return 0;
+        o.duration_called=1;return done();
+    }
+    if(id==100008){
+        void* t=resolve(false);o.target_valid=t!=nullptr;bool skip=false;
+        if(t){
+            t=resolve(false);if(!span(t,0xb5))return 0;
+            if(!(read<std::uint8_t>(t,0xb4)&1)){
+                t=resolve(false);if(!span(t,0x3bb))return 0;
+                if(read<std::uint8_t>(t,0x3ba)){
+                    t=resolve(false);if(!span(t,0x39c))return 0;skip=read<unsigned>(t,0x398)==0;
+                }
+            }
+        }
+        if(!skip){if(!b.advance||!b.advance(b.context,p))return 0;o.advance_called=1;}
+        return reset()?done():0;
+    }
+    if(id==100006){
+        bool ready=false;if(!b.rally_ready||!b.rally_ready(b.context,p,&ready))return 0;o.ready_called=1;o.ready=ready;
+        if(ready)return reset()?done():0;
+        void* t=resolve(true);o.target_valid=t!=nullptr;
+        if(!t)return request(true)?done():0;
+        t=resolve(true);if(!span(t,0x39c))return 0;
+        if(read<unsigned>(t,0x398)){
+            t=resolve(true);if(!span(t,0x39c))return 0;
+            o.sequence_token=read<unsigned>(t,0x398);
+            if(!o.sequence_token)o.sequence_token=0x223d47a8u;
+            if(!b.sequence_lookup||!b.sequence_lookup(b.context,a,o.sequence_token,&o.sequence_id))return 0;
+            o.sequence_called=1;
+            if(o.sequence_id==-1)return done();
+            if(!b.sequence_set||!b.sequence_set(b.context,a,o.sequence_id)||!e.clear_activity||!e.clear_activity(e.context,a,154))return 0;
+            o.activity_called=1;return done();
+        }
+        if(registry.Resolve(read<unsigned>(a,0x8a0))){
+            if(!busy.owner_event)return 0;
+            const auto marker=read<std::uint8_t>(p,8);const bool ok=busy.owner_event(busy.context,a,60,0.f)!=0;
+            write(p,8,marker);o.synthetic_called=1;if(!ok)return 0;
+        }
+        return done();
+    }
+    return 0;
+}
+struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;const TakecoverEventRoute* cover=nullptr;const StandoffEventRoute* standoff=nullptr;const ActBusyEventRoute* busy=nullptr;const FollowEventRoute* follow=nullptr;const AssaultEventRoute* assault=nullptr;};
 int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const RappelEventRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;
     o.entered=1;auto done=[&](){o.completed=1;return 1;};
@@ -4892,7 +5042,8 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
         const bool native_standoff=rappel&&rappel->standoff&&entry&&identity.behavior_vtable==0x22495344;
         const bool native_busy=rappel&&rappel->busy&&entry&&identity.behavior_vtable==0x224ab494;
         const bool native_follow=rappel&&rappel->follow&&entry&&identity.behavior_vtable==0x223f6b7c&&id!=100001&&id!=100005;
-        if(entry&&!no_op&&!native_rappel&&!native_tank&&!native_cover&&!native_standoff&&!native_busy&&!native_follow&&!b->special)return 0;
+        const bool native_assault=rappel&&rappel->assault&&entry&&identity.behavior_vtable==0x223f5544;
+        if(entry&&!no_op&&!native_rappel&&!native_tank&&!native_cover&&!native_standoff&&!native_busy&&!native_follow&&!native_assault&&!b->special)return 0;
         write<std::uint8_t>(p,8,1);out->marker_set=1;
         if(native_rappel){
             if(!rappel_event_route(a,n,p,extent,id,now,*rappel))return 0;
@@ -4906,6 +5057,8 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
             if(!actbusy_event_route(a,n,p,extent,id,now,*rappel->busy,rappel->schedule))return 0;
         }else if(native_follow){
             if(!follow_event_route(a,n,p,extent,id,ev,now,*rappel->follow,rappel->schedule))return 0;
+        }else if(native_assault&&!no_op){
+            if(!assault_event_route(a,n,p,extent,id,ev,now,*rappel->assault,rappel->schedule))return 0;
         }else if(entry&&!no_op){
             out->special_called=1;if(!b->special(b->context,a,p,extent,entry,ev,en))return 0;
         }
@@ -5161,6 +5314,28 @@ int __cdecl grunt_follow_event(void* a,unsigned n,const void* ev,unsigned en,flo
     return grunt_event43_impl(a,n,ev,en,now,&sched.events.events,&e.events.events,&rappel,&timer);
 }
 const ServerNpcGruntFollowEventApi follow_event_api{1,sizeof(ServerNpcGruntFollowEventApi),&grunt_follow_event};
+int __cdecl grunt_assault_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntAssaultEventBindings* b,ServerNpcGruntAssaultEventResult* out) noexcept{
+    if(!out)return 0;*out={};out->sequence_id=-1;out->condition.global=out->condition.bit=-1;
+    auto& follow_out=out->events;follow_out.dispatched=follow_out.synthetic_event=-1;
+    auto& busy_out=follow_out.events;busy_out.activity=busy_out.memory_id=-1;busy_out.condition.global=busy_out.condition.bit=-1;
+    auto& stand=busy_out.events;stand.random=-1;
+    auto& cover_out=stand.events;auto& tank_out=cover_out.events;tank_out.handle=0xffffffffu;tank_out.random=-1;
+    auto& timer_out=tank_out.events;auto& e=timer_out.events;e.events.rope_handle=0xffffffffu;
+    e.condition.global=e.condition.bit=e.slot.index=e.slot.selected=-1;
+    if(!b)return 0;
+    const auto& fo=b->events;const auto& bu=fo.events;const auto& st=bu.events;const auto& cb=st.events;const auto& tb=cb.events;const auto& timer_bind=tb.events;const auto& sched=timer_bind.events;
+    const RappelScheduleRoute schedule{&sched,&e};
+    const TankEventRoute tank{&tb,&tank_out};
+    const TakecoverEventRoute cover{&cb,&cover_out};
+    const StandoffEventRoute standoff{&st,&stand};
+    const ActBusyEventRoute busy{&bu,&busy_out};
+    const FollowEventRoute follow{&fo,&follow_out};
+    const AssaultEventRoute assault{b,out};
+    const RappelEventRoute rappel{&sched.events,&e.events,&schedule,&tank,&cover,&standoff,&busy,&follow,&assault};
+    const EventTimerRoute timer{&timer_bind,&timer_out};
+    return grunt_event43_impl(a,n,ev,en,now,&sched.events.events,&e.events.events,&rappel,&timer);
+}
+const ServerNpcGruntAssaultEventApi assault_event_api{1,sizeof(ServerNpcGruntAssaultEventApi),&grunt_assault_event};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -7007,4 +7182,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntFollowEventApi=_SiN_GetServerNpcGruntFollowEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntFollowEventApi* __cdecl SiN_GetServerNpcGruntFollowEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntFollowEventApi)?&follow_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultEventApi=_SiN_GetServerNpcGruntAssaultEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultEventApi* __cdecl SiN_GetServerNpcGruntAssaultEventApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultEventApi)?&assault_event_api:nullptr;
 }
