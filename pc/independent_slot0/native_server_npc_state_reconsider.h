@@ -1661,4 +1661,44 @@ struct ServerNpcGruntDamageNotificationApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageNotifiedEventBindings*,ServerNpcGruntDamageNotifiedEventResult*) noexcept;
 };
 using GetServerNpcGruntDamageNotificationApi=const ServerNpcGruntDamageNotificationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_damage_detail_export[]="SiN_GetServerNpcGruntDamageDetailApi";
+struct ServerNpcGruntBoneHitBindings {
+    void* context;
+    int (__cdecl *index)(void*,void*,const char*,int*) noexcept;
+    int (__cdecl *matrix)(void*,void*,int,float*) noexcept; // row-major 3x4
+};
+struct ServerNpcGruntBoneHitResult {int index;float origin[3],squared;double distance;unsigned completed,found,hit;};
+struct ServerNpcGruntImpactBindings {
+    ServerNpcGruntReactionSpeechBindings reaction;
+    void* context;
+    int (__cdecl *rule)(void*,bool*) noexcept;
+    int (__cdecl *detach)(void*,void*) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *lethal)(void*,void*,void*) noexcept;
+    int (__cdecl *event)(void*,int,void*,void*) noexcept;
+};
+struct ServerNpcGruntImpactResult {
+    ServerNpcGruntSentenceResult speech;
+    ServerNpcGruntSentenceRequestResult request;
+    float threshold,sample,deadline;
+    unsigned completed,head_present,rule_called,detached,random_called,lethal_called,event_id,speech_called;
+};
+struct ServerNpcGruntDamageDetailBindings {
+    ServerNpcGruntDamageOverrideBindings damage;
+    ServerNpcGruntBoneHitBindings bone;
+    ServerNpcGruntImpactBindings impact;
+};
+struct ServerNpcGruntDamageDetailResult {
+    ServerNpcGruntDamageOverrideResult damage;
+    ServerNpcGruntImpactResult impact;
+    ServerNpcGruntBoneHitResult right,left;
+};
+struct ServerNpcGruntDamageDetailApi {
+    std::uint32_t version,size;
+    int (__cdecl *bone)(void*,const char*,const float*,float,const ServerNpcGruntBoneHitBindings*,ServerNpcGruntBoneHitResult*) noexcept;
+    int (__cdecl *impact)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntImpactBindings*,ServerNpcGruntImpactResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageDetailBindings*,ServerNpcGruntDamageDetailResult*) noexcept;
+};
+using GetServerNpcGruntDamageDetailApi=const ServerNpcGruntDamageDetailApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
