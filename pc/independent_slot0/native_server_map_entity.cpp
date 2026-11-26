@@ -773,9 +773,11 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     o->handled=1;return done();
 }
 using Collector=int (__cdecl *)(void*,void*,const char*,unsigned,const EntitySlice*) noexcept;
-int parse_impl(const char* s,unsigned n,const Bindings* b,Result* o,Collector collect,void* context) noexcept {
+int parse_impl(const char* s,unsigned n,const Bindings* b,Result* o,Collector collect,void* context,
+    const CampaignFilterFactoryBindings* filters=nullptr) noexcept {
     if(!o)return 0;*o={};
     if(!s||!b||(!b->create&&!b->native_factory)||(!b->key_value&&!b->native_keys)||(!collect&&!b->accept_entity))return 0;
+    if(filters&&(b->create||b->key_value||!b->native_factory||!b->native_keys||!valid_dictionary(b->native_factory->dictionary)))return 0;
     unsigned cursor=0;
     for(;;){
         Token top{};if(!token(s,n,cursor,&top))return 0;
@@ -793,7 +795,10 @@ int parse_impl(const char* s,unsigned n,const Bindings* b,Result* o,Collector co
         if(create){
             if(b->create){if(!b->create(b->context,classname,&actor))return 0;}
             else{
-                if(!create_factory(classname,b->native_factory,&o->last_factory))return 0;
+                if(filters){
+                    if(!create_filter_factory(classname,filters,&o->last_factory))return 0;
+                    if(!o->last_factory.matched&&!create_factory(classname,b->native_factory,&o->last_factory))return 0;
+                }else if(!create_factory(classname,b->native_factory,&o->last_factory))return 0;
                 actor=o->last_factory.actor;
                 if(o->last_factory.matched)++o->native_creates;else ++o->foreign_creates;
             }
@@ -1379,12 +1384,13 @@ int __cdecl collect_entity(void* q,void* actor,const char* s,unsigned n,const En
     if(ok&&!world&&code<0)ok=pipeline_cleanup(p,actor,false);
     const bool closed=pipeline_scope(p,scope,false);return ok&&closed;
 }
-int parse_all_impl(const char* s,unsigned n,bool activate,const PipelineBindings* b,PipelineResult* o,void* manager) noexcept {
+int parse_all_impl(const char* s,unsigned n,bool activate,const PipelineBindings* b,PipelineResult* o,void* manager,
+    const CampaignFilterFactoryBindings* filters=nullptr) noexcept {
     if(!o)return 0;*o={};
     if(!s||!b||!b->parse||!b->spawn||!b->classify||!b->scope)return 0;
     Pipeline p{*b,*o,manager};constexpr char outer[]="MapEntity_ParseAllEntities",templates[]="MapEntity_ParseAllEntities_SpawnTemplates";
     if(!pipeline_scope(p,outer,true))return 0;
-    bool ok=parse_impl(s,n,b->parse,&o->parse,&collect_entity,&p)!=0;
+    bool ok=parse_impl(s,n,b->parse,&o->parse,&collect_entity,&p,filters)!=0;
     for(unsigned i=0;i<p.template_count&&ok;++i){
         if(!pipeline_scope(p,templates,true)){ok=false;break;}
         void* a=p.templates[i];int code=0;
@@ -3354,4 +3360,10 @@ extern "C" int __cdecl SiN_DestroyCampaignFilterEntity(void* actor,unsigned byte
         networkable!=static_cast<unsigned char*>(actor)+0x160)return 0;
     // Factory Destroy calls networkable +18; no actor read afterwards.
     return owner->release_networkable(owner->context,networkable);
+}
+
+int __cdecl SinParseMapWithFiltersInternal(const char* text,unsigned bytes,bool activate,
+    const sin_port::native_map::PipelineBindings* b,sin_port::native_map::PipelineResult* o,void* manager,
+    const sin_port::native_map::CampaignFilterFactoryBindings* filters) noexcept {
+    return manager&&filters&&sin_port::native_map::parse_all_impl(text,bytes,activate,b,o,manager,filters);
 }

@@ -119,6 +119,9 @@ inline constexpr char campaign_filters_activate_export[]="SiN_InvokeServerActiva
 using InvokeActivateWithCampaignFilters=int (__cdecl *)(State*,void*,int,int,const Bindings*,Result*,
     const native_server_startup::EngineEventSession*,const native_map::CampaignFilterActivationBindings*,CampaignFilterActivationSummary*) noexcept;
 using InvokeLevelWithEvents=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*,const native_server_startup::EngineEventSession*) noexcept;
+inline constexpr char campaign_filters_level_export[]="SiN_InvokeServerLevelInitWithCampaignFilters";
+using InvokeLevelWithCampaignFilters=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*,
+    const native_server_startup::EngineEventSession*,const native_map::CampaignFilterFactoryBindings*) noexcept;
 using TouchStartedTrigger=int (__cdecl *)(const native_server_startup::EngineEventSession*,void*,unsigned,void*,
     const native_map::CampaignTriggerBindings*,native_map::CampaignTriggerResult*,int*) noexcept;
 // The engine/owner supplies an already-established contact. These are

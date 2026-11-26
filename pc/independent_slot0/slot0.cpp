@@ -54,6 +54,8 @@
 extern "C" const sin_port::native_level::Api* __cdecl SiN_GetServerLevelApi(std::uint32_t,std::uint32_t) noexcept;
 int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::LevelArgs*,
     const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*) noexcept;
+int __cdecl SinLevelInitWithFiltersInternal(sin_port::native_level::State*,const sin_port::native_level::LevelArgs*,
+    const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*,const sin_port::native_map::CampaignFilterFactoryBindings*) noexcept;
 int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
 bool __cdecl SinReadCampaignContactFieldsInternal(const void*,unsigned,unsigned*,unsigned char*) noexcept;
 extern "C" int __cdecl SiN_StartCampaignTriggerOutput(void*,unsigned,void*,unsigned,const sin_port::native_map::CampaignStartTouchBindings*,
@@ -1239,6 +1241,7 @@ struct LevelInvocation {
     void* event_manager=nullptr;
     const sin_port::native_map::CampaignFilterActivationBindings* filters=nullptr;
     sin_port::native_level::CampaignFilterActivationSummary* filter_summary=nullptr;
+    const sin_port::native_map::CampaignFilterFactoryBindings* filter_factories=nullptr;
 };
 static thread_local LevelInvocation* g_level_invocation=nullptr;
 #endif
@@ -1339,6 +1342,8 @@ public:
             if(invocation->entered||invocation->activating)return false;invocation->entered=true;
             const auto* api=SiN_GetServerLevelApi(1,sizeof(sin_port::native_level::Api));
             const sin_port::native_level::LevelArgs args{map,entities,old_level,landmark,load_game,background};
+            if(invocation->event_manager&&invocation->filter_factories)
+                return SinLevelInitWithFiltersInternal(invocation->state,&args,invocation->bindings,invocation->result,invocation->event_manager,invocation->filter_factories)!=0;
             if(invocation->event_manager)
                 return SinLevelInitWithEventsInternal(invocation->state,&args,invocation->bindings,invocation->result,invocation->event_manager)!=0;
             return api&&api->level_init(invocation->state,&args,invocation->bindings,invocation->result);
@@ -1594,6 +1599,22 @@ extern "C" int __cdecl SiN_InvokeServerLevelInitWithEngineEvents(
     if(!state||!args||!bindings||!eventSessionReady(session)||state->startup!=session->startup||
        bindings->parse_entities||!bindings->native_map_pipeline)return 0;
     LevelInvocation invocation{state,bindings,out,false};invocation.event_manager=session->manager;g_level_invocation=&invocation;
+    using Slot=bool (__thiscall *)(void*,const char*,const char*,const char*,const char*,bool,bool) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    const bool success=reinterpret_cast<Slot>(table[2])(&instance,args->map,args->entities,args->old_level,args->landmark,args->load_game,args->background);
+    g_level_invocation=nullptr;return invocation.entered&&success;
+}
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerLevelInitWithCampaignFilters=_SiN_InvokeServerLevelInitWithCampaignFilters")
+extern "C" int __cdecl SiN_InvokeServerLevelInitWithCampaignFilters(
+    sin_port::native_level::State* state,const sin_port::native_level::LevelArgs* args,
+    const sin_port::native_level::Bindings* bindings,sin_port::native_level::Result* out,
+    const sin_port::native_server_startup::EngineEventSession* session,const sin_port::native_map::CampaignFilterFactoryBindings* factories) noexcept {
+    if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!args||!bindings||!factories||!factories->owner||!eventSessionReady(session)||state->startup!=session->startup||
+       bindings->parse_entities||!bindings->native_map_pipeline||!bindings->native_map_pipeline->parse)return 0;
+    const auto* parse=bindings->native_map_pipeline->parse;
+    if(parse->create||parse->key_value||!parse->native_factory||!parse->native_keys)return 0;
+    LevelInvocation invocation{state,bindings,out,false};invocation.event_manager=session->manager;invocation.filter_factories=factories;g_level_invocation=&invocation;
     using Slot=bool (__thiscall *)(void*,const char*,const char*,const char*,const char*,bool,bool) noexcept;
     auto** table=*reinterpret_cast<void***>(&instance);
     const bool success=reinterpret_cast<Slot>(table[2])(&instance,args->map,args->entities,args->old_level,args->landmark,args->load_game,args->background);
