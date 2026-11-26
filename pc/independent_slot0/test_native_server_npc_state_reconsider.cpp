@@ -4844,6 +4844,53 @@ int main(int argc,char** argv){
         f.put(q.a,0x8ec,0x10000000u);assert(!line_run()&&!ar.completed&&!q.a[0xc64]);f.put(q.a,0x8ec,0u);
         f.put(q.weapon,0x494,0x9000u);q.a[0xc64]=1;assert(!line_run()&&!ar.completed&&!q.a[0xc64]);
         ab.entries=q.entries;ab.count=3;
+        // 22031120 adaptive spread, exact memory key and no fallback.
+        const auto spread_getter=reinterpret_cast<GetServerNpcGruntAdaptiveSpreadApi>(GetProcAddress(s,server_npc_grunt_adaptive_spread_export));
+        assert(spread_getter&&!GetProcAddress(c,server_npc_grunt_adaptive_spread_export)&&!spread_getter(0,sizeof(ServerNpcGruntAdaptiveSpreadApi))&&!spread_getter(1,0));
+        const auto* spread=spread_getter(1,sizeof(ServerNpcGruntAdaptiveSpreadApi));assert(spread);
+        struct SpreadFixture{
+            unsigned char memory[0x40]{},nodes[12]{},record[0x38]{};
+            void* actor=nullptr;void* weapon=nullptr;void* target=nullptr;
+            float base[3]{.125f,.25f,.0625f},table[256]{};
+            unsigned base_calls=0,key_calls=0;
+        } sf;
+        sf.actor=q.a;sf.weapon=q.weapon;sf.target=q.enemy;
+        f.put(sf.memory,0,0x22068d70u);f.put(sf.memory,4,602u);f.put(sf.memory,8,1u);f.put(sf.memory,0x18,0x22068b40u);
+        sf.memory[0x10]=0;sf.nodes[0]=sf.nodes[1]=255;f.put(sf.nodes,4,123u);f.put(sf.nodes,8,603u);f.put(sf.record,0x28,10.f);
+        ServerNpcGruntAdaptiveSpreadBindings sbind{};sbind.context=&sf;sbind.memory.context=&sf;sbind.memory.storage.context=&sf;
+        sbind.memory.entity_key=[](void* p,void* e,std::uint32_t* key) noexcept -> int{auto& z=*static_cast<SpreadFixture*>(p);assert(e==z.target);++z.key_calls;*key=123;return 1;};
+        sbind.memory.storage.storage=[](void* p,std::uint32_t token,void** v,unsigned* n) noexcept -> int{
+            auto& z=*static_cast<SpreadFixture*>(p);if(token==601){*v=z.memory;*n=sizeof(z.memory);}else if(token==602){*v=z.nodes;*n=sizeof(z.nodes);}else if(token==603){*v=z.record;*n=sizeof(z.record);}else return 0;return 1;
+        };
+        sbind.base_spread=[](void* p,void* a,void* w,void* e,float* v) noexcept -> int{
+            auto& z=*static_cast<SpreadFixture*>(p);assert(a==z.actor&&w==z.weapon&&(e==z.target||!e));++z.base_calls;std::memcpy(v,z.base,12);return 1;
+        };
+        sbind.duration=4.f;sbind.multiplier=3.f;sbind.angle_table=sf.table;sbind.angle_count=256;
+        f.put(q.a,0x984,601u);ServerNpcGruntAdaptiveSpreadResult spread_result{};
+        assert(spread->spread(q.a,sizeof(q.a),q.weapon,q.enemy,9,&sbind,&spread_result)&&spread_result.record_found&&spread_result.age==0&&spread_result.factor==3&&spread_result.scaled&&spread_result.vector[0]==.375f);
+        assert(spread->spread(q.a,sizeof(q.a),q.weapon,q.enemy,12,&sbind,&spread_result)&&spread_result.age==2&&spread_result.factor==2&&spread_result.vector[1]==.5f);
+        assert(spread->spread(q.a,sizeof(q.a),q.weapon,q.enemy,14,&sbind,&spread_result)&&spread_result.age==4&&!spread_result.scaled&&spread_result.vector[0]==.125f);
+        sbind.multiplier=.5f;assert(spread->spread(q.a,sizeof(q.a),q.weapon,q.enemy,10,&sbind,&spread_result)&&!spread_result.scaled);
+        sbind.multiplier=3.f;sbind.duration=0;assert(spread->spread(q.a,sizeof(q.a),q.weapon,q.enemy,10,&sbind,&spread_result)&&!spread_result.scaled);
+        sbind.duration=4.f;assert(spread->spread(q.a,sizeof(q.a),q.weapon,nullptr,10,&sbind,&spread_result)&&!spread_result.record_found&&!spread_result.lookup.fallback_attempted&&!spread_result.scaled);
+        f.put(sf.nodes,4,0u);assert(spread->spread(q.a,sizeof(q.a),q.weapon,q.enemy,10,&sbind,&spread_result)&&!spread_result.record_found&&!spread_result.lookup.fallback_attempted);
+        // +6e8 uses null key and table index from the f32 magic-number rounding.
+        unsigned key_calls=sf.key_calls;
+        // Original 0x223d9750 is 0x4b400040: the low byte starts at 64.
+        sf.table[85]=.875f;sf.base[0]=.25f;sbind.multiplier=2.f;
+        assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.scaled&&spread_result.vector[0]==.5f&&spread_result.angle_index==85&&spread_result.table_called&&spread_result.threshold==.875f&&sf.key_calls==key_calls);
+        // Independent original table indices with no adaptive scaling.
+        sbind.multiplier=1.f;sf.table[74]=.625f;sf.table[128]=.25f;
+        assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&!spread_result.scaled&&spread_result.angle_index==74&&spread_result.threshold==.625f);
+        sf.base[0]=1.f;assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.angle_index==128&&spread_result.threshold==.25f);
+        sf.base[0]=.13053f;sbind.multiplier=1.f;
+        assert(spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&spread_result.clamped&&spread_result.threshold==.99145f&&!spread_result.table_called);
+        assert(spread->threshold(q.a,sizeof(q.a),nullptr,10,nullptr,&spread_result)&&spread_result.no_weapon&&spread_result.threshold==.92f&&!spread_result.base_called);
+        sf.base[0]=.5f;sbind.angle_count=255;
+        assert(!spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&!spread_result.completed);
+        sf.base[0]=1.25f;sbind.angle_count=256;
+        assert(!spread->threshold(q.a,sizeof(q.a),q.weapon,10,&sbind,&spread_result)&&!spread_result.completed);
+        assert(!spread->spread(q.a,0x987,q.weapon,q.enemy,10,&sbind,&spread_result));
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
         f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
 
