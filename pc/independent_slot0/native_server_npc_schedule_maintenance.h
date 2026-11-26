@@ -102,6 +102,7 @@ struct ServerNpcGatherSchedulerApi {
 };
 using GetServerNpcGatherSchedulerApi=const ServerNpcGatherSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 // Internal synchronous route; no change to legacy scheduler binding layouts.
+struct ServerNpcSharedNativeSpeechStats;
 struct ServerNpcNativeGatherRoute {
     const ServerNpcGruntGatherNativeBindings* bindings;
     ServerNpcGruntGatherNativeResult* result;
@@ -119,5 +120,7 @@ struct ServerNpcNativeGatherRoute {
     ServerNpcGruntNativeStateResult* apply_result=nullptr;
     unsigned* choose_calls=nullptr;
     unsigned* apply_calls=nullptr;
+    const ServerNpcGruntEventSpeechBindings* speech_tasks=nullptr;
+    ServerNpcSharedNativeSpeechStats* speech_stats=nullptr;
 };
 }

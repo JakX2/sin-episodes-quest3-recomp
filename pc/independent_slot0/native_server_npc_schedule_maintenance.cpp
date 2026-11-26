@@ -368,10 +368,18 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
     if(sound_cover){sound_cover_bound=*sound_cover;sound_cover_bound.original_vtable=b->original_vtable;sound_cover=&sound_cover_bound;}
     ServerNpcSharedTacticalCoverBindings tactical_bound{};
     if(tactical){tactical_bound=*tactical;tactical_bound.original_vtable=b->original_vtable;tactical=&tactical_bound;}
+    ServerNpcGruntEventSpeechBindings speech_bound{};
     ServerNpcSharedParentSession shared_session{};
     if(shared){
         ServerGruntTaskBindings forwarded{};
         if(!shared_stats||!bind_shared_parent_internal(a,bytes,now,&binding.grunt,&m.selection,shared,shared_stats,&shared_session,&forwarded,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats,sound_cover,sound_cover_stats,tactical,tactical_stats))return 0;
+        if(native_gather&&native_gather->speech_tasks){
+            if(!native_gather->speech_stats)return 0;
+            speech_bound=*native_gather->speech_tasks;
+            speech_bound.speech.sentence.speech.original_vtable=b->original_vtable;
+            shared_session.native_speech=&speech_bound;shared_session.native_speech_stats=native_gather->speech_stats;
+            *native_gather->speech_stats={};
+        }
         binding.grunt=forwarded;binding.elite.grunt=forwarded;binding.jetpack.grunt=forwarded;
     }
     ServerGruntCombatTaskBindings combat_bound{};
