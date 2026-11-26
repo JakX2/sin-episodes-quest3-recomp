@@ -811,7 +811,7 @@ int main(int argc,char** argv){
     continuous.spawn.owner=[](void* p,void*,void* owner) noexcept ->int{assert(owner==static_cast<LoopFixture*>(p)->actor);return 1;};
     continuous.spawn.finalize=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.pickups[q.finalized]&&q.initialized>q.finalized);++q.finalized;return 1;};
     continuous.spawn.linear=continuous.spawn.position;continuous.spawn.angular=continuous.spawn.position;
-    continuous.spawn.world_bounds=[](void*,void*,float* min,float* max) noexcept ->int{min[2]=100;max[2]=110;return 1;};
+    continuous.spawn.world_bounds=[](void* p,void* a,float* min,float* max) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.pickups[0]||a==q.pickups[1]);min[2]=a==q.pickups[0]?30.f:46.f;max[2]=min[2]+10.f;return 1;};
     continuous.spawn.random_float=[](void*,float lo,float hi,float* v) noexcept ->int{assert(lo==-6&&hi==6);*v=0;return 1;};
     continuous.spawn.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.actor&&!EvalFixture::rd(a,8));++q.removed;return 1;};
     cv.calls=0;cv.roots[0].SetFloat(1.f);cv.roots[1].SetFloat(25.f);cv.roots[3].SetFloat(10.f);
