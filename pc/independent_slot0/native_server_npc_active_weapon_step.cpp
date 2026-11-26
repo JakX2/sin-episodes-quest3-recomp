@@ -15,6 +15,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntMemoryReportApi* __cdecl SiN_GetServerNpcGruntMemoryReportApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadLeaveApi* __cdecl SiN_GetServerNpcGruntSquadLeaveApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntLifeDispatchApi* __cdecl SiN_GetServerNpcGruntLifeDispatchApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGroundLifeApi* __cdecl SiN_GetServerNpcGruntGroundLifeApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -1364,7 +1365,8 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
         if(!dispatch.enqueue||!dispatch.enqueue(dispatch.context,a,info,0x48))return false;
         ++o.health_deferred;return true;
     }
-    if(!dispatch.life||!dispatch.life_result)return false;
+    const bool ground=dispatch.ground_death&&(vt==0x224954a4u||vt==0x2249aaa4u||vt==0x224a416cu);
+    if(!dispatch.life||(ground?!dispatch.ground_result:!dispatch.life_result))return false;
     if(!self_damage_scale(a,*b.storage,false,o.health_outgoing_scale,o.health_multiplier_rows))return false;
     wr<float>(info,0x2c,static_cast<float>(double(rd<float>(info,0x2c))*o.health_outgoing_scale));
     if(!self_damage_scale(a,*b.storage,true,o.health_incoming_scale,o.health_multiplier_rows))return false;
@@ -1406,8 +1408,22 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
             return src.local_player&&src.local_player(src.context,player);
         };
     }
-    const auto* api=SiN_GetServerNpcGruntLifeDispatchApi(1,sizeof(ServerNpcGruntLifeDispatchApi));
-    if(!api||!api->run(a,n,info,0x48,b.now,&life,dispatch.life_result))return false;
+    if(ground){
+        ServerNpcGruntGroundLifeBindings bound{};bound.life=life;bound.ground=*dispatch.ground_death;
+        // For this specialized self-damage route the attacker classification
+        // is a known constant: +d0=2236a3a0 (11) or 22358410 (6).
+        // The existing ground API keeps the other death service contexts.
+        if(!bound.ground.classification)bound.ground.classification=vt==0x2249aaa4u?
+            +[](void*,void*,int* value) noexcept -> int{*value=11;return 1;}:
+            +[](void*,void*,int* value) noexcept -> int{*value=6;return 1;};
+        const auto* api=SiN_GetServerNpcGruntGroundLifeApi(1,sizeof(ServerNpcGruntGroundLifeApi));
+        if(!api||!api->run(a,n,rd<unsigned>(a,0x378),info,0x48,b.now,&bound,dispatch.ground_result))return false;
+        ++o.health_ground_route;o.health_ground_death=dispatch.ground_result->ground_called;
+        if(dispatch.life_result&&dispatch.life_result!=&dispatch.ground_result->life)*dispatch.life_result=dispatch.ground_result->life;
+    }else{
+        const auto* api=SiN_GetServerNpcGruntLifeDispatchApi(1,sizeof(ServerNpcGruntLifeDispatchApi));
+        if(!api||!api->run(a,n,info,0x48,b.now,&life,dispatch.life_result))return false;
+    }
     // 2213bc80 immediately skips its player-attacker statistics branch
     // for the authenticated Grunt self attacker (+120 returns false).
     ++o.health_life_called;return true;
