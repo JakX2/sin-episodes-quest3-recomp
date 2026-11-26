@@ -259,6 +259,8 @@ struct ServerEntityInputData {
     unsigned char variant[0x14];
     std::uint32_t output_id;
 };
+struct ServerNpcWakeTransitionBindings;
+struct ServerNpcWakeTransitionResult;
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
     void* context;
@@ -267,9 +269,13 @@ struct ServerEntityAcceptInputBindings {
     int (__cdecl *convert)(void*,void* variant,unsigned target_type,bool* converted) noexcept;
     int (__cdecl *handler)(void*,void* entity,std::uint32_t original_handler,const ServerEntityInputData*) noexcept;
     int (__cdecl *diagnostic)(void*,void* entity,void* caller,std::uint32_t input,unsigned reason,const void* variant) noexcept;
+    // Optional native 220320b0 InputWake route. Registry and dirty storage
+    // are authoritative from AcceptInput; other handler tokens remain hosted.
+    const ServerNpcWakeTransitionBindings* wake;
+    ServerNpcWakeTransitionResult* wake_result;
 };
 struct ServerEntityAcceptInputResult {
-    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason;
+    unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
