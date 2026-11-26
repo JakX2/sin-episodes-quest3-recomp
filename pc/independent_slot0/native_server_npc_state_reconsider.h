@@ -2830,4 +2830,34 @@ struct ServerNpcGruntAssaultActivationApi {
     int (__cdecl *reevaluate)(void*,unsigned,std::uint32_t,bool,float,const ServerNpcGruntAssaultActivationBindings*,ServerNpcGruntAssaultActivationResult*) noexcept; // 2216e8c0
 };
 using GetServerNpcGruntAssaultActivationApi=const ServerNpcGruntAssaultActivationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_arbitration_export[]="SiN_GetServerNpcGruntAssaultArbitrationApi";
+struct ServerNpcGruntAssaultArbitrationBindings {
+    const ServerNpcGruntAssaultActivationBindings* activation;
+    const ServerNpcGruntAssaultPolicyBindings* policy;
+    void* context;
+    int (__cdecl *list)(void*,std::uint32_t,const void**,unsigned*) noexcept; // owner +c1c PE32 token array
+    int (__cdecl *other_select)(void*,void*,void*,unsigned,std::uint32_t,int*,bool*) noexcept; // +58 then +d4
+    int (__cdecl *shared_select)(void*,void*,int*) noexcept; // 2204fd80
+    int (__cdecl *other_translate)(void*,void*,void*,unsigned,std::uint32_t,int,int*) noexcept; // +6c
+    int (__cdecl *shared_translate)(void*,void*,int,int*) noexcept; // 2205f1c0
+};
+struct ServerNpcGruntAssaultArbitrationResult {
+    ServerNpcGruntAssaultActivationResult transition;
+    ServerNpcGruntAssaultAdmissionResult admission;
+    ServerNpcGruntAssaultScheduleResult selection;
+    ServerNpcGruntAssaultPolicyResult translation;
+    std::uint32_t active_token,behavior_vtable,last_candidate,selected_token;
+    int selected_index,incoming,local_schedule,schedule;
+    unsigned completed,arbitrated,visited,admission_calls,owner_accepts,selected,
+        marker_written,native_select,other_select,shared_select,private_id,mapped,
+        reverse_mapped,native_translate,other_translate,shared_translate;
+};
+struct ServerNpcGruntAssaultArbitrationApi {
+    std::uint32_t version,size;
+    int (__cdecl *arbitrate)(void*,unsigned,float,const ServerNpcGruntAssaultArbitrationBindings*,ServerNpcGruntAssaultArbitrationResult*) noexcept; // 2234e590
+    int (__cdecl *select)(void*,unsigned,float,bool,const ServerNpcGruntAssaultArbitrationBindings*,ServerNpcGruntAssaultArbitrationResult*) noexcept; // 22089700 / 2234e730
+    int (__cdecl *translate)(void*,unsigned,int,float,const ServerNpcGruntAssaultArbitrationBindings*,ServerNpcGruntAssaultArbitrationResult*) noexcept; // 220897a0
+};
+using GetServerNpcGruntAssaultArbitrationApi=const ServerNpcGruntAssaultArbitrationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

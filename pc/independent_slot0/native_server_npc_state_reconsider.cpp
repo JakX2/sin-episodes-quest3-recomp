@@ -6140,7 +6140,7 @@ int assault_change_active_impl(void* a,unsigned n,std::uint32_t next,float now,c
     write(a,0xc18,next);o.active_written=1;o.changed=next!=o.previous;
     if(!o.changed)return done();
     if(next){
-        // Assault +1c = one-byte RET; four other admitted components also have empty +1c.
+        // Assault +1c = one-byte RET; three other admitted components also have empty +1c.
         const auto vt=arrival.behavior_vtable;
         if(vt!=0x223f5544&&vt!=0x223f956c&&vt!=0x224ab88c&&vt!=0x224ab494){
             if(!other(arrival,0x1c))return 0;
@@ -6198,6 +6198,118 @@ int __cdecl assault_reevaluate_active(void* a,unsigned n,std::uint32_t candidate
     o->reevaluated=o->deactivated=1;return 1;
 }
 const ServerNpcGruntAssaultActivationApi assault_activation_api{1,sizeof(ServerNpcGruntAssaultActivationApi),&assault_change_active,&assault_reevaluate_active};
+
+bool assault_arbitration_init(void* a,unsigned n,float now,const ServerNpcGruntAssaultArbitrationBindings* b,ServerNpcGruntAssaultArbitrationResult* o) noexcept{
+    if(!o)return false;*o={};o->selected_index=o->incoming=o->local_schedule=o->schedule=-1;
+    return n>=0xc31&&b&&assault_activation_init(a,n,now,b->activation,&o->transition);
+}
+bool assault_arbitrate_impl(void* a,unsigned n,float now,const ServerNpcGruntAssaultArbitrationBindings& b,ServerNpcGruntAssaultArbitrationResult& o) noexcept{
+    const auto& activation=*b.activation;const auto& ab=activation.schedule->admission;
+    auto row=[&](unsigned index,std::uint32_t& token){
+        const int count=read<int>(a,0xc28);const auto array=read<unsigned>(a,0xc1c);
+        const void* data=nullptr;unsigned bytes=0;
+        if(count<=0||count>8||index>=static_cast<unsigned>(count)||!array||!b.list||
+            !b.list(b.context,array,&data,&bytes)||!data||bytes<4u*static_cast<unsigned>(count))return false;
+        token=read<unsigned>(data,4*index);return token!=0;
+    };
+    o.arbitrated=1;
+    for(int i=0;i<read<int>(a,0xc28);++i){
+        if(i>=8||!row(static_cast<unsigned>(i),o.last_candidate))return false;
+        ++o.visited;EmbeddedBehaviorIdentity id{};
+        if(!embedded_behavior_identity(a,n,ab.actor_vtable,ab.actor_token,o.last_candidate,false,id))return false;
+        bool yes=false;++o.admission_calls;
+        if(id.behavior_vtable==0x223f5544){
+            if(!assault_admit(a,n,now,&ab,&o.admission))return false;
+            yes=o.admission.admitted!=0;
+        }else if(!activation.other_admit||!activation.other_admit(activation.context,a,
+            static_cast<unsigned char*>(a)+id.embedded_offset,n-id.embedded_offset,id.behavior_vtable,&yes))return false;
+        if(!yes)continue;
+        // All eight owner +77c targets = 2216dde0 (true). Retail rereads the list
+        // entry after admission and once again before the transition.
+        std::uint32_t accepted=0;if(!row(static_cast<unsigned>(i),accepted))return false;
+        ++o.owner_accepts;
+        if(!row(static_cast<unsigned>(i),o.selected_token))return false;
+        if(!assault_change_active_impl(a,n,o.selected_token,now,activation,o.transition))return false;
+        o.selected=1;o.selected_index=i;return true;
+    }
+    return assault_change_active_impl(a,n,0,now,activation,o.transition)!=0;
+}
+int __cdecl assault_arbitrate(void* a,unsigned n,float now,const ServerNpcGruntAssaultArbitrationBindings* b,ServerNpcGruntAssaultArbitrationResult* o) noexcept{
+    if(!assault_arbitration_init(a,n,now,b,o)||!assault_arbitrate_impl(a,n,now,*b,*o))return 0;
+    o->active_token=read<unsigned>(a,0xc18);o->completed=1;return 1;
+}
+int __cdecl assault_owner_select(void* a,unsigned n,float now,bool arbitrate_first,const ServerNpcGruntAssaultArbitrationBindings* b,ServerNpcGruntAssaultArbitrationResult* o) noexcept{
+    if(!assault_arbitration_init(a,n,now,b,o))return 0;
+    if(arbitrate_first&&!assault_arbitrate_impl(a,n,now,*b,*o))return 0;
+    const auto& sb=*b->activation->schedule;const auto& ab=sb.admission;
+    o->active_token=read<unsigned>(a,0xc18);write<std::uint8_t>(a,0xc30,1);o->marker_written=1;
+    if(!o->active_token){
+        if(!b->shared_select||!b->shared_select(b->context,a,&o->schedule))return 0;
+        o->shared_select=o->completed=1;return 1;
+    }
+    EmbeddedBehaviorIdentity id{};
+    if(!embedded_behavior_identity(a,n,ab.actor_vtable,ab.actor_token,o->active_token,false,id))return 0;
+    o->behavior_vtable=id.behavior_vtable;auto* p=static_cast<unsigned char*>(a)+id.embedded_offset;
+    bool priv=false;
+    if(id.behavior_vtable==0x223f5544){
+        if(!assault_select_schedule(a,n,&sb,&o->selection))return 0;o->native_select=1;
+        o->local_schedule=o->selection.schedule;priv=assault_private_id(o->local_schedule)!=0;
+    }else{
+        if(!b->other_select||!b->other_select(b->context,a,p,n-id.embedded_offset,id.behavior_vtable,&o->local_schedule,&priv))return 0;o->other_select=1;
+    }
+    o->private_id=priv;o->schedule=o->local_schedule;
+    if(priv){
+        if(!b->policy||!schedule_local_id(p,o->local_schedule,b->policy->behavior_schedules,o->schedule))return 0;
+        o->mapped=1;
+    }
+    o->completed=1;return 1;
+}
+// Original 220736c0 reverses a descriptor's inclusive global range, with
+// the stored global upper bound at row+0xc (not inferred from local range).
+bool assault_reverse_schedule(void* p,int global,const ServerNpcConditionMapBindings& b,int& local) noexcept{
+    local=-1;const void* desc=nullptr;unsigned bytes=0;
+    if(!b.descriptor||!b.descriptor(b.context,p,&desc,&bytes)||!desc||bytes<0x18)return false;
+    if(global==-1)return true;
+    const void* row=static_cast<const unsigned char*>(desc)+4;std::uint32_t seen[256]{};unsigned count=0;
+    while(row){
+        const int first=read<int>(row,4),base=read<int>(row,0),last=read<int>(row,0xc);
+        if(first!=9999&&global>=base&&global<=last){
+            const auto value=static_cast<std::int64_t>(first)-base+global;
+            if(value<std::numeric_limits<int>::min()||value>std::numeric_limits<int>::max())return false;
+            local=static_cast<int>(value);return true;
+        }
+        const auto next=read<unsigned>(row,0x10);if(!next)return true;
+        if(count>=256)return false;for(unsigned i=0;i<count;++i)if(seen[i]==next)return false;seen[count++]=next;
+        if(!b.storage||!b.storage(b.context,next,&row,&bytes)||!row||bytes<0x14)return false;
+    }
+    return true;
+}
+int __cdecl assault_owner_translate(void* a,unsigned n,int incoming,float now,const ServerNpcGruntAssaultArbitrationBindings* b,ServerNpcGruntAssaultArbitrationResult* o) noexcept{
+    if(!assault_arbitration_init(a,n,now,b,o))return 0;
+    o->incoming=o->local_schedule=incoming;o->active_token=read<unsigned>(a,0xc18);
+    if(!o->active_token){
+        if(!b->shared_translate||!b->shared_translate(b->context,a,incoming,&o->schedule))return 0;
+        o->shared_translate=o->completed=1;return 1;
+    }
+    const auto& ab=b->activation->schedule->admission;EmbeddedBehaviorIdentity id{};
+    if(!embedded_behavior_identity(a,n,ab.actor_vtable,ab.actor_token,o->active_token,false,id))return 0;
+    o->behavior_vtable=id.behavior_vtable;auto* p=static_cast<unsigned char*>(a)+id.embedded_offset;
+    if(incoming>=npc_global_condition_base||incoming==-1){
+        if(!b->policy||!assault_reverse_schedule(p,incoming,b->policy->behavior_schedules,o->local_schedule))return 0;
+        o->reverse_mapped=1;
+    }
+    if(id.behavior_vtable==0x223f5544){
+        if(!b->policy)return 0;auto policy=*b->policy;policy.admission=ab;
+        if(!assault_translate_schedule(a,n,o->local_schedule,now,&policy,&o->translation))return 0;
+        o->schedule=o->translation.schedule;o->native_translate=1;
+    }else{
+        if(!b->other_translate||!b->other_translate(b->context,a,p,n-id.embedded_offset,id.behavior_vtable,o->local_schedule,&o->schedule))return 0;
+        o->other_translate=1;
+    }
+    o->completed=1;return 1;
+}
+const ServerNpcGruntAssaultArbitrationApi assault_arbitration_api{1,sizeof(ServerNpcGruntAssaultArbitrationApi),&assault_arbitrate,&assault_owner_select,&assault_owner_translate};
+
 
 
 
@@ -8106,4 +8218,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultActivationApi=_SiN_GetServerNpcGruntAssaultActivationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultActivationApi* __cdecl SiN_GetServerNpcGruntAssaultActivationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultActivationApi)?&assault_activation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultArbitrationApi=_SiN_GetServerNpcGruntAssaultArbitrationApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultArbitrationApi* __cdecl SiN_GetServerNpcGruntAssaultArbitrationApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultArbitrationApi)?&assault_arbitration_api:nullptr;
 }

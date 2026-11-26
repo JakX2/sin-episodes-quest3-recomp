@@ -4254,7 +4254,9 @@ int main(int argc,char** argv){
         struct ActivationFixture {
             alignas(4) unsigned char a[0xde8]{},primary[0x3c0]{},secondary[0x3c0]{},desc[0x48]{},group[0x78]{},row[8]{};
             sin_independent::EntityHandleEntry entries[4]{};
-            std::uint8_t guard=55;bool ready=true,redirect=false;unsigned count=0,order[6]{};
+            std::uint8_t guard=55;bool ready=true,redirect=false,other_admitted=false;unsigned count=0,order[32]{};
+            alignas(4) unsigned char list[8]{},behavior[0x18]{};
+            unsigned other_checks=0,shared_selects=0,shared_translates=0;
             static ActivationFixture& self(void* p){return *static_cast<ActivationFixture*>(p);}
             static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
         } q;
@@ -4270,9 +4272,9 @@ int main(int argc,char** argv){
         slots.storage.storage=[](void* x,std::uint32_t token,void** v,unsigned* n) noexcept -> int{auto& q=ActivationFixture::self(x);if(token==91){*v=q.group;*n=sizeof(q.group);return 1;}if(token==200){*v=q.row;*n=sizeof(q.row);return 1;}return 0;};
         ServerNpcGruntAssaultActivationBindings b{};b.schedule=&sb;b.slots=&slots;b.context=&q;b.activation_guard=&q.guard;
         b.other_lifecycle=[](void* x,void* a,void* c,unsigned n,std::uint32_t vt,unsigned slot) noexcept -> int{
-            auto& q=ActivationFixture::self(x);assert(a==q.a&&c==q.a+0xcd8&&n==sizeof(q.a)-0xcd8&&vt==0x224abec4&&q.count<6);
+            auto& q=ActivationFixture::self(x);assert(a==q.a&&c==q.a+0xcd8&&n==sizeof(q.a)-0xcd8&&vt==0x224abec4&&q.count<32);
             q.order[q.count++]=slot;assert(q.guard==(slot==0x24?1:0));
-            if(slot==0x20)assert(ActivationFixture::rd(q.a,0xc18)==0x10db8u);
+            if(slot==0x20)assert(ActivationFixture::rd(q.a,0xc18)!=0x10cd8u);
             if(slot==0x1c&&q.redirect){std::uint32_t v=0x10db8u;std::memcpy(q.a+0xc18,&v,4);}
             return 1;
         };
@@ -4298,6 +4300,45 @@ int main(int argc,char** argv){
         f.put(q.a,0x9c4,0u);assert(change(0x10cd8u)&&q.count==2&&q.order[0]==0x1c&&q.order[1]==0x24);
         assert(change(0x10db8u)&&o.other_departure&&q.count==3&&q.order[2]==0x20);
         q.redirect=true;assert(change(0x10cd8u)&&o.after==0x10db8u&&o.native_departure&&q.count==4&&q.order[3]==0x1c&&q.guard==0);
+
+        auto ag=reinterpret_cast<GetServerNpcGruntAssaultArbitrationApi>(GetProcAddress(s,server_npc_grunt_assault_arbitration_export));
+        assert(ag&&!GetProcAddress(c,server_npc_grunt_assault_arbitration_export)&&!ag(0,sizeof(ServerNpcGruntAssaultArbitrationApi))&&!ag(1,0));
+        const auto* arb=ag(1,sizeof(ServerNpcGruntAssaultArbitrationApi));assert(arb);
+        q.redirect=false;q.ready=true;
+        b.other_admit=[](void* x,void* a,void* c,unsigned n,std::uint32_t vt,bool* yes) noexcept -> int{
+            auto& q=ActivationFixture::self(x);assert(a==q.a&&c==q.a+0xcd8&&n==sizeof(q.a)-0xcd8&&vt==0x224abec4);
+            ++q.other_checks;*yes=q.other_admitted;return 1;
+        };
+        ServerNpcGruntAssaultPolicyBindings policy{};policy.admission=ab;policy.context=&q;
+        policy.behavior_schedules.context=&q;policy.behavior_schedules.descriptor=[](void* x,void* c,const void** d,unsigned* n) noexcept -> int{auto& q=ActivationFixture::self(x);assert(c==q.a+0xdb8||c==q.a+0xcd8);*d=q.behavior;*n=sizeof(q.behavior);return 1;};
+        policy.parent_translate=[](void*,void*,int id,int* v) noexcept -> int{*v=id+200;return 1;};
+        ServerNpcGruntAssaultArbitrationBindings bb{};bb.activation=&b;bb.policy=&policy;bb.context=&q;
+        bb.list=[](void* x,std::uint32_t tok,const void** v,unsigned* n) noexcept -> int{auto& q=ActivationFixture::self(x);assert(tok==77);*v=q.list;*n=sizeof(q.list);return 1;};
+        bb.other_select=[](void* x,void* a,void* c,unsigned n,std::uint32_t vt,int* id,bool* priv) noexcept -> int{auto& q=ActivationFixture::self(x);assert(a==q.a&&c==q.a+0xcd8&&n==sizeof(q.a)-0xcd8&&vt==0x224abec4);*id=100003;*priv=true;return 1;};
+        bb.shared_select=[](void* x,void*,int* id) noexcept -> int{++ActivationFixture::self(x).shared_selects;*id=49;return 1;};
+        bb.other_translate=[](void* x,void* a,void* c,unsigned n,std::uint32_t vt,int id,int* v) noexcept -> int{auto& q=ActivationFixture::self(x);assert(a==q.a&&c==q.a+0xcd8&&n==sizeof(q.a)-0xcd8&&vt==0x224abec4);*v=id+1;return 1;};
+        bb.shared_translate=[](void* x,void*,int id,int* v) noexcept -> int{++ActivationFixture::self(x).shared_translates;*v=id+2;return 1;};
+        f.put(q.behavior,4,1000000300);f.put(q.behavior,8,100000);f.put(q.behavior,12,100009);f.put(q.behavior,16,1000000309);
+        f.put(q.a,0xc1c,77u);f.put(q.a,0xc28,2);f.put(q.list,0,0x10cd8u);f.put(q.list,4,0x10db8u);
+        ServerNpcGruntAssaultArbitrationResult z{};
+        auto choose=[&](bool first){return arb->select(q.a,sizeof(q.a),10,first,&bb,&z);};
+        assert(choose(true)&&z.arbitrated&&z.selected&&z.selected_index==1&&z.visited==2&&z.owner_accepts==1&&z.native_select&&z.private_id&&z.mapped&&z.schedule==1000000300&&q.a[0xc30]&&z.transition.active_written&&!z.transition.changed);
+        f.put(q.a,0x7d0,1u<<30);assert(choose(false)&&!z.arbitrated&&z.native_select&&z.local_schedule==100007&&z.schedule==1000000307);
+        f.put(q.a,0x7d0,1u<<16);assert(choose(false)&&z.local_schedule==26&&z.schedule==26&&!z.private_id&&!z.mapped);f.put(q.a,0x7d0,0u);
+        auto tr=[&](int id){return arb->translate(q.a,sizeof(q.a),id,10,&bb,&z);};
+        assert(tr(16)&&z.native_translate&&!z.reverse_mapped&&z.schedule==100003);
+        assert(tr(1000000303)&&z.reverse_mapped&&z.local_schedule==100003&&z.native_translate&&z.schedule==100203);
+        assert(tr(1000000310)&&z.reverse_mapped&&z.local_schedule==-1&&z.schedule==199);
+        assert(tr(-1)&&z.reverse_mapped&&z.local_schedule==-1&&z.schedule==199);
+        q.other_admitted=true;assert(choose(true)&&z.selected_index==0&&z.visited==1&&z.other_select&&z.schedule==1000000303&&z.transition.native_departure);
+        assert(tr(1000000304)&&z.other_translate&&z.local_schedule==100004&&z.schedule==100005);
+        q.other_admitted=false;q.ready=false;
+        assert(choose(true)&&z.arbitrated&&!z.selected&&z.transition.other_departure&&z.shared_select&&z.schedule==49&&q.shared_selects==1&&!ActivationFixture::rd(q.a,0xc18));
+        assert(tr(16)&&z.shared_translate&&z.schedule==18&&q.shared_translates==1);
+        f.put(q.a,0xc28,0);assert(arb->arbitrate(q.a,sizeof(q.a),10,&bb,&z)&&z.completed&&!z.visited&&!z.selected);
+        f.put(q.a,0xc28,9);assert(!arb->arbitrate(q.a,sizeof(q.a),10,&bb,&z));
+        f.put(q.a,0xc28,1);f.put(q.list,0,0x10db9u);assert(!arb->arbitrate(q.a,sizeof(q.a),10,&bb,&z)&&!z.completed);
+
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
