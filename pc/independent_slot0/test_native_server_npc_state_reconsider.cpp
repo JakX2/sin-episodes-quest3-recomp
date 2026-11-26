@@ -1043,19 +1043,32 @@ int main(int argc,char** argv){
         assert(policy->query(f.actor,sizeof(f.actor),point,639,&point_bindings,&point_result)&&point_result.no_inventory);
         f.put(f.actor,0xc38,1);
         assert(policy->query(f.actor,sizeof(f.actor),point,639,&point_bindings,&point_result)&&point_result.cooldown_blocked);
-        assert(policy->query(f.actor,sizeof(f.actor),point,640,&point_bindings,&point_result)&&point_result.range_blocked&&point_result.distance==0&&point_result.deadline==640.25f);
-        point[1]=128;f.put(f.actor,0x394,0.f);
+        assert(policy->query(f.actor,sizeof(f.actor),point,640,&point_bindings,&point_result)&&point_result.range_blocked&&point_result.distance==127&&point_result.deadline==640.25f);
+        point[0]=128;f.put(f.actor,0x394,0.f);
         assert(policy->query(f.actor,sizeof(f.actor),point,641,&point_bindings,&point_result)&&point_result.scalar_blocked&&!point_result.deadline_written);
         f.put(f.actor,0x394,1.f);f.put(f.actor,0x9c4,0u);f.combat_fov=f.combat_trace=true;f.melee_hits=true;
         assert(policy->query(f.actor,sizeof(f.actor),point,641,&point_bindings,&point_result)&&point_result.accepted&&point_result.direct&&point_result.solution[0]==10&&f.get<float>(0xc58)==10);
-        point[1]=1024;f.combat_fov=false;f.remembered_visible=false;
+        point[0]=1024;f.combat_fov=false;f.remembered_visible=false;
         assert(policy->query(f.actor,sizeof(f.actor),point,642,&point_bindings,&point_result)&&point_result.headroom_called&&!point_result.headroom_clear&&!point_result.solve_called&&!point_result.deadline_written);
         f.remembered_visible=true;
         assert(policy->query(f.actor,sizeof(f.actor),point,642,&point_bindings,&point_result)&&point_result.accepted&&!point_result.direct&&point_result.solution[0]==20&&f.get<float>(0xc58)==20);
         f.melee_hits=false;f.actor[0xc6c]=0;
         assert(policy->query(f.actor,sizeof(f.actor),point,643,&point_bindings,&point_result)&&!point_result.accepted&&point_result.solve_called&&point_result.deadline==644&&f.get<float>(0xc58)==20);
-        point[0]=500;point[1]=128;f.put(f.actor,0x9c4,105u);f.put(f.squad_data,8,0x9002u);f.put(f.squad_data,12,0x8002u);f.put(f.squad_data,0x48,2);f.distance[1]=500;
+        point[0]=500;f.put(f.actor,0x9c4,105u);f.put(f.squad_data,8,0x9002u);f.put(f.squad_data,12,0x8002u);f.put(f.squad_data,0x48,2);f.distance[1]=500;
         assert(policy->query(f.actor,sizeof(f.actor),point,644,&point_bindings,&point_result)&&point_result.squad_blocked&&point_result.squad_stale==1&&point_result.squad_visited==2&&point_result.notified&&!point_result.solve_called&&point_result.deadline==645);
+        // Independent axes and a mixed vector: the original push shifts stack offsets.
+        f.put(f.actor,0x9c4,0u);f.put(f.actor,0x394,0.f);
+        for(unsigned axis=0;axis<3;++axis){
+            for(float boundary:{127.f,128.f,1024.f,1025.f}){
+                float vector[3]{};vector[axis]=boundary;f.put(f.actor,0xc80,0.f);
+                assert(policy->query(f.actor,sizeof(f.actor),vector,646,&point_bindings,&point_result)&&point_result.distance==boundary);
+                const bool blocked=boundary<128||boundary>1024;
+                assert(bool(point_result.range_blocked)==blocked&&bool(point_result.scalar_blocked)==!blocked);
+            }
+        }
+        const float mixed[3]{30,40,120};f.put(f.actor,0xc80,0.f);
+        assert(policy->query(f.actor,sizeof(f.actor),mixed,646,&point_bindings,&point_result)&&point_result.distance==130.f&&point_result.scalar_blocked);
+        f.put(f.actor,0x394,1.f);
     }
     {
         auto getter=reinterpret_cast<GetServerNpcGruntGatherPointApi>(GetProcAddress(s,server_npc_grunt_gather_point_export));
@@ -1073,7 +1086,7 @@ int main(int argc,char** argv){
         f.put(f.actor,0xc18,711u);f.put(f.actor,0x850,3);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x798,0u);
         f.put(f.actor,0x9c4,0u);f.actor[0xcb2]=0;f.actor[0xc6c]=1;f.put(f.actor,0xcb4,0xffffffffu);f.put(f.actor,0xc80,650.f);
         f.put(f.actor,0xc38,1);f.put(f.actor,0x394,1.f);f.put(f.enemy,0xc,0u);
-        f.put(current_record,4,500.f);f.put(current_record,8,128.f);f.put(current_record,12,0.f);
+        f.put(current_record,4,500.f);f.put(current_record,8,0.f);f.put(current_record,12,0.f);
         f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);
         ServerNpcGruntGatherConditionsResult gather_point_result;
         ServerNpcGruntPointPolicyResult point_policy_result{};
@@ -1135,7 +1148,7 @@ int main(int argc,char** argv){
         f.put(f.actor,0xc18,711u);f.put(f.actor,0x850,3);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x798,0u);
         f.put(f.actor,0xcb4,0xffffffffu);f.put(f.actor,0xc80,0.f);f.actor[0xcb2]=f.actor[0xc6c]=1;
         f.put(f.actor,0x7cc,1u<<10);f.put(f.actor,0x7d4,0u);f.put(f.replacement,0xb4,0u);
-        f.put(current_record,8,128.f);
+        f.put(current_record,8,0.f);
         ServerNpcGruntGatherNativeResult native_result;
         assert(native_gather->gather(f.actor,sizeof(f.actor),660,&all_bindings,&native_result)&&native_result.gather.completed&&native_result.gather.search_called&&native_result.object.found&&native_result.gather.object_condition&&native_result.gather.point_condition&&native_result.point.accepted);
         assert(f.get<unsigned>(0xcb4)==0x8002u&&f.get<float>(0xc58)==40);
