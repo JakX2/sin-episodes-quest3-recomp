@@ -450,6 +450,35 @@ struct AntigenInteractionResult {
 };
 // CPropContainer damage/termination, specialized to CAntigenCanister.
 // The engine owns physical impulses, cloud/fragment creation and deferred deletion.
+inline constexpr unsigned antigen_gas_vtable=0x2246e81cu,antigen_gas_extent=0x3bcu,
+    antigen_gas_think_token=0x222fe510u;
+struct AntigenGasBindings {
+    void* context;
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *base_construct)(void*,void*) noexcept;
+    int (__cdecl *initialize)(void*,void*,const char*) noexcept;
+    int (__cdecl *position)(void*,void*,const float*) noexcept;
+    int (__cdecl *spawn_setup)(void*,void*) noexcept;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    // Owner creates/configures the original particle entity; token is the
+    // owner's PE32 pointer identity, not an entity handle.
+    int (__cdecl *particle)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *remove_particle)(void*,unsigned) noexcept;
+    int (__cdecl *sound)(void*,void*,const char*,bool) noexcept;
+    // Original rules radius effect, including target admission and traces.
+    int (__cdecl *radius_effect)(void*,void*,const float*,float,float,unsigned) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+};
+struct AntigenGasResult {
+    void* actor;
+    unsigned bytes,allocated,constructed,initialized,positioned,spawned,started,particle_created,
+        particle_removed,spawn_sound,loop_sound,loop_stopped,clock_reads,random_reads,schedules,
+        rate_reset,radius_called,elapsed_admitted,expired,removed,completed;
+    float remaining,rate,radius,particle_life,elapsed,amount,next_time;
+};
 struct AntigenDamageBindings {
     void* context;
     const sin_independent::EntityHandleEntry* entries;
@@ -469,6 +498,7 @@ struct AntigenDamageBindings {
     int (__cdecl *schedule)(void*,void*,float) noexcept;
     int (__cdecl *fragment)(void*,void*,const char*,int,float,float,float) noexcept;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+    const AntigenGasBindings* native_gas;
 };
 struct AntigenDamageResult {
     unsigned completed,damage_admitted,damage_effect,attacker_resolved,attacker_handle,leak_started,
@@ -477,6 +507,7 @@ struct AntigenDamageResult {
         think_cleared,tick_cleared,removed,fragments;
     int native_result,leak_count;
     float elapsed,cloud_amount;
+    AntigenGasResult gas;
 };
 struct Api {
     std::uint32_t version,size;
@@ -534,6 +565,9 @@ struct Api {
     int (__cdecl *antigen_canister_damage)(void*,unsigned,const void*,unsigned,const AntigenDamageBindings*,AntigenDamageResult*) noexcept;
     int (__cdecl *antigen_canister_break)(void*,unsigned,const AntigenDamageBindings*,AntigenDamageResult*) noexcept;
     int (__cdecl *antigen_canister_stop_leak)(void*,unsigned,const AntigenDamageBindings*,AntigenDamageResult*) noexcept;
+    int (__cdecl *antigen_gas_create)(const float*,float,float,float,float,const AntigenGasBindings*,AntigenGasResult*) noexcept;
+    int (__cdecl *antigen_gas_think)(void*,unsigned,const AntigenGasBindings*,AntigenGasResult*) noexcept;
+    int (__cdecl *antigen_gas_stop)(void*,unsigned,const AntigenGasBindings*,AntigenGasResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

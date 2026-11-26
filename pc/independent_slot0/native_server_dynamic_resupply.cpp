@@ -1144,6 +1144,117 @@ int __cdecl antigen_button_event(void* a,unsigned n,const char* name,int index,c
        !b->control.schedule(b->control.schedule_context?b->control.schedule_context:b->control.context,a,o->control.next_time))return 0;
     o->control.scheduled=1;return done();
 }
+bool gas_ready(void* a,unsigned n,const AntigenGasBindings* b) noexcept {
+    return a&&n>=antigen_gas_extent&&field<unsigned>(a,0)==antigen_gas_vtable&&field<int>(a,0x398)==1&&b;
+}
+bool gas_clock(const AntigenGasBindings& b,AntigenGasResult& o,float& now) noexcept {
+    if(!b.clock||!b.clock(b.context,&now)||!std::isfinite(now))return false;
+    ++o.clock_reads;return true;
+}
+bool gas_schedule(void* a,const AntigenGasBindings& b,AntigenGasResult& o,float time) noexcept {
+    if(!b.schedule||!b.schedule(b.context,a,time))return false;
+    o.next_time=time;++o.schedules;return true;
+}
+bool gas_random_schedule(void* a,const AntigenGasBindings& b,AntigenGasResult& o) noexcept {
+    float draw=0,now=0;
+    if(!b.random_float||!b.random_float(b.context,0.f,.5f,&draw)||!std::isfinite(draw))return false;
+    ++o.random_reads;
+    return gas_clock(b,o,now)&&gas_schedule(a,b,o,float(double(draw)+double(now)));
+}
+void gas_snapshot(void* a,AntigenGasResult& o) noexcept {
+    o.remaining=field<float>(a,0x3a4);o.rate=field<float>(a,0x39c);
+    o.radius=field<float>(a,0x3a0);o.particle_life=field<float>(a,0x3a8);
+}
+bool gas_stop_impl(void* a,const AntigenGasBindings& b,AntigenGasResult& o) noexcept {
+    const unsigned token=field<unsigned>(a,0x3b4);
+    if(!token)return true;
+    if(!b.remove_particle||!b.remove_particle(b.context,token))return false;o.particle_removed=1;
+    set_field(a,0x3b4,0u);set_field(a,8,0u);
+    if(!gas_schedule(a,b,o,-1.f)||!b.sound||!b.sound(b.context,a,"gas.antigen_loop",false))return false;
+    o.loop_stopped=1;return true;
+}
+bool gas_start(void* a,const AntigenGasBindings& b,AntigenGasResult& o) noexcept {
+    if(field<unsigned>(a,0x3b4))return true;
+    set_field(a,8,antigen_gas_think_token);
+    if(!gas_random_schedule(a,b,o))return false;
+    float now=0;if(!gas_clock(b,o,now))return false;
+    set_field(a,0x3b0,float(double(now)+1.));
+    unsigned token=0;
+    if(!b.particle||!b.particle(b.context,a,&token))return false;
+    set_field(a,0x3b4,token);o.particle_created=token!=0;
+    if(field<unsigned char>(a,0x3b8)){
+        if(!b.sound||!b.sound(b.context,a,"gas.antigen_spawn",true))return false;o.spawn_sound=1;
+    }
+    o.started=1;return true;
+}
+int __cdecl antigen_gas_create(const float* pos,float duration,float radius,float particle_life,float rate,const AntigenGasBindings* b,AntigenGasResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!pos||!b||!b->allocate||!b->base_construct||!b->initialize||!b->position||!b->spawn_setup||
+       !std::isfinite(duration)||!std::isfinite(radius)||!std::isfinite(particle_life)||!std::isfinite(rate))return 0;
+    if(!b->allocate(b->context,antigen_gas_extent,&o->actor,&o->bytes))return 0;
+    if(!o->actor){o->completed=1;return 1;} // original null factory is allowed
+    o->allocated=1;if(o->bytes<antigen_gas_extent||!b->base_construct(b->context,o->actor))return 0;
+    void* a=o->actor;
+    set_field(a,0,antigen_gas_vtable);set_field(a,0x394,static_cast<unsigned char>(1));
+    set_field(a,0x398,0);set_field(a,0x39c,5.f);set_field(a,0x3a0,300.f);set_field(a,0x3a4,20.f);set_field(a,0x3a8,15.f);
+    set_field(a,0x3ac,0.f);set_field(a,0x3b0,0.f);set_field(a,0x3b4,0u);set_field(a,0x3b8,static_cast<unsigned char>(1));
+    o->constructed=1;
+    if(!b->initialize(b->context,a,"env_poison_gas"))return 0;o->initialized=1;
+    if(!b->position(b->context,a,pos))return 0;o->positioned=1;
+    set_field(a,0x398,1);set_field(a,0x3a4,duration<0.f?20.f:duration);
+    set_field(a,0x3a0,radius<0.f?300.f:radius);set_field(a,0x3a8,particle_life<0.f?15.f:particle_life);
+    set_field(a,0x39c,rate<0.f?5.f:rate);
+    // 222ff590 always restores the exact 5.0 rate before Start.
+    if(!b->spawn_setup(b->context,a))return 0;o->spawned=1;
+    set_field(a,0x39c,5.f);o->rate_reset=1;
+    if(field<unsigned char>(a,0x394)&&!gas_start(a,*b,*o))return 0;
+    gas_snapshot(a,*o);o->completed=1;return 1;
+}
+int __cdecl antigen_gas_stop(void* a,unsigned n,const AntigenGasBindings* b,AntigenGasResult* o) noexcept {
+    if(!o)return 0;*o={};if(!gas_ready(a,n,b)||!gas_stop_impl(a,*b,*o))return 0;
+    gas_snapshot(a,*o);o->completed=1;return 1;
+}
+int __cdecl antigen_gas_think(void* a,unsigned n,const AntigenGasBindings* b,AntigenGasResult* o) noexcept {
+    if(!o)return 0;*o={};if(!gas_ready(a,n,b))return 0;
+    float now=0;if(!gas_clock(*b,*o,now))return 0;
+    float last=field<float>(a,0x3ac);
+    if(!std::isfinite(last))return 0;
+    if(last==0.f){last=now;set_field(a,0x3ac,now);}
+    const double elapsed=double(now)-double(last);o->elapsed=float(elapsed);
+    if(elapsed>.25){
+        o->elapsed_admitted=1;
+        o->amount=float(double(o->elapsed)*double(field<float>(a,0x39c)));
+        if(!std::isfinite(o->amount))return 0;
+        if(field<unsigned>(a,0xb8)&0x800u){
+            if(!b->refresh_origin||!b->refresh_origin(b->context,a))return 0;
+        }
+        float pos[3];copy_vec(a,0x2bc,pos);
+        if(!b->radius_effect||!b->radius_effect(b->context,a,pos,o->amount,field<float>(a,0x3a0),0x400000u))return 0;o->radius_called=1;
+        const float duration=field<float>(a,0x3a4);
+        if(!std::isfinite(duration))return 0;
+        if(duration>0.f){
+            const double remaining=double(duration)-double(o->elapsed);
+            set_field(a,0x3a4,float(remaining));
+            if(remaining<=0.){
+                o->expired=1;
+                if(!gas_stop_impl(a,*b,*o)||!b->remove||!b->remove(b->context,a))return 0;
+                o->removed=1;gas_snapshot(a,*o);o->completed=1;return 1;
+            }
+            if(field<unsigned>(a,0x3b4)){
+                // Original antigen-specific first admitted pulse stops
+                // the particle and reinstalls think, then common schedule wins.
+                if(!gas_stop_impl(a,*b,*o))return 0;
+                set_field(a,8,antigen_gas_think_token);
+                if(!gas_random_schedule(a,*b,*o))return 0;
+            }
+        }else if(field<unsigned char>(a,0x3b8)){
+            if(!b->sound||!b->sound(b->context,a,"gas.antigen_loop",true))return 0;o->loop_sound=1;
+        }
+        set_field(a,0x3ac,now);
+    }
+    float fresh=0;if(!gas_clock(*b,*o,fresh)||!gas_schedule(a,*b,*o,float(double(fresh)+.25)))return 0;
+    gas_snapshot(a,*o);o->completed=1;return 1;
+}
 bool antigen_damage_ready(void* c,unsigned n,const AntigenDamageBindings* b) noexcept {
     return c&&n>=antigen_canister_extent&&field<unsigned>(c,0)==antigen_canister_vtable&&b&&
         b->entry_count<=sin_independent::kEntityHandleCapacity&&(!b->entry_count||b->entries);
@@ -1192,7 +1303,10 @@ bool antigen_break_impl(void* c,unsigned n,const AntigenDamageBindings& b,Antige
     if(!output||!output->fire(static_cast<unsigned char*>(c)+0x66c,n-0x66c,c,c,n,0.f,b.output?b.output:&empty,&result))return false;
     o.output_called=1;o.output_actions=result.queued;
     auto cloud=[&](int type,float amount){
-        float pos[3];if(!origin(pos)||!b.cloud||!b.cloud(b.context,c,pos,type,amount,150.f,-1.f,-1.f))return false;
+        float pos[3];if(!origin(pos))return false;
+        if(b.cloud){if(!b.cloud(b.context,c,pos,type,amount,150.f,-1.f,-1.f))return false;}
+        else if(type==1){if(!antigen_gas_create(pos,amount,150.f,-1.f,-1.f,b.native_gas,&o.gas))return false;}
+        else return false;
         ++o.clouds;return true;
     };
     if((field<unsigned>(c,0x62c)&4u)&&!cloud(0,10.f))return false;
@@ -1252,7 +1366,7 @@ int __cdecl antigen_canister_damage(void* c,unsigned n,const void* info,unsigned
     }
     return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak};
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak,&antigen_gas_create,&antigen_gas_think,&antigen_gas_stop};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
