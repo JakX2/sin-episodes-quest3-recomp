@@ -9,9 +9,9 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
-struct FactoryDictionary {const FactorySpec* slots[19]{};unsigned count=0;bool registered=false;};
+struct FactoryDictionary {const FactorySpec* slots[20]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
     void* context;
     // Fresh allocation must supply zeroed derived extension, as expected
@@ -35,6 +35,7 @@ struct FactoryBindings {
     const RelayFactoryBindings* logic_case;
     const RelayFactoryBindings* logic_compare;
     const RelayFactoryBindings* math_counter;
+    const RelayFactoryBindings* logic_menu;
 };
 struct FactoryResult {
     const FactorySpec* spec;
@@ -139,9 +140,10 @@ struct LogicDestroyBindings {
     int (__cdecl *release_action)(void*,unsigned,void*) noexcept;
     int (__cdecl *base_destroy)(void*,void*) noexcept;
     int (__cdecl *free_actor)(void*,void*) noexcept;
+    int (__cdecl *unregister_menu)(void*,void*) noexcept;
 };
 struct LogicDestroyResult {
-    unsigned completed,outputs,actions,validated,released,base_called,freed;
+    unsigned completed,outputs,actions,validated,released,base_called,freed,unregistered;
 };
 struct CounterBindings {
     void* context;
@@ -222,6 +224,7 @@ struct AutoPrimaryResult {
     int due_tick,last_tick;
     float recorded_time,last_time;
 };
+struct MenuBindings;
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
@@ -249,6 +252,7 @@ struct SpawnBindings {
     const float* logic_auto_interval;
     const TimerBindings* logic_timer;
     bool native_math_counter;
+    const MenuBindings* logic_menu;
 };
 struct SpawnResult {
     unsigned completed,ranked,parent_reads,parents,debugged,spawned,failed,pruned,cleanups,activated,
@@ -352,6 +356,8 @@ struct Api {
     int (__cdecl *destroy_logic)(void*,unsigned,unsigned,const LogicDestroyBindings*,LogicDestroyResult*) noexcept;
     int (__cdecl *menu_listen)(void*,unsigned,bool,const MenuBindings*,MenuResult*) noexcept;
     int (__cdecl *menu_event)(void*,unsigned,void*,const MenuBindings*,MenuResult*) noexcept;
+    int (__cdecl *register_menu)(FactoryDictionary*) noexcept;
+    int (__cdecl *destroy_menu)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

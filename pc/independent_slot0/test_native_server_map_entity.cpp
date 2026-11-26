@@ -1630,5 +1630,75 @@ int main(int argc,char** argv){
         f.name="gameui_selected";f.button="Resume Game";assert(api->menu_event(actor,sizeof(actor),&f,&behavior,&result)&&!result.outputs&&result.button_reads==8);
         put(actor,0x394,0);assert(!api->menu_event(actor,sizeof(actor),&f,&behavior,&result));
     }
+    {
+        FactoryDictionary dict{};
+        assert(api->register_factories(&dict)&&api->register_menu(&dict)&&api->register_counter(&dict)&&api->register_compare(&dict)&&api->register_case(&dict)&&api->register_branch(&dict)&&api->register_auto(&dict)&&api->register_timer(&dict)&&api->register_relay(&dict)&&dict.count==20);
+        assert(!api->register_menu(&dict));
+        const auto* spec=api->find_factory(&dict,"LOGIC_MENULISTENER");
+        assert(spec&&spec->family==Family::LogicMenuListener&&spec->original_object==0x224fb634&&spec->original_vtable==0x2241f620&&spec->extent==menu_extent);
+        struct MenuOwner {
+            alignas(4) unsigned char storage[menu_extent]{};
+            ActionPool* pool=nullptr;const Api* api=nullptr;
+            LogicDestroyBindings teardown{};LogicDestroyResult destroyed{};
+            unsigned alloc=0,base=0,init=0,cleared=0,begin=0,end=0,spawned=0,restored=0,subscribed=0,unregistered=0,released=0,base_dead=0,freed=0;
+        } f;f.api=api;
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<MenuOwner*>(p);assert(n==menu_extent);++f.alloc;*a=f.storage;*bytes=n;return 1;};
+        owner.base_construct=[](void* p,void* a,int arg) noexcept ->int{auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage&&arg==1);++f.base;return 1;};
+        owner.initialize=[](void* p,void* a,const char* cls) noexcept ->int{auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"logic_menulistener"));++f.init;return 1;};
+        owner.release_networkable=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage+0x160);
+            return f.api->destroy_logic(f.storage,sizeof(f.storage),1,&f.teardown,&f.destroyed);
+        };
+        FactoryBindings factories{};factories.dictionary=&dict;factories.logic_menu=&owner;
+        ActionPool pool{};f.pool=&pool;OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=menu_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            const char* values[]{"logic_menulistener","relay","Trigger"};
+            for(unsigned i=0;i<3;++i)if(!std::strcmp(text,values[i])){*token=201+i;return 1;}return 0;
+        };
+        Bindings parse{};parse.context=&f;parse.native_factory=&factories;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<MenuOwner*>(p)->cleared;return 1;};
+        MenuBindings behavior{};behavior.context=&f;
+        behavior.base_spawn=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage);++f.spawned;return 1;};
+        behavior.base_restore=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage);++f.restored;return 1;};
+        behavior.subscribe=[](void* p,void* a,const char* name,bool server_side) noexcept ->int{
+            auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage+0x394&&server_side&&f.spawned+f.restored==f.subscribed/2+1&&!std::strcmp(name,f.subscribed%2?"gameui_highlighted":"gameui_selected"));++f.subscribed;return 1;
+        };
+        SpawnBindings spawn{};spawn.context=&f;spawn.logic_menu=&behavior;
+        spawn.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=menu_extent;return 1;};
+        spawn.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="logic_menulistener";return 1;};
+        spawn.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        spawn.debug_enabled=[](void*,bool* enabled) noexcept ->int{*enabled=false;return 1;};
+        spawn.native_spawn_begin=[](void* p,void* a,bool* proceed) noexcept ->int{auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage);++f.begin;*proceed=true;return 1;};
+        spawn.native_spawn_end=[](void* p,void* a,int* code) noexcept ->int{auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage);++f.end;*code=0;return 1;};
+        PipelineBindings pipe{};pipe.context=&f;pipe.parse=&parse;pipe.spawn=&spawn;
+        pipe.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        pipe.classify=[](void*,void*,Category* cat) noexcept ->int{*cat=Category::Ordinary;return 1;};
+        const char map[]="{ classname logic_menulistener newGamePressed \"relay,Trigger,,0,-1\" quitMousedOver \"relay,Trigger,,0,-1\" }";
+        PipelineResult parsed{};
+        assert(api->parse_all(map,sizeof(map),false,&pipe,&parsed)&&parsed.parse.native_creates==1&&parsed.spawn.native_spawns==1&&parsed.spawn.spawned==1);
+        assert(f.alloc==1&&f.base==1&&f.init==1&&f.cleared==1&&f.begin==1&&f.end==1&&f.spawned==1&&f.subscribed==2);
+        assert(word(f.storage,0)==menu_vtable&&word(f.storage,0x394)==menu_listener_vtable&&word(f.storage,0x3c4)==ptrword(pool.rows[0])&&word(f.storage,0x514)==ptrword(pool.rows[1]));
+        for(unsigned off=0x398;off<=0x500;off+=0x18)assert(!word(f.storage,off)&&word(f.storage,off+0xc)==0xffffffffu&&!word(f.storage,off+0x10));
+        MenuResult listened{};assert(api->menu_listen(f.storage,sizeof(f.storage),true,&behavior,&listened)&&f.restored==1&&f.subscribed==4);
+        auto& d=f.teardown;d.context=&f;
+        d.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<MenuOwner*>(p);for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        d.unregister_menu=[](void* p,void* listener) noexcept ->int{
+            auto& f=*static_cast<MenuOwner*>(p);assert(listener==f.storage+0x394&&f.subscribed==4&&!f.released&&!f.unregistered);++f.unregistered;return 1;
+        };
+        d.release_action=[](void* p,unsigned,void* row) noexcept ->int{
+            auto& f=*static_cast<MenuOwner*>(p);assert(f.unregistered==1&&f.released<2&&row==f.pool->rows[1-f.released]&&!f.base_dead);++f.released;return 1;
+        };
+        d.base_destroy=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<MenuOwner*>(p);unsigned vt=0;std::memcpy(&vt,f.storage+0x394,4);assert(a==f.storage&&vt==0x224227c4u&&f.released==2);++f.base_dead;return 1;
+        };
+        d.free_actor=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<MenuOwner*>(p);assert(a==f.storage&&f.base_dead==1);++f.freed;return 1;};
+        auto invalid=d;invalid.unregister_menu=nullptr;
+        assert(!api->destroy_logic(f.storage,sizeof(f.storage),1,&invalid,&f.destroyed)&&!f.released&&!f.unregistered);
+        assert(api->destroy_menu(f.storage,sizeof(f.storage),f.storage+0x160,&owner)&&f.destroyed.completed&&f.destroyed.unregistered&&f.destroyed.outputs==16&&f.destroyed.released==2&&f.destroyed.freed&&f.freed==1);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
