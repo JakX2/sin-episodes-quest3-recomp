@@ -823,11 +823,6 @@ bool input_convert(void* v,unsigned wanted,const ServerEntityAcceptInputBindings
     }
     if(type==1u&&wanted==6u){wr<std::uint8_t>(v,0,rd<float>(v,0)!=0.f);wr<unsigned>(v,0x10,6u);return true;}
     // Void -> string is accepted by AcceptInput itself without conversion.
-    if(type==2u&&wanted==1u&&!b.convert&&(b.string_text||!rd<unsigned>(v,0))){
-        const char* text=nullptr;float value=0;
-        if(!input_text(b,rd<unsigned>(v,0),&text)||!input_decimal_float(text,value))return false;
-        wr<float>(v,0,value);wr<unsigned>(v,0,1u);return true;
-    }
     if(type==2u&&(wanted==5u||wanted==6u)&&b.string_text&&!b.convert){
         const char* text=nullptr;if(!input_text(b,rd<unsigned>(v,0),&text))return false;
         const unsigned value=input_decimal(text);
@@ -2331,9 +2326,22 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             o->matched=1;o->map=token;o->row=static_cast<unsigned>(i);o->handler=rd<unsigned>(row,0x1c);
             o->expected_type=rd<unsigned>(row,0);o->actual_type=rd<unsigned>(data.variant,0x10);
             if(o->actual_type!=o->expected_type&&!(o->actual_type==0&&o->expected_type==2)){
-                bool ok=false;if(!input_convert(data.variant,o->expected_type,*b,ok))return 0;
-                if(!ok)return rejected(EntityInputBadConversion);
-                o->converted=1;o->actual_type=rd<unsigned>(data.variant,0x10);
+                if(o->actual_type==2u&&o->expected_type==1u&&!b->convert){
+                    // Decode before handler dispatch; preserve all other
+                    // variant words. Verify the actual converted type.
+                    const char* text=nullptr;float value=0.f;
+                    if(!input_text(*b,rd<unsigned>(data.variant,0),&text)||!input_decimal_float(text,value))return 0;
+                    const unsigned float_type=1;
+                    std::memcpy(data.variant,&value,sizeof(value));
+                    std::memcpy(data.variant+0x10,&float_type,sizeof(float_type));
+                    o->actual_type=rd<unsigned>(data.variant,0x10);
+                    if(o->actual_type!=float_type)return 0;
+                    o->converted=1;
+                }else{
+                    bool ok=false;if(!input_convert(data.variant,o->expected_type,*b,ok))return 0;
+                    if(!ok)return rejected(EntityInputBadConversion);
+                    o->converted=1;o->actual_type=rd<unsigned>(data.variant,0x10);
+                }
             }
             if(o->handler==0x220320b0u&&b->wake){
                 // InputWake replaces the inputdata stack argument with true,
