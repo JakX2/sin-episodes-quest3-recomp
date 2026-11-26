@@ -524,6 +524,40 @@ int main(int argc,char** argv){
     f.put(f.actor,0x868,2);f.put(f.actor,0x16c,0x9999u);
     assert(!transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&wtb,&wto)&&wto.transitions==1&&!wto.refreshed&&!wto.completed);
     f.put(f.actor,0x16c,0x3333u);
+    // Same-frame wake and native weapon dispatch: unlike the earlier
+    // scene-bypassed prefix, keep the active scene admitted. The authoritative
+    // registry must contain both the equipped weapon and the linked Grunt.
+    sin_independent::EntityHandleEntry live_slots[4]{};
+    for(unsigned i=0;i<3;++i)live_slots[i]=f.slots[i];
+    live_slots[3].serial=7;
+    live_slots[3].entity=reinterpret_cast<CBaseEntity*>(wt.member);
+    auto live_registry=saved_registry;live_registry.entries=live_slots;live_registry.count=4;
+    schedule.scheduler.maintenance.selection.state.entities=live_registry;
+    owb.outer.active_scene=true;owb.transition.refresh_entity=nullptr;
+    f.put(f.actor,0x74,123);f.put(f.actor,0xb8,0u);f.put(f.actor,0x85c,0);f.put(f.actor,0x860,0);
+    f.put(f.actor,0x850,3);f.put(f.actor,0x868,2);f.put(f.actor,0x8c,1);f.put(f.actor,0x864,20.f);
+    f.put(f.actor,0x86c,0.f);f.put(f.actor,0x78,0x20u);f.actor[0x870]=0;
+    f.put(f.actor,0x38,0u);f.put(f.actor,0x240,0u);f.put(f.actor,0x16c,0x3333u);
+    f.put(f.actor,0x8ec,0u);f.put(f.actor,0x78c,0x7001u);f.actor[0xc10]=0;f.actor[0xbe1]=0;
+    f.put(f.actor,0x1024,0x7003u);f.put(f.actor,0x218,123u);
+    f.put(wt.member,0x868,2);f.put(wt.member,0x16c,0u);f.put(wt.member,0x78,0u);wt.member[0x870]=0;
+    f.put(f.actor,0x8f8,0x1000u);f.put(f.component,0x24,0x2000u);
+    f.put(f.actor,0x3c0,1.f);f.actor[0x1f0]=1;pf.dirty=0;
+    f.put(f.weapon,0x4ec,0);f.put(f.weapon,0x4f0,-1);f.put(f.weapon,0x580,0.f);
+    seed_frame();
+    const int live_wake=outer_wake->jet(f.actor,sizeof(f.actor),&in,.05f,&jet_bind,&owb,&jet_out,&po,&owr);
+    if(!live_wake){
+        std::fprintf(stderr,"active wake: policy=%u transitions=%u admitted=%u active=%u animation=%u tail=%u finish=%u trace:",owr.policy.completed,owr.transition.transitions,owr.outer.admission.admitted,owr.outer.active_called,jet_out.animation_called,po.completed,owr.outer.finish.completed);
+        for(int v:f.trace)std::fprintf(stderr," %d",v);std::fputc('\n',stderr);
+    }
+    assert(live_wake&&owr.outer.completed&&owr.policy.reason==NpcWakePvs&&owr.transition.completed&&owr.transition.transitions==2&&owr.transition.outputs==2&&owr.transition.refreshed==2);
+    assert(owr.outer.wake_called&&!owr.outer.sleep_bypassed&&!owr.outer.scene_bypassed&&owr.outer.admission.admitted&&owr.outer.active_called&&!owr.outer.think_called);
+    assert(jet_out.completed&&jet_out.animation.fixed_resets==1&&jet_out.animation.frame.frame.handled==2&&po.completed&&owr.outer.finish.completed);
+    assert(f.get<int>(f.actor,0x868)==0&&f.get<int>(wt.member,0x868)==0&&f.get<int>(f.weapon,0x4ec)==31&&(pf.dirty&0x38u)==0x10u);
+    const std::vector<int> live_prefix{214,215,70,224,223,225,222};
+    assert(f.trace.size()>live_prefix.size()&&f.trace.back()==214);
+    for(unsigned i=0;i<live_prefix.size();++i)assert(f.trace[i]==live_prefix[i]);
+    schedule.scheduler.maintenance.selection.state.entities=saved_registry;
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
