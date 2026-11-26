@@ -298,7 +298,7 @@ int __cdecl destroy_case(void* actor,unsigned bytes,void* networkable,const Rela
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -388,10 +388,15 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"InitialValue",0x394,6},{"SetValue",0x394,6},
         {"OnTrue",0x398,11},{"OnFalse",0x3b0,11}
     };
+    constexpr Spec compare_keys[]{
+        {"InitialValue",0x394,1},{"CompareValue",0x398,1},
+        {"OnLessThan",0x39c,11},{"OnEqualTo",0x3b4,11},
+        {"OnNotEqualTo",0x3cc,11},{"OnGreaterThan",0x3e4,11}
+    };
     Spec numbered{};
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -1195,7 +1200,47 @@ int __cdecl case_input(void* a,unsigned n,const char* name,void* activator,const
     }else if(!fire->fire(out,0x18,activator,a,n,0.f,b->output,&r))return 0;
     o->fired=1;o->queued=r.queued;o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case};
+// Original 2212dc30 stores the FLOAT value and type in the output
+// object, then passes its five-word variant by value to 22156680.
+bool compare_fire(void* a,unsigned n,unsigned offset,void* activator,float value,const CompareBindings& b,CompareResult& o) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    if(!fire||!b.output||!b.output->enqueue_variant)return false;
+    auto* out=static_cast<unsigned char*>(a)+offset;
+    write_field(out,0,value);write_field(out,0x10,1u);
+    ServerEntityVoidOutputResult r{};
+    if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b.output,&r))return false;
+    if(!o.outputs)o.first_offset=offset;
+    ++o.outputs;o.last_offset=offset;o.queued+=r.queued;return true;
+}
+int __cdecl compare_input(void* a,unsigned n,const char* name,void* activator,unsigned type,float value,const CompareBindings* b,CompareResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<compare_extent||entity_vtable(a)!=compare_vtable||!name||!b)return 0;
+    o->handled=1;bool compare=false;
+    const float candidate=type==1?value:0.f;
+    if(equal_class(name,"SetValue")||equal_class(name,"SetValueCompare")){
+        write_field(a,0x394,candidate);o->stored=1;
+        compare=equal_class(name,"SetValueCompare");
+    }else if(equal_class(name,"SetCompareValue")){
+        write_field(a,0x398,candidate);o->stored=1;
+    }else if(equal_class(name,"Compare"))compare=true;
+    else o->handled=0;
+    o->value=read_field<float>(a,0x394);o->threshold=read_field<float>(a,0x398);
+    if(compare){
+        o->compared=1;
+        // x87 FUCOMPP parity: equality only (including signed zero).
+        // Unordered takes not-equal then the non-greater branch.
+        if(o->value==o->threshold){
+            if(!compare_fire(a,n,0x3b4,activator,o->value,*b,*o))return 0;
+        }else{
+            if(!compare_fire(a,n,0x3cc,activator,o->value,*b,*o))return 0;
+            o->threshold=read_field<float>(a,0x398);
+            if(!compare_fire(a,n,o->value>o->threshold?0x3e4:0x39c,activator,o->value,*b,*o))return 0;
+        }
+    }
+    o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

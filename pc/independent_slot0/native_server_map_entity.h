@@ -113,6 +113,14 @@ struct AutoResult {
 inline constexpr unsigned timer_vtable=0x22420e14,timer_extent=0x3f4;
 inline constexpr unsigned branch_vtable=0x22422294,branch_extent=0x3c8;
 inline constexpr unsigned case_vtable=0x22421d74,case_extent=0x56c;
+inline constexpr unsigned compare_vtable=0x22422004,compare_extent=0x3fc;
+struct CompareBindings {
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+};
+struct CompareResult {
+    unsigned completed,handled,stored,compared,outputs,queued,first_offset,last_offset;
+    float value,threshold;
+};
 struct CaseBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -295,6 +303,7 @@ struct Api {
     int (__cdecl *case_input)(void*,unsigned,const char*,void*,const void*,unsigned,const CaseBindings*,CaseResult*) noexcept;
     int (__cdecl *register_case)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_case)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *compare_input)(void*,unsigned,const char*,void*,unsigned,float,const CompareBindings*,CompareResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
