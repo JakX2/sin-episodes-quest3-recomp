@@ -1280,5 +1280,35 @@ int main(int argc,char** argv){
         f.put(f.actor,0x850,3);f.put(f.speech_squad,0x48,2);f.speech_code=12;f.queue_randoms=0;
         assert(native->survivor(f.actor,sizeof(f.actor),f.replacement,sizeof(f.replacement),310,&sb,&loss)&&loss.eligible_count==2&&!loss.last_member&&loss.sentence.queued&&loss.sentence.request_result==12&&loss.sentence.cooldown.owner_written&&!loss.final_mark.owner_written&&!std::strcmp(loss.cue,"GRUNT_MAN_DOWN"));
     }
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntSentenceRequestApi>(GetProcAddress(s,server_npc_grunt_sentence_request_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_sentence_request_export)&&!g(0,sizeof(ServerNpcGruntSentenceRequestApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntSentenceRequestApi));assert(api);
+        ServerNpcGruntSentenceBindings sb{};sb.speech.original_vtable=0x2249aaa4;sb.speech.context=&f;sb.speech.volume=1;sb.speech.level=75;
+        ServerNpcGruntSentenceRequestBindings rb{};rb.context=&f;
+        rb.suffix=[](void*,std::uint32_t token,const char** out,unsigned* n) noexcept -> int{assert(token==91);*out="_ELITE";*n=7;return 1;};
+        rb.group_index=[](void* p,const char* name,int* out) noexcept -> int{auto& f=F::self(p);assert(!std::strcmp(name,f.get<unsigned>(0x8e8)?"GRUNT_IDLE_ELITE":"GRUNT_IDLE"));*out=f.query;return 1;};
+        rb.pick_name=[](void* p,int group,char* name,unsigned n,int* code) noexcept -> int{auto& f=F::self(p);assert(group==4&&n==64);if(f.rel_special){*code=-1;return 1;}*code=0;if(f.rel_player)return 1;std::memcpy(name,"!GRUNT_IDLE_01",15);return 1;};
+        rb.name_index=[](void* p,const char* name,int* out) noexcept -> int{assert(!std::strcmp(name,"GRUNT_IDLE_01"));*out=F::self(p).speech_code;return 1;};
+        rb.submit=[](void* p,std::uint32_t token,int index,float volume,int level,int zero,std::uint32_t extra) noexcept -> int{auto& f=F::self(p);assert(token==37&&index==f.speech_code&&volume==1&&level==75&&!zero&&extra==9);++f.queue_deliveries;return 1;};
+        sb.speech.random_float=[](void*,float lo,float hi,float* out) noexcept -> int{assert(lo==1.5f&&hi==2);*out=1.5f;return 1;};
+        std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0x8e8,91u);
+        ServerNpcGruntSentenceRequestResult qr{};
+        assert(api->request(f.actor,sizeof(f.actor),"GRUNT_IDLE",&sb.speech,&rb,&qr)&&qr.manager_missing&&qr.suffix_used&&!qr.group_called&&qr.request_result==-1);
+        rb.manager_ready=true;f.query=-1;
+        assert(api->request(f.actor,sizeof(f.actor),"GRUNT_IDLE",&sb.speech,&rb,&qr)&&qr.group_called&&!qr.pick_called&&qr.request_result==-1);
+        f.query=4;f.rel_special=true;f.rel_player=false;
+        assert(api->request(f.actor,sizeof(f.actor),"GRUNT_IDLE",&sb.speech,&rb,&qr)&&qr.pick_called&&!qr.lookup_called&&qr.request_result==-1);
+        f.rel_special=false;f.rel_player=true;
+        assert(api->request(f.actor,sizeof(f.actor),"GRUNT_IDLE",&sb.speech,&rb,&qr)&&qr.pick_called&&!qr.lookup_called);
+        f.rel_player=false;f.speech_code=-4;f.queue_deliveries=0;
+        assert(api->request(f.actor,sizeof(f.actor),"GRUNT_IDLE",&sb.speech,&rb,&qr)&&qr.submitted&&qr.sentence_id==-4&&qr.request_result==-1&&f.queue_deliveries==1);
+        f.speech_code=17;f.put(f.actor,0x8e8,0u);f.put(f.actor,0xccc,9);
+        ServerNpcGruntSentenceResult dr{};
+        assert(api->dispatch(f.actor,sizeof(f.actor),100,"GRUNT_IDLE",2,0,&sb,&rb,&dr,&qr)&&dr.queue_reset&&dr.queued&&dr.request_result==17&&qr.submitted&&!qr.suffix_used&&dr.cooldown.owner_deadline==103.5f&&f.queue_deliveries==2);
+        f.put(f.actor,0x8e8,91u);
+        char large[124];std::memset(large,'a',123);large[123]=0;
+        assert(!api->request(f.actor,sizeof(f.actor),large,&sb.speech,&rb,&qr)&&!qr.group_called);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

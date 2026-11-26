@@ -2374,7 +2374,40 @@ int __cdecl sentence_gate(void* a,unsigned n,unsigned mode,const ServerNpcGruntS
     if(!sentence_init(a,n,b,out)||!sentence_mode(a,mode,*b,*out))return 0;
     out->completed=1;return 1;
 }
-int __cdecl sentence_dispatch(void* a,unsigned n,float now,const char* cue,int priority,unsigned mode,const ServerNpcGruntSentenceBindings* b,ServerNpcGruntSentenceResult* out) noexcept{
+int __cdecl sentence_request(void* a,unsigned n,const char* cue,const ServerNpcGruntSpeechQueueBindings* speech,const ServerNpcGruntSentenceRequestBindings* b,ServerNpcGruntSentenceRequestResult* out) noexcept{
+    if(!out)return 0;*out={};out->group_id=out->pick_result=out->sentence_id=out->request_result=-1;
+    if(!a||n<0xcd8||!cue||!speech||!b||!relation_grunt_class(speech->original_vtable))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    unsigned used=0;while(used<128&&cue[used]){out->group[used]=cue[used];++used;}
+    if(used==128)return 0;
+    // Original +5b4 is a pure getter of +8e8 or shared empty string, all eight classes.
+    if(const auto token=read<unsigned>(a,0x8e8)){
+        const char* suffix=nullptr;unsigned extent=0;
+        if(!b->suffix||!b->suffix(b->context,token,&suffix,&extent)||!suffix||!extent)return 0;
+        unsigned i=0;while(i<extent&&used<128&&suffix[i])out->group[used++]=suffix[i++];
+        if(i==extent||used==128)return 0;
+        out->suffix_used=1;
+    }
+    out->group[used]=0;
+    // 221b3840: manager gate, group lookup, pick a name, then resolve name+1.
+    if(!b->manager_ready){out->manager_missing=1;return done();}
+    if(!std::isfinite(speech->volume)||!b->group_index)return 0;
+    out->group_called=1;if(!b->group_index(b->context,out->group,&out->group_id))return 0;
+    if(out->group_id<0)return done();
+    out->pick_called=1;
+    if(!b->pick_name||!b->pick_name(b->context,out->group_id,out->selected,sizeof(out->selected),&out->pick_result))return 0;
+    if(out->pick_result<0||!out->selected[0])return done();
+    unsigned end=0;while(end<sizeof(out->selected)&&out->selected[end])++end;
+    if(end==sizeof(out->selected))return 0;
+    out->lookup_called=1;
+    if(!b->name_index||!b->name_index(b->context,out->selected+1,&out->sentence_id))return 0;
+    // Native helper submits even negative lookup result; 220a34f0 normalizes it to -1.
+    out->submitted=1;
+    if(!b->submit||!b->submit(b->context,read<unsigned>(a,0x16c),out->sentence_id,speech->volume,speech->level,0,read<unsigned>(a,0xcc8)))return 0;
+    out->request_result=out->sentence_id<0?-1:out->sentence_id;
+    return done();
+}
+int sentence_dispatch_impl(void* a,unsigned n,float now,const char* cue,int priority,unsigned mode,const ServerNpcGruntSentenceBindings* b,ServerNpcGruntSentenceResult* out,const ServerNpcGruntSentenceRequestBindings* request=nullptr,ServerNpcGruntSentenceRequestResult* request_out=nullptr) noexcept{
     if(!sentence_init(a,n,b,out)||!std::isfinite(now)||!sentence_mode(a,mode,*b,*out))return 0;
     auto done=[&](){out->completed=1;return 1;};
     if(!out->mode_allowed)return done();
@@ -2385,15 +2418,28 @@ int __cdecl sentence_dispatch(void* a,unsigned n,float now,const char* cue,int p
         if(out->cooldown.priority_blocked||out->cooldown.state_blocked)return done();
     }
     // Do not reproduce original unbounded 128-byte stack copy.
-    if(!cue||!b->enqueue)return 0;
-    unsigned length=0;while(length<128&&cue[length])++length;
-    if(length==128)return 0;
-    if(!b->enqueue(b->speech.context,a,cue,&out->request_result))return 0;
+    if(request){
+        if(!sentence_request(a,n,cue,&b->speech,request,request_out))return 0;
+        out->request_result=request_out->request_result;
+    }else{
+        if(!cue||!b->enqueue)return 0;
+        unsigned length=0;while(length<128&&cue[length])++length;
+        if(length==128)return 0;
+        if(!b->enqueue(b->speech.context,a,cue,&out->request_result))return 0;
+    }
     out->queued=1;
     // Original push 40000000 is float 2.0f, not a bitmask. Even -1 result marks cooldown.
     if(priority!=-1&&!speech_mark(a,now,priority,2.f,b->speech,out->cooldown))return 0;
     return done();
 }
+int __cdecl sentence_dispatch(void* a,unsigned n,float now,const char* cue,int priority,unsigned mode,const ServerNpcGruntSentenceBindings* b,ServerNpcGruntSentenceResult* out) noexcept{
+    return sentence_dispatch_impl(a,n,now,cue,priority,mode,b,out);
+}
+int __cdecl sentence_dispatch_request(void* a,unsigned n,float now,const char* cue,int priority,unsigned mode,const ServerNpcGruntSentenceBindings* b,const ServerNpcGruntSentenceRequestBindings* request,ServerNpcGruntSentenceResult* out,ServerNpcGruntSentenceRequestResult* request_out) noexcept{
+    if(!request||!request_out)return 0;*request_out={};request_out->group_id=request_out->pick_result=request_out->sentence_id=request_out->request_result=-1;
+    return sentence_dispatch_impl(a,n,now,cue,priority,mode,b,out,request,request_out);
+}
+const ServerNpcGruntSentenceRequestApi sentence_request_api{1,sizeof(ServerNpcGruntSentenceRequestApi),&sentence_request,&sentence_dispatch_request};
 int __cdecl grunt_speak_native(void* a,unsigned n,unsigned kind,float now,const ServerNpcGruntSpeechBindings* b,const ServerNpcGruntSentenceBindings* sentence,ServerNpcGruntNativeSpeechResult* out) noexcept{
     if(!out)return 0;*out={};out->cue.speech_result=-1;out->sentence.request_result=-1;
     if(!sentence)return 0;
@@ -2783,4 +2829,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntNativeSpeechApi=_SiN_GetServerNpcGruntNativeSpeechApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntNativeSpeechApi* __cdecl SiN_GetServerNpcGruntNativeSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntNativeSpeechApi)?&native_speech_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSentenceRequestApi=_SiN_GetServerNpcGruntSentenceRequestApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSentenceRequestApi* __cdecl SiN_GetServerNpcGruntSentenceRequestApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSentenceRequestApi)?&sentence_request_api:nullptr;
 }
