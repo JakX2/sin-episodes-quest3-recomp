@@ -995,8 +995,35 @@ int main(int argc,char** argv){
         assert(api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&result.selected==2&&f.order=="2310");
         f.draw=3;
         assert(!api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&!result.fired);
+        // Actual native input projection. FIELD_INPUT (20) preserves
+        // incoming payload/type, rather than coercing it to a string.
+        put(actor,0x378,0x4001u);actor[0x1f0]=1;
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&tstorage;input.logic_case=&behavior;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==0x2242014c?"InValue":token==0x224203b8?"PickRandom":token==401?"invalue":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nw::ServerEntityAcceptInputResult accepted{};
+        auto accept_case=[&](unsigned input_token,unsigned type,unsigned value){
+            unsigned v[5]{value,0,0,0xffffffffu,type};actor[0x200]=0;
+            return timer_accept->run(actor,sizeof(actor),case_vtable,input_token,timer,timer,v,sizeof(v),0,&input,&accepted);
+        };
+        assert(accept_case(401,5,16)&&accepted.row==16&&accepted.expected_type==20&&accepted.actual_type==5&&accepted.converted&&accepted.native_handler&&actor[0x200]&&f.order=="23102");
+        f.draw=1;
+        assert(accept_case(0x224203b8,2,206)&&accepted.row==17&&accepted.actual_type==0&&accepted.native_handler&&f.order=="231021");
+        std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=110.f;co.actor=actor;
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].serial=3;entries[0].entity=reinterpret_cast<CBaseEntity*>(timer);
+        entries[1].serial=4;entries[1].entity=reinterpret_cast<CBaseEntity*>(actor);
+        auto bindings=tes;bindings.entities.entries=entries;bindings.entities.count=2;bindings.native_input=&input;
+        nw::ServerEntitySearchBindings search{};search.context=&co;
+        search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{*bytes=a==static_cast<ConnectedOutput*>(p)->actor?case_extent:0;return *bytes!=0;};
+        bindings.native_search=&search;
+        unsigned incoming[5]{206,0,0,0xffffffffu,2};
+        assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x4001,0x2242014c,0x3000,0x3000,incoming,sizeof(incoming),0.f,11,&co.queue,&cancel_qr));
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&bindings,&es)&&es.native_inputs==1&&es.direct==1&&co.released==1&&f.order=="2310213");
         for(unsigned i=0;i<16;++i)put(actor,0x3d4+0x18*i+0x14,0u);
-        assert(api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&result.warned&&f.warnings==1&&!result.fired&&f.randoms==3);
+        assert(api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&result.warned&&f.warnings==1&&!result.fired&&f.randoms==4);
         assert(api->case_input(actor,sizeof(actor),"Unknown",timer,nullptr,0,&behavior,&result)&&!result.handled);
     }
     {
