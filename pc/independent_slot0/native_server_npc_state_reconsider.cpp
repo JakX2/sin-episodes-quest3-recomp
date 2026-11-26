@@ -6472,12 +6472,24 @@ int __cdecl schedule_target_policy(void* a,unsigned n,float now,bool remembered,
 }
 // Original +1d4 dispatch: Grunt 22359e30 / 22031220, player 222494f0.
 // Only admitted original primary-vtable tokens, no native pointer reinterpretation.
-int __cdecl schedule_body_point(void* e,const float* source,bool noisy,const ServerNpcGruntAssaultAdmissionBindings* ab,const ServerNpcGruntScheduleLineServices* line,float* out) noexcept{
+int schedule_body_point_impl(void* e,const float* source,bool noisy,const ServerNpcGruntAssaultAdmissionBindings* ab,const ServerNpcGruntScheduleLineServices* line,float* out,void** visited,unsigned depth) noexcept{
     if(!e||!source||!out||!ab||!line||!line->scene||!finite_vec(source)||
        ab->count>sin_independent::kEntityHandleCapacity||(ab->count&&!ab->entries))return 0;
-    unsigned extent=0;if(!ab->extent||!ab->extent(ab->context,e,&extent)||extent<0x388)return 0;
+    // Original 22249527..22249582 delegates through +130/+28 to the
+    // resolved entity's +1d4. Guard invalid/cyclic native fixture graphs.
+    if(depth>=8)return 0;
+    for(unsigned i=0;i<depth;++i)if(visited[i]==e)return 0;
+    visited[depth]=e;
+    unsigned extent=0;if(!ab->extent||!ab->extent(ab->context,e,&extent)||extent<4)return 0;
     const sin_independent::EntityHandleView registry(ab->entries,ab->count);
     const auto vt=read<unsigned>(e,0);
+    // These nine primary tables use 22138180, which just copies +214 center.
+    switch(vt){
+    case 0x2245a554u:case 0x22478d0cu:case 0x2247875cu:case 0x224776acu:case 0x2247a1e4u:
+    case 0x22477c8cu:case 0x22478214u:case 0x2247924cu:case 0x2247ab9cu:
+        return line->center&&line->center(line->context,e,out)&&finite_vec(out);
+    }
+    if(extent<0x388)return 0;
     const auto* p=line->scene->policy;
     const auto* svc=p?p->memory:nullptr;
     auto origin=[&](float* v){
@@ -6492,8 +6504,11 @@ int __cdecl schedule_body_point(void* e,const float* source,bool noisy,const Ser
     auto eye=[&](float* v){return line->scene->eye&&line->scene->eye(line->scene->context,e,v)&&finite_vec(v);};
     if(vt==0x2245222cu||vt==0x224aec3cu){
         if(extent<0x9b0)return 0;
-        // Player proxy delegates through another virtual chain, not the ordinary sample.
-        if(registry.Resolve(read<unsigned>(e,0x9ac)))return 0;
+        if(void* proxy=registry.Resolve(read<unsigned>(e,0x9ac))){
+            void* delegate=nullptr;
+            if(!line->proxy_entity||!line->proxy_entity(line->context,proxy,&delegate)||!delegate)return 0;
+            return schedule_body_point_impl(delegate,source,noisy,ab,line,out,visited,depth+1);
+        }
         if(!noisy)return eye(out);
         float sample=0,offset[3],pos[3];if(!rng(.7f,1.f,sample))return 0;
         for(unsigned i=0;i<3;++i)offset[i]=static_cast<float>(static_cast<double>(sample)*read<float>(e,0x37c+4*i));
@@ -6529,6 +6544,10 @@ int __cdecl schedule_body_point(void* e,const float* source,bool noisy,const Ser
     }
     if(read<std::uint8_t>(e,0xbc)&2u)out[2]=static_cast<float>(static_cast<double>(out[2])-16.0);
     return finite_vec(out);
+}
+int __cdecl schedule_body_point(void* e,const float* source,bool noisy,const ServerNpcGruntAssaultAdmissionBindings* ab,const ServerNpcGruntScheduleLineServices* line,float* out) noexcept{
+    void* visited[8]{};
+    return schedule_body_point_impl(e,source,noisy,ab,line,out,visited,0);
 }
 // Original weapon +4a8=222ab5c0 on the reviewed nine weapon tables.
 // This call site passes false: no blocker-condition writes. The +6e8 high-capability

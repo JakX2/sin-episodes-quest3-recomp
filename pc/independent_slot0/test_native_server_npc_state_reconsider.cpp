@@ -4796,6 +4796,23 @@ int main(int argc,char** argv){
         f.put(q.enemy,0,0x224aec3cu);f.put(q.enemy,0x9ac,0x9002u);
         assert(line_api->body_point(q.enemy,source,true,&ab,&line,body)&&body[0]==4&&body[1]==8&&body[2]==12&&lf.rolls==3);
         f.put(q.enemy,0x9ac,0x2002u);assert(!line_api->body_point(q.enemy,source,true,&ab,&line,body));
+        // Proxy +130/+28 returns another entity; delegate +1d4, not player RNG.
+        lf.combat=q.weapon;lf.hit=q.weapon;
+        line.proxy_entity=[](void* x,void* proxy,void** out) noexcept -> int{
+            auto& l=*static_cast<LineFixture*>(x);assert(proxy==l.combat);*out=l.hit;return 1;
+        };
+        f.put(q.weapon,0,0x224776acu);
+        assert(line_api->body_point(q.enemy,source,true,&ab,&line,body)&&body[0]==0&&body[1]==0&&body[2]==0&&lf.rolls==3);
+        f.put(q.weapon,0,0x2249aaa4u);f.put(q.weapon,0xb8,0u);f.put(q.weapon,0x2bc,0.f);f.put(q.weapon,0x2c0,0.f);f.put(q.weapon,0x2c4,0.f);q.weapon[0xbc]=0;
+        assert(line_api->body_point(q.enemy,source,false,&ab,&line,body)&&body[0]==.5f&&body[1]==1&&body[2]==1.5f&&lf.rolls==3);
+        lf.hit=q.enemy;assert(!line_api->body_point(q.enemy,source,true,&ab,&line,body)&&lf.rolls==3); // self cycle
+        lf.hit=nullptr;assert(!line_api->body_point(q.enemy,source,true,&ab,&line,body));
+        lf.hit=q.weapon;f.put(q.weapon,0,0x12345678u);assert(!line_api->body_point(q.enemy,source,true,&ab,&line,body));
+        lf.combat=nullptr;lf.hit=nullptr;
+        // Stale serial falls through to ordinary player sample, with no proxy call.
+        f.put(q.enemy,0x9ac,0x9002u);
+        assert(line_api->body_point(q.enemy,source,true,&ab,&line,body)&&body[2]==12&&lf.rolls==4);
+
         f.put(q.enemy,0,0x2249aaa4u);f.put(q.a,0x78c,0x2002u);f.put(q.weapon,0,0x224776acu);f.put(q.weapon,0x494,0x3000u);
         // Include a serial-resolved actor entry for the weapon owner, without changing prior fixture tokens.
         auto line_entries=q.entries; // array decays; use local checked copy below

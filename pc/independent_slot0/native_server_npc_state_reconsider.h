@@ -3122,7 +3122,7 @@ struct ServerNpcGruntScheduleLineServices {
     int (__cdecl *random_float)(void*,float,float,float*) noexcept; // engine RNG +4
     int (__cdecl *shoot_position)(void*,void*,float*) noexcept; // owner +358
     int (__cdecl *line_trace)(void*,void*,const float*,const float*,unsigned,int,float*,void**) noexcept; // 22014cc0
-    // Only for a live player proxy: +130 then +28, explicit engine identity.
+    // Live player proxy +130 then +28: entity identity for line and delegated body point.
     int (__cdecl *proxy_entity)(void*,void*,void**) noexcept;
     int (__cdecl *combat_entity)(void*,void*,void**) noexcept; // blocker +130/+8/+fc or +fc
     int (__cdecl *disposition)(void*,void*,void*,int*) noexcept; // owner +3c0
