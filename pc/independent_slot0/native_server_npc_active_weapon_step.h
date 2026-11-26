@@ -2,7 +2,7 @@
 #include "native_server_npc_schedule_image.h"
 #include "native_server_npc_weapon_runtime.h"
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_map { struct RelayBindings; struct TimerBindings; struct BranchBindings; struct CaseBindings; struct CompareBindings; struct CounterBindings; struct NavigationBindings; struct AutosaveBindings; struct MultiCompareBindings; struct RemapBindings; struct ColorBlendBindings; }
+namespace sin_port::native_map { struct RelayBindings; struct TimerBindings; struct BranchBindings; struct CaseBindings; struct CompareBindings; struct CounterBindings; struct NavigationBindings; struct AutosaveBindings; struct MultiCompareBindings; struct RemapBindings; struct ColorBlendBindings; struct EntityKillBindings; }
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_active_weapon_step_export[]="SiN_GetServerNpcActiveWeaponStepApi";
 // Original active-update segment 220433d7..2204342a after 22040ce0 accepted.
@@ -602,6 +602,8 @@ struct ServerEntityAcceptInputBindings {
     const native_map::MultiCompareBindings* logic_multicompare;
     const native_map::RemapBindings* math_remap;
     const native_map::ColorBlendBindings* math_colorblend;
+    // Opt in only to authenticated inherited Kill; unrelated inputs keep their old route.
+    const native_map::EntityKillBindings* logic_kill;
 };
 struct ServerEntityAcceptInputResult {
     unsigned completed,accepted,maps,rows,matched,map,row,handler,expected_type,actual_type,converted,written,dirty,reason,native_wake,native_maps,native_handler,handler_dirty,path_missing,squad_visited,squad_created,squad_removed,squad_added,squad_notices,squad_memory,squad_full,squad_denied,path_changed,path_reset,thrust_reused,thrust_prepared,thrust_removed,rappel_mapped,rappel_condition,rappel_detached,rappel_snapshot,health_healed,health_damage,health_blocked,relationship_specs,relationship_entities,relationship_classes,relationship_updated,relationship_added,relationship_warnings,forget_found,forget_cleared,forget_removed,forget_warning,assault_candidates,assault_reserved,assault_selected,assault_linked,assault_reset,assault_missing,break_damage_disabled,break_non_solid,break_physics_snapshot,break_effect,break_removed;

@@ -521,6 +521,7 @@ const ServerEntityNamedEventQueueApi named_event_queue_api{1,sizeof(ServerEntity
 // matches, then a live direct target, else class fallback if none matched.
 // Re-read links after dispatch: AcceptInput can insert another earlier event.
 unsigned input_datamap(unsigned vt) noexcept;
+int logic_kill_requested(unsigned,unsigned,const ServerEntityAcceptInputBindings&) noexcept;
 int __cdecl search_named(void*,unsigned,void*,void*,const ServerEntitySearchBindings*,ServerEntitySearchResult*) noexcept;
 int __cdecl search_class(void*,unsigned,const ServerEntitySearchBindings*,ServerEntitySearchResult*) noexcept;
 int __cdecl accept_input(void*,unsigned,std::uint32_t,std::uint32_t,void*,void*,const void*,unsigned,std::uint32_t,const ServerEntityAcceptInputBindings*,ServerEntityAcceptInputResult*) noexcept;
@@ -555,7 +556,9 @@ int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float no
             unsigned bytes=0;
             if(!native_search.extent||!native_search.extent(native_search.context,entity,&bytes)||bytes<4)return false;
             const unsigned vt=rd<unsigned>(entity,0);
-            if(input_datamap(vt)||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)||
+            const int shared_kill=logic_kill_requested(vt,input,*b->native_input);
+            if(shared_kill<0)return false;
+            if(shared_kill||input_datamap(vt)||(vt==sin_port::native_resupply::resupply_vtable&&b->native_input->resupply)||
                (vt==sin_port::native_map::relay_vtable&&b->native_input->relay)||
                (vt==sin_port::native_map::timer_vtable&&b->native_input->timer)||
                (vt==sin_port::native_map::branch_vtable&&b->native_input->branch)||
@@ -801,6 +804,18 @@ unsigned char search_lower(unsigned char x) noexcept {return x>='A'&&x<='Z'?stat
 bool search_equal(const char* a,const char* b) noexcept {
     while(*a&&search_lower(static_cast<unsigned char>(*a))==search_lower(static_cast<unsigned char>(*b))){++a;++b;}
     return search_lower(static_cast<unsigned char>(*a))==search_lower(static_cast<unsigned char>(*b));
+}
+int logic_kill_requested(unsigned vt,unsigned input,const ServerEntityAcceptInputBindings& b) noexcept {
+    if(!b.logic_kill||!b.logic_kill->remove||!sin_port::native_map::logic_kill_extent(vt))return 0;
+    bool same=false;
+    if(b.name_equal){
+        if(!input_name_equal(b,0x2240b624u,input,same))return -1;
+    }else if(input==0x2240b624u)same=true;
+    else{
+        const char* actual=nullptr;if(!input_text(b,input,&actual))return -1;
+        same=search_equal("Kill",actual);
+    }
+    return same?1:0;
 }
 bool search_pattern(const char* name,const char* pattern) noexcept {
     while(*name&&*pattern&&search_lower(static_cast<unsigned char>(*name))==search_lower(static_cast<unsigned char>(*pattern))){++name;++pattern;}
@@ -2519,9 +2534,37 @@ const NativeInputMap* native_input_map(unsigned token) noexcept {
     return nullptr;
 }
 int __cdecl wake_transition(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings*,ServerNpcWakeTransitionResult*) noexcept;
+// Original logic_auto (8 rows) and logic_menulistener (16 rows) have
+// no derived input descriptors. All thirteen maps parent CBaseEntity.
+constexpr NativeInputMap auto_kill_map{0x224fb270u,0x224f0350u,8,nullptr,0};
+constexpr NativeInputMap menu_kill_map{0x224fb5e8u,0x224f0350u,16,nullptr,0};
+const NativeInputMap* shared_kill_map(unsigned vt) noexcept {
+    using namespace sin_port::native_map;
+    switch(vt){
+    case relay_vtable:return &relay_map;
+    case auto_vtable:return &auto_kill_map;
+    case timer_vtable:return &timer_map;
+    case branch_vtable:return &branch_map;
+    case case_vtable:return &case_map;
+    case compare_vtable:return &compare_map;
+    case counter_vtable:return &counter_map;
+    case menu_vtable:return &menu_kill_map;
+    case navigation_vtable:return &navigation_map;
+    case autosave_vtable:return &autosave_map;
+    case multicompare_vtable:return &multicompare_map;
+    case remap_vtable:return &remap_map;
+    case colorblend_vtable:return &colorblend_map;
+    default:return nullptr;
+    }
+}
 int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input,void* activator,void* caller,const void* variant,unsigned vn,std::uint32_t id,const ServerEntityAcceptInputBindings* b,ServerEntityAcceptInputResult* o) noexcept {
     if(!o)return 0;*o={};
-    unsigned token=vt==sin_port::native_map::colorblend_vtable&&b&&b->math_colorblend?colorblend_map.token:
+    const int shared_kill=b?logic_kill_requested(vt,input,*b):0;
+    if(shared_kill<0)return 0;
+    const auto* kill_map=shared_kill?shared_kill_map(vt):nullptr;
+    if(shared_kill&&(!kill_map||!a||n<sin_port::native_map::logic_kill_extent(vt)||rd<unsigned>(a,0)!=vt))return 0;
+    unsigned token=kill_map?kill_map->token:
+        vt==sin_port::native_map::colorblend_vtable&&b&&b->math_colorblend?colorblend_map.token:
         vt==sin_port::native_map::remap_vtable&&b&&b->math_remap?remap_map.token:
         vt==sin_port::native_map::multicompare_vtable&&b&&b->logic_multicompare?multicompare_map.token:
         vt==sin_port::native_map::autosave_vtable&&b&&b->logic_autosave?autosave_map.token:
@@ -2560,18 +2603,20 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         if(o->maps>=32)return 0;
         for(unsigned i=0;i<o->maps;++i)if(seen[i]==token)return 0;
         seen[o->maps++]=token;
-        // Project only the authenticated inherited Kill descriptor for
-        // opted-in autosave/multicompare. Other inherited inputs retain owner storage.
+        // Project only the authenticated inherited Kill descriptor.
+        // Other inherited inputs retain owner storage.
         bool base_kill=false;
-        const bool native_kill=(vt==sin_port::native_map::autosave_vtable&&b->logic_autosave&&b->logic_autosave->remove)||
+        const bool native_kill=shared_kill||(vt==sin_port::native_map::autosave_vtable&&b->logic_autosave&&b->logic_autosave->remove)||
             (vt==sin_port::native_map::multicompare_vtable&&b->logic_multicompare&&b->logic_multicompare->kill&&b->logic_multicompare->kill->remove);
         if(token==logic_base_kill_map.token&&native_kill){
-            if(b->name_equal){
+            if(shared_kill)base_kill=true;
+            else if(b->name_equal){
                 if(!input_name_equal(*b,0x2240b624u,input,base_kill))return 0;
             }else if(input==0x2240b624u)base_kill=true;
             else{const char* actual=nullptr;if(!input_text(*b,input,&actual))return 0;base_kill=search_equal("Kill",actual);}
         }
         const auto* native=base_kill?&logic_base_kill_map:
+            kill_map&&token==kill_map->token?kill_map:
             token==colorblend_map.token&&b->math_colorblend?&colorblend_map:
             token==remap_map.token&&b->math_remap?&remap_map:
             token==multicompare_map.token&&b->logic_multicompare?&multicompare_map:
@@ -2646,7 +2691,14 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
                 o->native_wake=1;
             }else if(o->handler){
-                const int status=vt==sin_port::native_map::colorblend_vtable?native_colorblend_input(a,n,o->handler,data,*b):
+                int shared_status=-1;
+                if(shared_kill&&base_kill&&o->handler==0x2213cdc0u){
+                    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+                    sin_port::native_map::EntityKillResult result{};
+                    shared_status=api&&api->logic_kill(a,n,vt,b->entities.entries,b->entities.count,b->logic_kill,&result)&&result.completed&&result.handled?1:0;
+                }
+                const int status=shared_status>=0?shared_status:
+                    vt==sin_port::native_map::colorblend_vtable?native_colorblend_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::remap_vtable?native_remap_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::multicompare_vtable?native_multicompare_input(a,n,o->handler,data,*b):
                     vt==sin_port::native_map::autosave_vtable?native_autosave_input(a,n,o->handler,*b):

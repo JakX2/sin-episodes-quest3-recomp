@@ -2620,5 +2620,6 @@ int main(int argc,char** argv){
     }
 #include "test_native_logic_trigger_chain.inc"
 #include "test_native_logic_startup_chain.inc"
+#include "test_native_logic_shared_kill.inc"
     FreeLibrary(server);FreeLibrary(client);
 }
