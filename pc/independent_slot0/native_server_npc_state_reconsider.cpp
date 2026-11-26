@@ -4203,7 +4203,76 @@ int rappel_schedule_reset(void* a,unsigned n,float now,const RappelScheduleRoute
     if(!o.condition.value){write(a,0x7a4,4);o.state_written=1;}
     o.completed=1;return 1;
 }
-struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;};
+
+struct TankEventRoute {const ServerNpcGruntTankEventBindings* bindings;ServerNpcGruntTankEventResult* result;};
+int tank_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const TankEventRoute& route,const RappelScheduleRoute* schedule) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;const auto& rb=b.events.events;
+    const auto& sb=rb.events.events.gate.speech.speech.sentence;
+    o.entered=1;o.handle=0xffffffffu;o.random=-1;
+    if(extent<0x20||n<0x9e0||id<100000||id>100006)return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto resolve=[&](){++o.lookups;o.handle=read<unsigned>(p,0x14);return static_cast<void*>(registry.Resolve(o.handle));};
+    auto done=[&](){o.completed=1;return 1;};
+    auto request=[&](std::uint32_t value){
+        o.request_value=value;if(!b.request||!b.request(b.context,a,value))return false;
+        o.requested=1;return true;
+    };
+    auto reset=[&](){if(!schedule||!rappel_schedule_reset(a,n,now,*schedule))return false;o.reset_called=1;return true;};
+    auto nav=[&](){void* t=resolve();if(!t||!b.navigation||!b.navigation(b.context,a,t))return false;o.navigation_called=1;return true;};
+    if(id==100006){
+        if(!rb.random_int||!rb.random_int(rb.context,0,3,&o.random)||o.random<0||o.random>3)return 0;
+        o.random_called=1;
+        // All eight verified +5a8 targets are 2235ae30, which ignores 1002.
+        if(o.random==0)o.ignored_signal=1;
+        return reset()?done():0;
+    }
+    void* tank=resolve();o.valid=tank!=nullptr;
+    if(!tank)return request(1)?done():0;
+    if(id==100005)return done();
+    if(id==100002){o.deadline=static_cast<float>(static_cast<double>(now)+5.0);write(a,0x9dc,o.deadline);o.deadline_written=1;return done();}
+    if(id==100000){
+        bool success=false;if(!b.goal||!b.goal(b.context,a,tank,&success))return 0;
+        o.goal_called=1;o.goal_success=success;
+        if(o.goal_success){
+            tank=resolve();if(!tank||!b.route_target||!b.route_target(b.context,a,tank))return 0;
+            o.route_called=1;return reset()?done():0;
+        }
+        if(!request(0x223f7868u))return 0; // NO PATH
+        o.deadline=static_cast<float>(static_cast<double>(now)+10.0);write(p,0x1c,o.deadline);o.deadline_written=1;return done();
+    }
+    if(id==100001){
+        if(!b.position_error||!b.position_error(b.context,a,tank,o.error)||!finite_vec(o.error))return 0;
+        o.error_called=1;
+        o.aligned=std::fabs(o.error[0])<=16.f&&std::fabs(o.error[1])<=16.f&&std::fabs(o.error[2])<=48.f;
+        if(o.aligned){
+            if(!nav()||!b.arrival||!b.arrival(b.context,a))return 0;
+            o.arrival_called=1;return done();
+        }
+        if(!request(0x224ab994u))return 0;
+        tank=resolve();if(!tank||!b.reject_position||!b.reject_position(b.context,tank))return 0;
+        o.rejected=1;return done();
+    }
+    if(!nav())return 0;
+    auto tank_float=[&](unsigned off,float& value){
+        void* live=resolve();unsigned bytes=0;
+        if(!live||!b.extent||!b.extent(b.context,live,&bytes)||bytes<off+4)return false;
+        value=read<float>(live,off);return std::isfinite(value);
+    };
+    float center=0,range=0;double delta=0;
+    if(!tank_float(0x428,center)||!tank_float(0x430,range)||!rb.random_float||!rb.random_float(rb.context,0.f,range,&delta)||!std::isfinite(delta))return 0;
+    const float raw=static_cast<float>(static_cast<double>(center)+(id==100003?delta:-delta));
+    const double integral=std::trunc(static_cast<double>(raw)*182.0444488525390625);
+    int val=std::numeric_limits<int>::min();
+    if(std::isfinite(integral)&&integral>=std::numeric_limits<int>::min()&&integral<=std::numeric_limits<int>::max())val=static_cast<int>(integral);
+    o.angle=static_cast<float>((static_cast<unsigned>(val)&0xffffu)*0.0054931640625);
+    if(!b.sweep_point||!b.sweep_point(b.context,a,o.angle,o.point)||!finite_vec(o.point))return 0;
+    o.angle_called=1;
+    if(!b.aim||!b.aim(b.context,a,o.point,1.f,2.f,0.2f))return 0;
+    o.aim_called=1;tank=resolve();unsigned bytes=0;
+    if(!tank||!b.extent||!b.extent(b.context,tank,&bytes)||bytes<0x4cc)return 0;
+    for(unsigned i=0;i<3;++i)write(tank,0x4c0+4*i,o.point[i]);o.tank_written=1;return done();
+}
+struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;};
 int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const RappelEventRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;
     o.entered=1;auto done=[&](){o.completed=1;return 1;};
@@ -4321,10 +4390,13 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
         }
         out->special_entry=entry;
         const bool native_rappel=rappel&&entry&&identity.behavior_vtable==0x223f956c;
-        if(entry&&!no_op&&!native_rappel&&!b->special)return 0;
+        const bool native_tank=rappel&&rappel->tank&&entry&&identity.behavior_vtable==0x224abec4;
+        if(entry&&!no_op&&!native_rappel&&!native_tank&&!b->special)return 0;
         write<std::uint8_t>(p,8,1);out->marker_set=1;
         if(native_rappel){
             if(!rappel_event_route(a,n,p,extent,id,now,*rappel))return 0;
+        }else if(native_tank){
+            if(!tank_event_route(a,n,p,extent,id,now,*rappel->tank,rappel->schedule))return 0;
         }else if(entry&&!no_op){
             out->special_called=1;if(!b->special(b->context,a,p,extent,entry,ev,en))return 0;
         }
@@ -4501,6 +4573,18 @@ int __cdecl grunt_event_timer(void* a,unsigned n,const void* ev,unsigned en,floa
     return grunt_event43_impl(a,n,ev,en,now,&b->events.events.events,&e.events.events,&rappel,&timer);
 }
 const ServerNpcGruntEventTimerApi event_timer_api{1,sizeof(ServerNpcGruntEventTimerApi),&grunt_event_timer};
+int __cdecl grunt_tank_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntTankEventBindings* b,ServerNpcGruntTankEventResult* out) noexcept{
+    if(!out)return 0;*out={};out->handle=0xffffffffu;out->random=-1;
+    auto& e=out->events.events;e.events.rope_handle=0xffffffffu;
+    e.condition.global=e.condition.bit=e.slot.index=e.slot.selected=-1;
+    if(!b)return 0;
+    const RappelScheduleRoute schedule{&b->events.events,&e};
+    const TankEventRoute tank{b,out};
+    const RappelEventRoute rappel{&b->events.events.events,&e.events,&schedule,&tank};
+    const EventTimerRoute timer{&b->events,&out->events};
+    return grunt_event43_impl(a,n,ev,en,now,&b->events.events.events.events,&e.events.events,&rappel,&timer);
+}
+const ServerNpcGruntTankEventApi tank_event_api{1,sizeof(ServerNpcGruntTankEventApi),&grunt_tank_event};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6322,4 +6406,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEventTimerApi=_SiN_GetServerNpcGruntEventTimerApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEventTimerApi* __cdecl SiN_GetServerNpcGruntEventTimerApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEventTimerApi)?&event_timer_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntTankEventApi=_SiN_GetServerNpcGruntTankEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntTankEventApi* __cdecl SiN_GetServerNpcGruntTankEventApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntTankEventApi)?&tank_event_api:nullptr;
 }

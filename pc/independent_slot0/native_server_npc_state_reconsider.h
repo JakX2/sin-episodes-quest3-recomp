@@ -2359,4 +2359,33 @@ struct ServerNpcGruntEventTimerApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntEventTimerBindings*,ServerNpcGruntEventTimerResult*) noexcept;
 };
 using GetServerNpcGruntEventTimerApi=const ServerNpcGruntEventTimerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_tank_event_export[]="SiN_GetServerNpcGruntTankEventApi";
+struct ServerNpcGruntTankEventBindings {
+    ServerNpcGruntEventTimerBindings events;
+    void* context;
+    // Original virtual +47c receives the raw value, either 1 or a reason token.
+    int (__cdecl *request)(void*,void*,std::uint32_t) noexcept;
+    // 100000 path creation and 100001..100004 geometry/effects are explicit leaves.
+    int (__cdecl *goal)(void*,void*,void*,bool*) noexcept;
+    int (__cdecl *route_target)(void*,void*,void*) noexcept;
+    int (__cdecl *position_error)(void*,void*,void*,float*) noexcept;
+    int (__cdecl *navigation)(void*,void*,void*) noexcept;
+    int (__cdecl *arrival)(void*,void*) noexcept;
+    int (__cdecl *reject_position)(void*,void*) noexcept;
+    int (__cdecl *sweep_point)(void*,void*,float,float*) noexcept;
+    int (__cdecl *aim)(void*,void*,const float*,float,float,float) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+};
+struct ServerNpcGruntTankEventResult {
+    ServerNpcGruntEventTimerResult events;
+    std::uint32_t handle,request_value;
+    int random;
+    float deadline,error[3],angle,point[3];
+    unsigned entered,completed,valid,lookups,requested,goal_called,goal_success,route_called,error_called,aligned,navigation_called,arrival_called,rejected,deadline_written,angle_called,aim_called,tank_written,reset_called,random_called,ignored_signal;
+};
+struct ServerNpcGruntTankEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntTankEventBindings*,ServerNpcGruntTankEventResult*) noexcept;
+};
+using GetServerNpcGruntTankEventApi=const ServerNpcGruntTankEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
