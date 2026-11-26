@@ -792,24 +792,24 @@ int main(int argc,char** argv){
     put(timer,0x3a8,0u);
     assert(api->key_value(timer,"OnTimer","timer,RefireTime,1.25D+1 trailing,0,1",&dk,&kr)&&kr.output);
     struct DecimalQueue {ActionPool* pool;ConnectedOutput* queue;void* actor;} dq{&decimal_pool,&co,timer};
-    nw::ServerEntityVoidOutputBindings df{};df.context=&dq;
-    df.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+    nw::ServerEntityVoidOutputBindings decimal_fire_bind{};decimal_fire_bind.context=&dq;
+    decimal_fire_bind.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
         auto& f=*static_cast<DecimalQueue*>(p);if(token!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[0])))return 0;
         *row=f.pool->rows[0];*bytes=0x1c;return 1;
     };
-    df.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+    decimal_fire_bind.enqueue=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
         auto& f=*static_cast<DecimalQueue*>(p);assert(a==f.actor&&c==f.actor&&action->parameter==304&&action->variant_type==2);
         nw::ServerEntityNamedEventQueueResult out{};auto& q=*f.queue;
         return q.api->enqueue(q.root,sizeof(q.root),99,q.now,0x3000u,0x3000u,action,&q.queue,&out);
     };
-    df.release=[](void* p,unsigned,void* row) noexcept ->int{
+    decimal_fire_bind.release=[](void* p,unsigned,void* row) noexcept ->int{
         auto& f=*static_cast<DecimalQueue*>(p);assert(row==f.pool->rows[0]);++f.pool->released;return 1;
     };
     tes.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** target) noexcept ->int{
         auto& f=*static_cast<ConnectedOutput*>(p);assert(f.locked&&name==311&&a==f.actor&&c==f.actor);*target=prev?nullptr:f.actor;return 1;
     };
     nw::ServerEntityVoidOutputResult decimal_fire{};
-    assert(fire_api->fire(timer+0x394,0x18,timer,timer,sizeof(timer),0.f,&df,&decimal_fire)&&decimal_fire.queued==1&&decimal_fire.removed==1&&decimal_pool.released==1);
+    assert(fire_api->fire(timer+0x394,0x18,timer,timer,sizeof(timer),0.f,&decimal_fire_bind,&decimal_fire)&&decimal_fire.queued==1&&decimal_fire.removed==1&&decimal_pool.released==1);
     assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&tes,&es)&&es.native_inputs==1&&word(timer,0x3e0)==0x41480000u&&word(timer,0x74)==820&&co.released==1);
     FreeLibrary(server);FreeLibrary(client);
 }
