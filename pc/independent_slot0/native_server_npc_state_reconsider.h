@@ -958,4 +958,22 @@ struct ServerNpcGruntSentenceApi {
     int (__cdecl *dispatch)(void*,unsigned,float,const char*,int,unsigned,const ServerNpcGruntSentenceBindings*,ServerNpcGruntSentenceResult*) noexcept;
 };
 using GetServerNpcGruntSentenceApi=const ServerNpcGruntSentenceApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_native_speech_export[]="SiN_GetServerNpcGruntNativeSpeechApi";
+struct ServerNpcGruntNativeSpeechResult {
+    ServerNpcGruntSpeechResult cue;
+    ServerNpcGruntSentenceResult sentence;
+};
+struct ServerNpcGruntSurvivorResult {
+    ServerNpcGruntSentenceResult sentence;
+    ServerNpcGruntSpeechQueueResult final_mark;
+    const char* cue;
+    unsigned completed,flag_blocked,removed_positive,eligible_count,last_member;
+};
+struct ServerNpcGruntNativeSpeechApi {
+    std::uint32_t version,size;
+    int (__cdecl *speak)(void*,unsigned,unsigned,float,const ServerNpcGruntSpeechBindings*,const ServerNpcGruntSentenceBindings*,ServerNpcGruntNativeSpeechResult*) noexcept;
+    // 2235af70, after the group owner has removed a member.
+    int (__cdecl *survivor)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntSentenceBindings*,ServerNpcGruntSurvivorResult*) noexcept;
+};
+using GetServerNpcGruntNativeSpeechApi=const ServerNpcGruntNativeSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

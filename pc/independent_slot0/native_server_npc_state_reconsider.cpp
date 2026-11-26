@@ -1021,7 +1021,8 @@ int grunt_enemy_switch_impl(void* actor,unsigned bytes,float now,const ServerNpc
 int __cdecl grunt_enemy_switch(void* actor,unsigned bytes,float now,const ServerNpcGruntEnemySwitchBindings* b,ServerNpcGruntEnemySwitchResult* out) noexcept{
     return grunt_enemy_switch_impl(actor,bytes,now,b,out,nullptr);
 }
-int __cdecl grunt_speak(void* actor,unsigned bytes,unsigned kind,float now,const ServerNpcGruntSpeechBindings* b,ServerNpcGruntSpeechResult* out) noexcept{
+int __cdecl sentence_dispatch(void*,unsigned,float,const char*,int,unsigned,const ServerNpcGruntSentenceBindings*,ServerNpcGruntSentenceResult*) noexcept;
+int grunt_speak_impl(void* actor,unsigned bytes,unsigned kind,float now,const ServerNpcGruntSpeechBindings* b,ServerNpcGruntSpeechResult* out,const ServerNpcGruntSentenceBindings* sentence=nullptr,ServerNpcGruntSentenceResult* sentence_out=nullptr) noexcept{
     if(!out)return 0;*out={};out->speech_result=-1;
     if(!actor||bytes<0xcc4||!b||!relation_grunt_class(b->original_vtable)||kind>NpcGruntAlert||!std::isfinite(now))return 0;
     int priority=2;
@@ -1046,7 +1047,11 @@ int __cdecl grunt_speak(void* actor,unsigned bytes,unsigned kind,float now,const
         if(now<=out->deadline){out->suppressed=1;return 1;}
         out->cue="GRUNT_GO_ALERT";
     }
-    if(!b->emit||!b->emit(b->context,actor,0xcc0,out->cue,priority,2,&out->speech_result))return 0;
+    if(sentence){
+        auto bound=*sentence;bound.speech.original_vtable=b->original_vtable;bound.entries=b->memory.entries;bound.count=b->memory.count;
+        if(!sentence_dispatch(actor,bytes,now,out->cue,priority,2,&bound,sentence_out))return 0;
+        out->speech_result=sentence_out->request_result;
+    }else if(!b->emit||!b->emit(b->context,actor,0xcc0,out->cue,priority,2,&out->speech_result))return 0;
     out->emitted=1;
     if(kind==NpcGruntLost&&out->speech_result>=0){
         float delay=0;if(!b->random||!b->random(b->context,5.f,15.f,&delay)||!std::isfinite(delay)||delay<5.f||delay>15.f)return 0;
@@ -1059,6 +1064,9 @@ int __cdecl grunt_speak(void* actor,unsigned bytes,unsigned kind,float now,const
         write(actor,0xc7c,out->deadline);out->cooldown_written=1;
     }
     return 1;
+}
+int __cdecl grunt_speak(void* actor,unsigned bytes,unsigned kind,float now,const ServerNpcGruntSpeechBindings* b,ServerNpcGruntSpeechResult* out) noexcept{
+    return grunt_speak_impl(actor,bytes,kind,now,b,out);
 }
 bool sensed_vector(const void* senses,unsigned category,const ServerNpcSensedEntitiesBindings& b,void*& handles,unsigned& count) noexcept{
     void* vec=nullptr;unsigned n=0;handles=nullptr;count=0;
@@ -2386,6 +2394,33 @@ int __cdecl sentence_dispatch(void* a,unsigned n,float now,const char* cue,int p
     if(priority!=-1&&!speech_mark(a,now,priority,2.f,b->speech,out->cooldown))return 0;
     return done();
 }
+int __cdecl grunt_speak_native(void* a,unsigned n,unsigned kind,float now,const ServerNpcGruntSpeechBindings* b,const ServerNpcGruntSentenceBindings* sentence,ServerNpcGruntNativeSpeechResult* out) noexcept{
+    if(!out)return 0;*out={};out->cue.speech_result=-1;out->sentence.request_result=-1;
+    if(!sentence)return 0;
+    return grunt_speak_impl(a,n,kind,now,b,&out->cue,sentence,&out->sentence);
+}
+int __cdecl grunt_survivor(void* a,unsigned n,void* removed,unsigned rn,float now,const ServerNpcGruntSentenceBindings* b,ServerNpcGruntSurvivorResult* out) noexcept{
+    if(!out)return 0;*out={};out->sentence.request_result=-1;
+    if(!sentence_init(a,n,b,&out->sentence)||!std::isfinite(now))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(read<std::uint8_t>(a,0xbf)&8){out->flag_blocked=1;return done();}
+    if(!removed||rn<0xa0)return 0;
+    if(read<int>(removed,0x9c)>0){out->removed_positive=1;return done();}
+    const auto token=read<unsigned>(a,0x9c4);void* group=nullptr;
+    if(!token||!speech_squad(b->speech,token,group)||!sentence_scan(group,*b,out->sentence))return 0;
+    out->eligible_count=out->sentence.eligible_count;
+    if(out->eligible_count<2){
+        out->last_member=1;out->cue="GRUNT_LAST_OF_SQUAD";
+        if(!sentence_dispatch(a,n,now,out->cue,-1,1,b,&out->sentence))return 0;
+        // Native marks even after a mode rejection or signed enqueue failure.
+        if(!speech_mark(a,now,0,0.f,b->speech,out->final_mark))return 0;
+    }else{
+        out->cue="GRUNT_MAN_DOWN";
+        if(!sentence_dispatch(a,n,now,out->cue,0,2,b,&out->sentence))return 0;
+    }
+    return done();
+}
+const ServerNpcGruntNativeSpeechApi native_speech_api{1,sizeof(ServerNpcGruntNativeSpeechApi),&grunt_speak_native,&grunt_survivor};
 const ServerNpcGruntSentenceApi sentence_api{1,sizeof(ServerNpcGruntSentenceApi),&sentence_gate,&sentence_dispatch};
 int grunt_preschedule_impl(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out,const ServerNpcGruntSpeechQueueBindings* speech=nullptr,ServerNpcGruntSpeechQueueResult* speech_out=nullptr) noexcept{
     if(!preschedule_init(a,bytes,now,b,out))return 0;
@@ -2743,4 +2778,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSentenceApi=_SiN_GetServerNpcGruntSentenceApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSentenceApi* __cdecl SiN_GetServerNpcGruntSentenceApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSentenceApi)?&sentence_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntNativeSpeechApi=_SiN_GetServerNpcGruntNativeSpeechApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntNativeSpeechApi* __cdecl SiN_GetServerNpcGruntNativeSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntNativeSpeechApi)?&native_speech_api:nullptr;
 }
