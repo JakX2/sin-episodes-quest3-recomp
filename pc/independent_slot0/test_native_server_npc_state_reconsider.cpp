@@ -1309,6 +1309,28 @@ int main(int argc,char** argv){
         f.put(f.actor,0x8e8,91u);
         char large[124];std::memset(large,'a',123);large[123]=0;
         assert(!api->request(f.actor,sizeof(f.actor),large,&sb.speech,&rb,&qr)&&!qr.group_called);
+        auto gfull=reinterpret_cast<GetServerNpcGruntRequestSpeechApi>(GetProcAddress(s,server_npc_grunt_request_speech_export));
+        assert(gfull&&!GetProcAddress(c,server_npc_grunt_request_speech_export)&&!gfull(0,sizeof(ServerNpcGruntRequestSpeechApi))&&!gfull(1,0));
+        const auto* full=gfull(1,sizeof(ServerNpcGruntRequestSpeechApi));assert(full);
+        sb.entries=f.entries;sb.count=4;
+        sb.speech.squad_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);assert(token==91);*out=f.speech_squad;*n=sizeof(f.speech_squad);return 1;};
+        sb.extent=[](void* p,void* e,unsigned* n) noexcept -> int{assert(e==F::self(p).enemy);*n=sizeof(F::self(p).enemy);return 1;};
+        sb.entity_rejected=[](void*,void*,bool* out) noexcept -> int{*out=false;return 1;};
+        std::memset(f.speech_squad,0,sizeof(f.speech_squad));f.put(f.speech_squad,8,0x7001u);f.put(f.speech_squad,12,0x7001u);f.put(f.speech_squad,0x48,2);f.put(f.enemy,0x204,1);
+        f.put(f.actor,0x9c4,91u);f.put(f.actor,0x850,3);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0xc88,0.f);
+        ServerNpcGruntSpeechBindings cb{};cb.original_vtable=0x2248df04;cb.memory.entries=f.entries;cb.memory.count=4;cb.context=&f;cb.random=spb.random;
+        rb.group_index=[](void* p,const char* name,int* out) noexcept -> int{auto& f=F::self(p);assert(!std::strcmp(name,f.speech_name));*out=f.query;return 1;};
+        f.speech_name="GRUNT_LOST_LONG_ELITE";f.query=4;f.speech_code=17;
+        ServerNpcGruntRequestSpeechResult result{};
+        assert(full->speak(f.actor,sizeof(f.actor),NpcGruntLost,200,&cb,&sb,&rb,&result)&&result.speech.cue.cooldown_written&&result.speech.cue.deadline==207&&result.speech.sentence.cooldown.squad_written&&result.request.suffix_used&&result.request.submitted&&result.speech.cue.speech_result==17);
+        assert(full->speak(f.actor,sizeof(f.actor),NpcGruntLost,201,&cb,&sb,&rb,&result)&&result.speech.cue.suppressed&&!result.request.group_called);
+        f.speech_name="GRUNT_GO_ALERT_ELITE";rb.manager_ready=false;
+        assert(full->speak(f.actor,sizeof(f.actor),NpcGruntAlert,202,&cb,&sb,&rb,&result)&&result.request.manager_missing&&result.speech.cue.speech_result==-1&&result.speech.cue.deadline==212);
+        f.put(f.speech_squad,0x48,1);f.put(f.replacement,0x9c,0);
+        ServerNpcGruntRequestSurvivorResult sr{};rb.manager_ready=true;f.speech_name="GRUNT_LAST_OF_SQUAD_ELITE";f.query=-1;
+        assert(full->survivor(f.actor,sizeof(f.actor),f.replacement,sizeof(f.replacement),220,&sb,&rb,&sr)&&sr.survivor.completed&&sr.survivor.last_member&&sr.request.group_called&&sr.request.request_result==-1&&sr.survivor.final_mark.owner_written&&sr.survivor.final_mark.squad_written);
+        f.put(f.speech_squad,0x48,2);f.query=4;f.speech_name="GRUNT_MAN_DOWN_ELITE";
+        assert(full->survivor(f.actor,sizeof(f.actor),f.replacement,sizeof(f.replacement),230,&sb,&rb,&sr)&&sr.survivor.completed&&!sr.survivor.last_member&&sr.request.submitted&&sr.survivor.sentence.cooldown.owner_written&&!sr.survivor.final_mark.owner_written);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

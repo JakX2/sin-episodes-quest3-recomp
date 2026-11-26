@@ -998,4 +998,19 @@ struct ServerNpcGruntSentenceRequestApi {
     int (__cdecl *dispatch)(void*,unsigned,float,const char*,int,unsigned,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntSentenceResult*,ServerNpcGruntSentenceRequestResult*) noexcept;
 };
 using GetServerNpcGruntSentenceRequestApi=const ServerNpcGruntSentenceRequestApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_request_speech_export[]="SiN_GetServerNpcGruntRequestSpeechApi";
+struct ServerNpcGruntRequestSpeechResult {
+    ServerNpcGruntNativeSpeechResult speech;
+    ServerNpcGruntSentenceRequestResult request;
+};
+struct ServerNpcGruntRequestSurvivorResult {
+    ServerNpcGruntSurvivorResult survivor;
+    ServerNpcGruntSentenceRequestResult request;
+};
+struct ServerNpcGruntRequestSpeechApi {
+    std::uint32_t version,size;
+    int (__cdecl *speak)(void*,unsigned,unsigned,float,const ServerNpcGruntSpeechBindings*,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntRequestSpeechResult*) noexcept;
+    int (__cdecl *survivor)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntSentenceBindings*,const ServerNpcGruntSentenceRequestBindings*,ServerNpcGruntRequestSurvivorResult*) noexcept;
+};
+using GetServerNpcGruntRequestSpeechApi=const ServerNpcGruntRequestSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
