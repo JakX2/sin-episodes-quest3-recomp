@@ -4902,6 +4902,70 @@ int __cdecl grunt_activity_translate(void* a,unsigned n,int activity,const Serve
 }
 const ServerNpcGruntActivityTranslationApi activity_translation_api{1,sizeof(ServerNpcGruntActivityTranslationApi),&grunt_activity_translate};
 
+int __cdecl grunt_ragdoll_route(void* a,unsigned n,const void* damage,unsigned dn,const float* force,const ServerNpcGruntRagdollRouteBindings* b,ServerNpcGruntRagdollRouteResult* out) noexcept{
+    if(!out)return 0;*out={};out->sample=-1;out->mode=out->source_handle=out->ragdoll_handle=0xffffffffu;
+    if(!a||n<0xb7||!damage||dn<0x48||!force||!b)return 0;
+    const auto& sb=b->entities;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto finish=[&](){
+        if(!b->finish||!b->finish(b->context,a))return 0;
+        out->finished=out->native_result=out->completed=1;return 1;
+    };
+    out->jet=jetpack_death_class(sb.speech.original_vtable);
+    if(out->jet){
+        if(n<0x102c)return 0;
+        out->source_handle=read<unsigned>(damage,0x28);
+        out->source_valid=registry.Resolve(out->source_handle)!=nullptr;
+        if(out->source_valid){
+            out->mode=read<unsigned>(a,0x1004);
+            out->jet_special=out->mode==0||out->mode==1||out->mode==4;
+        }
+    }
+    if(!out->jet_special){
+        if(read<std::uint8_t>(a,0xb6)&4u){
+            out->ground_special=1;
+            if(!b->ground_setup||!b->ground_setup(b->context,a,damage))return 0;
+            out->setup_called=1;return finish();
+        }
+        bool value=false;
+        if(!b->base||!b->base(b->context,a,damage,force,&value))return 0;
+        out->base_called=out->completed=1;out->native_result=value;return 1;
+    }
+    if(!b->jet_setup||!b->jet_setup(b->context,a,damage,&out->ragdoll_handle))return 0;
+    out->setup_called=1;
+    // Original typed-handle setter stores the entity's handle (or invalid sentinel).
+    write(a,0x1000,out->ragdoll_handle);out->handle_written=1;
+    if(!b->random_int||!b->random_int(b->context,0,100,&out->sample)||out->sample<0||out->sample>100)return 0;
+    out->random_called=1;
+    if(out->sample<30){
+        if(!read<std::uint8_t>(a,0xc44)){
+            if(!b->sentence||!b->sentence(b->context,a))return 0;
+            out->sentence_called=1;
+        }
+        void* rag=registry.Resolve(read<unsigned>(a,0x1000));
+        if(!rag||!b->ignite||!b->ignite(b->context,rag,3.f,0,nullptr,nullptr,25.f,1))return 0;
+        out->ignite_called=1;
+    }
+    if(void* attachment=registry.Resolve(read<unsigned>(a,0x1028))){
+        void* rag=registry.Resolve(read<unsigned>(a,0x1000));
+        if(!rag||!b->attach||!b->attach(b->context,rag,attachment))return 0;
+        out->attachment_called=1;
+        // The original admits the pair only if both handles resolve, then re-resolves
+        // each target and the attachment for the respective calls.
+        if(registry.Resolve(read<unsigned>(a,0xfe8))&&registry.Resolve(read<unsigned>(a,0xfe4))){
+            for(unsigned off:{0xfe4u,0xfe8u}){
+                void* target=registry.Resolve(read<unsigned>(a,off));
+                if(!target||!b->reparent||!b->reparent(b->context,target,registry.Resolve(read<unsigned>(a,0x1028))))return 0;
+                ++out->aux_reparented;
+            }
+        }
+    }
+    return finish();
+}
+const ServerNpcGruntRagdollRouteApi ragdoll_route_api{1,sizeof(ServerNpcGruntRagdollRouteApi),&grunt_ragdoll_route};
+
+
 
 
 
@@ -5515,4 +5579,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntActivityTranslationApi=_SiN_GetServerNpcGruntActivityTranslationApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntActivityTranslationApi* __cdecl SiN_GetServerNpcGruntActivityTranslationApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntActivityTranslationApi)?&activity_translation_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRagdollRouteApi=_SiN_GetServerNpcGruntRagdollRouteApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRagdollRouteApi* __cdecl SiN_GetServerNpcGruntRagdollRouteApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRagdollRouteApi)?&ragdoll_route_api:nullptr;
 }

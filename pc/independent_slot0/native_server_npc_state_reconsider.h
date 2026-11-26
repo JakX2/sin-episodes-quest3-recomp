@@ -2095,4 +2095,30 @@ struct ServerNpcGruntActivityTranslationApi {
     int (__cdecl *run)(void*,unsigned,int,const ServerNpcGruntActivityTranslationBindings*,ServerNpcGruntActivityTranslationResult*) noexcept;
 };
 using GetServerNpcGruntActivityTranslationApi=const ServerNpcGruntActivityTranslationApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_ragdoll_route_export[]="SiN_GetServerNpcGruntRagdollRouteApi";
+// Gameplay decisions only; actual ragdoll creation, collision and motion remain host services.
+struct ServerNpcGruntRagdollRouteBindings {
+    ServerNpcGruntSentenceBindings entities;
+    void* context;
+    int (__cdecl *base)(void*,void*,const void*,const float*,bool*) noexcept; // 222a5550
+    int (__cdecl *ground_setup)(void*,void*,const void*) noexcept; // 2235a153..2235a221
+    int (__cdecl *jet_setup)(void*,void*,const void*,std::uint32_t*) noexcept; // 22365511..223655af
+    int (__cdecl *random_int)(void*,int,int,int*) noexcept;
+    int (__cdecl *sentence)(void*,void*) noexcept; // 223655ca..223655e4
+    int (__cdecl *ignite)(void*,void*,float,int,void*,void*,float,int) noexcept;
+    int (__cdecl *attach)(void*,void*,void*) noexcept; // primary attachment block, 2236561c..223656c0
+    int (__cdecl *reparent)(void*,void*,void*) noexcept; // 22008140, last original argument zero
+    int (__cdecl *finish)(void*,void*) noexcept; // 22143d90
+};
+struct ServerNpcGruntRagdollRouteResult {
+    int sample;
+    std::uint32_t mode,source_handle,ragdoll_handle;
+    unsigned completed,native_result,jet,source_valid,jet_special,ground_special,base_called,setup_called,handle_written,random_called,sentence_called,ignite_called,attachment_called,aux_reparented,finished;
+};
+struct ServerNpcGruntRagdollRouteApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,const float*,const ServerNpcGruntRagdollRouteBindings*,ServerNpcGruntRagdollRouteResult*) noexcept;
+};
+using GetServerNpcGruntRagdollRouteApi=const ServerNpcGruntRagdollRouteApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
