@@ -844,5 +844,48 @@ int main(int argc,char** argv){
         assert(bi("Unknown")&&!br.handled);
         assert(!api->branch_input(actor,branch_extent-1,"Test",timer,0,0,&bb,&br));
     }
+    {
+        FactoryDictionary dict{};
+        assert(api->register_factories(&dict)&&api->register_branch(&dict)&&api->register_timer(&dict)&&api->register_relay(&dict)&&api->register_auto(&dict)&&dict.count==16);
+        assert(!api->register_branch(&dict));
+        const auto* spec=api->find_factory(&dict,"LOGIC_BRANCH");
+        assert(spec&&spec->family==Family::LogicBranch&&spec->original_object==0x224fb628&&spec->original_vtable==0x2241f5fc&&spec->extent==branch_extent);
+        struct FactoryFixture {alignas(4) unsigned char storage[branch_extent]{};unsigned allocations=0,base=0,init=0,released=0,cleared=0,accepted=0;bool short_alloc=false;} ff;
+        RelayFactoryBindings binding{};binding.context=&ff;
+        binding.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<FactoryFixture*>(p);assert(n==branch_extent);++f.allocations;*a=f.storage;*bytes=f.short_alloc?n-1:n;return 1;
+        };
+        binding.base_construct=[](void* p,void* a,int arg) noexcept ->int{
+            auto& f=*static_cast<FactoryFixture*>(p);assert(a==f.storage&&arg==1);++f.base;
+            unsigned marker=0x12345678;std::memcpy(f.storage+0x39c,&marker,4);return 1;
+        };
+        binding.initialize=[](void* p,void* a,const char* cls) noexcept ->int{
+            auto& f=*static_cast<FactoryFixture*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"logic_branch"));++f.init;return 1;
+        };
+        binding.release_networkable=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<FactoryFixture*>(p);assert(a==f.storage+0x160);++f.released;return 1;
+        };
+        FactoryBindings factories{};factories.dictionary=&dict;
+        FactoryResult result{};
+        assert(!api->create_factory("logic_branch",&factories,&result)&&result.matched&&!result.actor);
+        factories.logic_branch=&binding;ff.short_alloc=true;
+        assert(!api->create_factory("logic_branch",&factories,&result)&&result.matched&&!result.networkable&&!ff.base);
+        ff.short_alloc=false;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=branch_extent;return 1;};
+        Bindings parse{};parse.context=&ff;parse.native_factory=&factories;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<FactoryFixture*>(p)->cleared;return 1;};
+        parse.accept_entity=[](void* p,void* a,const char* text,unsigned bytes,const EntitySlice* slice) noexcept ->int{
+            auto& f=*static_cast<FactoryFixture*>(p);assert(a==f.storage&&text&&slice&&slice->begin<slice->end&&slice->end<=bytes);++f.accepted;return 1;
+        };
+        const char map[]="{ classname logic_branch InitialValue 1 OnTrue \"relay,Trigger,,0,-1\" OnFalse \"relay,Trigger,,1,1\" }";
+        Result parsed{};
+        assert(api->parse(map,sizeof(map),&parse,&parsed)&&parsed.native_creates==1&&parsed.created==1&&parsed.last_factory.networkable==ff.storage+0x160);
+        assert(ff.allocations==2&&ff.base==1&&ff.init==1&&ff.cleared==1&&ff.accepted==1&&ff.storage[0x394]==1);
+        assert(word(ff.storage,0)==branch_vtable&&word(ff.storage,0x39c)==0x12345678&&word(ff.storage,0x3ac)==ptrword(pool.rows[0])&&word(ff.storage,0x3c4)==ptrword(pool.rows[1]));
+        for(unsigned off=0x398;off<=0x3b0;off+=0x18)assert(word(ff.storage,off)==0&&word(ff.storage,off+0xc)==0xffffffffu&&word(ff.storage,off+0x10)==0);
+        assert(api->destroy_branch(nullptr,0,nullptr,nullptr)&&!api->destroy_branch(ff.storage,branch_extent,ff.storage+0x164,&binding)&&!ff.released);
+        assert(api->destroy_branch(ff.storage,branch_extent,ff.storage+0x160,&binding)&&ff.released==1);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
