@@ -1101,9 +1101,41 @@ bool case_variant_text(const CaseBindings& b,const void* variant,char (&buffer)[
         const auto result=std::to_chars(buffer,buffer+sizeof(buffer)-1,read_field<int>(variant,0));
         if(result.ec!=std::errc{})return false;*result.ptr=0;*text=buffer;return true;
     }
-    if(type==1||type==3||type==9||type==13){
-        if(!b.format_variant||!b.format_variant(b.context,variant,0x14,buffer,sizeof(buffer))||!std::memchr(buffer,0,sizeof(buffer)))return false;
+    if(b.format_variant&&(type==1||type==3||type==9||type==13)){
+        if(!b.format_variant(b.context,variant,0x14,buffer,sizeof(buffer))||!std::memchr(buffer,0,sizeof(buffer)))return false;
         *text=buffer;return true;
+    }
+    // Original 221561d0: Q_snprintf with %g, [%g %g %g], and
+    // %d %d %d %d. Finite %g uses six significant digits. Exact
+    // legacy vstdlib exponent/nonfinite spelling remains owner overridable.
+    if(type==1||type==3||type==9){
+        char* p=buffer;char* end=buffer+sizeof(buffer)-1;
+        auto literal=[&](char ch){if(p==end)return false;*p++=ch;return true;};
+        auto scalar=[&](float value){
+            if(!std::isfinite(value))return false;
+            const auto r=std::to_chars(p,end,double(value),std::chars_format::general,6);
+            if(r.ec!=std::errc{})return false;p=r.ptr;return true;
+        };
+        if(type==1){if(!scalar(read_field<float>(variant,0)))return false;}
+        else if(type==3){
+            if(!literal('['))return false;
+            for(unsigned i=0;i<3;++i){if(i&&!literal(' '))return false;if(!scalar(read_field<float>(variant,i*4)))return false;}
+            if(!literal(']'))return false;
+        }else for(unsigned i=0;i<4;++i){
+            if(i&&!literal(' '))return false;
+            const auto r=std::to_chars(p,end,unsigned(read_field<unsigned char>(variant,i)));
+            if(r.ec!=std::errc{})return false;p=r.ptr;
+        }
+        *p=0;*text=buffer;return true;
+    }
+    if(type==13){
+        if(b.entry_count>sin_independent::kEntityHandleCapacity||(!b.entries&&b.entry_count))return false;
+        const auto handle=read_field<unsigned>(variant,0xc);
+        void* entity=sin_independent::EntityHandleView(b.entries,b.entry_count).Resolve(handle);
+        if(!entity){*text="<<null entity>>";return true;}
+        unsigned bytes=0;
+        if(!b.entity_extent||!b.entity_extent(b.entity_context,entity,&bytes)||bytes<0xc4)return false;
+        return case_text(b,read_field<unsigned>(entity,0xc0),text);
     }
     *text="No conversion to string";return true;
 }

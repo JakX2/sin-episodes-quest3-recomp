@@ -117,10 +117,13 @@ struct CaseBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     int (__cdecl *resolve_text)(void*,unsigned,const char**,unsigned*) noexcept;
-    // Original variant String() formatter for float/vector/color/entity.
+    // Optional original vstdlib formatter override, including unusual floats.
     int (__cdecl *format_variant)(void*,const void*,unsigned,char*,unsigned) noexcept;
     int (__cdecl *random_int)(void*,int,int,int*) noexcept;
     int (__cdecl *empty_warning)(void*,void*) noexcept;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    void* entity_context;
+    int (__cdecl *entity_extent)(void*,void*,unsigned*) noexcept;
 };
 struct CaseResult {
     unsigned completed,handled,matched,selected,defaulted,eligible,visited,randomized,warned,fired,queued;

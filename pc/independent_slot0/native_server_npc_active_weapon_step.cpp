@@ -2253,7 +2253,9 @@ int native_case_input(void* a,unsigned n,unsigned handler,const ServerEntityInpu
     if(!text)return -1;
     const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
     sin_port::native_map::CaseResult result{};
-    return api&&api->case_input(a,n,text,data.activator,data.variant,sizeof(data.variant),b.logic_case,&result)&&result.completed&&result.handled?1:0;
+    auto bound=*b.logic_case;bound.entries=b.entities.entries;bound.entry_count=b.entities.count;
+    if(b.search&&b.search->extent){bound.entity_context=b.search->context;bound.entity_extent=b.search->extent;}
+    return api&&api->case_input(a,n,text,data.activator,data.variant,sizeof(data.variant),&bound,&result)&&result.completed&&result.handled?1:0;
 }
 constexpr NativeInputMap branch_map{0x224fb5a0u,0x224f0350u,8,branch_inputs,5};
 int native_branch_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {

@@ -1129,5 +1129,46 @@ int main(int argc,char** argv){
         assert(service_api->service(co.root,sizeof(co.root),99,120.25f,false,&budget,&delivery,&es)&&es.events==1&&es.future_stopped&&f.delivered==1);
         assert(service_api->service(co.root,sizeof(co.root),99,120.5f,false,&budget,&delivery,&es)&&es.events==1&&f.delivered==2&&co.released==2&&!word(co.root,0x30));
     }
+    {
+        alignas(4) unsigned char actor[case_extent]{},named[0xc4]{};
+        put(actor,0,case_vtable);put(named,0xc0,205u);
+        // No actions are needed to prove exact comparison/selection.
+        for(unsigned i=0;i<8;++i)put(actor,0x394+4*i,201+i);
+        const auto text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            const char* values[]{"1.25","[1.25 -2 0]","1 2 3 255","-0","entity_name","<<null entity>>","","No conversion to string"};
+            if(token<201||token>208)return 0;*text=values[token-201];*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        sin_independent::EntityHandleEntry entries[1]{};
+        entries[0].serial=5;entries[0].entity=reinterpret_cast<CBaseEntity*>(named);
+        nw::ServerEntityVoidOutputBindings fire{};
+        CaseBindings behavior{};behavior.output=&fire;behavior.resolve_text=text;behavior.entries=entries;behavior.entry_count=1;behavior.entity_context=named;
+        behavior.entity_extent=[](void* p,void* entity,unsigned* bytes) noexcept ->int{if(p!=entity)return 0;*bytes=0xc4;return 1;};
+        CaseResult result{};
+        unsigned v[5]{0x3fa00000u,0,0,0xffffffffu,1};
+        auto select=[&](unsigned expected){
+            return api->case_input(actor,sizeof(actor),"InValue",nullptr,v,sizeof(v),&behavior,&result)&&result.matched&&result.selected==expected&&result.fired&&!result.queued;
+        };
+        assert(select(1));
+        v[1]=0xc0000000u;v[2]=0;v[4]=3;assert(select(2));
+        v[0]=0xff030201u;v[4]=9;assert(select(3));
+        v[0]=0x80000000u;v[4]=1;assert(select(4));
+        v[3]=0x5000u;v[4]=13;assert(select(5));
+        v[3]=0x4000u;assert(select(6));
+        v[3]=0xffffffffu;assert(select(6));
+        v[3]=0x5000u;put(named,0xc0,0u);assert(select(7));put(named,0xc0,205u);
+        v[4]=12;assert(select(8));
+        v[4]=1;v[0]=0x7f800000u;assert(!api->case_input(actor,sizeof(actor),"InValue",nullptr,v,sizeof(v),&behavior,&result));
+        behavior.format_variant=[](void*,const void*,unsigned,char* out,unsigned bytes) noexcept ->int{if(bytes<5)return 0;std::memcpy(out,"1.25",5);return 1;};
+        assert(select(1));behavior.format_variant=nullptr;
+        // Generic input supplies its authoritative serial registry and extent.
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&tstorage;input.logic_case=&behavior;
+        input.entities.entries=entries;input.entities.count=1;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{if(token!=0x2242014c)return 0;*text="InValue";*bytes=8;return 1;};
+        nw::ServerEntitySearchBindings search{};search.context=named;search.extent=behavior.entity_extent;input.search=&search;
+        behavior.entries=nullptr;behavior.entry_count=0;behavior.entity_extent=nullptr;
+        v[4]=13;v[3]=0x5000u;
+        nw::ServerEntityAcceptInputResult accepted{};
+        assert(timer_accept->run(actor,sizeof(actor),case_vtable,0x2242014c,nullptr,nullptr,v,sizeof(v),0,&input,&accepted)&&accepted.native_handler&&accepted.actual_type==13);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
