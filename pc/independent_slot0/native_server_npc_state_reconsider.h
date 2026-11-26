@@ -1940,4 +1940,35 @@ struct ServerNpcGruntGroundLifeApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntGroundLifeBindings*,ServerNpcGruntGroundLifeResult*) noexcept;
 };
 using GetServerNpcGruntGroundLifeApi=const ServerNpcGruntGroundLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_special_impact_export[]="SiN_GetServerNpcGruntSpecialImpactApi";
+struct ServerNpcGruntSpecialImpactBindings {
+    ServerNpcGruntSentenceBindings entities;
+    ServerNpcEnemyMemoryBindings dirty_storage;
+    ServerNpcConditionMapBindings schedules;
+    void* context;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *normalize)(void*,float*) noexcept;
+    int (__cdecl *scale)(void*,float,float,float*) noexcept; // original service 225721b0 +4
+    int (__cdecl *effect_tail)(void*,void*,const float*) noexcept; // 2235f0a4..2235f212
+};
+struct ServerNpcGruntSpecialImpactResult {
+    float initial[3],normalized[3],scaled[3],origin[3],scale_bound,scale;
+    unsigned completed,elite_noop,latch_written,attacker_refreshed,actor_refreshed,normalized_called,vector_writes,local_dirty,external_dirty,schedule_adjusted,tail_required,tail_called;
+};
+struct ServerNpcGruntSpecialDamageBindings {
+    ServerNpcGruntDamageDetailBindings detail;
+    ServerNpcGruntSpecialImpactBindings special;
+};
+struct ServerNpcGruntSpecialDamageResult {
+    ServerNpcGruntDamageDetailResult detail;
+    ServerNpcGruntSpecialImpactResult special;
+};
+struct ServerNpcGruntSpecialImpactApi {
+    std::uint32_t version,size;
+    int (__cdecl *set_vector)(void*,unsigned,const float*,const ServerNpcEnemyMemoryBindings*,unsigned*,unsigned*,unsigned*) noexcept;
+    int (__cdecl *prefix)(void*,unsigned,void*,unsigned,const ServerNpcGruntSpecialImpactBindings*,ServerNpcGruntSpecialImpactResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntSpecialDamageBindings*,ServerNpcGruntSpecialDamageResult*) noexcept;
+};
+using GetServerNpcGruntSpecialImpactApi=const ServerNpcGruntSpecialImpactApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
