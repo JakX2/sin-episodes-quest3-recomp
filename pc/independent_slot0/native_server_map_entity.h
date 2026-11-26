@@ -24,6 +24,14 @@ struct FactoryResult {
     void* actor;void* networkable;unsigned bytes,matched,completed;
 };
 struct Result {unsigned completed,entities,pairs,filtered,created,missing_factory,missing_classname,clears;unsigned offset,native_creates,foreign_creates;FactoryResult last_factory;};
+// Pool storage must remain live until the native output firing path releases it.
+// The counter is shared across all entity outputs, not per entity.
+struct OutputActionBindings {
+    void* context;
+    unsigned* next_id;
+    int (__cdecl *allocate)(void*,unsigned,void**) noexcept;
+    int (__cdecl *release)(void*,void*) noexcept;
+};
 struct KeyBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
@@ -32,6 +40,7 @@ struct KeyBindings {
     int (__cdecl *output)(void*,void*,void*,const char*) noexcept;
     int (__cdecl *foreign)(void*,void*,const char*,const char*,bool*) noexcept;
     int (__cdecl *resupply_bounds_warning)(void*,void*) noexcept;
+    const OutputActionBindings* native_output;
 };
 struct KeyResult {
     unsigned completed,handled,known_class,base_field,scalar,interned,output,foreign,ignored_bounds;

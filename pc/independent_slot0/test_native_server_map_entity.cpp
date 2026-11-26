@@ -180,6 +180,43 @@ int main(int argc,char** argv){
     assert(api->parse(gameplay,sizeof(gameplay),&nb,&r)&&r.completed&&r.native_creates==3&&parsed.alloc==3&&parsed.accept==3);
     assert(word(parsed.storage[0],0x49c)==0x42040000&&word(parsed.storage[1],0x628)==0x429a0000&&word(parsed.storage[1],0x62c)==9&&word(parsed.storage[2],0xb4)==3&&word(parsed.storage[2],0x10)!=0);
     assert(kf.output==parsed.storage[0]+0x4b8);
+    // Real output field, real PE32 action layout, shared action IDs.
+    struct ActionPool {alignas(4) unsigned char rows[8][0x1c]{};unsigned used=0,id=40,released=0;bool fail=false;} pool;
+    OutputActionBindings output{};output.context=&pool;output.next_id=&pool.id;
+    output.allocate=[](void* p,unsigned bytes,void** row) noexcept ->int{
+        auto& f=*static_cast<ActionPool*>(p);assert(bytes==0x1c);
+        if(f.fail||f.used==8)return 0;*row=f.rows[f.used++];return 1;
+    };
+    output.release=[](void* p,void*) noexcept ->int{++static_cast<ActionPool*>(p)->released;return 1;};
+    kb.native_output=&output;
+    kb.intern=[](void*,const char* value,unsigned* token) noexcept ->int{
+        if(!std::strcmp(value,"relay"))*token=201;
+        else if(!std::strcmp(value,"Trigger"))*token=202;
+        else if(!std::strcmp(value,"Use"))*token=203;
+        else if(!std::strcmp(value,"param"))*token=204;
+        else return 0;return 1;
+    };
+    put(disp,0x4b8+0x14,0);put(barrel,0x66c+0x14,0);
+    auto ptrword=[](const void* a){return static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(a));};
+    assert(api->key_value(disp,"OnCanisterInserted","relay,Trigger,param,1.5,2",&kb,&kr)&&kr.output);
+    assert(word(pool.rows[0],0)==201&&word(pool.rows[0],4)==202&&word(pool.rows[0],8)==204&&word(pool.rows[0],0xc)==0x3fc00000&&word(pool.rows[0],0x10)==2&&word(pool.rows[0],0x14)==41&&!word(pool.rows[0],0x18));
+    assert(api->key_value(disp,"OnCanisterInserted#2","relay,,,0,0",&kb,&kr)&&kr.output);
+    assert(word(disp,0x4b8+0x14)==ptrword(pool.rows[1])&&word(pool.rows[1],4)==203&&!word(pool.rows[1],8)&&word(pool.rows[1],0x10)==0xffffffffu&&word(pool.rows[1],0x14)==42&&word(pool.rows[1],0x18)==ptrword(pool.rows[0]));
+    assert(api->key_value(barrel,"OnExplode","relay,Trigger",&kb,&kr)&&word(barrel,0x66c+0x14)==ptrword(pool.rows[2])&&word(pool.rows[2],0x10)==0xffffffffu&&word(pool.rows[2],0x14)==43);
+    assert(!api->key_value(disp,"OnCanisterInserted","relay,Trigger,,0,2147483648",&kb,&kr)&&pool.used==3);
+    std::string too_long(256,'x');assert(!api->key_value(disp,"OnCanisterInserted",too_long.c_str(),&kb,&kr)&&pool.used==3);
+    pool.fail=true;assert(!api->key_value(disp,"OnCanisterInserted","relay,Trigger",&kb,&kr)&&pool.id==43);pool.fail=false;
+    assert(!api->key_value(disp,"OnCanisterInserted","unknown,Trigger",&kb,&kr)&&pool.released==1&&word(disp,0x4b8+0x14)==ptrword(pool.rows[1]));
+    // Actual map tokenizer and native constructor, two output keys in source order.
+    NativeFixture outparsed{};resupply.context=&outparsed;pickups.context=&outparsed;antigen.context=&outparsed;factories.context=&outparsed;
+    nb.context=&outparsed;
+    // All non-output classname tokens retain an owner-provided intern result.
+    kb.intern=[](void*,const char* value,unsigned* token) noexcept ->int{
+        *token=!std::strcmp(value,"relay")?201u:!std::strcmp(value,"Trigger")?202u:!std::strcmp(value,"Use")?203u:300u;return 1;
+    };
+    const char outmap[]="{ classname item_antigen_dispenser OnCanisterInserted \"relay,Trigger,,0,1\" OnCanisterInserted#2 \"relay,,,2,-1\" }";
+    assert(api->parse(outmap,sizeof(outmap),&nb,&r)&&r.completed&&r.native_creates==1);
+    assert(word(outparsed.storage[0],0x4b8+0x14)==ptrword(pool.rows[5])&&word(pool.rows[5],0x18)==ptrword(pool.rows[4])&&word(pool.rows[5],4)==203&&word(pool.rows[5],0xc)==0x40000000&&word(pool.rows[4],0x10)==1);
     // Full outer map parser: immediate special branches, delayed point
     // template pass, captured ordinary row removal, then ordinary spawn.
     struct PipelineFixture {
