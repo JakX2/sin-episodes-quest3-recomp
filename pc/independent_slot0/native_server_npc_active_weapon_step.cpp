@@ -1347,6 +1347,18 @@ bool fire_actor_output_queue(void* actor,unsigned extent,unsigned off,float now,
     };
     return fire_void_output(static_cast<unsigned char*>(actor)+off,extent-off,actor,actor,extent,0.f,&actions,&result);
 }
+// Original +d0 on every authenticated Grunt-family primary table is a
+// six-byte MOV EAX,constant; RET. Only use this for the proven self attacker.
+void bind_self_classification(unsigned vt,ServerNpcGruntGroundDeathBindings& b) noexcept {
+    if(b.classification)return;
+    switch(vt){
+    case 0x2248df04u:case 0x2249aaa4u:case 0x2248c514u:case 0x2248e83cu:
+        b.classification=+[](void*,void*,int* v) noexcept -> int{*v=11;return 1;};break;
+    case 0x224954a4u:case 0x224a416cu:case 0x2249964cu:case 0x224a4a4cu:
+        b.classification=+[](void*,void*,int* v) noexcept -> int{*v=6;return 1;};break;
+    default:break;
+    }
+}
 bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
     const auto& dispatch=*b.native_health;
     if(n<0xdb2||!b.storage||!std::isfinite(b.now)||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
@@ -1415,12 +1427,7 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
     }
     if(ground){
         ServerNpcGruntGroundLifeBindings bound{};bound.life=life;bound.ground=*dispatch.ground_death;
-        // For this specialized self-damage route the attacker classification
-        // is a known constant: +d0=2236a3a0 (11) or 22358410 (6).
-        // The existing ground API keeps the other death service contexts.
-        if(!bound.ground.classification)bound.ground.classification=vt==0x2249aaa4u?
-            +[](void*,void*,int* value) noexcept -> int{*value=11;return 1;}:
-            +[](void*,void*,int* value) noexcept -> int{*value=6;return 1;};
+        bind_self_classification(vt,bound.ground);
         const auto* api=SiN_GetServerNpcGruntGroundLifeApi(1,sizeof(ServerNpcGruntGroundLifeApi));
         if(!api||!api->run(a,n,rd<unsigned>(a,0x378),info,0x48,b.now,&bound,dispatch.ground_result))return false;
         ++o.health_ground_route;o.health_ground_death=dispatch.ground_result->ground_called;
@@ -1431,6 +1438,7 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
         // plain ground death entry, or use an unrelated nested life identity.
         auto bound=*dispatch.subclass_death;
         bound.combat.combat.life=life;
+        bind_self_classification(vt,bound.combat.combat.ground);
         const auto* api=SiN_GetServerNpcGruntEliteLifeApi(1,sizeof(ServerNpcGruntEliteLifeApi));
         if(!api||!api->run(a,n,rd<unsigned>(a,0x378),info,0x48,b.now,&bound,dispatch.subclass_result))return false;
         o.health_elite_route=elite;o.health_jet_route=jet;
