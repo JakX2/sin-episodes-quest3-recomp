@@ -1252,6 +1252,33 @@ int main(int argc,char** argv){
         assert(sentence->dispatch(f.actor,sizeof(f.actor),100,"GRUNT_IDLE",-1,1,&sb,&sr)&&sr.queued&&sr.request_result==42&&!sr.cooldown.owner_written&&f.queue_randoms==2);
         char oversized[129];std::memset(oversized,'x',128);oversized[128]=0;
         assert(!sentence->dispatch(f.actor,sizeof(f.actor),100,oversized,-1,0,&sb,&sr)&&!sr.queued);
+        auto gn=reinterpret_cast<GetServerNpcGruntNativeSpeechApi>(GetProcAddress(s,server_npc_grunt_native_speech_export));
+        assert(gn&&!GetProcAddress(c,server_npc_grunt_native_speech_export)&&!gn(0,sizeof(ServerNpcGruntNativeSpeechApi))&&!gn(1,0));
+        const auto* native=gn(1,sizeof(ServerNpcGruntNativeSpeechApi));assert(native);
+        sb.enqueue=[](void* p,void* a,const char* cue,int* code) noexcept -> int{
+            auto& f=F::self(p);assert(a==f.actor&&f.get<int>(0xccc)==-1);f.speech_name=cue;++f.speech_calls;*code=f.speech_code;return 1;
+        };
+        sb.speech.random_float=[](void* p,float lo,float hi,float* out) noexcept -> int{auto& f=F::self(p);assert(lo==1.5f&&hi==2.f);*out=(++f.queue_randoms%2)?1.5f:2.f;return 1;};
+        ServerNpcGruntSpeechBindings cues{};cues.original_vtable=sb.speech.original_vtable;cues.context=&f;cues.memory.entries=f.entries;cues.memory.count=4;cues.random=spb.random;
+        ServerNpcGruntNativeSpeechResult nr{};
+        f.speech_code=42;f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0xc88,0.f);f.put(f.actor,0xc7c,0.f);
+        f.queue_randoms=f.random_calls=0;
+        assert(native->speak(f.actor,sizeof(f.actor),NpcGruntLost,200,&cues,&sb,&nr)&&nr.cue.emitted&&nr.sentence.queued&&nr.cue.speech_result==42&&nr.cue.cooldown_written&&nr.cue.deadline==207&&nr.sentence.cooldown.squad_written&&f.random_calls==1);
+        assert(!std::strcmp(f.speech_name,"GRUNT_LOST_LONG"));
+        assert(native->speak(f.actor,sizeof(f.actor),NpcGruntRefind,200,&cues,&sb,&nr)&&nr.sentence.queued&&!std::strcmp(f.speech_name,"GRUNT_REFIND_ENEMY")&&!nr.cue.cooldown_written);
+        assert(native->speak(f.actor,sizeof(f.actor),NpcGruntAlert,201,&cues,&sb,&nr)&&nr.sentence.cooldown.priority_blocked&&!nr.sentence.queued&&nr.cue.speech_result==-1&&nr.cue.deadline==211);
+        f.put(f.speech_squad,0x48,1);f.put(f.replacement,0x9c,1);
+        ServerNpcGruntSurvivorResult loss{};
+        f.actor[0xbf]=8;
+        assert(native->survivor(f.actor,sizeof(f.actor),nullptr,0,300,&sb,&loss)&&loss.flag_blocked);
+        f.actor[0xbf]=0;
+        assert(native->survivor(f.actor,sizeof(f.actor),f.replacement,sizeof(f.replacement),300,&sb,&loss)&&loss.removed_positive);
+        f.put(f.replacement,0x9c,0);f.speech_code=-1;f.queue_randoms=0;
+        assert(native->survivor(f.actor,sizeof(f.actor),f.replacement,sizeof(f.replacement),300,&sb,&loss)&&loss.completed&&loss.last_member&&loss.sentence.queued&&loss.sentence.request_result==-1&&loss.final_mark.owner_written&&loss.final_mark.squad_written&&loss.final_mark.owner_deadline==301.5f&&loss.final_mark.squad_deadline==302.f&&!std::strcmp(loss.cue,"GRUNT_LAST_OF_SQUAD"));
+        f.put(f.actor,0x850,1);f.put(f.actor,0xb4,2u);f.queue_randoms=0;
+        assert(native->survivor(f.actor,sizeof(f.actor),f.replacement,sizeof(f.replacement),301,&sb,&loss)&&!loss.sentence.mode_allowed&&!loss.sentence.queue_reset&&loss.final_mark.owner_written&&loss.final_mark.squad_written);
+        f.put(f.actor,0x850,3);f.put(f.speech_squad,0x48,2);f.speech_code=12;f.queue_randoms=0;
+        assert(native->survivor(f.actor,sizeof(f.actor),f.replacement,sizeof(f.replacement),310,&sb,&loss)&&loss.eligible_count==2&&!loss.last_member&&loss.sentence.queued&&loss.sentence.request_result==12&&loss.sentence.cooldown.owner_written&&!loss.final_mark.owner_written&&!std::strcmp(loss.cue,"GRUNT_MAN_DOWN"));
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
