@@ -9,9 +9,9 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
-struct FactoryDictionary {const FactorySpec* slots[21]{};unsigned count=0;bool registered=false;};
+struct FactoryDictionary {const FactorySpec* slots[22]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
     void* context;
     // Fresh allocation must supply zeroed derived extension, as expected
@@ -37,6 +37,7 @@ struct FactoryBindings {
     const RelayFactoryBindings* math_counter;
     const RelayFactoryBindings* logic_menu;
     const RelayFactoryBindings* logic_navigation;
+    const RelayFactoryBindings* logic_autosave;
 };
 struct FactoryResult {
     const FactorySpec* spec;
@@ -122,6 +123,19 @@ inline constexpr unsigned compare_vtable=0x22422004,compare_extent=0x3fc;
 inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
 // Derived scalar-deleting destructor boundary, distinct from the
 // factory's owner networkable-release boundary.
+inline constexpr unsigned autosave_vtable=0x2241f9e4,autosave_extent=0x398;
+struct AutosaveBindings {
+    void* context;
+    int (__cdecl *new_level_unit)(void*) noexcept;
+    // Read CDynamicDifficulty's original byte +6 AFTER new-level-unit.
+    // Do not infer this gate from the independent fixed-skill toggle.
+    int (__cdecl *difficulty_gate)(void*,unsigned char*) noexcept;
+    int (__cdecl *server_command)(void*,const char*) noexcept;
+};
+struct AutosaveResult {
+    unsigned completed,handled,new_level_unit,gate_read,suppressed,command_queued;
+    unsigned char gate;
+};
 inline constexpr unsigned navigation_vtable=0x2241ed04,navigation_listener_vtable=0x2241ecf0,navigation_extent=0x3a0;
 struct NavigationBindings {
     void* context;
@@ -384,6 +398,9 @@ struct Api {
     int (__cdecl *navigation_remove)(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
     int (__cdecl *register_navigation)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_navigation)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *register_autosave)(FactoryDictionary*) noexcept;
+    int (__cdecl *destroy_autosave)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *autosave_input)(void*,unsigned,const char*,const AutosaveBindings*,AutosaveResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

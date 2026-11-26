@@ -110,11 +110,12 @@ constexpr FactorySpec compare_spec{"logic_compare",Family::LogicCompare,0x224fb6
 constexpr FactorySpec counter_spec{"math_counter",Family::MathCounter,0x224fb61c,0x2241f5d8,counter_extent};
 constexpr FactorySpec menu_spec{"logic_menulistener",Family::LogicMenuListener,0x224fb634,0x2241f620,menu_extent};
 constexpr FactorySpec navigation_spec{"logic_navigation",Family::LogicNavigation,0x224fb0e0,0x2241ece4,navigation_extent};
+constexpr FactorySpec autosave_spec{"logic_autosave",Family::LogicAutosave,0x224fb62c,0x2241f608,autosave_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||d->count<12||d->count>21)return false;
+    if(!d||!d->registered||d->count<12||d->count>22)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false;
-    for(unsigned i=12;i<21;++i){
+    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false,logic_menu=false,logic_navigation=false,logic_autosave=false;
+    for(unsigned i=12;i<22;++i){
         if(i>=d->count){if(d->slots[i])return false;continue;}
         if(d->slots[i]==&relay_spec&&!relay)relay=true;
         else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
@@ -125,12 +126,13 @@ bool valid_dictionary(const FactoryDictionary* d) noexcept {
         else if(d->slots[i]==&counter_spec&&!math_counter)math_counter=true;
         else if(d->slots[i]==&menu_spec&&!logic_menu)logic_menu=true;
         else if(d->slots[i]==&navigation_spec&&!logic_navigation)logic_navigation=true;
+        else if(d->slots[i]==&autosave_spec&&!logic_autosave)logic_autosave=true;
         else return false;
     }
     return true;
 }
 int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
-    if(!valid_dictionary(d)||d->count==21)return 0;
+    if(!valid_dictionary(d)||d->count==22)return 0;
     for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
     d->slots[d->count++]=spec;return 1;
 }
@@ -143,6 +145,7 @@ int __cdecl register_compare(FactoryDictionary* d) noexcept {return register_opt
 int __cdecl register_counter(FactoryDictionary* d) noexcept {return register_optional(d,&counter_spec);}
 int __cdecl register_menu(FactoryDictionary* d) noexcept {return register_optional(d,&menu_spec);}
 int __cdecl register_navigation(FactoryDictionary* d) noexcept {return register_optional(d,&navigation_spec);}
+int __cdecl register_autosave(FactoryDictionary* d) noexcept {return register_optional(d,&autosave_spec);}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -180,6 +183,17 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         const unsigned zero=0,invalid=0xffffffffu,vt=relay_vtable;
         std::memcpy(a,&vt,4);std::memcpy(a+0x394,&zero,4);
         std::memcpy(a+0x3a0,&invalid,4);std::memcpy(a+0x3a4,&zero,4);
+        if(!r->initialize(r->context,a,name))return 0;
+        o->networkable=a+0x160;o->completed=1;return 1;
+    }
+    if(o->spec->family==Family::LogicAutosave){
+        const auto* r=b->logic_autosave;
+        if(!r||!r->allocate||!r->base_construct||!r->initialize||
+           !r->allocate(r->context,autosave_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<autosave_extent)return 0;
+        auto* a=static_cast<unsigned char*>(o->actor);
+        // Original 2217b050 base(1), primary vtable, Initialize.
+        if(!r->base_construct(r->context,a,1)||a[0x394])return 0;
+        const unsigned vt=autosave_vtable;std::memcpy(a,&vt,4);
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
     }
@@ -406,8 +420,14 @@ int __cdecl destroy_navigation(void* actor,unsigned bytes,void* networkable,cons
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
+int __cdecl destroy_autosave(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!actor||bytes<autosave_extent||entity_vtable(actor)!=autosave_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
+    return b->release_networkable(b->context,networkable);
+}
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==autosave_vtable||vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -527,6 +547,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"OnLessThan",0x39c,11},{"OnEqualTo",0x3b4,11},
         {"OnNotEqualTo",0x3cc,11},{"OnGreaterThan",0x3e4,11}
     };
+    constexpr Spec autosave_keys[]{{"NewLevelUnit",0x394,6}};
     constexpr Spec navigation_keys[]{{"target",0x90,2}};
     constexpr Spec menu_keys[]{
         {"resumeGamePressed",0x398,11},{"newGamePressed",0x3b0,11},{"optionsPressed",0x3c8,11},
@@ -539,7 +560,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     Spec numbered{};
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);else if(vt==autosave_vtable)match(autosave_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -1494,6 +1515,7 @@ int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBi
         case counter_vtable:first=0x3a0;count=3;extent=counter_extent;break;
         case menu_vtable:first=0x398;count=16;extent=menu_extent;break;
         case navigation_vtable:extent=navigation_extent;break;
+        case autosave_vtable:extent=autosave_extent;break;
         default:return 0;
     }
     if(n<extent||(menu&&(!b->unregister_menu||read_field<unsigned>(a,0x394)!=menu_listener_vtable))||
@@ -1689,7 +1711,28 @@ int __cdecl navigation_remove(void* a,unsigned n,const NavigationBindings* b,Nav
     if(!b->base_remove(b->context,a))return 0;
     o->base_called=o->handled=o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation};
+// Original 22178dd0: force new level unit first, then acquire
+// CDynamicDifficulty singleton and read +6; command is queued, not
+// executed synchronously. No SaveDangerous or player health condition.
+int __cdecl autosave_input(void* a,unsigned n,const char* name,const AutosaveBindings* b,AutosaveResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<autosave_extent||entity_vtable(a)!=autosave_vtable||!name||!b)return 0;
+    if(!equal_class(name,"Save")){o->completed=1;return 1;}
+    o->handled=1;
+    if(!b->difficulty_gate)return 0;
+    if(read_field<unsigned char>(a,0x394)){
+        if(!b->new_level_unit||!b->new_level_unit(b->context))return 0;
+        o->new_level_unit=1;
+    }
+    if(!b->difficulty_gate(b->context,&o->gate))return 0;o->gate_read=1;
+    if(o->gate)o->suppressed=1;
+    else {
+        if(!b->server_command||!b->server_command(b->context,"autosave\n"))return 0;
+        o->command_queued=1;
+    }
+    o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
