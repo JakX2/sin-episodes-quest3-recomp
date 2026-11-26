@@ -221,6 +221,14 @@ struct CounterResult {
     unsigned completed,handled,stored,swapped,clamped,hit_max,hit_min,outputs,queued,warned;
     float value,minimum,maximum;
 };
+inline constexpr unsigned remap_vtable=0x22421334,remap_extent=0x3bc;
+struct RemapBindings {
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+};
+struct RemapResult {
+    unsigned completed,handled,reset_bounds,clamped,suppressed,stored,queued;
+    float input,clamped_input,value;
+};
 struct CompareBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
 };
@@ -441,6 +449,8 @@ struct Api {
     int (__cdecl *register_multicompare)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_multicompare)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
     int (__cdecl *multicompare_kill)(void*,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const EntityKillBindings*,EntityKillResult*) noexcept;
+    int (__cdecl *remap_spawn)(void*,unsigned,RemapResult*) noexcept;
+    int (__cdecl *remap_input)(void*,unsigned,const char*,void*,unsigned,float,const RemapBindings*,RemapResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
