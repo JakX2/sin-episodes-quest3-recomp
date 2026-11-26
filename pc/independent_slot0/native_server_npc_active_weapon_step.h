@@ -208,6 +208,25 @@ struct ServerEntityVoidOutputApi {
 };
 using GetServerEntityVoidOutputApi=const ServerEntityVoidOutputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Original named-target queue constructor 22155300 and insertion 22154600.
+// Token resolver and allocator must provide stable, distinct PE32 records.
+inline constexpr char server_entity_named_event_queue_export[]="SiN_GetServerEntityNamedEventQueueApi";
+struct ServerEntityNamedEventQueueBindings {
+    void* context;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *allocate)(void*,std::uint32_t*,void**,unsigned*) noexcept;
+    int (__cdecl *string_nonempty)(void*,std::uint32_t,bool*) noexcept;
+};
+struct ServerEntityNamedEventQueueResult {
+    unsigned completed,visited,allocated,inserted,node,previous,next;
+    float fire_time;
+};
+struct ServerEntityNamedEventQueueApi {
+    std::uint32_t version,size;
+    int (__cdecl *enqueue)(void* sentinel,unsigned sentinel_bytes,std::uint32_t sentinel_token,float now,std::uint32_t activator,std::uint32_t caller,const ServerEntityVoidOutputAction*,const ServerEntityNamedEventQueueBindings*,ServerEntityNamedEventQueueResult*) noexcept;
+};
+using GetServerEntityNamedEventQueueApi=const ServerEntityNamedEventQueueApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_wake_transition_export[]="SiN_GetServerNpcWakeTransitionApi";
 struct ServerNpcWakeTransitionBindings {
     const ServerNpcActivePostAnimationBindings* storage;
