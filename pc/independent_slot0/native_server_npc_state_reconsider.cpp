@@ -5098,6 +5098,86 @@ int __cdecl assault_build_interrupts(void* a,unsigned n,const ServerNpcGruntAssa
 }
 const ServerNpcGruntAssaultPolicyApi assault_policy_api{1,sizeof(ServerNpcGruntAssaultPolicyApi),&assault_translate_schedule,&assault_build_interrupts};
 
+
+template<class Condition>
+bool assault_mode_decide(void* p,int& mode,int& submode,unsigned& written,bool& yes,Condition condition) noexcept{
+    mode=read<int>(p,0x1c);submode=read<int>(p,0x20);yes=submode==4;
+    if(!yes){
+        if(mode==1)yes=submode==1;
+        else if(mode==2){if(!condition(yes))return false;}
+        else if(mode==3){write(p,0x20,3);written=1;yes=true;}
+    }
+    return true;
+}
+bool assault_reset_init(void* a,unsigned n,const ServerNpcGruntAssaultResetBindings* b,ServerNpcGruntAssaultResetResult* o,void*& p) noexcept{
+    if(!o)return false;*o={};o->primary_handle=o->secondary_handle=o->reservation=0xffffffffu;
+    o->mode=o->submode=o->condition.global=o->condition.bit=-1;
+    return b&&assault_admission_init(a,n,&b->admission,&o->admission,p);
+}
+int __cdecl assault_bind_primary(void* a,unsigned n,const ServerNpcGruntAssaultResetBindings* b,ServerNpcGruntAssaultResetResult* o) noexcept{
+    void* p=nullptr;if(!assault_reset_init(a,n,b,o,p))return 0;
+    const auto& ab=b->admission;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](){o->completed=1;return 1;};
+    // These writes precede the original lookup, including its failure route.
+    write<std::uint8_t>(p,0x24,0);write<std::uint8_t>(p,0x25,0);
+    write(p,0x14,0xffffffffu);write<std::uint8_t>(p,0x26,0);
+    write(p,0x28,0u);write(p,0x20,0u);o->fields_reset=1;
+    auto name=[&](std::uint32_t& value){
+        o->secondary_handle=read<unsigned>(p,0x18);
+        void* q=registry.Resolve(o->secondary_handle);o->secondary_valid=q!=nullptr;unsigned extent=0;
+        if(!q||!ab.extent||!ab.extent(ab.context,q,&extent)||extent<0x398)return false;
+        value=read<unsigned>(q,0x394);if(!value)value=0x223d47a8u;return true;
+    };
+    if(!name(o->name_token))return 0;
+    bool found=false;
+    if(!b->find_primary||!b->find_primary(b->context,o->name_token,&found,&o->primary_handle))return 0;
+    o->find_called=1;o->found=found;
+    if(found){
+        // A typed entity returning an invalid/stale handle is an invalid port binding,
+        // not the original cast-failure case. Do not manufacture a warning.
+        if(!registry.Resolve(o->primary_handle))return 0;
+        write(p,0x14,o->primary_handle);o->handle_written=1;
+    }else{
+        if(!name(o->name_token)||!b->missing_primary||!b->missing_primary(b->context,o->name_token))return 0;
+        o->warning_called=1;write(p,0x1c,0);o->mode_cleared=1;
+    }
+    bool monk=read<unsigned>(a,0xc)==0x223f3a78u;
+    if(!monk){
+        if(!b->class_matches||!b->class_matches(b->context,a,0x223f3a78u,&monk))return 0;
+        o->class_called=1;
+    }
+    if(monk&&read<int>(a,0x850)==4){o->monk_exception=1;return done();}
+    if(!assault_end_schedule(a,n))return 0;o->schedule_cleared=1;return done();
+}
+int __cdecl assault_release_live(void* a,unsigned n,const ServerNpcGruntAssaultResetBindings* b,ServerNpcGruntAssaultResetResult* o) noexcept{
+    void* p=nullptr;if(!assault_reset_init(a,n,b,o,p))return 0;
+    const auto& ab=b->admission;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](){o->completed=1;return 1;};
+    o->secondary_handle=read<unsigned>(p,0x18);
+    void* q=registry.Resolve(o->secondary_handle);o->secondary_valid=q!=nullptr;if(!q)return done();
+    q=registry.Resolve(read<unsigned>(p,0x18));unsigned extent=0;
+    if(!q||!ab.extent||!ab.extent(ab.context,q,&extent)||extent<0x3c0)return 0;
+    o->reservation_checked=1;o->reservation=read<unsigned>(q,0x3bc);
+    o->reservation_live=registry.Resolve(o->reservation)!=nullptr;
+    if(!o->reservation_live)return done(); // unlike deactivation, stale handle is untouched
+    q=registry.Resolve(read<unsigned>(p,0x18));extent=0;
+    if(!q||!ab.extent||!ab.extent(ab.context,q,&extent)||extent<0x3c0)return 0;
+    o->reservation_released=assault_release_reservation(a,q,registry,o->reservation);return done();
+}
+int __cdecl assault_mode_ready(void* a,unsigned n,const ServerNpcGruntAssaultResetBindings* b,ServerNpcGruntAssaultResetResult* o) noexcept{
+    void* p=nullptr;if(!assault_reset_init(a,n,b,o,p))return 0;
+    bool yes=false;
+    if(!assault_mode_decide(p,o->mode,o->submode,o->mode_written,yes,[&](bool& value){
+        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+        if(!api||!api->test(a,n,0x33,NpcConditionCurrent,&b->admission.conditions,&o->condition))return false;
+        o->condition_checked=1;value=o->condition.value!=0;return true;
+    }))return 0;
+    o->ready=yes;o->completed=1;return 1;
+}
+const ServerNpcGruntAssaultResetApi assault_reset_api{1,sizeof(ServerNpcGruntAssaultResetApi),&assault_bind_primary,&assault_release_live,&assault_mode_ready};
+
 struct AssaultNodeRoute {const ServerNpcGruntAssaultNodeBindings* bindings;ServerNpcGruntAssaultNodeResult* result;};
 int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const AssaultNodeRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& ab=b.events;
@@ -5251,13 +5331,10 @@ int assault_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const 
         return reset()?done():0;
     }
     // 100006: 220cea90 mode predicate and original secondary-node activity path.
-    o.mode=read<int>(p,0x1c);o.submode=read<int>(p,0x20);
-    bool yes=o.submode==4;
-    if(!yes){
-        if(o.mode==1)yes=o.submode==1;
-        else if(o.mode==2){if(!cond(0x33,false))return 0;yes=o.condition.value!=0;}
-        else if(o.mode==3){write(p,0x20,3);o.mode_written=1;yes=true;}
-    }
+    bool yes=false;
+    if(!assault_mode_decide(p,o.mode,o.submode,o.mode_written,yes,[&](bool& value){
+        if(!cond(0x33,false))return false;value=o.condition.value!=0;return true;
+    }))return 0;
     if(!yes)return reset()?done():0;
     void* q=link(0x18);if(!q)return missing(0x18)?done():0;
     q=link(0x18);if(!span(q,0x39c))return 0;
@@ -7570,4 +7647,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultPolicyApi=_SiN_GetServerNpcGruntAssaultPolicyApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultPolicyApi* __cdecl SiN_GetServerNpcGruntAssaultPolicyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultPolicyApi)?&assault_policy_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultResetApi=_SiN_GetServerNpcGruntAssaultResetApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultResetApi* __cdecl SiN_GetServerNpcGruntAssaultResetApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultResetApi)?&assault_reset_api:nullptr;
 }

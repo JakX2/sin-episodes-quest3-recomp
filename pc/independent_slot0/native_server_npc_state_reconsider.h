@@ -2668,4 +2668,30 @@ struct ServerNpcGruntAssaultPolicyApi {
     int (__cdecl *interrupts)(void*,unsigned,const ServerNpcGruntAssaultPolicyBindings*,ServerNpcGruntAssaultPolicyResult*) noexcept; // 220ced00
 };
 using GetServerNpcGruntAssaultPolicyApi=const ServerNpcGruntAssaultPolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_reset_export[]="SiN_GetServerNpcGruntAssaultResetApi";
+struct ServerNpcGruntAssaultResetBindings {
+    ServerNpcGruntAssaultAdmissionBindings admission;
+    void* context;
+    // Typed name lookup + cast + entity handle. found=false is original cast failure.
+    int (__cdecl *find_primary)(void*,std::uint32_t,bool*,std::uint32_t*) noexcept;
+    int (__cdecl *missing_primary)(void*,std::uint32_t) noexcept;
+    int (__cdecl *class_matches)(void*,void*,std::uint32_t,bool*) noexcept;
+};
+struct ServerNpcGruntAssaultResetResult {
+    ServerNpcGruntAssaultAdmissionResult admission;
+    ServerNpcConditionResult condition;
+    std::uint32_t secondary_handle,primary_handle,name_token,reservation;
+    int mode,submode;
+    unsigned completed,fields_reset,secondary_valid,find_called,found,handle_written,warning_called,mode_cleared,
+        class_called,monk_exception,schedule_cleared,reservation_checked,reservation_live,reservation_released,
+        condition_checked,mode_written,ready;
+};
+struct ServerNpcGruntAssaultResetApi {
+    std::uint32_t version,size;
+    int (__cdecl *bind_primary)(void*,unsigned,const ServerNpcGruntAssaultResetBindings*,ServerNpcGruntAssaultResetResult*) noexcept; // 220ce960
+    int (__cdecl *release_live)(void*,unsigned,const ServerNpcGruntAssaultResetBindings*,ServerNpcGruntAssaultResetResult*) noexcept; // 220ce8a0
+    int (__cdecl *mode_ready)(void*,unsigned,const ServerNpcGruntAssaultResetBindings*,ServerNpcGruntAssaultResetResult*) noexcept; // 220cea90
+};
+using GetServerNpcGruntAssaultResetApi=const ServerNpcGruntAssaultResetApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

@@ -3985,5 +3985,52 @@ int main(int argc,char** argv){
         f.put(q.behavior,4,100);f.put(q.a,0x79c,1000000903);interrupts();assert(o.matched_schedule==100003&&o.owner_maps==1&&q.owner_maps==1);
         f.put(q.a,0x798,0u);f.put(q.behavior,4,0);interrupts();assert(o.matched_schedule==100000&&o.schedule_checks==2&&!o.owner_maps);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntAssaultResetApi>(GetProcAddress(s,server_npc_grunt_assault_reset_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_assault_reset_export)&&!g(0,sizeof(ServerNpcGruntAssaultResetApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntAssaultResetApi));assert(api);
+        struct ResetFixture {
+            alignas(4) unsigned char a[0xde8]{},primary[0x3c0]{},secondary[0x3c0]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[4]{};
+            bool found=true,monk=false,change_name=false;std::uint32_t next=0x1001,expected=77,warning=0;unsigned finds=0,classes=0,warnings=0;
+            static ResetFixture& self(void* p){return *static_cast<ResetFixture*>(p);}
+            static unsigned rd(const void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<const unsigned char*>(p)+off,4);return v;}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.secondary);
+        q.entries[3].serial=3;q.entries[3].entity=reinterpret_cast<CBaseEntity*>(q.a);
+        ServerNpcGruntAssaultResetBindings b{};auto& ab=b.admission;
+        ab.entries=q.entries;ab.count=4;ab.actor_vtable=0x2249aaa4;ab.actor_token=0x10000;ab.context=&q;b.context=&q;
+        ab.conditions.context=&q;ab.conditions.descriptor=[](void* p,void*,const void** d,unsigned* n) noexcept -> int{auto& q=ResetFixture::self(p);*d=q.desc;*n=sizeof(q.desc);return 1;};
+        ab.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& q=ResetFixture::self(p);assert(e==q.secondary);*n=sizeof(q.secondary);return 1;};
+        b.find_primary=[](void* p,std::uint32_t name,bool* found,std::uint32_t* handle) noexcept -> int{auto& q=ResetFixture::self(p);assert(name==q.expected);auto* c=q.a+0xdb8;assert(ResetFixture::rd(c,0x14)==0xffffffffu&&!c[0x24]&&!c[0x25]&&!c[0x26]&&!ResetFixture::rd(c,0x28)&&!ResetFixture::rd(c,0x20));++q.finds;*found=q.found;*handle=q.next;if(q.change_name){std::uint32_t token=88;std::memcpy(q.secondary+0x394,&token,4);}return 1;};
+        b.missing_primary=[](void* p,std::uint32_t name) noexcept -> int{auto& q=ResetFixture::self(p);++q.warnings;q.warning=name;return 1;};
+        b.class_matches=[](void* p,void* a,std::uint32_t name,bool* yes) noexcept -> int{auto& q=ResetFixture::self(p);assert(a==q.a&&name==0x223f3a78u);++q.classes;*yes=q.monk;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
+        auto* p=q.a+0xdb8;f.put(p,0x18,0x2002u);f.put(q.secondary,0x394,77u);
+        auto seed=[&](){f.put(p,0x14,0x9001u);f.put(p,0x1c,2);f.put(p,0x20,4);p[0x24]=p[0x25]=p[0x26]=1;p[0x27]=0x55;f.put(p,0x28,11.f);f.put(p,0x2c,33.f);f.put(q.a,0x798,91u);};
+        ServerNpcGruntAssaultResetResult o{};
+        auto bind=[&](){seed();return api->bind_primary(q.a,sizeof(q.a),&b,&o);};
+        assert(bind()&&o.completed&&o.fields_reset&&o.found&&o.handle_written&&o.schedule_cleared&&!o.warning_called);
+        assert(ResetFixture::rd(p,0x14)==0x1001u&&ResetFixture::rd(p,0x18)==0x2002u&&ResetFixture::rd(p,0x1c)==2u&&p[0x27]==0x55&&ResetFixture::rd(p,0x2c)==0x42040000u&&!ResetFixture::rd(q.a,0x798));
+        q.monk=true;f.put(q.a,0x850,4);assert(bind()&&o.monk_exception&&!o.schedule_cleared&&ResetFixture::rd(q.a,0x798)==91u);
+        f.put(q.a,0xc,0x223f3a78u);assert(bind()&&o.monk_exception&&!o.class_called);
+        f.put(q.a,0x850,3);q.found=false;q.change_name=true;assert(bind()&&o.warning_called&&o.mode_cleared&&o.schedule_cleared&&!o.handle_written&&q.warning==88);
+        q.change_name=false;f.put(q.secondary,0x394,0u);q.expected=0x223d47a8u;assert(bind()&&o.warning_called&&q.warning==0x223d47a8u);
+        q.found=true;q.next=0x9001u;assert(!bind()&&o.find_called&&!o.handle_written&&!o.warning_called);
+        f.put(p,0x18,0x9002u);assert(!bind()&&o.fields_reset&&!o.secondary_valid);
+        auto release=[&](){assert(api->release_live(q.a,sizeof(q.a),&b,&o)&&o.completed);};
+        release();assert(!o.secondary_valid&&!o.reservation_checked);
+        f.put(p,0x18,0x2002u);f.put(q.secondary,0x3bc,0x9001u);release();assert(o.reservation_checked&&!o.reservation_live&&!o.reservation_released&&ResetFixture::rd(q.secondary,0x3bc)==0x9001u);
+        f.put(q.secondary,0x3bc,0x1001u);release();assert(o.reservation_live&&!o.reservation_released);
+        f.put(q.secondary,0x3bc,0x3003u);release();assert(o.reservation_released&&ResetFixture::rd(q.secondary,0x3bc)==0xffffffffu);
+        auto ready=[&](int mode,int submode,bool expected){f.put(p,0x1c,mode);f.put(p,0x20,submode);assert(api->mode_ready(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.ready==expected);};
+        ready(0,4,true);assert(!o.condition_checked&&!o.mode_written);
+        ready(-1,0,false);ready(4,0,false);ready(5,0,false);ready(1,1,true);ready(1,2,false);
+        ready(2,0,false);assert(o.condition_checked);f.put(q.a,0x7d0,1u<<19);ready(2,0,true);
+        ready(3,0,true);assert(o.mode_written&&ResetFixture::rd(p,0x20)==3u);ready(3,4,true);assert(!o.mode_written&&ResetFixture::rd(p,0x20)==4u);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
