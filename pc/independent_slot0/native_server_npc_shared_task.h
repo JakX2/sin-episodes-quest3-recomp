@@ -271,6 +271,7 @@ struct ServerNpcSharedTaskStats {ServerNpcSharedTaskResult last;unsigned calls,n
 // Per-maintenance call only; no callback or actor memory retains the session.
 struct ServerNpcSharedAttackBindings;
 struct ServerNpcSharedAttackStats;
+struct ServerNpcGruntScheduleConeServices;
 struct ServerNpcSharedParentSession {
     void* actor;unsigned bytes;float now;
     ServerGruntTaskBindings original;
@@ -296,6 +297,7 @@ struct ServerNpcSharedParentSession {
     ServerNpcSharedNativeSpeechStats* native_speech_stats=nullptr;
     const ServerNpcGruntScheduleAcquireBindings* native_acquire=nullptr;
     const ServerNpcGruntScheduleLineServices* native_line=nullptr;
+    const ServerNpcGruntScheduleConeServices* native_cone=nullptr;
 };
 int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementStats* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueStats* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationStats* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverStats* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverStats* = nullptr) noexcept;
 }

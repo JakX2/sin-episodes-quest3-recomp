@@ -533,6 +533,11 @@ int main(int argc,char** argv){
     ServerNpcGruntScheduleLineServices req_line{};req_line.scene=&req_scene;
     ServerNpcNativeRequestThinkBindings req_think{};req_think.think=taskbind;req_think.selector=&req_selector;req_think.line=&req_line;
     static ServerNpcNativeRequestThinkResult req_run;
+    const auto cone_think_getter= reinterpret_cast<GetServerNpcNativeConeRequestThinkApi>(GetProcAddress(s,server_npc_native_cone_request_think_export));
+    assert(cone_think_getter&&!GetProcAddress(c,server_npc_native_cone_request_think_export)&&!cone_think_getter(0,sizeof(ServerNpcNativeConeRequestThinkApi))&&!cone_think_getter(1,0));
+    const auto* cone_think=cone_think_getter(1,sizeof(ServerNpcNativeConeRequestThinkApi));assert(cone_think);
+    ServerNpcGruntScheduleConeServices req_cone{};req_cone.line=&req_line;
+    ServerNpcNativeConeRequestThinkBindings cone_bind{};cone_bind.think=taskbind;cone_bind.selector=&req_selector;cone_bind.cone=&req_cone;
     install_at(88,3);bind_nav();f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);component_calls=0;
     assert(request_think->run(f.actor,sizeof(f.actor),69.495f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
     assert(!req_run.requests.requests&&req_run.think.think.think.squad.cycle.preschedule.think.completed&&req_run.think.speech_tasks.calls==1&&component_calls==1);
@@ -541,7 +546,7 @@ int main(int argc,char** argv){
     auto old_trans=selection.translate;auto old_fail=selection.fail_select;auto old_special=selection.special_select;
     selection.translate=nullptr;selection.fail_select=nullptr;selection.special_select=nullptr;
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
-    assert(request_think->run(f.actor,sizeof(f.actor),69.496f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
+    assert(cone_think->run(f.actor,sizeof(f.actor),69.496f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&cone_bind,&req_run));
     assert(req_run.requests.requests==1&&!req_run.requests.failure_requests&&req_run.requests.request.requested==26&&req_run.requests.request.acquisition.translated==94&&req_run.requests.request.acquisition.schedule_token==find(94));
     assert(req_run.requests.scheduler.maintenance.state.schedule==find(94)&&req_run.requests.scheduler.maintenance.started==1&&req_run.think.think.think.squad.cycle.preschedule.think.completed);
     int fail_id=0;std::memcpy(&fail_id,f.actor+0x7bc,4);assert(fail_id==95);
@@ -553,14 +558,14 @@ int main(int argc,char** argv){
         assert(lo==0&&hi==1);++*static_cast<unsigned*>(p);*v=0;return 1;
     };
     install_at(97,2);f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
-    assert(request_think->run(f.actor,sizeof(f.actor),69.4965f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
+    assert(cone_think->run(f.actor,sizeof(f.actor),69.4965f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&cone_bind,&req_run));
     const auto& switch_stats=req_run.think.think.think.squad.cycle.preschedule.think.scheduler.scheduler.sound_cover.observation.cue.movement.animation.facing.attack.shared.shared;
     assert(!req_run.requests.requests&&task_rolls==1&&switch_stats.last.task==87&&switch_stats.last.schedule_set&&switch_stats.last.resolution.requested==25&&switch_stats.last.resolution.translated==93);
     assert(req_run.requests.scheduler.maintenance.state.schedule==find(93)&&req_run.requests.scheduler.maintenance.state.index==0);
     int owner_ideal=0;std::memcpy(&owner_ideal,f.actor+0x79c,4);assert(owner_ideal==global+125);
     // Missing native service fails closed, without silently delegating to legacy translate.
     req_policy.random_int=nullptr;install_at(97,2);f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);
-    assert(!request_think->run(f.actor,sizeof(f.actor),69.4966f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&req_think,&req_run));
+    assert(!cone_think->run(f.actor,sizeof(f.actor),69.4966f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&cone_bind,&req_run));
     assert(req_run.requests.scheduler.maintenance.state.schedule==find(97)&&task_rolls==1);
     selection.translate=old_trans;selection.fail_select=old_fail;selection.special_select=old_special;
     req_acquire.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
@@ -647,10 +652,14 @@ int main(int argc,char** argv){
     auto& jp=jet_bind.think.think.think.preschedule;
     jp.jet_context=&ready;jp.jet_ready=nt.jet_ready;jp.jet_tick=nt.jet_tick;
     static ServerNpcNativeJetRequestThinkResult jet_run;
+    const auto gjc=reinterpret_cast<GetServerNpcNativeJetConeRequestThinkApi>(GetProcAddress(s,server_npc_native_jet_cone_request_think_export));
+    assert(gjc&&!GetProcAddress(c,server_npc_native_jet_cone_request_think_export)&&!gjc(0,sizeof(ServerNpcNativeJetConeRequestThinkApi))&&!gjc(1,0));
+    const auto* jet_cone_think=gjc(1,sizeof(ServerNpcNativeJetConeRequestThinkApi));assert(jet_cone_think);
+    ServerNpcNativeJetConeRequestThinkBindings jet_cone_bind{};jet_cone_bind.think=jet_bind.think;jet_cone_bind.selector=&jet_request;jet_cone_bind.cone=&req_cone;
     req_arbitration.shared_select=[](void*,void*,int* id) noexcept -> int{*id=41;return 1;};
     selection.translate=nullptr;selection.fail_select=nullptr;selection.special_select=nullptr;
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,7);f.put(f.actor,0x858,7);f.put(f.actor,0xccc,-1);f.put(f.actor,0x218,321u);ready=true;
-    assert(jet_think->run(f.actor,sizeof(f.actor),83,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_bind,&jet_run));
+    assert(jet_cone_think->run(f.actor,sizeof(f.actor),83,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&no_legacy_cue,&ob,&scb,&tcb,&jet_cone_bind,&jet_run));
     const auto& jet_cycle=jet_run.think.think.think.squad.cycle.preschedule;
     assert(jet_cycle.jet_queried&&jet_cycle.jet_called&&jet_cycle.think.completed);
     assert(jet_run.requests.base.requests==1&&jet_run.requests.base.request.requested==41&&jet_run.requests.base.request.acquisition.translated==122&&jet_run.requests.base.scheduler.maintenance.state.schedule==find(122));
