@@ -1,0 +1,3 @@
+# Phase 1301: Native weapon policy across both NPC think gathers
+
+Parent e06834c93cee0c86cbf5be82ff56f33e11621bbf. Thread a synchronous weapon policy binding and independent outer/maintenance diagnostics through the existing native line/squad-report routes. Add separate ground/Elite and Jetpack versioned exports; retain existing bindings, exported ABI and scheduler order. Validate missing policy and aliased output before think effects. Catalog fixtures exercise inactive ground and component-delegated jet routes through the new APIs; they do not establish active equipped-weapon parity. Windows CI and original differential pending.
