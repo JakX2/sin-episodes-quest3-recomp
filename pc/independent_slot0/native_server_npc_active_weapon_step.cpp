@@ -1469,6 +1469,57 @@ int __cdecl jet_primary_run(void* a,unsigned n,unsigned vt,unsigned handle,int t
     o->native_result=(rd<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
 }
 const ServerNpcJetpackPrimaryThinkApi jet_primary_api{1,sizeof(ServerNpcJetpackPrimaryThinkApi),&jet_primary_install,&jet_primary_run};
+struct JetInitialThinkRoute {
+    const ServerNpcJetpackDeathBranchBindings* source;
+    ServerNpcOuterCadenceBindings cadence;
+    ServerEntityAcceptInputResult* out;
+    void* actor;unsigned extent,vt;float interval;
+};
+void bind_jet_initial_think(ServerNpcJetpackDeathBranchBindings& bound,JetInitialThinkRoute& route) noexcept {
+    bound.context=&route;
+    // The original branch has one context for all its services. Preserve
+    // each hosted effect's context; replace only the two default-think leaves.
+    bound.remove=[](void* p,void* e) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.remove&&s.remove(s.context,e);
+    };
+    bound.powerdown=[](void* p,void* a,const char* cue) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.powerdown&&s.powerdown(s.context,a,cue);
+    };
+    bound.sentence=[](void* p,void* a,const char* cue) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.sentence&&s.sentence(s.context,a,cue);
+    };
+    bound.ignite=[](void* p,void* a,float time,int flags,void* x,void* y,float radius,int last) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.ignite&&s.ignite(s.context,a,time,flags,x,y,radius,last);
+    };
+    bound.ragdoll=[](void* p,void* a,void* damage,const float* force) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.ragdoll&&s.ragdoll(s.context,a,damage,force);
+    };
+    bound.time=[](void* p,float* time) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.time&&s.time(s.context,time);
+    };
+    bound.effect_begin=[](void* p,void* a) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.effect_begin&&s.effect_begin(s.context,a);
+    };
+    bound.refresh_origin=[](void* p,void* a) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.refresh_origin&&s.refresh_origin(s.context,a);
+    };
+    bound.immediate_effect=[](void* p,void* a) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.immediate_effect&&s.immediate_effect(s.context,a);
+    };
+    bound.effect_end=[](void* p,void* a) noexcept -> int{
+        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.effect_end&&s.effect_end(s.context,a);
+    };
+    bound.install_think=[](void* p,void* a,unsigned token) noexcept -> int{
+        auto& q=*static_cast<JetInitialThinkRoute*>(p);
+        if(a!=q.actor||token!=0x22365760u||!jet_primary_install(a,q.extent,q.vt,token))return 0;
+        ++q.out->health_jet_think_installed;return 1;
+    };
+    bound.schedule=[](void* p,void* a,float time) noexcept -> int{
+        auto& q=*static_cast<JetInitialThinkRoute*>(p);
+        if(a!=q.actor||!set_tick(a,time,q.interval,q.cadence,q.out->health_jet_cadence))return 0;
+        q.out->health_jet_cadence.completed=1;++q.out->health_jet_think_scheduled;return 1;
+    };
+}
 bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
     const auto& dispatch=*b.native_health;
     if(n<0xdb2||!b.storage||!std::isfinite(b.now)||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
@@ -1494,6 +1545,8 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
     if(!dispatch.life||(ground?!dispatch.ground_result:(elite||jet)?!dispatch.subclass_result:!dispatch.life_result))return false;
     // Reject undersized subclass storage before mutating the damage record.
     if((elite&&n<0xfe0u)||(jet&&n<0x1074u))return false;
+    const auto* initial=jet?dispatch.jet_think:nullptr;
+    if(initial&&(!initial->cadence||!std::isfinite(initial->interval)||initial->interval<=0||rd<unsigned>(a,0)!=vt))return false;
     if(!self_damage_scale(a,*b.storage,false,o.health_outgoing_scale,o.health_multiplier_rows))return false;
     wr<float>(info,0x2c,static_cast<float>(double(rd<float>(info,0x2c))*o.health_outgoing_scale));
     if(!self_damage_scale(a,*b.storage,true,o.health_incoming_scale,o.health_multiplier_rows))return false;
@@ -1549,6 +1602,13 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
         auto bound=*dispatch.subclass_death;
         bound.combat.combat.life=life;
         bind_self_classification(vt,bound.combat.combat.ground);
+        JetInitialThinkRoute think{};
+        if(initial){
+            think.source=&dispatch.subclass_death->combat.branch;
+            think.cadence=*initial->cadence;think.cadence.storage=b.storage;
+            think.out=&o;think.actor=a;think.extent=n;think.vt=vt;think.interval=initial->interval;
+            bind_jet_initial_think(bound.combat.branch,think);
+        }
         const auto* api=SiN_GetServerNpcGruntEliteLifeApi(1,sizeof(ServerNpcGruntEliteLifeApi));
         if(!api||!api->run(a,n,rd<unsigned>(a,0x378),info,0x48,b.now,&bound,dispatch.subclass_result))return false;
         o.health_elite_route=elite;o.health_jet_route=jet;

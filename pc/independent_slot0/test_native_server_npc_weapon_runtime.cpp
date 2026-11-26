@@ -2476,12 +2476,23 @@ int main(int argc,char** argv){
     think.ground.classification=nullptr;think.install_think=nullptr;think.schedule=nullptr;
     primary_b.death=&think;primary_b.death_result=&think_result;
     constexpr unsigned primary_vt=0x224a4a4cu;
+    // Initial scheduling is now owned by the same native tick fields.
+    // Old branch callbacks are deliberately absent; no manual install or
+    // set_default call bridges SetHealth to the primary dispatcher.
+    ServerNpcInputJetThinkScheduleBindings initial_think{&primary_b.cadence,.125f};
+    hd_services.jet_think=&initial_think;
+    jet_branch.install_think=nullptr;jet_branch.schedule=nullptr;
     reset_subclass(primary_vt);f.actor[0xbf]&=static_cast<unsigned char>(~8u);
-    assert(hd_run(0,primary_vt)&&catalog_o.health_jet_route);
-    f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0u);
-    f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);
-    assert(primary->install(f.actor,sizeof(f.actor),primary_vt,0x22365760u));
-    assert(cadence->set_default(f.actor,sizeof(f.actor),90.125f,.125f,primary_vt,&primary_b.cadence,&co)&&co.tick==721);
+    f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0x400000u);
+    f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);f.put(f.actor,8,0u);
+    initial_think.interval=0.f;
+    assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty()&&!f.get<unsigned>(f.actor,8));
+    initial_think.interval=.125f;
+    assert(hd_run(0,primary_vt)&&catalog_o.health_jet_route&&catalog_o.health_jet_think_installed==1&&catalog_o.health_jet_think_scheduled==1);
+    assert(catalog_o.health_jet_cadence.completed&&catalog_o.health_jet_cadence.tick==721&&catalog_o.health_jet_cadence.flags_changed);
+    assert(f.get<unsigned>(f.actor,8)==0x22365760u&&f.get<int>(f.actor,0x74)==721&&!(f.get<unsigned>(f.actor,0xb8)&0x400000u));
+    assert((hd.death_order==std::vector<unsigned>{20,21,22,23,24,25,26,26,42})&&hd.jet_ticks==2);
+    hd_services.jet_think=nullptr;
     hd.death_order.clear();hd.think_clock=90.f;
     auto primary_run=[&](int tick,unsigned handle=0x8002u){return primary->run(f.actor,sizeof(f.actor),primary_vt,handle,tick,.125f,&primary_b,&primary_o);};
     assert(primary_run(720)&&primary_o.not_due&&primary_o.native_result==1&&hd.death_order.empty());
