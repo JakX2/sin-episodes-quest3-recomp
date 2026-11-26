@@ -2185,7 +2185,7 @@ int main(int argc,char** argv){
         struct TailFixture{
             alignas(4) unsigned char actor[0xdb2]{},other[0xdb2]{},damage[0x48]{},desc[0x48]{},memory[0x40]{},nodes[12]{},record[0x38]{};
             sin_independent::EntityHandleEntry entries[3]{};
-            bool accept=true,visible=true;unsigned reports=0,notices=0,notifications=0;void* target=nullptr;
+            bool accept=true,visible=true;unsigned reports=0,notices=0,notifications=0,ignite_steps=0;void* target=nullptr;
             static TailFixture& self(void* p){return *static_cast<TailFixture*>(p);}
             static unsigned rd(void* p,unsigned o){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+o,4);return v;}
         } q;
@@ -2273,6 +2273,30 @@ int main(int argc,char** argv){
         assert(alive->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),17,&ac,&ar)&&ar.chain.detail.damage.completed&&ar.life.completed&&!ar.life.native_result&&ar.life.health_after==80&&ar.life.fraction_after==0.5f&&!ar.chain.report_called&&live_direction[0]==1);
         f.put(q.actor,0x994,18.f);
         assert(alive->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),18,&ac,&ar)&&ar.chain.detail.damage.completed&&ar.life.native_result&&ar.life.health_after==79&&ar.life.fraction_after==0&&ar.chain.report_called==1&&ar.chain.detail.damage.base.tail.position[0]==65&&ar.chain.notify.completed);
+        auto gi=reinterpret_cast<GetServerNpcGruntIgnitionApi>(GetProcAddress(s,server_npc_grunt_ignition_export));
+        assert(gi);const auto* fire=gi(1,sizeof(ServerNpcGruntIgnitionApi));assert(fire);
+        static ServerNpcGruntIgnitionAliveBindings ic;
+        ic.alive=ac;ic.alive.life.reaction=nullptr;ic.ignition.context=&q;
+        ic.ignition.attacker_handle=[](void* p,void* e,std::uint32_t* v) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(e==q.other);*v=0x1001;return 1;};
+        ic.ignition.create_flame=[](void* p,void* a,void* attacker,void* inflictor,void** v) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(a==q.actor&&attacker==q.other&&!inflictor&&q.ignite_steps==0&&TailFixture::rd(a,0x9c)==67&&TailFixture::rd(a,0xc3c)==0x1001&&!(TailFixture::rd(a,0xbc)&0x8000000));++q.ignite_steps;*v=q.record;return 1;};
+        ic.ignition.lifetime=[](void* p,void* e,float seconds) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(e==q.record&&seconds==12&&q.ignite_steps==1);++q.ignite_steps;return 1;};
+        ic.ignition.attach=[](void* p,void* a,void* e) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(a==q.actor&&e==q.record&&q.ignite_steps==2&&(TailFixture::rd(a,0xbc)&0x8000000));++q.ignite_steps;return 1;};
+        ic.ignition.is_player=[](void* p,void* e,bool* v) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(e==q.other&&q.ignite_steps==3);++q.ignite_steps;*v=true;return 1;};
+        ic.ignition.event=[](void* p,int id,void* e,void* a) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(id==9&&e==q.other&&a==q.actor&&q.ignite_steps==4);++q.ignite_steps;return 1;};
+        ic.ignition.output=[](void* p,void* a,unsigned off) noexcept -> int{
+            auto& q=TailFixture::self(p);assert(a==q.actor&&off==0x47c&&q.ignite_steps==5);++q.ignite_steps;return 1;};
+        f.put(q.actor,0xbc,0x10000000u);f.put(q.actor,0x9c,80);f.put(q.actor,0x634,0.f);
+        f.put(q.actor,0x994,19.f);f.put(q.damage,0x38,0x01000000u);f.put(q.damage,0x2c,13.f);
+        static ServerNpcGruntIgnitionAliveResult ir;
+        assert(fire->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),19,&ic,&ir)&&ir.alive.chain.detail.damage.completed&&ir.alive.life.completed&&ir.alive.life.reaction_called&&ir.alive.life.health_after==67&&ir.ignition.completed&&ir.ignition.created&&ir.ignition.flag_written&&ir.ignition.event_called&&ir.ignition.output_called&&q.ignite_steps==6);
+        assert(fire->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),20,&ic,&ir)&&ir.alive.chain.detail.damage.completed&&ir.alive.chain.detail.damage.rejected_flags&&!ir.alive.life.completed&&!ir.ignition.completed&&TailFixture::rd(q.actor,0x9c)==67&&q.ignite_steps==6);
+
 
 
     }
