@@ -1,6 +1,7 @@
 #include "native_server_npc_schedule_image.h"
 #include "native_server_weapon_script_view.h"
 #include "native_server_npc_reload_services.h"
+#include "native_server_npc_active_weapon_step.h"
 #include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -777,6 +778,111 @@ int main(int argc,char** argv){
         for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
         stamp=0;equipped.queries=0;verify_tick(74.f);
         assert(outer_weapon.primary.clip==8);
+        // Real animation traversal in the same exported active update.
+        // Existing schedule dictionary private IDs remain stable; register the
+        // remaining Grunt activity names and both event names for this fixture.
+        auto get_step=reinterpret_cast<GetServerNpcActiveWeaponStepApi>(GetProcAddress(s,server_npc_active_weapon_step_export));
+        auto get_reg=reinterpret_cast<GetServerGruntRegistrationApi>(GetProcAddress(s,server_grunt_registration_export));
+        auto get_events=reinterpret_cast<GetServerEventDictionaryApi>(GetProcAddress(s,server_event_dictionary_export));
+        assert(get_step&&get_reg&&get_events);
+        const auto* step=get_step(1,sizeof(ServerNpcActiveWeaponStepApi));
+        const auto* reg=get_reg(1,sizeof(ServerGruntRegistrationApi));
+        const auto* ed=get_events(1,sizeof(ServerEventDictionaryApi));assert(step&&reg&&ed);
+        ServerEventDictionaryEntry event_names[32]{};
+        ServerEventDictionary event_dictionary{event_names,32,0,0,0};
+        const auto prior_ids=ids;
+        assert(ed->seed(&event_dictionary)&&reg->grunt(&activities,&event_dictionary,nullptr,&ids));
+        assert(ids.activities[2]==prior_ids.activities[2]&&ids.activities[3]==prior_ids.activities[3]&&ids.activities[5]==prior_ids.activities[5]);
+        struct FrameMeta {
+            EquippedThinkFixture* q;
+            ServerStudioEvent reload{.04f,2,0,"reload",0},shot{.04f,3002,0,"fire",0};
+            bool reloading=false;
+        } meta{&equipped};
+        ServerNpcScriptWeaponEventFrameBindings frame{};
+        frame.frame.events=event_bind.original;
+        // The owner frame gets its registry, script table and condition map
+        // from the scheduler-side binding, not from duplicated test data.
+        auto& gf=frame.frame.frame;gf.ids=&ids;
+        auto& rt=gf.runtime;rt.npc.context=&equipped;
+        auto& as=rt.npc.transition.assignment;
+        as.translation.actor_class=NpcActivityGrunt;as.translation.activities=&activities;as.translation.events=&event_dictionary;
+        as.translation.metadata=[](void*,void*,const ServerActivityCompositeView** view) noexcept -> int{*view=nullptr;return 0;};
+        as.dictionary.dictionary=&event_dictionary;
+        rt.npc.frame.activities=&activities;rt.npc.frame.frame.dictionary=as.dictionary;
+        auto& nf=rt.npc.frame.frame.sequence.frame;nf.context=&meta;
+        nf.model_available=[](void*,void*) noexcept -> int{return 1;};
+        auto& adv=nf.advance;adv.base.context=&meta;
+        adv.base.duration=[](void* p,void* a,int,double* d) noexcept -> int{auto& q=*static_cast<FrameMeta*>(p)->q;*d=a==q.f->actor?2.:4.;return 1;};
+        adv.base.movement_distance=[](void*,void*,int,double* d) noexcept -> int{*d=0;return 1;};
+        adv.base.finish_threshold=[](void*,void*,int,double* d) noexcept -> int{*d=.9;return 1;};
+        adv.base.invalidate=[](void*,void*,unsigned) noexcept -> int{return 1;};
+        adv.base.cache=[](void*,void*,std::uint32_t,float) noexcept -> int{return 1;};
+        adv.layers.vectors.storage=[](void*,std::uint32_t,void**,unsigned*) noexcept -> int{return 0;};
+        adv.layers.vectors.resize=[](void*,std::uint32_t,unsigned,void**,unsigned*) noexcept -> int{return 0;};
+        adv.base.vectors=adv.layers.vectors;
+        adv.layers.cycle_rate=[](void*,void*,int,double* d) noexcept -> int{*d=1.;return 1;};
+        nf.events.context=&meta;nf.events.storage=adv.layers.vectors.storage;
+        nf.events.sequence=[](void* p,void* a,int,ServerAnimationEventSequence* seq) noexcept -> int{
+            auto& q=*static_cast<FrameMeta*>(p);
+            const bool npc=a==q.q->f->actor;assert(npc||a==q.q->weapon);
+            if(npc==q.reloading)*seq={npc?&q.reload:&q.shot,1,1,0};
+            else *seq={nullptr,0,1,0};
+            return 1;
+        };
+        nf.events.cycle_rate=[](void* p,void* a,int,double* d) noexcept -> int{auto& q=*static_cast<FrameMeta*>(p)->q;*d=a==q.f->actor?.5:.25;return 1;};
+        rt.npc.storage=[](void* p,std::uint32_t token,const void** out,unsigned* n) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);
+            if(token==604){*out=q.nav;*n=sizeof(q.nav);return 1;}
+            if(token==605){*out=q.path;*n=sizeof(q.path);return 1;}return 0;
+        };
+        auto& wf=rt.weapon;wf.context=&equipped;wf.extent=extent;
+        wf.animation.activities=&activities;wf.animation.events=&event_dictionary;wf.animation.dictionary=as.dictionary;
+        wf.animation.metadata=as.translation.metadata;
+        wf.combat_owner=[](void* p,void* e,void** out) noexcept -> int{assert(e==static_cast<EquippedThinkFixture*>(p)->f->actor);*out=e;return 1;};
+        wf.is_player=[](void*,void*,bool* out) noexcept -> int{*out=false;return 1;};
+        wf.frame.cycle=adv.base;wf.events=nf.events;
+        ServerNpcActiveWeaponStepBindings step_bind{};
+        step_bind.image=&f.image;step_bind.schedule=&runtime;step_bind.full=&full;step_bind.attack=&ab;step_bind.facing=&fb;
+        step_bind.target=&tb;step_bind.movement=&mb;step_bind.cue=&no_legacy_cue;step_bind.observe=&ob;
+        step_bind.sound_cover=&scb;step_bind.tactical=&tcb;step_bind.think=&active;step_bind.policy=&policy;step_bind.frame=&frame;
+        static ServerNpcActiveWeaponStepResult step_result;
+        auto seed_anim=[&](float now){
+            f.put(f.actor,0x878,16);f.put(f.actor,0x880,16);f.put(f.actor,0x884,7);f.put(f.actor,0x3ec,7);
+            f.put(equipped.weapon,0x3ec,1);f.put(equipped.weapon,0x4a0,0xffffffffu);
+            for(void* entity:{static_cast<void*>(f.actor),static_cast<void*>(equipped.weapon)}){
+                f.put(entity,0x28,now-.25f);f.put(entity,0x2c,now-.125f);
+                f.put(entity,0x3e8,0.f);f.put(entity,0x398,0.f);f.put(entity,0x3e1,std::uint8_t{1});
+                f.put(entity,0x3c0,entity==f.actor?1.f:2.f);f.put(entity,0x3e0,static_cast<std::uint8_t>(entity==f.actor));
+            }
+        };
+        prepare_engaged(2,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+        assert(state->install(f.actor,sizeof(f.actor),attack_schedule,75.f,&sb,&sr));
+        f.put(f.actor,0x79c,global+191);
+        for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+        stamp=0;equipped.shots=equipped.sounds=equipped.prepares=equipped.flashes=0;
+        for(int i=0;i<2;++i){
+            const float now=75.f+i*.125f;
+            seed_anim(now);f.put(f.actor,0x864,now);
+            const ServerNpcRunAnimationInput input{now,false,false};
+            assert(step->run(f.actor,sizeof(f.actor),&input,&step_bind,&step_result)&&step_result.completed&&step_result.think_completed&&step_result.animation_called);
+            assert(step_result.outer_weapon.primary.clip==2-i&&step_result.outer_line.attack.conditions[0]==20);
+            assert(step_result.animation.frame.frame.weapon_events==1&&step_result.animation.frame.frame.handled==1&&step_result.animation.last.event.parent.weapon.clip_changed);
+            int left=-1;std::memcpy(&left,equipped.weapon+0x4ec,4);assert(left==1-i);
+        }
+        assert(equipped.shots==2&&equipped.prepares==2&&equipped.sounds==2&&equipped.flashes==2);
+        // A due update sees the empty clip before any new animation event.
+        seed_anim(75.25f);f.put(f.actor,0x864,75.25f);
+        const ServerNpcRunAnimationInput depleted{75.25f,false,false};
+        assert(!step->run(f.actor,sizeof(f.actor),&depleted,&step_bind,&step_result)&&step_result.think_called&&!step_result.animation_called);
+        assert(step_result.outer_line.attack.conditions[0]==4&&!step_result.outer_weapon.primary.available&&equipped.shots==2);
+        // Future deadline permits native event2 even though reselection is not
+        // presently available. Animation route itself restores clip/conditions.
+        meta.reloading=true;seed_anim(75.375f);f.put(f.actor,0x864,80.f);f.actor[0x7b8]=f.actor[0x7b9]=0;
+        const ServerNpcRunAnimationInput reloaded{75.375f,false,false};
+        assert(step->run(f.actor,sizeof(f.actor),&reloaded,&step_bind,&step_result)&&!step_result.think_called&&step_result.animation.fixed_resets==1&&step_result.animation.frame.frame.npc_events==1&&step_result.completed);
+        int loaded=-1;std::memcpy(&loaded,equipped.weapon+0x4ec,4);assert(loaded==8&&equipped.sounds==3);
+        assert(conditions->test(f.actor,sizeof(f.actor),4,NpcConditionCurrent,&sb.conditions,&condition)&&!condition.value);
+        ids=prior_ids;
         stamp=prior_stamp;
         selection.state.entities=previous_entities;selection.state.state_query=previous_query;selection.state.context=previous_context;
         req_schedule.admission=previous_admission;
