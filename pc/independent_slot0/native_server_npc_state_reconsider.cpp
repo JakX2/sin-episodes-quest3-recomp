@@ -6470,7 +6470,114 @@ int __cdecl schedule_target_policy(void* a,unsigned n,float now,bool remembered,
     if(!visible)write(a,0xc84,static_cast<float>(static_cast<double>(now)+1.0));
     *allowed=visible;return 1;
 }
-bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route,const ServerNpcGruntScheduleServices* svc=nullptr,const ServerNpcGruntSchedulePolicyServices* policy=nullptr,const ServerNpcGruntScheduleSceneServices* scene=nullptr) noexcept{
+// Original +1d4 dispatch: Grunt 22359e30 / 22031220, player 222494f0.
+// Only admitted original primary-vtable tokens, no native pointer reinterpretation.
+int __cdecl schedule_body_point(void* e,const float* source,bool noisy,const ServerNpcGruntAssaultAdmissionBindings* ab,const ServerNpcGruntScheduleLineServices* line,float* out) noexcept{
+    if(!e||!source||!out||!ab||!line||!line->scene||!finite_vec(source)||
+       ab->count>sin_independent::kEntityHandleCapacity||(ab->count&&!ab->entries))return 0;
+    unsigned extent=0;if(!ab->extent||!ab->extent(ab->context,e,&extent)||extent<0x388)return 0;
+    const sin_independent::EntityHandleView registry(ab->entries,ab->count);
+    const auto vt=read<unsigned>(e,0);
+    const auto* p=line->scene->policy;
+    const auto* svc=p?p->memory:nullptr;
+    auto origin=[&](float* v){
+        if(read<unsigned>(e,0xb8)&0x800u){
+            if(!svc||!svc->origin||!svc->origin(svc->context,e,v))return false;
+        }else for(unsigned i=0;i<3;++i)v[i]=read<float>(e,0x2bc+4*i);
+        return finite_vec(v);
+    };
+    auto rng=[&](float lo,float hi,float& value){
+        return line->random_float&&line->random_float(line->context,lo,hi,&value)&&std::isfinite(value)&&value>=lo&&value<=hi;
+    };
+    auto eye=[&](float* v){return line->scene->eye&&line->scene->eye(line->scene->context,e,v)&&finite_vec(v);};
+    if(vt==0x2245222cu||vt==0x224aec3cu){
+        if(extent<0x9b0)return 0;
+        // Player proxy delegates through another virtual chain, not the ordinary sample.
+        if(registry.Resolve(read<unsigned>(e,0x9ac)))return 0;
+        if(!noisy)return eye(out);
+        float sample=0,offset[3],pos[3];if(!rng(.7f,1.f,sample))return 0;
+        for(unsigned i=0;i<3;++i)offset[i]=static_cast<float>(static_cast<double>(sample)*read<float>(e,0x37c+4*i));
+        if(!origin(pos))return 0;
+        for(unsigned i=0;i<3;++i)out[i]=static_cast<float>(static_cast<double>(offset[i])+pos[i]);
+        return finite_vec(out);
+    }
+    if(!relation_grunt_class(vt)||!line->center)return 0;
+    float pos[3],first[3],second[3],eyes[3],base[3],delta[3];
+    if(!origin(pos)||!line->center(line->context,e,first)||!finite_vec(first))return 0;
+    float quarter[3];
+    for(unsigned i=0;i<3;++i){
+        const float d=static_cast<float>(static_cast<double>(first[i])-pos[i]);
+        quarter[i]=static_cast<float>(static_cast<double>(d)*.25);
+    }
+    if(!line->center(line->context,e,second)||!finite_vec(second)||!eye(eyes))return 0;
+    for(unsigned i=0;i<3;++i){
+        base[i]=static_cast<float>(static_cast<double>(second[i])-quarter[i]);
+        delta[i]=static_cast<float>(static_cast<double>(eyes[i])-base[i]);
+    }
+    if(noisy){
+        float first_roll=0,second_roll=0;
+        if(!rng(0,.5f,first_roll)||!rng(0,.5f,second_roll))return 0;
+        for(unsigned i=0;i<3;++i){
+            const float d1=static_cast<float>(static_cast<double>(delta[i])*first_roll);
+            const float d2=static_cast<float>(static_cast<double>(delta[i])*second_roll);
+            const float mid=static_cast<float>(static_cast<double>(base[i])+d1);
+            out[i]=static_cast<float>(static_cast<double>(mid)+d2);
+        }
+    }else for(unsigned i=0;i<3;++i){
+        const float d=static_cast<float>(static_cast<double>(delta[i])*.5);
+        out[i]=static_cast<float>(static_cast<double>(base[i])+d);
+    }
+    if(read<std::uint8_t>(e,0xbc)&2u)out[2]=static_cast<float>(static_cast<double>(out[2])-16.0);
+    return finite_vec(out);
+}
+// Original weapon +4a8=222ab5c0 on the reviewed nine weapon tables.
+// This call site passes false: no blocker-condition writes. The +6e8 high-capability
+// tail is deliberately not approximated.
+bool schedule_weapon_line(void* a,void* w,void* enemy,const float* start,const float* end,
+    const ServerNpcGruntAssaultAdmissionBindings& ab,const ServerNpcGruntScheduleLineServices& line,bool& allowed) noexcept{
+    allowed=false;
+    auto span=[&](void* e,unsigned minimum){unsigned n=0;return e&&ab.extent&&ab.extent(ab.context,e,&n)&&n>=minimum;};
+    if(!span(w,0x498)||!line.shoot_position||!line.line_trace||!finite_vec(start)||!finite_vec(end))return false;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    // Native admission owns the actor span; reject a mismatched weapon owner.
+    if(registry.Resolve(read<unsigned>(w,0x494))!=a)return false;
+    float origin[3],shoot[3],from[3];
+    const auto* p=line.scene?line.scene->policy:nullptr;
+    const auto* svc=p?p->memory:nullptr;
+    if(read<unsigned>(a,0xb8)&0x800u){
+        if(!svc||!svc->origin||!svc->origin(svc->context,a,origin))return false;
+    }else for(unsigned i=0;i<3;++i)origin[i]=read<float>(a,0x2bc+4*i);
+    if(!line.shoot_position(line.context,a,shoot)||!finite_vec(origin)||!finite_vec(shoot))return false;
+    for(unsigned i=0;i<3;++i){
+        double delta=static_cast<double>(shoot[i])-origin[i];
+        if(i==2)delta=static_cast<float>(delta); // 222ab641 stores Z before final addition
+        from[i]=static_cast<float>(delta+start[i]);
+    }
+    if(!finite_vec(from))return false;
+    float fraction=0;void* hit=nullptr;
+    if(!line.line_trace(line.context,a,from,end,0x46004003u,6,&fraction,&hit))return false;
+    auto debug=[&](){return !line.debug_enabled||(line.debug_line&&line.debug_line(line.context,from,end));};
+    if(fraction==1.f){allowed=true;return debug();}
+    if(!hit||!enemy||!span(enemy,4))return false;
+    const auto evt=read<unsigned>(enemy,0);
+    if(evt==0x2245222cu||evt==0x224aec3cu){
+        if(!span(enemy,0x9b0))return false;
+        if(void* proxy=registry.Resolve(read<unsigned>(enemy,0x9ac))){
+            void* entity=nullptr;if(!line.proxy_entity||!line.proxy_entity(line.context,proxy,&entity)||!entity)return false;
+            if(hit==entity){allowed=true;return true;}
+            if(!span(hit,0x210))return false;
+            if(registry.Resolve(read<unsigned>(hit,0x20c))==entity){allowed=true;return true;}
+        }
+    }
+    if(hit==enemy){allowed=true;return debug();}
+    void* combat=nullptr;
+    if(!line.combat_entity||!line.combat_entity(line.context,hit,&combat))return false;
+    if(!combat)return true;
+    int relation=0;
+    if(!line.disposition||!line.disposition(line.context,a,combat,&relation))return false;
+    allowed=relation==1;return true;
+}
+bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route,const ServerNpcGruntScheduleServices* svc=nullptr,const ServerNpcGruntSchedulePolicyServices* policy=nullptr,const ServerNpcGruntScheduleSceneServices* scene=nullptr,const ServerNpcGruntScheduleLineServices* line=nullptr) noexcept{
     const auto vt=b.arbitration->activation->schedule->admission.actor_vtable;
     auto native=[&](int v){o.translated=v;o.translated_native=1;return true;};
     // 22354d60: Elite's entire +43c is a callback-free ID table.
@@ -6661,7 +6768,7 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         bool yes=false;
         if(!condition(4,yes))return false;
         if(!yes&&!condition(3,yes))return false;
-        if(yes)return schedule_translate_grunt(a,n,48,now,b,o,route,svc,policy,scene);
+        if(yes)return schedule_translate_grunt(a,n,48,now,b,o,route,svc,policy,scene,line);
         if(!policy_rejected()){
             if(!scene||!schedule_target_policy(a,n,now,true,&ab,scene,&yes))return false;
             if(yes&&!reserve(9,9,yes))return false;
@@ -6675,7 +6782,23 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
                 double length=0;if(!distance(e,0x360,length))return false;
                 // TEST 41 rejects less, equal and unordered. Only >256 enters scene calls.
                 if(!(length>256.0))return native(91);
-                return false;
+                if(!line)return false;
+                // 2235d967: clear before body-target and weapon virtual calls.
+                write<std::uint8_t>(a,0xc64,0);
+                e=target();void* w=registry.Resolve(read<unsigned>(a,0x78c));unsigned caps=0;
+                if(!e||!w||!weapon_caps(w,caps)||!span(w,0x36c))return false;
+                float source[3],start[3],point[3];
+                for(unsigned i=0;i<3;++i){
+                    source[i]=read<float>(w,0x360+4*i);
+                    start[i]=read<float>(a,0x360+4*i);
+                }
+                if(!schedule_body_point(e,source,true,&ab,line,point))return false;
+                w=registry.Resolve(read<unsigned>(a,0x78c));
+                if(!w||!weapon_caps(w,caps)||!schedule_weapon_line(a,w,e,start,point,ab,*line,yes))return false;
+                // 2203c352: high capability flags invoke the additional cone/squad checks.
+                if((read<unsigned>(a,0x8ec)|caps)&0x50000000u)return false;
+                if(yes)return native(91); // retain cleared state
+                // False falls through to the write of 1 below.
             }
         }
         write<std::uint8_t>(a,0xc64,1);
@@ -6714,17 +6837,17 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
                 unsigned caps=read<unsigned>(e,0x8ec);
                 void* w=registry.Resolve(read<unsigned>(e,0x78c));
                 if(w){unsigned wc=0;if(!weapon_caps(w,wc))return false;caps|=wc;}
-                if(!(caps&0x2000))return schedule_translate_grunt(a,n,33,now,b,o,route,svc,policy,scene);
+                if(!(caps&0x2000))return schedule_translate_grunt(a,n,33,now,b,o,route,svc,policy,scene,line);
             }
         }
-        if(read<unsigned>(a,0x9d0))return schedule_translate_grunt(a,n,33,now,b,o,route,svc,policy,scene);
+        if(read<unsigned>(a,0x9d0))return schedule_translate_grunt(a,n,33,now,b,o,route,svc,policy,scene,line);
         return native(87);
     }
     case 36:{
         bool yes=false;if(!condition(10,yes))return false;
-        if(yes)return schedule_translate_grunt(a,n,25,now,b,o,route,svc,policy,scene);
+        if(yes)return schedule_translate_grunt(a,n,25,now,b,o,route,svc,policy,scene,line);
         if(void* e=target())if(!svc||!schedule_mark_unreachable(a,e,now,ab,*svc))return false;
-        return schedule_translate_grunt(a,n,100,now,b,o,route,svc,policy,scene);
+        return schedule_translate_grunt(a,n,100,now,b,o,route,svc,policy,scene,line);
     }
     case 98:{
         bool yes=false;if(!condition(20,yes))return false;
@@ -6738,16 +6861,16 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
                 if(!slots_reserve(a,n,0,2,now,&slots,&result))return false;
                 yes=result.allowed!=0;
             }
-            if(yes)return schedule_translate_grunt(a,n,41,now,b,o,route,svc,policy,scene);
+            if(yes)return schedule_translate_grunt(a,n,41,now,b,o,route,svc,policy,scene,line);
         }
-        return schedule_translate_grunt(a,n,79,now,b,o,route,svc,policy,scene);
+        return schedule_translate_grunt(a,n,79,now,b,o,route,svc,policy,scene,line);
     }
     default:return false;
     }
 }
-bool schedule_acquire_impl(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route,const ServerNpcGruntScheduleServices* svc=nullptr,const ServerNpcGruntSchedulePolicyServices* policy=nullptr,const ServerNpcGruntScheduleSceneServices* scene=nullptr) noexcept{
+bool schedule_acquire_impl(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings& b,ServerNpcGruntScheduleAcquireResult& o,ServerNpcGruntAssaultArbitrationResult& route,const ServerNpcGruntScheduleServices* svc=nullptr,const ServerNpcGruntSchedulePolicyServices* policy=nullptr,const ServerNpcGruntScheduleSceneServices* scene=nullptr,const ServerNpcGruntScheduleLineServices* line=nullptr) noexcept{
     o.requested=id;
-    if(!schedule_translate_grunt(a,n,id,now,b,o,route,svc,policy,scene)||!schedule_get_impl(a,n,o.translated,b,o))return false;
+    if(!schedule_translate_grunt(a,n,id,now,b,o,route,svc,policy,scene,line)||!schedule_get_impl(a,n,o.translated,b,o))return false;
     if(!o.schedule_token){
         o.fallback=1;
         if(!schedule_diagnostic(a,b,o,0x223e6670u,o.translated)||!schedule_get_impl(a,n,1,b,o))return false;
@@ -7266,7 +7389,7 @@ bool schedule_request_highlevel(void* a,unsigned n,float now,const ServerNpcGrun
     }else if(!b.normal_tail||!b.normal_tail(b.context,a,&id))return false;
     o.tail_called=1;return id?selected(id):dispatch();
 }
-int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntSelectorTailBindings* tail=nullptr,ServerNpcGruntSelectorTailResult* tail_out=nullptr,const CombatSelectorRoute* combat=nullptr,const ServerNpcGruntScheduleServices* svc=nullptr,const ServerNpcGruntSchedulePolicyServices* policy=nullptr,const ServerNpcGruntScheduleSceneServices* scene=nullptr) noexcept{
+int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o,const ServerNpcGruntSelectorTailBindings* tail=nullptr,ServerNpcGruntSelectorTailResult* tail_out=nullptr,const CombatSelectorRoute* combat=nullptr,const ServerNpcGruntScheduleServices* svc=nullptr,const ServerNpcGruntSchedulePolicyServices* policy=nullptr,const ServerNpcGruntScheduleSceneServices* scene=nullptr,const ServerNpcGruntScheduleLineServices* line=nullptr) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
     bool yes=false;if(!schedule_request_condition(a,n,63,*b,*o,yes))return 0;
@@ -7291,7 +7414,7 @@ int schedule_request_choose_impl(void* a,unsigned n,float now,const ServerNpcGru
         if(o->requested<npc_global_condition_base&&o->requested!=-1&&!schedule_local_id(a,o->requested,ac.owner_schedules,o->owner_global))return 0;
         write(a,0x79c,o->owner_global);o->owner_global_written=1;
     }
-    if(!schedule_acquire_impl(a,n,o->requested,now,ac,o->acquisition,o->translation,svc,policy,scene))return 0;o->acquisition.completed=1;
+    if(!schedule_acquire_impl(a,n,o->requested,now,ac,o->acquisition,o->translation,svc,policy,scene,line))return 0;o->acquisition.completed=1;
     return schedule_request_finish(a,n,now,*b,*o)?1:0;
 }
 int __cdecl schedule_request_choose(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
@@ -7376,6 +7499,19 @@ int __cdecl schedule_scene_jet(void* a,unsigned n,float now,const ServerNpcGrunt
     return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route,p?p->memory:nullptr,p,scene);
 }
 const ServerNpcGruntScheduleSceneApi schedule_scene_api{1,sizeof(ServerNpcGruntScheduleSceneApi),&schedule_target_policy,&schedule_scene_acquire,&schedule_scene_normal,&schedule_scene_jet};
+int __cdecl schedule_line_acquire(void* a,unsigned n,int id,float now,const ServerNpcGruntScheduleAcquireBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleAcquireResult* o,ServerNpcGruntAssaultArbitrationResult* route) noexcept{
+    if(!route)return 0;*route={};const auto* scene=line?line->scene:nullptr;const auto* p=scene?scene->policy:nullptr;
+    if(!schedule_acquire_init(a,n,now,b,o)||!schedule_acquire_impl(a,n,id,now,*b,*o,*route,p?p->memory:nullptr,p,scene,line))return 0;
+    o->completed=1;return 1;
+}
+int __cdecl schedule_line_normal(void* a,unsigned n,float now,const ServerNpcGruntSpecialCombatBindings* b,const ServerNpcGruntScheduleLineServices* line,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntSpecialCombatResult* special) noexcept{
+    if(!tail||!combat||!special)return 0;*tail={};*combat={};*special={};
+    if(!b||!b->combat||!b->combat->tail)return 0;
+    const auto* scene=line?line->scene:nullptr;const auto* p=scene?scene->policy:nullptr;
+    const SpecialCombatRoute sp{b,special};const CombatSelectorRoute route{b->combat,combat,nullptr,&sp};
+    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route,p?p->memory:nullptr,p,scene,line);
+}
+const ServerNpcGruntScheduleLineApi schedule_line_api{1,sizeof(ServerNpcGruntScheduleLineApi),&schedule_body_point,&schedule_line_acquire,&schedule_line_normal};
 
 int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
@@ -9392,4 +9528,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntScheduleSceneApi=_SiN_GetServerNpcGruntScheduleSceneApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleSceneApi* __cdecl SiN_GetServerNpcGruntScheduleSceneApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntScheduleSceneApi)?&schedule_scene_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntScheduleLineApi=_SiN_GetServerNpcGruntScheduleLineApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleLineApi* __cdecl SiN_GetServerNpcGruntScheduleLineApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntScheduleLineApi)?&schedule_line_api:nullptr;
 }

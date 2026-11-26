@@ -3113,4 +3113,27 @@ struct ServerNpcGruntScheduleSceneApi {
     int (__cdecl *choose_jet)(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleSceneServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept;
 };
 using GetServerNpcGruntScheduleSceneApi=const ServerNpcGruntScheduleSceneApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_schedule_line_export[]="SiN_GetServerNpcGruntScheduleLineApi";
+struct ServerNpcGruntScheduleLineServices {
+    const ServerNpcGruntScheduleSceneServices* scene;
+    void* context;
+    int (__cdecl *center)(void*,void*,float*) noexcept; // +214
+    int (__cdecl *random_float)(void*,float,float,float*) noexcept; // engine RNG +4
+    int (__cdecl *shoot_position)(void*,void*,float*) noexcept; // owner +358
+    int (__cdecl *line_trace)(void*,void*,const float*,const float*,unsigned,int,float*,void**) noexcept; // 22014cc0
+    // Only for a live player proxy: +130 then +28, explicit engine identity.
+    int (__cdecl *proxy_entity)(void*,void*,void**) noexcept;
+    int (__cdecl *combat_entity)(void*,void*,void**) noexcept; // blocker +130/+8/+fc or +fc
+    int (__cdecl *disposition)(void*,void*,void*,int*) noexcept; // owner +3c0
+    bool debug_enabled; // 225596e0 +2c
+    int (__cdecl *debug_line)(void*,const float*,const float*) noexcept;
+};
+struct ServerNpcGruntScheduleLineApi {
+    std::uint32_t version,size;
+    int (__cdecl *body_point)(void*,const float*,bool,const ServerNpcGruntAssaultAdmissionBindings*,const ServerNpcGruntScheduleLineServices*,float*) noexcept;
+    int (__cdecl *acquire)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleAcquireResult*,ServerNpcGruntAssaultArbitrationResult*) noexcept;
+    int (__cdecl *choose_normal)(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*) noexcept;
+};
+using GetServerNpcGruntScheduleLineApi=const ServerNpcGruntScheduleLineApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
