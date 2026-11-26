@@ -1480,4 +1480,26 @@ struct ServerNpcGruntDeathPreparedEventApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntDeathPreparedEventBindings*,ServerNpcGruntDeathPreparedEventResult*) noexcept;
 };
 using GetServerNpcGruntDeathPreparedEventApi=const ServerNpcGruntDeathPreparedEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_state_signal_export[]="SiN_GetServerNpcGruntStateSignalApi";
+struct ServerNpcGruntStateSignalBindings {
+    ServerNpcGruntSentenceBindings members; // group storage, original class, serial registry, eligibility
+    ServerNpcEnemyMemoryBindings dirty_storage;
+    void* context;
+    int (__cdecl *refresh)(void*,void*) noexcept; // actor +58
+    int (__cdecl *output)(void*,void*,unsigned) noexcept; // 22156900 embedded +bc8, actor as both entities
+    int (__cdecl *member_signal)(void*,void*,int) noexcept; // other entity +4d8
+    int (__cdecl *jet_prepare)(void*,void*) noexcept; // 22366a20
+    int (__cdecl *jet_object)(void*,std::uint32_t) noexcept; // actor+218 object +8
+};
+struct ServerNpcGruntStateSignalResult {
+    unsigned completed,state_cleared,flag_cleared,local_dirty,external_dirty,refreshed,output_called;
+    unsigned scans,eligible,dead,self,propagated,jet_prepared,jet_linked,jet_object_called;
+    std::uint32_t jet_handle;
+};
+struct ServerNpcGruntStateSignalApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,int,const ServerNpcGruntStateSignalBindings*,ServerNpcGruntStateSignalResult*) noexcept;
+};
+using GetServerNpcGruntStateSignalApi=const ServerNpcGruntStateSignalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
