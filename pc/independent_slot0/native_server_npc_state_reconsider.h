@@ -3136,6 +3136,30 @@ struct ServerNpcGruntScheduleLineApi {
     int (__cdecl *choose_normal)(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*) noexcept;
 };
 using GetServerNpcGruntScheduleLineApi=const ServerNpcGruntScheduleLineApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+// Original owner +3cc (22031120) and +6e8 spread-threshold preparation.
+inline constexpr char server_npc_grunt_adaptive_spread_export[]="SiN_GetServerNpcGruntAdaptiveSpreadApi";
+struct ServerNpcGruntAdaptiveSpreadBindings {
+    ServerNpcEnemyMemoryQueryBindings memory;
+    void* context;
+    int (__cdecl *base_spread)(void*,void*,void*,void*,float*) noexcept; // 222a4b60, engine +f4
+    float duration; // 22547488 +28
+    float multiplier; // 22547440 +28
+    const float* angle_table; // 225818a8, live initialized 256-entry table
+    unsigned angle_count;
+};
+struct ServerNpcGruntAdaptiveSpreadResult {
+    ServerNpcEnemyMemoryLookup lookup;
+    float vector[3],age,threshold;
+    double factor;
+    unsigned completed,base_called,record_found,scaled,angle_index,table_called,clamped,no_weapon;
+};
+struct ServerNpcGruntAdaptiveSpreadApi {
+    std::uint32_t version,size;
+    int (__cdecl *spread)(void*,unsigned,void*,void*,float,const ServerNpcGruntAdaptiveSpreadBindings*,ServerNpcGruntAdaptiveSpreadResult*) noexcept;
+    int (__cdecl *threshold)(void*,unsigned,void*,float,const ServerNpcGruntAdaptiveSpreadBindings*,ServerNpcGruntAdaptiveSpreadResult*) noexcept;
+};
+using GetServerNpcGruntAdaptiveSpreadApi=const ServerNpcGruntAdaptiveSpreadApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 int grunt_schedule_line_jet_internal(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept;
 int grunt_schedule_line_failure_internal(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*) noexcept;
 }

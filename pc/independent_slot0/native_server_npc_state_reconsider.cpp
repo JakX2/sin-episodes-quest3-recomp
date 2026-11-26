@@ -6472,6 +6472,57 @@ int __cdecl schedule_target_policy(void* a,unsigned n,float now,bool remembered,
     if(!visible)write(a,0xc84,static_cast<float>(static_cast<double>(now)+1.0));
     *allowed=visible;return 1;
 }
+// 22031120: engine base spread first, then exact memory key (no default retry).
+int __cdecl grunt_adaptive_spread(void* actor,unsigned n,void* weapon,void* target,float now,const ServerNpcGruntAdaptiveSpreadBindings* b,ServerNpcGruntAdaptiveSpreadResult* o) noexcept{
+    if(!o)return 0;*o={};o->factor=1.;o->lookup.index=255;
+    if(!actor||n<0x988||!weapon||!b||!std::isfinite(now)||!b->base_spread)return 0;
+    ++o->base_called;
+    if(!b->base_spread(b->context,actor,weapon,target,o->vector)||!finite_vec(o->vector))return 0;
+    void* memory=nullptr;unsigned extent=0,key=0;
+    if(!memory_key(b->memory,target,key)||!memory_storage(&b->memory.storage,read<unsigned>(actor,0x984),0x1c,memory,extent)||
+       !memory_lookup(memory,extent,key,false,&b->memory.storage,&o->lookup))return 0;
+    if(o->lookup.record){
+        o->record_found=1;
+        if(!std::isfinite(b->duration))return 0;
+        if(b->duration>0.f){
+            void* record=nullptr;if(!memory_record(&b->memory.storage,o->lookup,0x2c,record))return 0;
+            const float stamp=read<float>(record,0x28);
+            if(!std::isfinite(stamp))return 0;
+            o->age=static_cast<float>(static_cast<double>(now)-stamp);
+            if(!std::isfinite(o->age))return 0;
+            if(o->age<0.f)o->age=0.f;
+            if(o->age<b->duration){
+                if(!std::isfinite(b->multiplier))return 0;
+                if(b->multiplier>1.f){
+                    o->factor=1.+(static_cast<double>(b->multiplier)-1.)*(1.-static_cast<double>(o->age)/b->duration);
+                    for(float& v:o->vector)v=static_cast<float>(static_cast<double>(v)*o->factor);
+                    if(!finite_vec(o->vector))return 0;
+                    o->scaled=1;
+                }
+            }
+        }
+    }
+    o->completed=1;return 1;
+}
+// 2203c367..2203c3dd uses null target (not actor+8a0) for +3cc.
+int __cdecl grunt_spread_threshold(void* actor,unsigned n,void* weapon,float now,const ServerNpcGruntAdaptiveSpreadBindings* b,ServerNpcGruntAdaptiveSpreadResult* o) noexcept{
+    if(!o)return 0;*o={};o->factor=1.;o->lookup.index=255;
+    if(!actor||n<0x988||!std::isfinite(now))return 0;
+    if(!weapon){o->threshold=.92f;o->no_weapon=o->completed=1;return 1;}
+    if(!grunt_adaptive_spread(actor,n,weapon,nullptr,now,b,o))return 0;
+    o->completed=0;
+    if(o->vector[0]<=.13053f){o->threshold=.99145f;o->clamped=1;}
+    else{
+        if(o->vector[0]>1.f||!b->angle_table||b->angle_count!=256)return 0;
+        const float encoded=static_cast<float>(std::asin(static_cast<double>(o->vector[0]))*40.743663787841796875+12582976.);
+        std::uint32_t bits=0;std::memcpy(&bits,&encoded,4);o->angle_index=bits&255u;
+        o->threshold=b->angle_table[o->angle_index];
+        if(!std::isfinite(o->threshold))return 0;
+        o->table_called=1;
+    }
+    o->completed=1;return 1;
+}
+const ServerNpcGruntAdaptiveSpreadApi adaptive_spread_api{1,sizeof(ServerNpcGruntAdaptiveSpreadApi),&grunt_adaptive_spread,&grunt_spread_threshold};
 // Original +1d4 dispatch: Grunt 22359e30 / 22031220, player 222494f0.
 // Only admitted original primary-vtable tokens, no native pointer reinterpretation.
 int schedule_body_point_impl(void* e,const float* source,bool noisy,const ServerNpcGruntAssaultAdmissionBindings* ab,const ServerNpcGruntScheduleLineServices* line,float* out,void** visited,unsigned depth) noexcept{
@@ -9572,4 +9623,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntScheduleLineApi=_SiN_GetServerNpcGruntScheduleLineApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntScheduleLineApi* __cdecl SiN_GetServerNpcGruntScheduleLineApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntScheduleLineApi)?&schedule_line_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAdaptiveSpreadApi=_SiN_GetServerNpcGruntAdaptiveSpreadApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAdaptiveSpreadApi* __cdecl SiN_GetServerNpcGruntAdaptiveSpreadApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAdaptiveSpreadApi)?&adaptive_spread_api:nullptr;
 }
