@@ -463,6 +463,23 @@ struct DeferredRemovalResult {
     unsigned completed,already_marked,marked,updated,name_cleared,invalid_handle,queued,
         entered,pre_called,released,closed,remaining,discarded;
 };
+// Original CBaseEntityList active and non-networked free chains.
+struct RegistryChain {sin_independent::EntityHandleEntry* head;sin_independent::EntityHandleEntry* tail;};
+struct RemovalRegistry {
+    sin_independent::EntityHandleEntry* entries;unsigned count;
+    RegistryChain active,free_nonnetworked;
+    unsigned entity_count,edict_count;
+    bool unlink_active;
+};
+struct RegistryRemovalBindings {
+    void* context;
+    RemovalRegistry* registry;
+    // Resolve the original nonzero +16c edict token for SetRefEHandle.
+    int (__cdecl *edict)(void*,unsigned,void**,unsigned*) noexcept;
+};
+struct RegistryRemovalResult {
+    unsigned completed,empty,index,old_handle,old_serial,new_serial,handle_cleared,edict_cleared,counts_changed,unlinked,returned_to_free;
+};
 struct Api {
     std::uint32_t version,size;
     int (__cdecl *token)(const char*,unsigned,unsigned,Token*) noexcept;
@@ -534,6 +551,7 @@ struct Api {
     int (__cdecl *defer_logic_remove)(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
     int (__cdecl *cleanup_deferred)(const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
     int (__cdecl *discard_deferred)(DeferredRemovalQueue*,DeferredRemovalResult*) noexcept;
+    int (__cdecl *registry_unlink_logic)(void*,unsigned,unsigned,const RegistryRemovalBindings*,RegistryRemovalResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
