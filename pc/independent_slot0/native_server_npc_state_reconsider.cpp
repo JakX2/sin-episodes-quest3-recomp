@@ -4846,6 +4846,14 @@ int follow_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const v
 }
 
 
+// Original 2204f2d0: leaf schedule bookkeeping clear, no engine calls.
+bool assault_end_schedule(void* a,unsigned n) noexcept{
+    if(!a||n<0x84c)return false;
+    for(const unsigned off:{0x7a8u,0x7acu,0x7a4u,0x79cu,0x798u,0x7a0u,0x7b4u})write(a,off,0u);
+    write<std::uint8_t>(a,0x7b8,0);write<std::uint8_t>(a,0x7b9,0);
+    for(unsigned off=0x82c;off<0x84c;off+=4)write(a,off,0xffffffffu);
+    return true;
+}
 struct AssaultNodeRoute {const ServerNpcGruntAssaultNodeBindings* bindings;ServerNpcGruntAssaultNodeResult* result;};
 int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const AssaultNodeRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& ab=b.events;
@@ -4873,7 +4881,10 @@ int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const Assaul
             if(!b.class_matches||!b.class_matches(b.context,a,0x223f3a78u,&monk))return 0;o.class_called=1;
         }
         if(monk&&read<int>(a,0x850)==4){o.monk_exception=1;return done();}
-        if(!b.end_assault||!b.end_assault(b.context,a))return 0;o.end_called=1;return done();
+        // Existing callers may retain the explicit compatibility override.
+        if(b.end_assault){if(!b.end_assault(b.context,a))return 0;}
+        else if(!assault_end_schedule(a,n))return 0;
+        o.end_called=1;return done();
     }
     write(p,0x1c,0);o.mode_cleared=1;
     void* secondary=resolve(0x18);if(!span(secondary,0x3c0))return 0;

@@ -2580,7 +2580,7 @@ struct ServerNpcGruntAssaultNodeBindings {
     int (__cdecl *find_next)(void*,std::uint32_t,std::uint32_t*) noexcept;
     int (__cdecl *missing_next)(void*,std::uint32_t) noexcept;
     int (__cdecl *class_matches)(void*,void*,std::uint32_t,bool*) noexcept; // 221387f0
-    int (__cdecl *end_assault)(void*,void*) noexcept; // 2204f2d0
+    int (__cdecl *end_assault)(void*,void*) noexcept; // 2204f2d0: optional compatibility override; null uses native schedule clear
 };
 struct ServerNpcGruntAssaultNodeResult {
     ServerNpcGruntAssaultEventResult events;
