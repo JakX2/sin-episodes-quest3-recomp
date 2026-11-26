@@ -220,3 +220,75 @@
         const unsigned creates=f.manager.creates;
         assert(touch(a,secret_trigger_extent,a,&b,&f.manager,&result,&publication)&&result.nonplayer&&publication==engine_event_not_attempted&&f.manager.creates==creates);
     }
+
+// Inherited EndTouch resolves identity twice, removes a single duplicate,
+// observes output before stale cleanup, and fires EndTouchAll last.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct EndFixture {
+            alignas(4) unsigned char actor[dynamic_trigger_extent]{},others[3][0x37c]{};
+            unsigned vector[8]{},actions[2][7]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            void* expected=nullptr;
+            std::string order;
+            unsigned expected_count=0;bool insert_stale=false,fail=false;
+        } f;
+        const auto end=reinterpret_cast<EndCampaignTriggerOutput>(GetProcAddress(server,end_touch_output_export));
+        assert(end&&!GetProcAddress(client,end_touch_output_export));
+        for(unsigned i=0;i<3;++i){
+            put(f.others[i],0,0x224aec3cu);put(f.others[i],0x378,((4+i)<<12)|i);
+            f.entries[i].entity=reinterpret_cast<CBaseEntity*>(f.others[i]);f.entries[i].serial=4+i;
+        }
+        for(unsigned i=0;i<2;++i){f.actions[i][0]=201+i;f.actions[i][1]=202;f.actions[i][4]=0xffffffffu;f.actions[i][5]=91+i;}
+        CampaignEndTouchBindings b{};b.context=&f;b.entries=f.entries;b.entry_count=3;
+        b.resolve_vector=[](void* p,unsigned token,void** storage,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<EndFixture*>(p);assert(token==8);*storage=f.vector;*bytes=sizeof(f.vector);return 1;
+        };
+        nw::ServerEntityVoidOutputBindings ob{};ob.context=&f;
+        ob.resolve=[](void* p,unsigned token,void** action,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<EndFixture*>(p);assert(token==91||token==92);*action=f.actions[token-91];*bytes=0x1c;return 1;
+        };
+        ob.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* a) noexcept ->int{
+            auto& f=*static_cast<EndFixture*>(p);assert(activator==f.expected&&caller==f.actor);
+            unsigned count=0;std::memcpy(&count,f.actor+0x468,4);
+            if(a->target==201){
+                assert(count==f.expected_count);f.order+='E';
+                if(f.insert_stale){
+                    f.vector[count]=0xffffffffu;const unsigned next=count+1;
+                    std::memcpy(f.actor+0x468,&next,4);f.insert_stale=false;
+                }
+                return !f.fail;
+            }
+            assert(a->target==202&&count==0);f.order+='A';return 1;
+        };
+        ob.release=[](void*,unsigned,void*) noexcept ->int{assert(false);return 0;};b.output=&ob;
+        CampaignEndTouchResult r{};
+        for(unsigned vt:{dynamic_trigger_vtable,secret_trigger_vtable}){
+            const unsigned extent=vt==dynamic_trigger_vtable?dynamic_trigger_extent:secret_trigger_extent;
+            std::memset(f.actor,0,sizeof(f.actor));put(f.actor,0,vt);put(f.actor,0x45c,8u);put(f.actor,0x460,8u);
+            put(f.actor,0x468,5u);put(f.actor,0x46c,8u);put(f.actor,0x440,91u);put(f.actor,0x458,92u);
+            const unsigned initial[]{0x4000,0x5001,0x4000,0x7002,0xffffffffu};
+            std::memcpy(f.vector,initial,sizeof(initial));f.order.clear();
+            f.expected=f.others[2];
+            assert(end(f.actor,extent,f.expected,0x37c,&b,&r)&&r.completed&&!r.matched&&r.handle_reads==1&&r.count==5&&f.order.empty());
+            f.expected=f.others[0];f.expected_count=4;f.insert_stale=true;
+            assert(end(f.actor,extent,f.expected,0x37c,&b,&r)&&r.matched&&r.handle_reads==2&&r.removed&&r.stale_removed==3&&r.live_remaining==2&&r.count==2&&r.end_output&&!r.all_output&&f.order=="E");
+            assert(f.vector[0]==0x5001&&f.vector[1]==0x4000);
+            f.expected_count=1;
+            assert(end(f.actor,extent,f.expected,0x37c,&b,&r)&&r.count==1&&r.live_remaining==1&&f.order=="EE");
+            f.expected=f.others[1];f.expected_count=0;
+            assert(end(f.actor,extent,f.expected,0x37c,&b,&r)&&r.count==0&&r.end_output&&r.all_output&&r.queued==2&&f.order=="EEEA");
+            assert(end(f.actor,extent,f.expected,0x37c,&b,&r)&&!r.matched&&f.order=="EEEA");
+            // Null identity matches the first stale row; remaining stale
+            // rows are pruned only after OnEndTouch.
+            put(f.actor,0x468,2u);f.vector[0]=0x7002;f.vector[1]=0xffffffffu;
+            f.expected=nullptr;f.expected_count=1;
+            assert(end(f.actor,extent,nullptr,0,&b,&r)&&r.removed&&r.stale_removed==1&&r.all_output&&f.order=="EEEAEA");
+            // Refused output is a partial effect: row already removed,
+            // no automatic retry or stale cleanup.
+            put(f.actor,0x468,2u);f.vector[0]=0x4000;f.vector[1]=0xffffffffu;
+            f.expected=f.others[0];f.expected_count=1;f.fail=true;
+            assert(!end(f.actor,extent,f.expected,0x37c,&b,&r)&&r.removed&&!r.end_output&&!r.stale_removed&&r.count==1);
+            f.fail=false;
+        }
+    }

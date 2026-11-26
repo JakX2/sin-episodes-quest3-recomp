@@ -2843,6 +2843,83 @@ int __cdecl campaign_start_output(void* a,unsigned n,void* other,unsigned other_
     }
     o->output_fired=o->completed=1;return 1;
 }
+// 221d3590: find by resolved identity twice, remove one row,
+// fire OnEndTouch, then prune stale handles in reverse and fire
+// OnEndTouchAll only when no live contact remains.
+int __cdecl campaign_end_output(void* a,unsigned n,void* other,unsigned other_bytes,
+    const CampaignEndTouchBindings* b,CampaignEndTouchResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned marker=0;
+    if(!b||b->entry_count>sin_independent::kEntityHandleCapacity||(!b->entries&&b->entry_count)||
+       !SinReadCampaignTouchMarkerInternal(a,&marker))return 0;
+    const unsigned extent=marker==dynamic_trigger_vtable?dynamic_trigger_extent:marker==secret_trigger_vtable?secret_trigger_extent:0;
+    if(!extent||n<extent)return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    auto handle=[&](unsigned& h){
+        ++o->handle_reads;h=0xffffffffu;
+        if(!other)return true;
+        unsigned vt=0;if(other_bytes<4||!SinReadCampaignTouchMarkerInternal(other,&vt))return false;
+        if(campaign_player_marker(vt)!=PlayerPredicate::Unknown)return SinReadCampaignHandleInternal(other,other_bytes,&h);
+        return b->foreign_handle&&b->foreign_handle(b->context,other,&h);
+    };
+    void* vector=nullptr;int size=0;
+    auto load=[&](){
+        vector=nullptr;size=read_field<int>(a,0x468);const int cap=read_field<int>(a,0x460);
+        const unsigned token=read_field<unsigned>(a,0x45c);
+        if(size<0||cap<0||size>cap||cap>4096||(cap&&!token))return false;
+        o->count=static_cast<unsigned>(size);
+        if(!size)return true;
+        unsigned bytes=0;
+        if(!b->resolve_vector||!b->resolve_vector(b->context,token,&vector,&bytes)||
+           !vector||bytes<static_cast<unsigned>(cap)*4u)return false;
+        const auto vb=reinterpret_cast<std::uintptr_t>(vector),ab=reinterpret_cast<std::uintptr_t>(a);
+        return vb+bytes>=vb&&ab+n>=ab&&!(vb<ab+n&&ab<vb+bytes);
+    };
+    auto find=[&](unsigned h){
+        auto* target=registry.Resolve(h);
+        for(int i=0;i<size;++i)
+            if(registry.Resolve(read_field<unsigned>(vector,static_cast<unsigned>(i)*4u))==target)return i;
+        return -1;
+    };
+    auto erase=[&](int i){
+        auto* row=static_cast<unsigned char*>(vector)+static_cast<unsigned>(i)*4u;
+        if(size-i>1)std::memmove(row,row+4,static_cast<unsigned>(size-i-1)*4u);
+        --size;write_field(a,0x468,size);o->count=static_cast<unsigned>(size);
+    };
+    unsigned h=0;
+    if(!handle(h)||!load())return 0;
+    if(find(h)<0){o->completed=1;return 1;}
+    o->matched=1;
+    if(!b->output||!handle(h)||!load())return 0;
+    const int second=find(h);
+    if(second>=0){erase(second);o->removed=1;}
+    auto fire_output=[&](unsigned off){
+        unsigned queued=0;
+        using namespace sin_port::native_weapon_tables;
+        if(b->native_queue){
+            if(!native_named_output(a,n,other,off,false,b->output,b->native_queue,queued))return false;
+            o->native_queued+=queued;
+        }else{
+            const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+            ServerEntityVoidOutputResult fired{};
+            if(!fire||!fire->fire(static_cast<unsigned char*>(a)+off,0x18,other,a,n,0.f,b->output,&fired))return false;
+            queued=fired.queued;
+        }
+        o->queued+=queued;return true;
+    };
+    if(!fire_output(0x42c))return 0;o->end_output=1;
+    // Original takes a fresh count after the output; do not cache the
+    // old allocation across owner callbacks.
+    if(!load())return 0;
+    for(int i=size-1;i>=0;--i){
+        if(registry.Resolve(read_field<unsigned>(vector,static_cast<unsigned>(i)*4u)))++o->live_remaining;
+        else{erase(i);++o->stale_removed;}
+    }
+    if(!o->live_remaining){if(!fire_output(0x444))return 0;o->all_output=1;}
+    o->completed=1;return 1;
+}
 const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting,&register_campaign_triggers,&destroy_campaign_trigger,&campaign_trigger_spawn,&campaign_trigger_touch,&destroy_trigger_members,&trigger_control,&trigger_kill};
 }
 }
@@ -2894,4 +2971,10 @@ extern "C" sin_port::native_map::PlayerPredicate __cdecl SiN_ClassifyCampaignTou
 extern "C" int __cdecl SiN_StartCampaignTriggerOutput(void* a,unsigned n,void* other,unsigned other_bytes,
     const sin_port::native_map::CampaignStartTouchBindings* b,sin_port::native_map::CampaignStartTouchResult* o) noexcept {
     return sin_port::native_map::campaign_start_output(a,n,other,other_bytes,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_EndCampaignTriggerOutput=_SiN_EndCampaignTriggerOutput")
+extern "C" int __cdecl SiN_EndCampaignTriggerOutput(void* a,unsigned n,void* other,unsigned other_bytes,
+    const sin_port::native_map::CampaignEndTouchBindings* b,sin_port::native_map::CampaignEndTouchResult* o) noexcept {
+    return sin_port::native_map::campaign_end_output(a,n,other,other_bytes,b,o);
 }
