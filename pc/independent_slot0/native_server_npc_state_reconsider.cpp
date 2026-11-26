@@ -3312,6 +3312,42 @@ int __cdecl grunt_damage_pain_prefix(void* a,unsigned n,void* damage,unsigned dn
 }
 const ServerNpcGruntDamagePainPrefixApi damage_pain_prefix_api{1,sizeof(ServerNpcGruntDamagePainPrefixApi),&grunt_damage_pain_prefix};
 
+
+int __cdecl grunt_behavior_switch(void* a,unsigned n,std::uint32_t next,float now,const ServerNpcGruntBehaviorSwitchBindings* b,ServerNpcGruntBehaviorSwitchResult* out) noexcept{
+    if(!out)return 0;*out={};out->release.index=out->release.selected=-1;
+    if(!a||n<0xc1c||!b||!std::isfinite(now)||!relation_grunt_class(b->original_vtable)||
+       b->slots.count>sin_independent::kEntityHandleCapacity||(b->slots.count&&!b->slots.entries))return 0;
+    out->previous=read<unsigned>(a,0xc18);out->requested=next;
+    const bool changed=out->previous!=next;
+    if(changed&&next&&(!b->begin||!b->activate||!b->activation_guard))return 0;
+    if(changed&&out->previous&&!b->end)return 0;
+    write(a,0xc18,next);
+    if(!changed){out->completed=1;return 1;}
+    out->changed=1;
+    if(next){
+        if(!b->begin(b->context,next))return 0;
+        out->began=1;*b->activation_guard=1;
+        // Native reloads the current pointer after +1c, not the requested token.
+        out->activated=read<unsigned>(a,0xc18);
+        const bool ok=out->activated&&b->activate(b->context,out->activated);
+        *b->activation_guard=0; // also unwind adapter failure, unlike an unchecked native dereference
+        if(!ok)return 0;
+        out->activated_called=1;
+    }
+    if(out->previous){
+        if(!b->end(b->context,out->previous))return 0;
+        out->ended=1;
+        if(const auto group=read<unsigned>(a,0x9c4)){
+            const auto reg=sin_independent::EntityHandleView(b->slots.entries,b->slots.count);
+            if(!slots_release(group,reg.Resolve(read<unsigned>(a,0x8a0)),read<int>(a,0x9cc),now,&b->slots,&out->release))return 0;
+            write(a,0x9cc,-1);out->slot_released=1;
+        }
+    }
+    // +778=2216e310 ret8 for all eight supported original vtables.
+    out->completed=1;return 1;
+}
+const ServerNpcGruntBehaviorSwitchApi behavior_switch_api{1,sizeof(ServerNpcGruntBehaviorSwitchApi),&grunt_behavior_switch};
+
 int __cdecl grunt_behavior_removal(void* a,unsigned n,std::uint32_t handle,void* attacker,bool event,float now,const ServerNpcGruntBehaviorRemovalBindings* b,ServerNpcGruntBehaviorRemovalResult* out) noexcept{
     if(!out)return 0;*out={};out->active_release.index=out->active_release.selected=-1;
     // Preflight the complete composed cleanup extent before component side effects.
@@ -3330,18 +3366,14 @@ int __cdecl grunt_behavior_removal(void* a,unsigned n,std::uint32_t handle,void*
         if(!component||!b->component_removed||!b->component_removed(b->context,component,attacker,event))return 0;
         ++out->components;
     }
-    out->previous_active=read<unsigned>(a,0xc18);write(a,0xc18,0u);
-    if(out->previous_active){
-        out->active_cleared=1;
-        if(!b->component_end||!b->component_end(b->context,out->previous_active))return 0;
-        out->active_ended=1;
-        if(const auto token=read<unsigned>(a,0x9c4)){
-            auto slots=b->removal.reports.perception.slots;slots.entries=sb.entries;slots.count=sb.count;
-            if(!slots_release(token,registry.Resolve(read<unsigned>(a,0x8a0)),read<int>(a,0x9cc),now,&slots,&out->active_release))return 0;
-            write(a,0x9cc,-1);out->slot_released=1;
-        }
-        // All eight +778=2216e310, ret 8: no further action.
-    }
+    ServerNpcGruntBehaviorSwitchBindings sw{};
+    sw.slots=b->removal.reports.perception.slots;sw.slots.entries=sb.entries;sw.slots.count=sb.count;
+    sw.original_vtable=sb.speech.original_vtable;sw.context=b->context;sw.end=b->component_end;
+    ServerNpcGruntBehaviorSwitchResult sr{};
+    const int switched=grunt_behavior_switch(a,n,0,now,&sw,&sr);
+    out->previous_active=sr.previous;out->active_cleared=sr.changed;out->active_ended=sr.ended;
+    out->slot_released=sr.slot_released;out->active_release=sr.release;
+    if(!switched)return 0;
     if(!grunt_removal(a,n,handle,attacker,event,now,&b->removal,&out->removal))return 0;
     out->completed=1;return 1;
 }
@@ -3907,4 +3939,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntDeathEventApi=_SiN_GetServerNpcGruntDeathEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntDeathEventApi* __cdecl SiN_GetServerNpcGruntDeathEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntDeathEventApi)?&death_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorSwitchApi=_SiN_GetServerNpcGruntBehaviorSwitchApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorSwitchApi* __cdecl SiN_GetServerNpcGruntBehaviorSwitchApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorSwitchApi)?&behavior_switch_api:nullptr;
 }

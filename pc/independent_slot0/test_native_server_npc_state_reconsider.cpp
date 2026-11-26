@@ -1947,5 +1947,42 @@ int main(int argc,char** argv){
         assert(death->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),24,&db,&dr)&&dr.completed&&dr.activity_called&&!dr.state_written&&!dr.remove_called&&q.step==8);
 
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntBehaviorSwitchApi>(GetProcAddress(s,server_npc_grunt_behavior_switch_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_behavior_switch_export)&&!g(0,sizeof(ServerNpcGruntBehaviorSwitchApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntBehaviorSwitchApi));assert(api);
+        struct SwitchFixture {
+            alignas(4) unsigned char actor[0xdb2]{};
+            std::uint8_t guard=0;unsigned step=0;bool reload=false,fail=false;
+            static unsigned rd(void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+off,4);return v;}
+            static SwitchFixture& self(void* p){return *static_cast<SwitchFixture*>(p);}
+        } q;
+        ServerNpcGruntBehaviorSwitchBindings b{};b.original_vtable=0x2249aaa4;b.activation_guard=&q.guard;b.context=&q;
+        b.begin=[](void* p,std::uint32_t token) noexcept -> int{
+            auto& q=SwitchFixture::self(p);assert(q.step==0&&token==72&&SwitchFixture::rd(q.actor,0xc18)==72&&!q.guard);
+            ++q.step;if(q.reload){const unsigned v=73;std::memcpy(q.actor+0xc18,&v,4);}return 1;
+        };
+        b.activate=[](void* p,std::uint32_t token) noexcept -> int{
+            auto& q=SwitchFixture::self(p);assert(q.step==1&&token==(q.reload?73u:72u)&&q.guard==1&&SwitchFixture::rd(q.actor,0xc18)==token);
+            ++q.step;return !q.fail;
+        };
+        b.end=[](void* p,std::uint32_t token) noexcept -> int{
+            auto& q=SwitchFixture::self(p);assert(!q.guard);
+            if(q.step==2)assert(token==71&&SwitchFixture::rd(q.actor,0xc18)==(q.reload?73u:72u));
+            else assert(q.step==0&&token==73&&!SwitchFixture::rd(q.actor,0xc18));
+            ++q.step;return 1;
+        };
+        ServerNpcGruntBehaviorSwitchResult o{};
+        f.put(q.actor,0xc18,71u);
+        assert(api->run(q.actor,sizeof(q.actor),71,1,&b,&o)&&o.completed&&!o.changed&&!q.step);
+        assert(api->run(q.actor,sizeof(q.actor),72,1,&b,&o)&&o.completed&&o.changed&&o.began&&o.activated_called&&o.ended&&o.previous==71&&o.activated==72&&q.step==3&&!q.guard);
+        f.put(q.actor,0xc18,71u);q.step=0;q.reload=true;
+        assert(api->run(q.actor,sizeof(q.actor),72,1,&b,&o)&&o.activated==73&&q.step==3&&SwitchFixture::rd(q.actor,0xc18)==73);
+        q.step=0;
+        assert(api->run(q.actor,sizeof(q.actor),0,1,&b,&o)&&o.completed&&o.changed&&!o.began&&o.ended&&q.step==1);
+        q.step=0;q.fail=true;f.put(q.actor,0xc18,71u);
+        assert(!api->run(q.actor,sizeof(q.actor),72,1,&b,&o)&&o.began&&!o.ended&&!q.guard&&q.step==2);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
