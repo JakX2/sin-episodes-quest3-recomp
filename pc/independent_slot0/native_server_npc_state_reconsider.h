@@ -2482,4 +2482,35 @@ struct ServerNpcGruntActBusyEventApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntActBusyEventBindings*,ServerNpcGruntActBusyEventResult*) noexcept;
 };
 using GetServerNpcGruntActBusyEventApi=const ServerNpcGruntActBusyEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_follow_event_export[]="SiN_GetServerNpcGruntFollowEventApi";
+struct ServerNpcGruntFollowEventBindings {
+    ServerNpcGruntActBusyEventBindings events;
+    void* context;
+    const float* default_point; // live 2251b1ec
+    int debug_mode;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *origin)(void*,void*,float*) noexcept; // 220092d0
+    int (__cdecl *find_point)(void*,void*,float,float*,bool*) noexcept; // 220d1920
+    int (__cdecl *goal)(void*,void*,const float*,bool*) noexcept; // 2202eb00 mode7
+    int (__cdecl *refresh_position)(void*,std::uint32_t,float*,bool*) noexcept; // 220d3e90
+    int (__cdecl *navigation_ready)(void*,void*,bool*) noexcept; // 220740a0
+    int (__cdecl *clear_target)(void*,void*,void*,bool) noexcept; // 220d6b90, null target
+    int (__cdecl *debug_text)(void*,void*,std::uint32_t) noexcept; // 220381b0
+    int (__cdecl *dispatch)(void*,void*,int) noexcept; // 2204fe40
+    int (__cdecl *wait_link)(void*,void*,int) noexcept; // 220643d0
+    int (__cdecl *wait_actor)(void*,void*,int) noexcept; // 2204f680
+};
+struct ServerNpcGruntFollowEventResult {
+    ServerNpcGruntActBusyEventResult events;
+    std::uint32_t target_handle,link_handle,request_value;
+    float point[3],range,deadline;
+    double squared_distance;
+    int dispatched,synthetic_event,link_mode;
+    unsigned entered,completed,target_valid,link_valid,link_predicate,marker_default,clear_called,find_called,goal_called,goal_result,refresh_called,cache_written,actor_point_reset,nav_called,stored_origin,timer_written,reset_called,request_called,dispatch_called,synthetic_called,wait_called,debug_called;
+};
+struct ServerNpcGruntFollowEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntFollowEventBindings*,ServerNpcGruntFollowEventResult*) noexcept;
+};
+using GetServerNpcGruntFollowEventApi=const ServerNpcGruntFollowEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

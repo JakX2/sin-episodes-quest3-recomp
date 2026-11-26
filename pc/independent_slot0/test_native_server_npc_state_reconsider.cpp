@@ -3583,5 +3583,68 @@ int main(int argc,char** argv){
         assert(run(100005)&&o.synthetic_called&&o.condition_checked&&o.memory_called&&q.added==1&&q.a[0xf90]);
         f.put(q.a,0x7d0,2u);assert(run(100005)&&o.condition.value&&!o.memory_called&&q.added==1);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntFollowEventApi>(GetProcAddress(s,server_npc_grunt_follow_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_follow_event_export)&&!g(0,sizeof(ServerNpcGruntFollowEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntFollowEventApi));assert(api);
+        struct FollowFixture{
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},target[0x3c0]{},link[0x3c0]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float default_point[3]{1,2,3},target_pos[3]{1,0,0},link_pos[3]{15,0,0};
+            bool found=false,ready=false,refresh=true;
+            unsigned shared=0,special=0,synthetic=0;
+            static FollowFixture& self(void* p){return *static_cast<FollowFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.target);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.link);
+        ServerNpcGruntFollowEventBindings b{};b.context=&q;b.default_point=q.default_point;
+        auto& busy=b.events;busy.context=&q;auto& tb=busy.events.events.events;tb.context=&q;
+        auto& rb=tb.events.events;rb.context=&q;auto& gate=rb.events.events.gate;
+        gate.actor_token=0x10000u;gate.context=&q;auto& sb=gate.speech.speech.sentence;
+        sb.entries=q.entries;sb.count=3;sb.speech.original_vtable=0x2249aaa4;
+        rb.conditions.context=&q;rb.conditions.descriptor=[](void* p,void*,const void** v,unsigned* n) noexcept -> int{auto& q=FollowFixture::self(p);*v=q.desc;*n=sizeof(q.desc);return 1;};
+        tb.request=[](void*,void*,std::uint32_t code) noexcept -> int{assert(code==1||code==8||code==11||code==0x223f6c78u);return 1;};
+        gate.shared=[](void* p,void*,const void*,unsigned) noexcept -> int{++FollowFixture::self(p).shared;return 1;};
+        gate.special=[](void* p,void*,void*,unsigned,std::uint32_t entry,const void*,unsigned) noexcept -> int{assert(entry==0x220d72dfu);++FollowFixture::self(p).special;return 1;};
+        b.extent=[](void* p,void* e,unsigned* n) noexcept -> int{auto& q=FollowFixture::self(p);assert(e==q.target||e==q.link);*n=sizeof(q.link);return 1;};
+        b.origin=[](void* p,void* e,float* v) noexcept -> int{auto& q=FollowFixture::self(p);assert(e==q.target||e==q.link);std::memcpy(v,e==q.target?q.target_pos:q.link_pos,12);return 1;};
+        b.find_point=[](void* p,void* c,float range,float* v,bool* yes) noexcept -> int{auto& q=FollowFixture::self(p);assert(c==q.a+0xeb8&&range==1024&&v[0]==1);*yes=q.found;if(*yes)v[0]=5;return 1;};
+        b.goal=[](void*,void*,const float* v,bool* yes) noexcept -> int{assert(v[0]==5);*yes=false;return 1;};
+        b.refresh_position=[](void* p,std::uint32_t token,float* v,bool* yes) noexcept -> int{auto& q=FollowFixture::self(p);assert(token==77);v[0]=8;v[1]=9;v[2]=10;*yes=q.refresh;return 1;};
+        b.navigation_ready=[](void* p,void*,bool* yes) noexcept -> int{*yes=FollowFixture::self(p).ready;return 1;};
+        b.clear_target=[](void* p,void* a,void* c,bool notify) noexcept -> int{auto& q=FollowFixture::self(p);assert(a==q.a&&c==q.a+0xeb8&&notify);std::memset(q.a+0xecc,0xff,4);return 1;};
+        b.dispatch=[](void*,void*,int id) noexcept -> int{assert(id==100005||id==100008);return 1;};
+        b.wait_link=[](void* p,void* e,int arg) noexcept -> int{assert(e==FollowFixture::self(p).link&&!arg);return 1;};
+        b.wait_actor=[](void* p,void* a,int arg) noexcept -> int{assert(a==FollowFixture::self(p).a&&!arg);return 1;};
+        busy.owner_event=[](void* p,void* a,int id,float arg) noexcept -> int{auto& q=FollowFixture::self(p);assert(a==q.a&&(id==27||id==61));if(id==61)assert(arg==0);q.a[0xec0]=0;++q.synthetic;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10eb8u);f.put(q.a,0xeb8,0x223f6b7cu);f.put(q.a,0xebc,0x10000u);f.put(q.a,0xec4,0x10c14u);
+        f.put(q.a,0xecc,0x9001u);f.put(q.a,0xeb8+0x3c,2048.f);f.put(q.a,0xeb8+0xc4,77u);
+        ServerNpcGruntFollowEventResult o{};
+        auto run=[&](int id,float arg=2.f){f.put(q.raw,0,id);f.put(q.raw,4,arg);return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        assert(run(0x62)&&o.marker_default&&q.shared==1&&!o.target_valid);
+        assert(run(100002)&&o.request_value==1);
+        f.put(q.a,0xecc,0x1001u);assert(run(0x62)&&o.find_called&&o.request_value==8);
+        q.found=true;assert(run(0x62)&&o.goal_called&&!o.goal_result&&o.deadline==12&&o.reset_called);
+        q.target_pos[0]=.5f;assert(run(100002)&&o.reset_called&&!o.nav_called);
+        q.target_pos[0]=1.f;assert(run(100002)&&o.nav_called&&o.request_value==11);
+        q.ready=true;assert(run(100002)&&o.stored_origin&&!o.reset_called);
+        assert(run(100003)&&o.refresh_called&&o.cache_written&&o.actor_point_reset);
+        assert(run(100003)&&!o.refresh_called&&o.cache_written);
+        assert(run(100004)&&o.cache_written&&o.reset_called);
+        assert(run(100006,3.f)&&o.timer_written&&o.deadline==13&&o.reset_called);
+        assert(run(100007)&&o.link_predicate&&o.synthetic_event==27&&q.a[0xec0]);
+        f.put(q.a,0xa18,0x2002u);f.put(q.link,0x3bc,2);f.put(q.link,0x3b4,99u);
+        assert(run(100008)&&!o.link_predicate&&o.synthetic_event==61&&q.a[0xec0]);
+        assert(run(100009)&&o.dispatched==100008);
+        q.link_pos[0]=16;f.put(q.a,0xeb8+0x98,2.f);f.put(q.a,0xeb8+0x9c,0.f);
+        assert(run(100009)&&o.wait_called&&o.deadline==12&&o.request_value==0x223f6c78u);
+        f.put(q.link,0x3b4,0u);assert(run(100009)&&o.link_predicate&&o.dispatched==100005);
+        f.put(q.link,0x3a4,static_cast<std::int16_t>(900));f.put(q.a,0xeb8+0x60,-1.f);f.put(q.a,0xeb8+0x24,20.f);f.put(q.a,0xeb8+0x2c,10.f);
+        assert(run(100010)&&o.cache_written&&o.reset_called);
+        assert(run(100001)&&!o.entered&&q.special==1);assert(run(100005)&&!o.entered&&q.special==2);
+        assert(run(100000)&&o.clear_called&&o.reset_called);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
