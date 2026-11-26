@@ -590,7 +590,7 @@ int main(int argc,char** argv){
     // Active, equipped NPC with no enemy: native ammo must run at both +420
     // call sites. Deliberately stop after the second gather at ideal-state query.
     {
-        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;} equipped{&f};
+        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{},senses[0x60]{},empty_vectors[3][0x10]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;} equipped{&f};
         sin_independent::EntityHandleEntry equipped_entries[3]{};
         equipped_entries[0].serial=3;equipped_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
         equipped_entries[1].serial=7;equipped_entries[1].entity=reinterpret_cast<CBaseEntity*>(equipped.weapon);
@@ -647,6 +647,8 @@ int main(int argc,char** argv){
             case 603:*out=q.record;*n=sizeof(q.record);return 1;
             case 604:*out=q.nav;*n=sizeof(q.nav);return 1;
             case 605:*out=q.path;*n=sizeof(q.path);return 1;
+            case 606:*out=q.senses;*n=sizeof(q.senses);return 1;
+            case 607:case 608:case 609:*out=q.empty_vectors[token-607];*n=0x10;return 1;
             default:return 0;
             }
         };
@@ -979,12 +981,35 @@ int main(int argc,char** argv){
         gather.classname_matches=[](void*,void*,const char* name,bool* yes) noexcept -> int{
             assert(!std::strcmp(name,"npc_gib_hopper"));*yes=false;return 1;
         };
+        // Combat state3 always enters the original perception route even
+        // outside PVS. Supply bounded empty scene buckets, no active sounds,
+        // and live existing enemy memory; do not replace the perception tick.
+        gather.base.gate.pre_perception=[](void*,void*) noexcept -> int{return 1;};
+        auto& perception=gather.base.perception;
+        perception.visual.senses.storage.context=&equipped;perception.visual.senses.storage.storage=storage;
+        perception.context=&equipped;
+        perception.rebuild_category=[](void* p,void* senses,unsigned category,int radius) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(senses==q.senses&&category<3&&radius==512);return 1;
+        };
+        perception.sound.active_head=[](void*,int* index) noexcept -> int{*index=-1;return 1;};
+        perception.maintenance.storage=vis.memory.storage;perception.maintenance.context=&equipped;
+        perception.maintenance.extent=extent;perception.maintenance.origin=center;
+        perception.maintenance.npc_state=[](void* p,void* e,bool* npc,int* state) noexcept -> int{
+            assert(e==static_cast<EquippedThinkFixture*>(p)->enemy);*npc=true;*state=3;return 1;
+        };
+        perception.enemy_switch.best.memory=vis.memory;
+        // Existing reload descriptor admits only danger interruption, so
+        // no new/lost enemy selection is expected.
+        post.search.weapon_caps=[](void*,void*,unsigned* caps) noexcept -> int{*caps=0x10000000u;return 1;};
         auto reload_move=mb;reload_move.context=&equipped;reload_move.storage=storage;
         reload_move.clear_path=[](void* p,void* nav) noexcept -> int{
             auto& q=*static_cast<EquippedThinkFixture*>(p);assert(nav==q.nav);q.f->put(q.path,0,0u);q.f->put(q.path,0x44,0u);return 1;
         };
         step_bind.movement=&reload_move;
         prepare_engaged(0,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+        f.put(f.actor,0x898,606u);f.put(equipped.senses,8,512.f);
+        for(unsigned i=0;i<3;++i)f.put(equipped.senses,0x54+4*i,607u+i);
+        f.put(equipped.memory,0x1c,5.f);f.put(equipped.memory,0x20,60.f);
         f.put(f.actor,0x9b0,std::uint16_t{2});f.put(f.actor,0x9b2,std::uint16_t{3});
         assert(state->install(f.actor,sizeof(f.actor),extended_attack,76.25f,&sb,&sr));
         f.put(f.actor,0x79c,global+191);
@@ -998,6 +1023,11 @@ int main(int argc,char** argv){
             const int ok=outer_api->ground(f.actor,sizeof(f.actor),&input,.05f,&step_bind,&outer_bind,&step_result,&tail_result,&outer_result);
             const auto& mt=step_result.think.requests.scheduler.maintenance;
             if(!ok)std::fprintf(stderr,"reload phase now=%f admitted=%u think=%u complete=%u selected=%d schedule=%u task=%d status=%d anim=%u event=%d tail=%u\n",now,outer_result.admission.admitted,step_result.think_called,step_result.think_completed,step_result.think.requests.request.acquisition.translated,mt.state.schedule,mt.state.task.id,mt.state.status,step_result.animation_called,step_result.animation.frame.frame.failed_event,tail_result.completed);
+            if(!ok){
+                const auto& t=step_result.think.think.think.think.squad.cycle.preschedule.think;
+                const auto& g=t.outer_gather.gather;
+                std::fprintf(stderr,"gather=%u gate=%u perceive=%u perception=%u categories=%u memory=%u deferred=%u post=%u pre=%u maintain=%u\n",g.completed,g.base.gate.pre_called,g.base.gate.perceive,g.base.perception.completed,g.base.perception.categories,g.base.perception.maintenance.visited,g.base.perception.enemy_switch.deferred,g.base.post.completed,t.preschedule_called,t.maintenance_called);
+            }
             assert(ok&&outer_result.completed&&outer_result.think_called&&step_result.think_completed&&tail_result.completed);
         };
         update_reload(76.25f,16,false);
