@@ -4,6 +4,7 @@
 #include "server_fixed_difficulty_service.h"
 int __cdecl SinPublishCampaignEventInternal(void*,const sin_port::fixed_service::NativeTriggerEvent*,
     int (__cdecl *)(void*,int*) noexcept,void*,const unsigned char*,void*,void*) noexcept;
+bool __cdecl SinReadCampaignTouchMarkerInternal(const void*,unsigned*) noexcept;
 extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::fixed_service::Api* __cdecl SiN_GetFixedDifficultyApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
@@ -913,8 +914,17 @@ int campaign_trigger_spawn_impl(void* a,unsigned n,const CampaignTriggerBindings
 }
 int campaign_trigger_touch_impl(void* a,unsigned n,void* other,const CampaignTriggerBindings* b,CampaignTriggerResult* o,void* manager,int* publication,
     void* startup_globals=nullptr,void* startup_engine=nullptr) noexcept {
-    if(!campaign_valid(a,n,b,o)||!other||!b->is_player)return 0;
-    bool player=false;if(!b->is_player(b->context,other,&player))return 0;
+    if(!campaign_valid(a,n,b,o)||!other)return 0;
+    bool player=false;
+    if(startup_globals&&startup_engine){
+        unsigned marker=0;if(!SinReadCampaignTouchMarkerInternal(other,&marker))return 0;
+        const auto classification=campaign_player_marker(marker);
+        if(classification==PlayerPredicate::Player)player=true;
+        else if(classification==PlayerPredicate::Unknown){
+            // Preserve the host route only for genuinely unreviewed classes.
+            if(!b->is_player||!b->is_player(b->context,other,&player))return 0;
+        }
+    }else if(!b->is_player||!b->is_player(b->context,other,&player))return 0;
     if(!player){o->nonplayer=o->completed=1;return 1;}
     // The existing fixed-policy adapter is deliberately opt-in. Unlike
     // the original raw Touch leaf it refuses duplicate observations once
@@ -2814,4 +2824,12 @@ int __cdecl SinTouchCampaignTriggerFromStartupInternal(void* a,unsigned n,void* 
     sin_port::native_map::CampaignTriggerResult* o,int* publication,void* globals,void* engine) noexcept {
     if(!manager||!publication||!globals||!engine)return 0;
     return sin_port::native_map::campaign_trigger_touch_impl(a,n,other,b,o,manager,publication,globals,engine);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_ClassifyCampaignTouchPlayer=_SiN_ClassifyCampaignTouchPlayer")
+extern "C" sin_port::native_map::PlayerPredicate __cdecl SiN_ClassifyCampaignTouchPlayer(const void* actor,unsigned bytes) noexcept {
+    using namespace sin_port::native_map;
+    unsigned marker=0;
+    if(bytes<4||!SinReadCampaignTouchMarkerInternal(actor,&marker))return PlayerPredicate::Invalid;
+    return campaign_player_marker(marker);
 }

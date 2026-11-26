@@ -43,7 +43,29 @@ ORIGINAL_METHODS={
   "base_kill":(0x2213CDC0,80,"f46fec6fac87b05f1e8f2485b7ccf8b7e5748a8d4147ba27d01e46d4a0ff25e6"),
   "find_by_name":(0x221619E0,190,"4d2372f524268ab2ce2a8df08cbf48f0adaa3dae121c4c8963108759d4099bdd"),
   "get_handle":(0x22001B00,7,"0e8c31f2e49bf659ab4d49f07c04d6b715991eba3737f43ca492e011d3d9b8e7"),
+  "is_player_true":(0x22253C30,3,"e18aacce29affcdddaa5f641ac1ec12552e0fe9d066e6408941b1792818b8619"),
+  "is_player_false":(0x220017E0,3,"01cb47d078b4841b8408ec4fe278efa83115c6f6e101972987507d2b2b57dcf0"),
 }
+PLAYER_ROWS=(
+    (0x224aec3c,0x224d3ff0,0x2251e69c,0x22253c30,".?AVCHL2_Player@@"),
+    (0x2245222c,0x224c8498,0x224e5e60,0x22253c30,".?AVCBasePlayer@@"),
+    (0x2240ac2c,0x224bbc10,0x224d88d4,0x220017e0,".?AVCBaseEntity@@"),
+    (0x2243b96c,0x224c3f84,0x2250d3fc,0x220017e0,".?AVCTriggerDynamicDifficulty@@"),
+    (0x2243bc0c,0x224c3fe0,0x2250d424,0x220017e0,".?AVCTriggerSecret@@"),
+    (0x2241f0d4,0x224bee34,0x224fb494,0x220017e0,".?AVCLogicAuto@@"),
+    (0x22420e14,0x224bf3f0,0x224fd920,0x220017e0,".?AVCTimerEntity@@"),
+    (0x22422294,0x224bf6d0,0x224fda0c,0x220017e0,".?AVCLogicBranch@@"),
+    (0x22421d74,0x224bf618,0x224fd9d4,0x220017e0,".?AVCLogicCase@@"),
+    (0x22422004,0x224bf674,0x224fd9f0,0x220017e0,".?AVCLogicCompare@@"),
+    (0x22421ae4,0x224bf5bc,0x224fd9b8,0x220017e0,".?AVCMathCounter@@"),
+    (0x22420b84,0x224bf394,0x224fd8fc,0x220017e0,".?AVCLogicCompareInteger@@"),
+    (0x2241f9e4,0x224bf2dc,0x224fb91c,0x220017e0,".?AVCLogicAutosave@@"),
+    (0x2241ed04,0x224bed98,0x224fb118,0x220017e0,".?AVCLogicNavigation@@"),
+    (0x22422534,0x224bf75c,0x224fda28,0x220017e0,".?AVCLogicMenuListener@@"),
+    (0x22421334,0x224bf4a8,0x224fd960,0x220017e0,".?AVCMathRemap@@"),
+    (0x224215c4,0x224bf504,0x224fd97c,0x220017e0,".?AVCMathColorBlend@@"),
+    (0x224228cc,0x224bf844,0x224fdabc,0x220017e0,".?AVCLogicRelay@@"),
+)
 BASE_TOGGLE_ROWS=(0x22508C74,780,"e2ac6ab967effdb36eae1c1a1af07c5b2cb753716a9616a8c0dc514cca019f0b")
 CONTROL_ROWS=(
     (0x2250BAA0,0x223EDD00,0x22060810,"Enable"),
@@ -179,6 +201,15 @@ def verify_trigger_control(read_u32,read_text):
                 raise EvidenceRefused("trigger control virtual slot changed")
     return len(CONTROL_ROWS),len(CONTROL_CLASSES)*(len(CONTROL_SLOTS)+1)
 
+def verify_player_predicates(read_u32,read_text):
+    for table,col,typedesc,target,name in PLAYER_ROWS:
+        if (read_u32(table-4),read_u32(col),read_u32(col+4),
+            read_u32(col+12),read_u32(table+0x120))!=(col,0,0,typedesc,target):
+            raise EvidenceRefused("primary player predicate slot/RTTI changed "+name)
+        if not read_text(typedesc+8,name):
+            raise EvidenceRefused("player predicate RTTI name changed "+name)
+    return len(PLAYER_ROWS)
+
 def verify_subject_operands(at,read_text):
     # The other original event helper at 222b6420 uses advisor.
     # These two helpers instead push the actual subject literal.
@@ -222,6 +253,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
     count=verify_datadesc(pe.u32,pe.text)
     control_rows,control_slots=verify_trigger_control(pe.u32,pe.text)
     subject_sites=verify_subject_operands(pe.at,pe.text)
+    player_rows=verify_player_predicates(pe.u32,pe.text)
     va,length,digest=BASE_TOGGLE_ROWS
     if hashlib.sha256(pe.at(va,length)).hexdigest()!=digest:
         raise EvidenceRefused("changed inherited CBaseToggle datamap")
@@ -256,6 +288,7 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "trigger_control_input_rows":control_rows,
         "trigger_control_virtual_slots":control_slots,
         "subject_operand_sites":subject_sites,
+        "player_predicate_primary_rows":player_rows,
         "base_toggle_rows_without_inputs":15,
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
         "limitations":"No real game entity creation, map load, AI or playable DLL Init."
@@ -351,6 +384,22 @@ def self_test()->None:
         try:verify_trigger_control(control_words.get,lambda va,s:bad.get(va)==s)
         except EvidenceRefused:pass
         else:raise AssertionError("mutated trigger input name accepted")
+    player_words={}
+    player_text={}
+    for table,col,typedesc,target,name in PLAYER_ROWS:
+        player_words.update({table-4:col,col:0,col+4:0,col+12:typedesc,table+0x120:target})
+        player_text[typedesc+8]=name
+    assert verify_player_predicates(player_words.get,lambda va,s:player_text.get(va)==s)==18
+    for key in player_words:
+        bad=dict(player_words);bad[key]^=1
+        try:verify_player_predicates(bad.get,lambda va,s:player_text.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated primary player predicate accepted")
+    for key in player_text:
+        bad=dict(player_text);bad[key]="invented"
+        try:verify_player_predicates(player_words.get,lambda va,s:bad.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated predicate RTTI name accepted")
     subject_chunks={site:b"\x68"+struct.pack("<I",0x223EC29C)
                     for site in SUBJECT_SITES}
     assert verify_subject_operands(lambda va,n:subject_chunks[va][:n],
