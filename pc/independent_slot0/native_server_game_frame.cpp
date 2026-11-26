@@ -24,6 +24,7 @@ unsigned known_kind(void* a,unsigned bytes,const Bindings& b) noexcept {
         (vt==antigen_canister_vtable&&bytes>=antigen_canister_extent)||
         (vt==antigen_gas_vtable&&bytes>=antigen_gas_extent&&read<int>(a,0x398)==1)))return 2;
     if(vt==native_map::auto_vtable&&b.logic_auto&&bytes>=native_map::auto_extent)return 3;
+    if(vt==native_map::timer_vtable&&b.logic_timer&&bytes>=native_map::timer_extent)return 4;
     return 0;
 }
 bool native_think(void* a,unsigned bytes,unsigned kind,const State& s,const Bindings& b,Result& o) noexcept {
@@ -39,6 +40,14 @@ bool native_think(void* a,unsigned bytes,unsigned kind,const State& s,const Bind
         behavior.now=&s.globals->curtime;bound.behavior=&behavior;
         if(!api||!api->auto_primary_run(a,bytes,s.globals->tick,s.globals->interval,&bound,&o.logic_auto))return false;
         ++o.native_auto;return true;
+    }
+    if(kind==4){
+        if(!b.logic_timer->behavior)return false;
+        const auto* api=SiN_GetServerMapEntityApi(1,sizeof(native_map::Api));
+        auto bound=*b.logic_timer;auto behavior=*bound.behavior;
+        behavior.now=&s.globals->curtime;behavior.tick_interval=&s.globals->interval;bound.behavior=&behavior;
+        if(!api||!api->timer_primary_run(a,bytes,s.globals->tick,&bound,&o.logic_timer))return false;
+        ++o.native_timer;return true;
     }
     const auto* api=SiN_GetServerAntigenPrimaryThinkApi(1,sizeof(ServerAntigenPrimaryThinkApi));
     if(!api||!api->run(a,bytes,read<unsigned>(a,0x378),s.globals->tick,s.globals->interval,b.antigen,&o.antigen))return false;
@@ -77,7 +86,7 @@ bool actor(void* a,const State& s,const Bindings& b,Result& o) noexcept {
     if(read<unsigned>(a,0x16c)){
         // 2221c1c0 +388 is the prediction branch, +3c nonzero the
         // player-simulation branch; leave both with the full owner path.
-        if(kind&&kind!=3&&!named&&b.edict_scope&&!read<unsigned char>(a,0x388)&&!read<unsigned>(a,0x3c)){
+        if(kind&&kind<=2&&!named&&b.edict_scope&&!read<unsigned char>(a,0x388)&&!read<unsigned>(a,0x3c)){
             const auto& entities=kind==1?b.resupply->entities:b.antigen->entities;
             if(entities.count>sin_independent::kEntityHandleCapacity||(!entities.entries&&entities.count))return false;
             const sin_independent::EntityHandleView registry(entities.entries,entities.count);
@@ -134,6 +143,13 @@ bool events(const State& s,const Bindings& b,Result& o) noexcept {
         if(q.bindings&&q.steps&&q.single_step){
             const auto* api=SiN_GetServerEntityEventServiceApi(1,sizeof(ServerEntityEventServiceApi));
             auto bindings=*q.bindings;bindings.live_now=&s.globals->curtime;bindings.live_single_step=q.single_step;
+            // Bind timer input cadence to the same live frame interval as
+            // actor dispatch. Service itself supplies registry and clock.
+            ServerEntityAcceptInputBindings input{};native_map::TimerBindings timer{};
+            if(bindings.native_input&&bindings.native_input->timer&&bindings.native_input->timer->cadence){
+                input=*bindings.native_input;timer=*input.timer;timer.tick_interval=&s.globals->interval;
+                input.timer=&timer;bindings.native_input=&input;
+            }
             ok=api&&api->service(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events);
             if(ok)o.native_events=1;
         }
