@@ -2992,6 +2992,50 @@ int __cdecl squad_report_gather(void* a,unsigned n,float now,const ServerNpcGrun
     const PerceptionSpeechRoute route{reports->perception.dialogue,result->perception.dialogue,&release,&forward};
     return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route);
 }
+int __cdecl squad_enemy_broadcast(std::uint32_t token,void* target,float now,const ServerNpcGruntSquadEnemyBindings* b,ServerNpcGruntSquadEnemyResult* out) noexcept{
+    if(!out)return 0;*out={};out->last_seen=-std::numeric_limits<float>::max();
+    if(!b||!std::isfinite(now)||b->slots.count>sin_independent::kEntityHandleCapacity||(b->slots.count&&!b->slots.entries))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(!target){out->null_target=1;return done();}
+    const auto& sb=b->slots;void* group=nullptr;unsigned gn=0;
+    if(!memory_storage(&sb.storage,token,0x4c,group,gn))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    for(int i=0;;++i){
+        const int count=read<int>(group,0x48);if(count<0||count>16)return 0;
+        if(i>=count)break;
+        ++out->visited;void* actor=registry.Resolve(read<unsigned>(group,8+4*i));
+        if(!actor){++out->stale;continue;}
+        unsigned vt=0,n=0;ServerNpcEnemyStateBindings enemy{};ServerNpcEnemyMemoryQueryBindings memory{};
+        if(!b->member||!b->member(b->context,actor,&vt,&n,&enemy,&memory))return 0;
+        if(!relation_grunt_class(vt)){
+            ++out->external_members;
+            if(!b->other_member||!b->other_member(b->context,actor,target,now))return 0;
+            continue;
+        }
+        ++out->native_members;
+        if(n<0xc04)return 0;
+        void* current=registry.Resolve(read<unsigned>(actor,0x8a0));
+        if(current){
+            // +154 and +150 are pure handle resolvers for all eight classes.
+            if(current==target){++out->same;continue;}
+            ServerNpcConditionResult cr{};
+            if(!cond->test(actor,n,0xa,NpcConditionCurrent,&enemy.conditions,&cr))return 0;
+            if(cr.value){++out->condition_blocked;continue;}
+            unsigned key=0;void* owner=nullptr;unsigned mn=0;
+            if(!memory_key(memory,current,key)||!memory_storage(&memory.storage,read<unsigned>(actor,0x984),0x40,owner,mn)||
+                !memory_timestamp(owner,mn,key,NpcMemoryStamp1c,&memory.storage,&out->last_lookup,&out->last_seen)||!std::isfinite(out->last_seen))return 0;
+            // Original x87 difference must be strictly greater than 3.0.
+            if(static_cast<double>(now)-out->last_seen<=3.0){++out->recent;continue;}
+        }else ++out->unassigned;
+        enemy.entries=sb.entries;enemy.count=sb.count;
+        reset_perception_slots(out->last_slots);const SquadReleaseRoute release{sb,out->last_slots};
+        if(!set_enemy_impl(actor,n,target,true,now,&enemy,&out->last_assignment,true,&release))return 0;
+        ++out->assigned;
+    }
+    return done();
+}
+const ServerNpcGruntSquadEnemyApi squad_enemy_api{1,sizeof(ServerNpcGruntSquadEnemyApi),&squad_enemy_broadcast};
 const ServerNpcGruntSquadReportApi squad_report_api{1,sizeof(ServerNpcGruntSquadReportApi),&squad_report,&squad_report_update,&squad_report_gather};
 const ServerNpcGruntPerceptionSlotsApi perception_slots_api{1,sizeof(ServerNpcGruntPerceptionSlotsApi),&slots_set_enemy,&slots_enemy_switch,&slots_perception_update,&slots_perception_gather};
 const ServerNpcGruntSquadSlotsApi squad_slots_api{1,sizeof(ServerNpcGruntSquadSlotsApi),&slots_read,&slots_bit,&slots_reserve,&slots_occupied,&slots_release};
@@ -3413,4 +3457,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadReportApi=_SiN_GetServerNpcGruntSquadReportApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadReportApi* __cdecl SiN_GetServerNpcGruntSquadReportApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadReportApi)?&squad_report_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadEnemyApi=_SiN_GetServerNpcGruntSquadEnemyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadEnemyApi* __cdecl SiN_GetServerNpcGruntSquadEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadEnemyApi)?&squad_enemy_api:nullptr;
 }
