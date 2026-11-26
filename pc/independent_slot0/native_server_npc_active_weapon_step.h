@@ -417,6 +417,9 @@ struct ServerNpcInputJetThinkScheduleBindings {
     // ragdoll creation and physical operations, not handle orchestration.
     const ServerNpcGruntRagdollRouteBindings* ragdoll;
     ServerNpcGruntRagdollRouteResult* ragdoll_result;
+    // Optional native 220a35c0 death sentence and request path.
+    const ServerNpcGruntSentenceBindings* sentence;
+    const ServerNpcGruntSentenceRequestBindings* sentence_request;
 };
 struct ServerNpcInputHealthDispatchBindings {
     void* context;
@@ -486,6 +489,9 @@ struct ServerEntityAcceptInputResult {
     unsigned health_elite_route,health_jet_route,health_subclass_death;
     unsigned health_jet_think_installed,health_jet_think_scheduled,health_jet_ragdoll_native;
     ServerNpcOuterCadenceResult health_jet_cadence;
+    unsigned health_jet_sentence_native;
+    ServerNpcGruntSentenceResult health_jet_sentence;
+    ServerNpcGruntSentenceRequestResult health_jet_request;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
