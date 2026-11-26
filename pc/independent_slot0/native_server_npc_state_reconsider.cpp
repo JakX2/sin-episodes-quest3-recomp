@@ -4346,7 +4346,87 @@ int __cdecl grunt_behavior_event(void* a,unsigned n,const void* ev,unsigned en,f
     return grunt_behavior_event_impl(a,n,ev,en,now,b,out);
 }
 const ServerNpcGruntBehaviorEventApi behavior_event_api{1,sizeof(ServerNpcGruntBehaviorEventApi),&grunt_behavior_event};
-int grunt_event43_impl(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntEvent43Bindings* b,ServerNpcGruntEvent43Result* out,const RappelEventRoute* rappel=nullptr) noexcept{
+
+struct EventTimerRoute {const ServerNpcGruntEventTimerBindings* bindings;ServerNpcGruntEventTimerResult* result;};
+int event_timer_refresh(void* a,unsigned n,float now,const EventTimerRoute& route) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;
+    const auto& rb=b.events;
+    const auto& gate=rb.events.events.gate;
+    const auto& sb=gate.speech.speech.sentence;
+    if(n<0xc1c)return 0;
+    o.entered=1;write(a,0x99c,now);o.previous_deadline=read<float>(a,0x9a8);
+    o.count_before=read<std::uint16_t>(a,0x9ae);
+    o.count_after=static_cast<std::uint16_t>(o.count_before-1u);
+    write<std::uint16_t>(a,0x9ae,static_cast<std::uint16_t>(o.count_after));
+    auto sample=[&](unsigned off,double& result){
+        const float lo=read<float>(a,off),hi=read<float>(a,off+4);
+        return std::isfinite(lo)&&std::isfinite(hi)&&rb.random_float&&rb.random_float(rb.context,lo,hi,&result)&&std::isfinite(result);
+    };
+    double seconds=0;
+    if(o.count_after==0){
+        int count=0;
+        if(!rb.random_int||!rb.random_int(rb.context,read<std::uint16_t>(a,0x9b0),read<std::uint16_t>(a,0x9b2),&count))return 0;
+        o.count_after=static_cast<std::uint16_t>(count);
+        write<std::uint16_t>(a,0x9ae,static_cast<std::uint16_t>(o.count_after));
+        if(!sample(0x9b4,seconds))return 0;
+        o.deadline=static_cast<float>(seconds+static_cast<double>(now));if(!std::isfinite(o.deadline))return 0;
+        write<std::uint8_t>(a,0x9ac,1);write(a,0x9a8,o.deadline);o.rearmed=1;
+    }else{
+        write<std::uint8_t>(a,0x9ac,0);
+        if(!sample(0x9bc,seconds))return 0;
+        const double deadline=seconds+static_cast<double>(read<float>(a,0x9a8));
+        o.deadline=static_cast<float>(deadline);if(!std::isfinite(o.deadline))return 0;
+        if(deadline<now){o.deadline=now;o.clamped=1;}
+        write(a,0x9a8,o.deadline);
+    }
+    o.active=read<std::uint8_t>(a,0x9ac)!=0&&!(read<float>(a,0x9a8)<=now);
+    if(o.active){
+        const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+        void* weapon=registry.Resolve(read<unsigned>(a,0x78c));
+        if(!weapon||!b.weapon_float||!b.weapon_int)return 0;
+        float lo=0,hi=0;int ilo=0,ihi=0;
+        auto fp=[&](unsigned slot,float& v){++o.weapon_queries;return b.weapon_float(b.context,weapon,slot,&v)&&std::isfinite(v);};
+        auto ip=[&](unsigned slot,int& v){++o.weapon_queries;return b.weapon_int(b.context,weapon,slot,&v)!=0;};
+        if(!fp(0x3ac,hi)||!fp(0x3ac,lo))return 0;
+        write(a,0x9bc,lo);write(a,0x9c0,hi);
+        if(!ip(0x3b4,ihi)||!ip(0x3b0,ilo))return 0;
+        write<std::uint16_t>(a,0x9b0,static_cast<std::uint16_t>(ilo));
+        write<std::uint16_t>(a,0x9b2,static_cast<std::uint16_t>(ihi));
+        if(!fp(0x3bc,hi)||!fp(0x3b8,lo))return 0;
+        write(a,0x9b4,lo);write(a,0x9b8,hi);
+        if(const auto active=read<unsigned>(a,0xc18)){
+            EmbeddedBehaviorIdentity identity{};
+            if(!embedded_behavior_identity(a,n,sb.speech.original_vtable,gate.actor_token,active,false,identity))return 0;
+            const unsigned off=identity.embedded_offset;
+            unsigned count_off=0,range_off=0;
+            if(identity.behavior_vtable==0x224ae624){count_off=0x20;range_off=0x18;}
+            else if(identity.behavior_vtable==0x22495344){count_off=0x54;range_off=0x4c;}
+            if(count_off){
+                if(n-off<count_off+8)return 0;
+                const auto* p=static_cast<const unsigned char*>(a)+off;
+                const float min=read<float>(p,range_off),max=read<float>(p,range_off+4);
+                if(!std::isfinite(min)||!std::isfinite(max))return 0;
+                write<std::uint16_t>(a,0x9b0,read<std::uint16_t>(p,count_off));
+                write<std::uint16_t>(a,0x9b2,read<std::uint16_t>(p,count_off+4));
+                write(a,0x9b4,min);write(a,0x9b8,max);
+                o.behavior_override=1;
+            }
+            // Other six +28 methods are one-byte RET.
+        }
+    }
+    o.deadline=read<float>(a,0x9a8);
+    if(o.deadline!=read<float>(a,0x60c)){
+        if(read<std::uint8_t>(a,0x1f0)){write<std::uint8_t>(a,0x200,1);o.dirty_written=1;}
+        else if(const auto dirty=read<unsigned>(a,0x16c)){
+            void* p=nullptr;unsigned bytes=0;
+            if(!memory_storage(&b.dirty_storage,dirty,4,p,bytes))return 0;
+            write(p,0,read<unsigned>(p,0)|1u);o.dirty_written=1;
+        }
+        write(a,0x60c,o.deadline);o.deadline_written=1;
+    }
+    o.completed=1;return 1;
+}
+int grunt_event43_impl(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntEvent43Bindings* b,ServerNpcGruntEvent43Result* out,const RappelEventRoute* rappel=nullptr,const EventTimerRoute* timer=nullptr) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!ev||en<8||!b||!std::isfinite(now))return 0;
     const auto& sb=b->gate.speech.speech.sentence;
@@ -4382,7 +4462,8 @@ int grunt_event43_impl(void* a,unsigned n,const void* ev,unsigned en,float now,c
         // 220b1ba0 returns true for deadline <= now (ordered).
         out->timer_pending=deadline<=now;
         if(out->timer_pending){
-            if(!b->refresh||!b->refresh(b->context,a))return 0;
+            if(timer){if(!event_timer_refresh(a,n,now,*timer))return 0;}
+            else if(!b->refresh||!b->refresh(b->context,a))return 0;
             out->refreshed=1;out->activity=16;
         }else out->activity=72;
         if(read<int>(a,0x878)==out->activity){write(a,0x878,0);out->cleared=1;}
@@ -4410,6 +4491,16 @@ int __cdecl grunt_rappel_schedule(void* a,unsigned n,const void* ev,unsigned en,
     return grunt_event43_impl(a,n,ev,en,now,&b->events.events,&out->events.events,&route);
 }
 const ServerNpcGruntRappelScheduleApi rappel_schedule_api{1,sizeof(ServerNpcGruntRappelScheduleApi),&grunt_rappel_schedule};
+int __cdecl grunt_event_timer(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntEventTimerBindings* b,ServerNpcGruntEventTimerResult* out) noexcept{
+    if(!out)return 0;*out={};out->events.events.rope_handle=0xffffffffu;
+    auto& e=out->events;e.condition.global=e.condition.bit=e.slot.index=e.slot.selected=-1;
+    if(!b)return 0;
+    const RappelScheduleRoute schedule{&b->events,&e};
+    const RappelEventRoute rappel{&b->events.events,&e.events,&schedule};
+    const EventTimerRoute timer{b,out};
+    return grunt_event43_impl(a,n,ev,en,now,&b->events.events.events,&e.events.events,&rappel,&timer);
+}
+const ServerNpcGruntEventTimerApi event_timer_api{1,sizeof(ServerNpcGruntEventTimerApi),&grunt_event_timer};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6226,4 +6317,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRappelScheduleApi=_SiN_GetServerNpcGruntRappelScheduleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRappelScheduleApi* __cdecl SiN_GetServerNpcGruntRappelScheduleApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRappelScheduleApi)?&rappel_schedule_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEventTimerApi=_SiN_GetServerNpcGruntEventTimerApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEventTimerApi* __cdecl SiN_GetServerNpcGruntEventTimerApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEventTimerApi)?&event_timer_api:nullptr;
 }

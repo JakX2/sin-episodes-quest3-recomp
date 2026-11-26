@@ -2340,4 +2340,23 @@ struct ServerNpcGruntRappelScheduleApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntRappelScheduleBindings*,ServerNpcGruntRappelScheduleResult*) noexcept;
 };
 using GetServerNpcGruntRappelScheduleApi=const ServerNpcGruntRappelScheduleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_event_timer_export[]="SiN_GetServerNpcGruntEventTimerApi";
+struct ServerNpcGruntEventTimerBindings {
+    ServerNpcGruntRappelScheduleBindings events;
+    ServerNpcEnemyMemoryBindings dirty_storage;
+    void* context;
+    // Source slot identities are data. Float results are rounded at each original FSTP.
+    int (__cdecl *weapon_float)(void*,void*,unsigned,float*) noexcept;
+    int (__cdecl *weapon_int)(void*,void*,unsigned,int*) noexcept;
+};
+struct ServerNpcGruntEventTimerResult {
+    ServerNpcGruntRappelScheduleResult events;
+    float previous_deadline,deadline;
+    unsigned entered,completed,count_before,count_after,rearmed,clamped,active,weapon_queries,behavior_override,dirty_written,deadline_written;
+};
+struct ServerNpcGruntEventTimerApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntEventTimerBindings*,ServerNpcGruntEventTimerResult*) noexcept;
+};
+using GetServerNpcGruntEventTimerApi=const ServerNpcGruntEventTimerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

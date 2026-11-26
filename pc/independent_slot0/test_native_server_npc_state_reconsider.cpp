@@ -3340,5 +3340,43 @@ int main(int argc,char** argv){
         q.a[0x9ec]=1;f.put(q.a,0x9e8,0x10001u);assert(!schedule_run()&&sr.entered&&!sr.guard_cleared);
 
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntEventTimerApi>(GetProcAddress(s,server_npc_grunt_event_timer_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_event_timer_export)&&!g(0,sizeof(ServerNpcGruntEventTimerApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntEventTimerApi));assert(api);
+        struct TimerFixture{
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},weapon[4]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            unsigned step=0,dirty=0x20;double interval=1.5;int count=3;
+            static TimerFixture& self(void* p){return *static_cast<TimerFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.weapon);
+        ServerNpcGruntEventTimerBindings b{};b.context=&q;b.events.context=&q;
+        auto& e=b.events.events.events;e.context=&q;e.gate.actor_token=0x10000u;
+        auto& sb=e.gate.speech.speech.sentence;sb.entries=q.entries;sb.count=2;sb.speech.original_vtable=0x2249aaa4;
+        e.weapon_caps=[](void* p,void* w,unsigned* v) noexcept -> int{auto& q=TimerFixture::self(p);assert(w==q.weapon);*v=0x1000000u;return 1;};
+        e.clear_activity=[](void* p,void* a,int id) noexcept -> int{auto& q=TimerFixture::self(p);assert(a==q.a&&id==16);return 1;};
+        b.events.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{auto& q=TimerFixture::self(p);assert(lo==2&&hi==5);*v=q.count;return 1;};
+        b.events.random_float=[](void* p,float,float,double* v) noexcept -> int{auto& q=TimerFixture::self(p);*v=q.interval;return 1;};
+        b.weapon_float=[](void* p,void* w,unsigned slot,float* v) noexcept -> int{auto& q=TimerFixture::self(p);assert(w==q.weapon);const unsigned expected[]{0x3ac,0x3ac,0,0,0x3bc,0x3b8};assert(q.step<6&&slot==expected[q.step]);*v=static_cast<float>(q.step+1);++q.step;return 1;};
+        b.weapon_int=[](void* p,void* w,unsigned slot,int* v) noexcept -> int{auto& q=TimerFixture::self(p);assert(w==q.weapon&&((q.step==2&&slot==0x3b4)||(q.step==3&&slot==0x3b0)));*v=q.step==2?9:4;++q.step;return 1;};
+        b.dirty_storage.context=&q;b.dirty_storage.storage=[](void* p,std::uint32_t tok,void** out,unsigned* n) noexcept -> int{assert(tok==77);*out=&TimerFixture::self(p).dirty;*n=4;return 1;};
+        f.put(q.raw,0,0x43);f.put(q.a,0x78c,0x1001u);f.put(q.a,0x16c,77u);f.put(q.a,0x9a8,9.f);
+        f.put(q.a,0x9ae,static_cast<std::uint16_t>(2));f.put(q.a,0x9b0,static_cast<std::uint16_t>(2));f.put(q.a,0x9b2,static_cast<std::uint16_t>(5));
+        f.put(q.a,0x9b4,1.f);f.put(q.a,0x9b8,2.f);f.put(q.a,0x9bc,1.f);f.put(q.a,0x9c0,2.f);
+        ServerNpcGruntEventTimerResult o{};
+        auto run=[&](){q.step=0;return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        assert(run()&&o.completed&&o.count_before==2&&o.count_after==1&&!o.rearmed&&o.deadline==10.5f&&o.dirty_written&&q.dirty==0x21&&!o.weapon_queries);
+        f.put(q.a,0x9a8,9.f);q.a[0x9ac]=0;f.put(q.a,0x9ae,static_cast<std::uint16_t>(1));
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10d20u);
+        f.put(q.a,0xd20,0x224ae624u);f.put(q.a,0xd24,0x10000u);f.put(q.a,0xd2c,0x10c14u);
+        f.put(q.a,0xd38,7.f);f.put(q.a,0xd3c,8.f);f.put(q.a,0xd40,10u);f.put(q.a,0xd44,11u);
+        q.a[0x1f0]=1;assert(run()&&o.rearmed&&o.active&&o.count_after==3&&o.deadline==11.5f&&o.weapon_queries==6&&o.behavior_override&&q.a[0x200]&&q.step==6);
+        std::uint16_t lo=0,hi=0;float low=0,high=0;std::memcpy(&lo,q.a+0x9b0,2);std::memcpy(&hi,q.a+0x9b2,2);std::memcpy(&low,q.a+0x9b4,4);std::memcpy(&high,q.a+0x9b8,4);
+        assert(lo==10&&hi==11&&low==7&&high==8);
+        f.put(q.a,0x9a8,1.f);q.a[0x9ac]=0;f.put(q.a,0x9ae,static_cast<std::uint16_t>(0));q.interval=1;
+        assert(run()&&o.count_after==65535&&o.clamped&&o.deadline==10.f&&!o.rearmed&&!o.weapon_queries);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
