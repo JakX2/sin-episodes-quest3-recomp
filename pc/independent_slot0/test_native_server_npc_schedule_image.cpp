@@ -590,7 +590,7 @@ int main(int argc,char** argv){
     // Active, equipped NPC with no enemy: native ammo must run at both +420
     // call sites. Deliberately stop after the second gather at ideal-state query.
     {
-        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;} equipped{&f};
+        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{},senses[0x60]{},empty_vectors[3][0x10]{},relationship[16]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;} equipped{&f};
         sin_independent::EntityHandleEntry equipped_entries[3]{};
         equipped_entries[0].serial=3;equipped_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
         equipped_entries[1].serial=7;equipped_entries[1].entity=reinterpret_cast<CBaseEntity*>(equipped.weapon);
@@ -647,6 +647,9 @@ int main(int argc,char** argv){
             case 603:*out=q.record;*n=sizeof(q.record);return 1;
             case 604:*out=q.nav;*n=sizeof(q.nav);return 1;
             case 605:*out=q.path;*n=sizeof(q.path);return 1;
+            case 606:*out=q.senses;*n=sizeof(q.senses);return 1;
+            case 607:case 608:case 609:*out=q.empty_vectors[token-607];*n=0x10;return 1;
+            case 610:*out=q.relationship;*n=sizeof(q.relationship);return 1;
             default:return 0;
             }
         };
@@ -816,7 +819,7 @@ int main(int argc,char** argv){
         struct FrameMeta {
             EquippedThinkFixture* q;
             ServerStudioEvent reload{.04f,2,0,"reload",0},shot{.04f,3002,0,"fire",0};
-            bool reloading=false;
+            bool reloading=false,suppress=false;
         } meta{&equipped};
         ServerNpcScriptWeaponEventFrameBindings frame{};
         frame.frame.events=event_bind.original;
@@ -845,7 +848,7 @@ int main(int argc,char** argv){
         nf.events.sequence=[](void* p,void* a,int,ServerAnimationEventSequence* seq) noexcept -> int{
             auto& q=*static_cast<FrameMeta*>(p);
             const bool npc=a==q.q->f->actor;assert(npc||a==q.q->weapon);
-            if(npc==q.reloading)*seq={npc?&q.reload:&q.shot,1,1,0};
+            if(!q.suppress&&npc==q.reloading)*seq={npc?&q.reload:&q.shot,1,1,0};
             else *seq={nullptr,0,1,0};
             return 1;
         };
@@ -968,6 +971,102 @@ int main(int argc,char** argv){
         int reload_fail=-1;std::memcpy(&reload_fail,f.actor+0x7bc,4);assert(reload_fail==49);
         // New descriptor's real first task installs the ordinary reload
         // fallback. No manual installation of schedule84 or forced selector.
+        // The other original probability branch must install the inherited
+        // ordinary reload descriptor rather than a synthetic fallback token.
+        const auto original_image=f.image;
+        assert(reload_image->build(f.actor,NpcSubclassGround,original_image.token_base,original_image.fallback_head,&b,&f.image,&result));
+        const auto ordinary=find(49),extended_attack=find(91);assert(ordinary&&extended_attack);
+        reload_policy.probability=[](void* p,float chance,bool* out) noexcept -> int{
+            assert(chance==20.f);++*static_cast<unsigned*>(p);*out=false;return 1;
+        };
+        gather.classname_matches=[](void*,void*,const char* name,bool* yes) noexcept -> int{
+            assert(!std::strcmp(name,"npc_gib_hopper"));*yes=false;return 1;
+        };
+        // Combat state3 always enters the original perception route even
+        // outside PVS. Supply bounded empty scene buckets, no active sounds,
+        // and live existing enemy memory; do not replace the perception tick.
+        gather.base.gate.pre_perception=[](void*,void*) noexcept -> int{return 1;};
+        auto& perception=gather.base.perception;
+        perception.visual.senses.storage.context=&equipped;perception.visual.senses.storage.storage=storage;
+        perception.context=&equipped;
+        perception.rebuild_category=[](void* p,void* senses,unsigned category,int radius) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(senses==q.senses&&category<3&&radius==512);return 1;
+        };
+        perception.sound.active_head=[](void*,int* index) noexcept -> int{*index=-1;return 1;};
+        perception.maintenance.storage=vis.memory.storage;perception.maintenance.context=&equipped;
+        perception.maintenance.extent=extent;perception.maintenance.origin=center;
+        perception.maintenance.npc_state=[](void* p,void* e,bool* npc,int* state) noexcept -> int{
+            assert(e==static_cast<EquippedThinkFixture*>(p)->enemy);*npc=true;*state=3;return 1;
+        };
+        perception.enemy_switch.best.memory=vis.memory;
+        // First gather after acquisition still sees the previous attack
+        // interrupt mask. Retain the original current-enemy relation and
+        // validity path rather than clearing those bits to skip reconsideration.
+        auto& choice=perception.enemy_switch.gate;
+        choice.context=&equipped;choice.extent=extent;
+        choice.relation.context=&equipped;choice.relation.storage=vis.memory.storage;
+        choice.relation.as_npc=[](void* p,void* e,void** out) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(e==q.enemy);*out=e;return 1;
+        };
+        choice.relation.npc_identity=[](void* p,void* e,std::uint32_t* vt,unsigned* bytes) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(e==q.enemy);*vt=0x2249aaa4u;*bytes=sizeof(q.enemy);return 1;
+        };
+        post.search.weapon_caps=[](void*,void*,unsigned* caps) noexcept -> int{*caps=0x10000000u;return 1;};
+        auto reload_move=mb;reload_move.context=&equipped;reload_move.storage=storage;
+        reload_move.clear_path=[](void* p,void* nav) noexcept -> int{
+            auto& q=*static_cast<EquippedThinkFixture*>(p);assert(nav==q.nav);q.f->put(q.path,0,0u);q.f->put(q.path,0x44,0u);return 1;
+        };
+        step_bind.movement=&reload_move;
+        prepare_engaged(0,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+        f.put(f.actor,0x898,606u);f.put(equipped.senses,8,512.f);
+        for(unsigned i=0;i<3;++i)f.put(equipped.senses,0x54+4*i,607u+i);
+        f.put(equipped.memory,0x1c,5.f);f.put(equipped.memory,0x20,60.f);
+        unsigned counter=0;std::memcpy(&counter,equipped.memory+0x3c,4);f.put(f.actor,0x8c0,counter);
+        f.put(f.actor,0x638,610u);f.put(f.actor,0x644,1);
+        f.put(equipped.relationship,0,0x8002u);f.put(equipped.relationship,8,1);
+        f.put(equipped.enemy,0,0x2249aaa4u);f.put(equipped.enemy,0x868,0);
+        f.put(f.actor,0x9b0,std::uint16_t{2});f.put(f.actor,0x9b2,std::uint16_t{3});
+        assert(state->install(f.actor,sizeof(f.actor),extended_attack,76.25f,&sb,&sr));
+        f.put(f.actor,0x79c,global+191);
+        for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
+        stamp=0;equipped.shots=equipped.sounds=equipped.prepares=equipped.flashes=0;
+        meta.reloading=true;meta.suppress=true;
+        f.put(f.actor,0x864,76.25f);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1525);
+        auto update_reload=[&](float now,int activity,bool finished){
+            seed_anim(now);f.put(f.actor,0x878,activity);f.put(f.actor,0x880,activity);f.actor[0x3e0]=finished;
+            const ServerNpcRunAnimationInput input{now,false,false};
+            const int ok=outer_api->ground(f.actor,sizeof(f.actor),&input,.05f,&step_bind,&outer_bind,&step_result,&tail_result,&outer_result);
+            const auto& mt=step_result.think.requests.scheduler.maintenance;
+            if(!ok)std::fprintf(stderr,"reload phase now=%f admitted=%u think=%u complete=%u selected=%d schedule=%u task=%d status=%d anim=%u event=%d tail=%u\n",now,outer_result.admission.admitted,step_result.think_called,step_result.think_completed,step_result.think.requests.request.acquisition.translated,mt.state.schedule,mt.state.task.id,mt.state.status,step_result.animation_called,step_result.animation.frame.frame.failed_event,tail_result.completed);
+            if(!ok){
+                const auto& t=step_result.think.think.think.think.squad.cycle.preschedule.think;
+                const auto& g=t.outer_gather.gather;
+                const auto& e=g.base.perception.enemy_switch;
+                std::fprintf(stderr,"gather=%u gate=%u perceive=%u perception=%u categories=%u memory=%u refreshed=%u removed=%u enemy=%u allowed=%u/%u deferred=%u choice=%u reason=%u tests=%u post=%u pre=%u maintain=%u\n",g.completed,g.base.gate.pre_called,g.base.gate.perceive,g.base.perception.completed,g.base.perception.categories,g.base.perception.maintenance.visited,g.base.perception.maintenance.position_refreshed,g.base.perception.maintenance.removed,e.had_enemy,e.new_allowed,e.lost_allowed,e.deferred,e.gate.choose,e.gate.reason,e.gate.condition_tests,g.base.post.completed,t.preschedule_called,t.maintenance_called);
+            }
+            assert(ok&&outer_result.completed&&outer_result.think_called&&step_result.think_completed&&tail_result.completed);
+        };
+        update_reload(76.25f,16,false);
+        const auto& maintenance=step_result.think.requests.scheduler.maintenance;
+        assert(step_result.think.requests.request.requested==48&&step_result.think.requests.request.acquisition.translated==49&&reload_rolls==2);
+        assert(maintenance.state.schedule==ordinary&&maintenance.state.task.id==116&&maintenance.state.status==4&&!step_result.animation.frame.frame.handled);
+        assert(f.last_pending==1);
+        // The ordinary reload task starts activity66. The synthetic studio
+        // descriptor delivers the original event2, not a direct clip write.
+        meta.suppress=false;
+        const float reload_now=outer_result.finish.deadline;
+        update_reload(reload_now,66,false);
+        assert(maintenance.state.schedule==ordinary&&maintenance.state.task.id==71&&maintenance.state.status!=4&&f.last_pending==66);
+        assert(step_result.animation.fixed_resets==1&&step_result.animation.frame.frame.npc_events==1&&!step_result.animation.frame.frame.weapon_events);
+        int reloaded_clip=-1;std::memcpy(&reloaded_clip,equipped.weapon+0x4ec,4);assert(reloaded_clip==8&&equipped.sounds==1&&!equipped.shots);
+        assert(conditions->test(f.actor,sizeof(f.actor),4,NpcConditionCurrent,&sb.conditions,&condition)&&!condition.value);
+        // A later due update observes restored ammo and completes task71
+        // when the synthetic animation reports its terminal sequence flag.
+        meta.suppress=true;
+        update_reload(outer_result.finish.deadline,66,true);
+        assert(step_result.outer_weapon.primary.available&&step_result.outer_weapon.primary.clip==8&&maintenance.state.schedule==ordinary&&maintenance.state.task.id==71&&maintenance.state.status==4);
+        assert(equipped.sounds==1&&!equipped.shots);
+        f.image=original_image;step_bind.movement=&mb;
         selection.state.state_changed=prior_changed;
         ids=prior_ids;
         stamp=prior_stamp;
