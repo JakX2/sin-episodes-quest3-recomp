@@ -1701,4 +1701,38 @@ struct ServerNpcGruntDamageDetailApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageDetailBindings*,ServerNpcGruntDamageDetailResult*) noexcept;
 };
 using GetServerNpcGruntDamageDetailApi=const ServerNpcGruntDamageDetailApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_damage_native_chain_export[]="SiN_GetServerNpcGruntDamageNativeChainApi";
+struct ServerNpcGruntDamageNativeTailBindings {
+    ServerNpcGruntDamageTailBindings tail;
+    ServerNpcGruntDamageNotificationBindings notify;
+    ServerNpcGruntMemoryReportBindings report;
+    ServerNpcGruntSquadReportBindings squad;
+};
+struct ServerNpcGruntDamageNativeTailResult {
+    ServerNpcGruntDamageTailResult tail;
+    ServerNpcGruntDamageNotificationResult notify;
+    ServerNpcGruntMemoryReportResult report;
+    ServerNpcGruntSquadReportResult squad;
+    unsigned report_called;
+};
+struct ServerNpcGruntDamageNativeChainBindings {
+    ServerNpcGruntDamageDetailBindings detail;
+    ServerNpcGruntDamageNotificationBindings notify;
+    ServerNpcGruntMemoryReportBindings report;
+    ServerNpcGruntSquadReportBindings squad;
+};
+struct ServerNpcGruntDamageNativeChainResult {
+    ServerNpcGruntDamageDetailResult detail;
+    ServerNpcGruntDamageNotificationResult notify;
+    ServerNpcGruntMemoryReportResult report;
+    ServerNpcGruntSquadReportResult squad;
+    unsigned report_called;
+};
+struct ServerNpcGruntDamageNativeChainApi {
+    std::uint32_t version,size;
+    int (__cdecl *tail)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageNativeTailBindings*,ServerNpcGruntDamageNativeTailResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntDamageNativeChainBindings*,ServerNpcGruntDamageNativeChainResult*) noexcept;
+};
+using GetServerNpcGruntDamageNativeChainApi=const ServerNpcGruntDamageNativeChainApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

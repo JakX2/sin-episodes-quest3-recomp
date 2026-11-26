@@ -2167,7 +2167,7 @@ int main(int argc,char** argv){
         assert(g&&!GetProcAddress(c,server_npc_grunt_damage_event_export)&&!g(0,sizeof(ServerNpcGruntDamageEventApi))&&!g(1,0));
         const auto* api=g(1,sizeof(ServerNpcGruntDamageEventApi));assert(api);
         struct TailFixture{
-            alignas(4) unsigned char actor[0xdb2]{},other[0xdb2]{},damage[0x48]{},desc[0x48]{},memory[0x3c]{},nodes[12]{},record[0x38]{};
+            alignas(4) unsigned char actor[0xdb2]{},other[0xdb2]{},damage[0x48]{},desc[0x48]{},memory[0x40]{},nodes[12]{},record[0x38]{};
             sin_independent::EntityHandleEntry entries[3]{};
             bool accept=true,visible=true;unsigned reports=0,notices=0,notifications=0;void* target=nullptr;
             static TailFixture& self(void* p){return *static_cast<TailFixture*>(p);}
@@ -2219,6 +2219,32 @@ int main(int argc,char** argv){
         cb.chain.prefix.damage.base_damage=[](void*,void*,void*,int* v) noexcept -> int{*v=1;return 1;};
         f.put(q.actor,0xbc,0x10000000u);f.put(q.actor,0x994,13.f);f.put(q.actor,0x9c,80);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),13,&cb,&cr)&&cr.completed&&cr.native_result&&cr.chain.outputs.stamp_equal&&cr.tail.completed&&!cr.tail.enabled&&!cr.chain.outputs.tail_required);
+        auto gn=reinterpret_cast<GetServerNpcGruntDamageNativeChainApi>(GetProcAddress(s,server_npc_grunt_damage_native_chain_export));
+        assert(gn&&!GetProcAddress(c,server_npc_grunt_damage_native_chain_export)&&!gn(0,sizeof(ServerNpcGruntDamageNativeChainApi))&&!gn(1,0));
+        const auto* native=gn(1,sizeof(ServerNpcGruntDamageNativeChainApi));assert(native);
+        static ServerNpcGruntDamageNativeTailBindings nb;nb.tail=b;
+        nb.tail.report=nullptr;nb.tail.notify_attacker=nullptr;
+        nb.report.mutation.storage=b.memory.storage;nb.report.mutation.context=b.memory.context;
+        nb.report.mutation.entity_key=b.memory.entity_key;
+        nb.notify.context=&q;
+        nb.notify.as_npc=[](void* p,void* e,void** out) noexcept -> int{assert(e==TailFixture::self(p).other);*out=nullptr;return 1;};
+        f.put(q.nodes,4,66u);q.actor[0xbd]=0x20;q.actor[0xb6]=1;q.visible=false;
+        static ServerNpcGruntDamageNativeTailResult nr;
+        const unsigned old_reports=q.reports,old_notifications=q.notifications;
+        assert(native->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),14,&nb,&nr)&&nr.tail.completed&&nr.report_called==1&&nr.report.blocked&&!nr.report.retail_return&&nr.notify.completed&&nr.notify.cast_called&&!nr.notify.visited&&q.reports==old_reports&&q.notifications==old_notifications);
+        q.actor[0xb6]=0;
+        assert(native->tail(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),15,&nb,&nr)&&nr.tail.completed&&nr.report_called==1&&nr.report.firsthand&&nr.report.mutation.updated&&!nr.report.retail_return&&nr.tail.memory_touched&&nr.notify.completed&&q.reports==old_reports&&q.notifications==old_notifications);
+        // Exercise outer override, native bone missing, base accepted, native report and notification.
+        static ServerNpcGruntDamageNativeChainBindings nc;
+        nc.detail.damage.base=cb;nc.detail.damage.base.tail=nb.tail;
+        nc.detail.damage.base.chain.prefix.damage.reaction.sentence=b.entities;
+        nc.detail.damage.cast_grunt=[](void*,void*,void** out,unsigned* extent) noexcept -> int{*out=nullptr;*extent=0;return 1;};
+        nc.detail.bone.index=[](void*,void*,const char*,int* index) noexcept -> int{*index=-1;return 1;};
+        nc.report=nb.report;nc.squad=nb.squad;nc.notify=nb.notify;
+        f.put(q.actor,0x994,16.f);f.put(q.actor,0x9c,80);f.put(q.damage,0x44,0);
+        static ServerNpcGruntDamageNativeChainResult ncr;
+        assert(native->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),16,&nc,&ncr)&&ncr.detail.damage.completed&&ncr.detail.damage.base_called&&ncr.detail.damage.native_result==1&&ncr.detail.right.completed&&ncr.detail.left.completed&&ncr.report_called==1&&ncr.report.mutation.updated&&ncr.notify.completed&&q.reports==old_reports&&q.notifications==old_notifications);
+
     }
 
     {
