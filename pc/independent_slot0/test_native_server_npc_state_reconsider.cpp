@@ -1984,5 +1984,59 @@ int main(int argc,char** argv){
         q.step=0;q.fail=true;f.put(q.actor,0xc18,71u);
         assert(!api->run(q.actor,sizeof(q.actor),72,1,&b,&o)&&o.began&&!o.ended&&!q.guard&&q.step==2);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntDeathPreparedEventApi>(GetProcAddress(s,server_npc_grunt_death_prepared_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_death_prepared_event_export)&&!g(0,sizeof(ServerNpcGruntDeathPreparedEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntDeathPreparedEventApi));assert(api);
+        struct PrepFixture {
+            alignas(4) unsigned char actor[0xdb2]{},damage[0x48]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            unsigned dirty=0x20,calls=0;bool model=true;int selected=7;
+            static PrepFixture& self(void* p){return *static_cast<PrepFixture*>(p);}
+            static unsigned rd(void* p,unsigned off){unsigned v=0;std::memcpy(&v,static_cast<unsigned char*>(p)+off,4);return v;}
+        } q;
+        ServerNpcGruntDeathPrepareBindings b{};b.context=&q;b.dirty_storage.context=&q;
+        b.dirty_storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            assert(token==91);*out=&PrepFixture::self(p).dirty;*n=4;return 1;
+        };
+        b.model_available=[](void* p,void* a,bool* yes) noexcept -> int{
+            auto& q=PrepFixture::self(p);assert(a==q.actor);++q.calls;*yes=q.model;return 1;
+        };
+        b.select=[](void* p,void* a,void* d,std::uint32_t model,int* selected,std::uint32_t* aux) noexcept -> int{
+            auto& q=PrepFixture::self(p);assert(a==q.actor&&d==q.damage&&model==77&&*selected==-1&&!*aux);
+            ++q.calls;*selected=q.selected;*aux=88;return 1;
+        };
+        b.activity_lookup=[](void* p,void* a,int selection,int* activity) noexcept -> int{
+            auto& q=PrepFixture::self(p);assert(a==q.actor&&selection==7);++q.calls;*activity=42;return 1;
+        };
+        f.put(q.actor,0x630,77u);f.put(q.actor,0x16c,91u);
+        ServerNpcGruntDeathPrepareResult o{};
+        q.model=false;
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.completed&&!o.selected&&q.calls==1&&q.dirty==0x20);
+        q.model=true;q.calls=0;
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.completed&&o.selected&&o.looked_up&&o.activity==42&&o.auxiliary==88&&o.external_dirty==2&&q.dirty==0x21&&q.calls==3);
+        q.dirty=0x20;
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&!o.activity_written&&!o.aux_written&&!o.external_dirty&&q.dirty==0x20);
+        q.selected=-1;q.actor[0x1f0]=1;
+        assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.selection==-1&&!o.looked_up&&o.auxiliary==0&&o.local_dirty==2&&q.actor[0x200]&&PrepFixture::rd(q.actor,0x890)==0xffffffffu&&!PrepFixture::rd(q.actor,0x894));
+        // Use the same native preparation in a complete death event without hosted prepare/life-change leaves.
+        static ServerNpcGruntDeathPreparedEventBindings db;
+        db.prepare=b;db.event.context=&q;db.event.prefix.context=&q;
+        auto& sb=db.event.prefix.removal.removal.leave.sentence;
+        sb.speech.original_vtable=0x2249aaa4;sb.entries=q.entries;sb.count=2;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.actor);
+        db.event.prefix.state_signal=[](void*,void*,int v) noexcept -> int{assert(!v);return 1;};
+        db.event.prefix.removal.removal.event=[](void*,void* a,void*) noexcept -> int{assert(PrepFixture::rd(a,0x8c)==1&&PrepFixture::rd(a,0x890)==42);return 1;};
+        db.event.prefix.removal.removal.finalize=[](void*,void*) noexcept -> int{return 1;};
+        db.event.prefix.schedules.context=&q;
+        db.event.prefix.schedules.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept -> int{auto& q=PrepFixture::self(p);*out=q.desc;*n=sizeof(q.desc);return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        db.event.base_death=[](void*,void*,void*) noexcept -> int{return 1;};
+        db.event.activity_lookup=[](void*,void*,int id,int* v) noexcept -> int{assert(id==0x18);*v=-1;return 1;};
+        q.selected=7;q.actor[0x200]=0;q.actor[0x1f0]=0;q.dirty=0x20;
+        static ServerNpcGruntDeathPreparedEventResult dr;
+        assert(api->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),30,&db,&dr)&&dr.event.completed&&dr.prepare.completed&&dr.prepare.external_dirty==2&&dr.life_external_dirty==1&&q.dirty==0x21&&dr.event.prefix.life_changed);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

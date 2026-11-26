@@ -1451,4 +1451,33 @@ struct ServerNpcGruntBehaviorSwitchApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,float,const ServerNpcGruntBehaviorSwitchBindings*,ServerNpcGruntBehaviorSwitchResult*) noexcept;
 };
 using GetServerNpcGruntBehaviorSwitchApi=const ServerNpcGruntBehaviorSwitchApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_death_prepared_event_export[]="SiN_GetServerNpcGruntDeathPreparedEventApi";
+struct ServerNpcGruntDeathPrepareBindings {
+    ServerNpcEnemyMemoryBindings dirty_storage; // resolve actor +16c when nonzero
+    void* context;
+    int (__cdecl *model_available)(void*,void*,bool*) noexcept; // 220eb8a0 result nonnull
+    int (__cdecl *select)(void*,void*,void*,std::uint32_t,int*,std::uint32_t*) noexcept; // 22119c70
+    int (__cdecl *activity_lookup)(void*,void*,int,int*) noexcept; // 220eebd0
+};
+struct ServerNpcGruntDeathPrepareResult {
+    int selection,activity;
+    std::uint32_t auxiliary;
+    unsigned completed,model_available,selected,looked_up,activity_written,aux_written,local_dirty,external_dirty;
+};
+struct ServerNpcGruntDeathPreparedEventBindings {
+    ServerNpcGruntDeathEventBindings event;
+    ServerNpcGruntDeathPrepareBindings prepare;
+};
+struct ServerNpcGruntDeathPreparedEventResult {
+    ServerNpcGruntDeathEventResult event;
+    ServerNpcGruntDeathPrepareResult prepare;
+    unsigned life_local_dirty,life_external_dirty;
+};
+struct ServerNpcGruntDeathPreparedEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *prepare)(void*,unsigned,void*,unsigned,const ServerNpcGruntDeathPrepareBindings*,ServerNpcGruntDeathPrepareResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntDeathPreparedEventBindings*,ServerNpcGruntDeathPreparedEventResult*) noexcept;
+};
+using GetServerNpcGruntDeathPreparedEventApi=const ServerNpcGruntDeathPreparedEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
