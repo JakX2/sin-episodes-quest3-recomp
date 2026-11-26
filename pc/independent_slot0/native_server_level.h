@@ -2,6 +2,7 @@
 #include "native_server_startup.h"
 #include "native_server_dynamic_resupply.h"
 #include "native_server_npc_active_weapon_step.h"
+#include "native_server_map_entity.h"
 namespace sin_port::native_level {
 inline constexpr char export_name[]="SiN_GetServerLevelApi";
 inline constexpr char level_export[]="SiN_InvokeServerLevelInitBoundary",activate_export[]="SiN_InvokeServerActivateBoundary";
@@ -83,6 +84,8 @@ struct Bindings {
     const native_resupply::LifecycleBindings* resupply;
     const ChapterBindings* native_chapter;
     const DirectQueue* native_queue;
+    const native_map::PipelineBindings* native_map_pipeline;
+    unsigned entity_text_bytes;
 };
 struct Result {
     unsigned completed,scope_entered,scope_closed,pre_level,chapter,map_event,transition_reset,transition_released,
@@ -93,6 +96,7 @@ struct Result {
     native_resupply::LifecycleResult resupply;
     ChapterResult chapter_result;
     native_weapon_tables::ServerEntityNamedEventQueueResult save_event,kill_event;
+    native_map::PipelineResult map_pipeline;
 };
 struct Api {
     std::uint32_t version,size;
