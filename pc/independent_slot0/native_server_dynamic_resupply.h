@@ -4,12 +4,13 @@
 namespace sin_port::native_resupply {
 inline constexpr char export_name[]="SiN_GetServerDynamicResupplyApi";
 inline constexpr unsigned count=6;
-enum class Convar : unsigned { Modifier, HealthKit, Debug };
+enum class Convar : unsigned { Modifier, HealthKit, Debug, HealthVial };
 struct ConvarSpec {const char* name;const char* initial;unsigned flags;unsigned original_object;};
 inline constexpr ConvarSpec convars[]{
     {"sk_dynamic_resupply_modifier","1.0",0,0x22596510u},
     {"sk_healthkit","25",0x4000u,0x225965e0u},
-    {"g_debug_dynamicresupplies","0",0,0x22596558u}
+    {"g_debug_dynamicresupplies","0",0,0x22596558u},
+    {"sk_healthvial","10",0x4000u,0x22596628u}
 };
 struct AmmoType {const char* classname;const char* name;int units;float full_weight;};
 inline constexpr AmmoType ammo_types[count]{
@@ -212,6 +213,26 @@ struct AmmoPickupResult {
     int index,units,requested,granted,rule;
     float multiplier;
 };
+inline constexpr unsigned vial_vtable=0x2246bc94u,vial_secondary=0x2246bc6cu;
+struct VialPickupBindings {
+    void* context;
+    int (__cdecl *base_construct)(void*,void*) noexcept;
+    int (__cdecl *value)(void*,float*) noexcept;
+    void* engine_cvar;
+    int (__cdecl *heal)(void*,void*,float,unsigned,int*) noexcept;
+    // Native event identity, recipient and raw classname token. Zero token
+    // represents the original empty string (223d47a8).
+    int (__cdecl *item_pickup)(void*,void*,unsigned) noexcept;
+    int (__cdecl *sound)(void*,void*,unsigned,const char*) noexcept;
+    int (__cdecl *respawn_rule)(void*,void*,int*) noexcept;
+    int (__cdecl *respawn)(void*,void*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+};
+struct VialPickupResult {
+    unsigned constructed,value_read,heal_called,message,sound,rule_called,respawned,removed,accepted,completed;
+    float value;
+    int healed,rule;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -242,6 +263,8 @@ struct Api {
     int (__cdecl *factory_destroy)(void*,unsigned,void*,const FactoryBindings*,FactoryResult*) noexcept;
     int (__cdecl *ammo_pickup_construct)(void*,unsigned,unsigned,const AmmoPickupBindings*,AmmoPickupResult*) noexcept;
     int (__cdecl *ammo_pickup_touch)(void*,unsigned,void*,const AmmoPickupBindings*,AmmoPickupResult*) noexcept;
+    int (__cdecl *vial_construct)(void*,unsigned,const VialPickupBindings*,VialPickupResult*) noexcept;
+    int (__cdecl *vial_touch)(void*,unsigned,void*,const VialPickupBindings*,VialPickupResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

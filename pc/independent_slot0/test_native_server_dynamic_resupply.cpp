@@ -465,11 +465,11 @@ int main(int argc,char** argv){
     struct ResupplyCvars final:sin_independent::console_abi::EngineCvar {
         using Variable=sin_independent::console_abi::Variable;
         using CommandBase=sin_independent::console_abi::CommandBase;
-        mutable Variable roots[3],aliases[3];
+        mutable Variable roots[4],aliases[4];
         mutable unsigned lookups[16]{},calls=0,modifier_reads=0;
         bool missing=false,change_each=false,wrong_root=false;
         ResupplyCvars(){
-            for(unsigned i=0;i<3;++i){
+            for(unsigned i=0;i<4;++i){
                 roots[i].CreateVariable(convars[i].name,convars[i].initial,int(convars[i].flags),"",false,0,false,0,nullptr);
                 aliases[i].CreateVariable(convars[i].name,"0",int(convars[i].flags),"",false,0,false,0,nullptr);
                 aliases[i].parent=&roots[i];
@@ -479,8 +479,8 @@ int main(int argc,char** argv){
         const char* __thiscall GetCommandLineValue(const char*) noexcept override{assert(false);return nullptr;}
         Variable* __thiscall FindMutableVar(const char*) noexcept override{assert(false);return nullptr;}
         const Variable* __thiscall FindConstVar(const char* name) const noexcept override{
-            unsigned i=0;while(i<3&&std::strcmp(name,convars[i].name))++i;
-            assert(i<3&&calls<16);lookups[calls++]=i;
+            unsigned i=0;while(i<4&&std::strcmp(name,convars[i].name))++i;
+            assert(i<4&&calls<16);lookups[calls++]=i;
             if(missing&&i==0)return nullptr;
             if(wrong_root&&i==1)return &aliases[0];
             if(change_each&&i==0)roots[0].SetFloat(.125f*float(++modifier_reads));
@@ -598,5 +598,38 @@ int main(int argc,char** argv){
     assert(api->ammo_pickup_touch(pf.item,sizeof(pf.item),&pf.player,&ap,&ar)&&ar.completed&&ar.unknown&&!ar.give_called&&pf.warnings==1);
     EvalFixture::u(pf.item,0x4d0,0xdeadbeef);
     assert(!api->ammo_pickup_touch(pf.item,sizeof(pf.item),&pf.player,&ap,&ar)&&!ar.index_read);
+    // Actual vial reads sk_healthvial, unlike nearby healthkit estimate.
+    struct VialFixture {
+        alignas(4) unsigned char item[0x4cc]{};
+        int player=0,healed=1,rule=0;float value=0;
+        unsigned stage=0,ctors=0,token=0,respawns=0,removes=0;
+    } vf;
+    VialPickupBindings vb{};vb.context=&vf;vb.engine_cvar=&cv;
+    vb.base_construct=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<VialFixture*>(p);assert(a==q.item);++q.ctors;return 1;};
+    vb.heal=[](void* p,void* a,float amount,unsigned flags,int* result) noexcept ->int{
+        auto& q=*static_cast<VialFixture*>(p);assert(a==&q.player&&!flags&&q.stage++==0);q.value=amount;*result=q.healed;return 1;
+    };
+    vb.item_pickup=[](void* p,void* a,unsigned token) noexcept ->int{
+        auto& q=*static_cast<VialFixture*>(p);assert(a==&q.player&&q.stage++==1);q.token=token;return 1;
+    };
+    vb.sound=[](void* p,void* a,unsigned edict,const char* s) noexcept ->int{
+        auto& q=*static_cast<VialFixture*>(p);assert(a==&q.player&&edict==0x4321&&q.stage++==2&&!std::strcmp(s,"HealthVial.Touch"));return 1;
+    };
+    vb.respawn_rule=[](void* p,void* a,int* rule) noexcept ->int{auto& q=*static_cast<VialFixture*>(p);assert(a==q.item&&q.stage++==3);*rule=q.rule;return 1;};
+    vb.respawn=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<VialFixture*>(p);assert(a==q.item&&q.stage++==4);++q.respawns;return 1;};
+    vb.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<VialFixture*>(p);assert(a==q.item&&q.stage++==4);++q.removes;return 1;};
+    VialPickupResult vr{};
+    assert(api->vial_construct(vf.item,sizeof(vf.item),&vb,&vr)&&vr.constructed&&EvalFixture::rd(vf.item,0)==vial_vtable&&EvalFixture::rd(vf.item,0x494)==vial_secondary);
+    EvalFixture::u(vf.item,0x16c,0x4321);EvalFixture::u(vf.item,0xc,0x22459e28);
+    cv.calls=0;
+    assert(api->vial_touch(vf.item,sizeof(vf.item),&vf.player,&vb,&vr)&&vr.completed&&vr.accepted&&vr.removed&&vr.message&&vr.sound&&vr.value==10.f&&vf.stage==5&&vf.token==0x22459e28);
+    assert(cv.calls==1&&cv.lookups[0]==3&&vf.removes==1);
+    vf.stage=0;vf.rule=6;cv.roots[3].SetFloat(12.5f);cv.calls=0;EvalFixture::u(vf.item,0xc,0);
+    assert(api->vial_touch(vf.item,sizeof(vf.item),&vf.player,&vb,&vr)&&vr.respawned&&!vr.removed&&vr.value==12.5f&&vf.token==0&&vf.respawns==1);
+    vf.stage=0;vf.healed=0;cv.calls=0;
+    assert(api->vial_touch(vf.item,sizeof(vf.item),&vf.player,&vb,&vr)&&vr.completed&&!vr.accepted&&!vr.message&&!vr.sound&&!vr.rule_called&&vf.stage==1);
+    vf.stage=0;cv.aliases[3].parent=&cv.roots[1];cv.calls=0;
+    assert(!api->vial_touch(vf.item,sizeof(vf.item),&vf.player,&vb,&vr)&&!vr.heal_called&&!vf.stage);
+    cv.aliases[3].parent=&cv.roots[3];
     FreeLibrary(s);FreeLibrary(c);return 0;
 }

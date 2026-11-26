@@ -508,7 +508,31 @@ int __cdecl ammo_pickup_touch(void* item,unsigned bytes,void* player,const AmmoP
     if(o->rule==6){if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;}
     o->accepted=o->completed=1;return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch};
+int __cdecl vial_construct(void* item,unsigned bytes,const VialPickupBindings* b,VialPickupResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!item||bytes<0x4cc||!b||!b->base_construct||!b->base_construct(b->context,item))return 0;
+    set_field(item,0,vial_vtable);set_field(item,0x494,vial_secondary);
+    o->constructed=o->completed=1;return 1;
+}
+int __cdecl vial_touch(void* item,unsigned bytes,void* player,const VialPickupBindings* b,VialPickupResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!item||bytes<0x4cc||field<unsigned>(item,0)!=vial_vtable||!player||!b)return 0;
+    if(!(b->value?b->value(b->context,&o->value):SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::HealthVial,&o->value)))return 0;
+    o->value_read=1;
+    if(!b->heal||!b->heal(b->context,player,o->value,0,&o->healed))return 0;
+    o->heal_called=1;
+    if(!o->healed){o->completed=1;return 1;}
+    if(!b->item_pickup||!b->item_pickup(b->context,player,field<unsigned>(item,0xc)))return 0;
+    o->message=1;
+    if(!b->sound||!b->sound(b->context,player,field<unsigned>(item,0x16c),"HealthVial.Touch"))return 0;
+    o->sound=1;
+    if(!b->respawn_rule||!b->respawn_rule(b->context,item,&o->rule))return 0;
+    o->rule_called=1;
+    if(o->rule){if(!b->respawn||!b->respawn(b->context,item))return 0;o->respawned=1;}
+    else{if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;}
+    o->accepted=o->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
