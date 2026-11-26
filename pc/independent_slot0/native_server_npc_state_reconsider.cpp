@@ -6391,7 +6391,41 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
     const auto& ab=b.arbitration->activation->schedule->admission;
     const sin_independent::EntityHandleView registry(ab.entries,ab.count);
     auto target=[&](){return assault_owner_target(a,registry);};
+    auto condition=[&](int bit,bool& yes){
+        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+        ServerNpcConditionResult cr{};
+        if(!api||!api->test(a,n,bit,NpcConditionCurrent,&b.schedule.conditions,&cr))return false;
+        yes=cr.value!=0;return true;
+    };
+    // +790 = 2235b3d0 for all seven non-Elite admitted vtables.
+    // The original x87 TEST 05 / JNP rejects only ordered less-than.
+    // Return true only when the prefix proves that the policy returns false.
+    auto policy_rejected=[&](){
+        return (read<std::uint8_t>(a,0xb7)&1u)||!read<std::uint8_t>(a,0xc64)||
+            now<read<float>(a,0xc90)||!target()||now<read<float>(a,0xc84);
+    };
     switch(id){
+    case 33: // 2235d809: write precedes +790, even on rejection
+        write<std::uint8_t>(a,0xc64,1);
+        if(policy_rejected())return native(88);
+        return false;
+    case 41:{ // 2235d8a1: ordered conditions, then +790 false route
+        bool yes=false;
+        if(!condition(4,yes))return false;
+        if(!yes&&!condition(3,yes))return false;
+        if(yes)return schedule_translate_grunt(a,n,48,now,b,o,route);
+        if(!policy_rejected())return false;
+        if(read<std::uint8_t>(a,0xc66)){
+            if(!condition(17,yes))return false;
+            if(!yes&&registry.Resolve(read<unsigned>(a,0x78c))){
+                // No target skips the distance/scene branch and preserves +c64.
+                if(!target())return native(91);
+                return false;
+            }
+        }
+        write<std::uint8_t>(a,0xc64,1);
+        return native(91);
+    }
     case 18:return native(82); // 2235da0e
     case 26:return native(94); // 2235d6f7
     case 79:return native(target()?81:79); // 2235daa4
@@ -6408,15 +6442,29 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         if(!target())return native(80);
         return false;
     case 87: // 2235d79a: missing enemy and no secondary state
-        if(!target()&&!read<unsigned>(a,0x9d0))return native(87);
-        return false;
-    case 36:case 98:{
-        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));ServerNpcConditionResult cr{};
-        if(!api||!api->test(a,n,id==36?10:20,NpcConditionCurrent,&b.schedule.conditions,&cr))return false;
-        // The other branches enter 25/41 or enemy-update/slot services;
-        // leave them explicitly unresolved rather than guess their result.
-        if(cr.value)return false;
-        if(id==36){if(target())return false;return schedule_translate_grunt(a,n,100,now,b,o,route);}
+        if(target())return false;
+        if(read<unsigned>(a,0x9d0))return schedule_translate_grunt(a,n,33,now,b,o,route);
+        return native(87);
+    case 36:{
+        bool yes=false;if(!condition(10,yes))return false;
+        if(yes)return schedule_translate_grunt(a,n,25,now,b,o,route);
+        if(target())return false; // 22045cd0 enemy-list mutation remains unresolved.
+        return schedule_translate_grunt(a,n,100,now,b,o,route);
+    }
+    case 98:{
+        bool yes=false;if(!condition(20,yes))return false;
+        if(yes){
+            // +79c = 22358470 -> 22054bd0 -> 220aaeb0 (reserve 0..2).
+            if(read<unsigned>(a,0x9c4)){
+                const auto* binding=b.arbitration->activation->slots;
+                if(!binding)return false;
+                auto slots=*binding;slots.entries=ab.entries;slots.count=ab.count;
+                ServerNpcGruntSquadSlotsResult result{};
+                if(!slots_reserve(a,n,0,2,now,&slots,&result))return false;
+                yes=result.allowed!=0;
+            }
+            if(yes)return schedule_translate_grunt(a,n,41,now,b,o,route);
+        }
         return schedule_translate_grunt(a,n,79,now,b,o,route);
     }
     default:return false;
