@@ -60,6 +60,9 @@
         for(auto* a:{source,target}){put(a,0x160,0x22454f00u);put(a,0x168,ptrword(a));}
         void* actors[]{source,target,f.attachment};
         for(unsigned i=0;i<3;++i){f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;}
+        // Active search chain contains the two map entities; the owner
+        // attachment has a handle but is not in this active-chain fixture.
+        f.entries[0].next=&f.entries[1];f.entries[1].previous=&f.entries[0];
         OutputActionBindings actions=output;actions.context=&f.pool;actions.next_id=&f.pool.id;
         auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=relay_extent;return 1;};
         keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
@@ -112,23 +115,62 @@
             *text=token==0x22422b7cu?"Trigger":token==0x223edce8u?"Disable":token==0x2240b624u?"Kill":nullptr;
             if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
         };
-        nw::ServerEntitySearchBindings search{};search.context=&f;
+        nw::ServerEntitySearchBindings search{};search.context=&f;search.head=&f.entries[0];
         search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<CampaignInput*>(p);*bytes=a==f.relay?relay_extent:a==f.trigger?dynamic_trigger_extent:0;return *bytes!=0;};
+        search.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            if(token!=201)return 0;*text="checkpoint";*bytes=11;return 1;
+        };
         nw::ServerEntityEventServiceBindings delivery{};delivery.context=&f;delivery.entities.entries=f.entries;delivery.entities.count=3;delivery.native_input=&input;delivery.native_search=&search;delivery.live_now=&co.now;
         delivery.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{auto& q=*static_cast<CampaignInput*>(p)->co;return q.queue.resolve(q.queue.context,token,row,bytes);};
         delivery.lock=[](void* p,bool enter) noexcept ->int{auto& q=*static_cast<CampaignInput*>(p)->co;assert(q.locked!=enter);q.locked=enter;return 1;};
-        delivery.find_named=[](void* p,void* prev,unsigned name,void* a,void* c,void** out) noexcept ->int{
-            auto& f=*static_cast<CampaignInput*>(p);assert(f.co->locked&&name==201&&a==f.attachment&&c==f.relay);
-            *out=prev?nullptr:f.trigger;return 1;
-        };
         delivery.release=[](void* p,unsigned token,void* row) noexcept ->int{auto& q=*static_cast<CampaignInput*>(p)->co;assert(q.locked&&token&&token<=q.alloc&&row==q.rows[token-1]);++q.released;return 1;};
         std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=280.f;
         co.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token==201||token==0x223edce8u||token==0x22422b7cu||token==0x2240b624u;return 1;};
         unsigned empty[5]{0,0,0,0xffffffffu,0};
         assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x3000u,0x22422b7cu,0x5002u,0x5002u,empty,sizeof(empty),0.f,61,&co.queue,&cancel_qr));
-        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==3&&!es.foreign_inputs&&!es.rejected_inputs&&co.released==3);
+        assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==3&&es.native_named_searches==4&&!es.foreign_inputs&&!es.rejected_inputs&&co.released==3);
         assert(f.order=="OORDFACT"&&f.queue.count==2&&f.slots[0]==source+0x160&&f.slots[1]==target+0x160&&target[0x408]&&!word(target,0x120)&&word(target,0x20c)==0xffffffffu&&!word(target,0xc0)&&target[0x200]);
         EntityKillResult kr2{};assert(!api->logic_kill(target,dynamic_trigger_extent,dynamic_trigger_vtable,f.entries,3,&kill,&kr2));
         DeferredRemovalResult dr{};
         assert(api->cleanup_deferred(&deferred,&dr)&&dr.released==2&&f.order=="OORDFACTXY"&&!f.entries[0].entity&&!f.entries[1].entity);
+    }
+
+// Actual native search cursor across both campaign trigger classes.
+    {
+        alignas(4) unsigned char dynamic[dynamic_trigger_extent]{},secret[secret_trigger_extent]{};
+        put(dynamic,0,dynamic_trigger_vtable);put(secret,0,secret_trigger_vtable);
+        put(dynamic,0x378,0x3000u);put(secret,0x378,0x4001u);
+        put(dynamic,0xc0,101u);put(secret,0xc0,102u);
+        put(dynamic,0xc,111u);put(secret,0xc,112u);
+        sin_independent::EntityHandleEntry entries[2]{};
+        entries[0].entity=reinterpret_cast<CBaseEntity*>(dynamic);entries[0].serial=3;entries[0].next=&entries[1];
+        entries[1].entity=reinterpret_cast<CBaseEntity*>(secret);entries[1].serial=4;entries[1].previous=&entries[0];
+        nw::ServerEntitySearchBindings search{};search.entities.entries=entries;search.entities.count=2;search.head=entries;
+        search.extent=[](void*,void* a,unsigned* bytes) noexcept ->int{
+            unsigned vt=0;std::memcpy(&vt,a,4);*bytes=vt==dynamic_trigger_vtable?dynamic_trigger_extent:vt==secret_trigger_vtable?secret_trigger_extent:0;return *bytes!=0;
+        };
+        search.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==101?"checkpoint01":token==102?"checkpoint02":token==103?"CHECKPOINT*":
+                token==111?"trigger_dynamic_difficulty":token==112?"trigger_secret":token==113?"trigger_*":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        const auto get=reinterpret_cast<nw::GetServerEntitySearchApi>(GetProcAddress(server,"SiN_GetServerEntitySearchApi"));assert(get);
+        const auto* search_api=get(1,sizeof(nw::ServerEntitySearchApi));assert(search_api);
+        nw::ServerEntitySearchResult sr{};
+        assert(search_api->named(nullptr,103,nullptr,nullptr,&search,&sr)&&sr.entity==dynamic&&sr.visited==1);
+        assert(search_api->named(dynamic,103,nullptr,nullptr,&search,&sr)&&sr.entity==secret&&sr.visited==1);
+        assert(search_api->named(secret,103,nullptr,nullptr,&search,&sr)&&sr.completed&&!sr.entity&&!sr.visited);
+        assert(search_api->classname(nullptr,113,&search,&sr)&&sr.entity==dynamic);
+        assert(search_api->classname(dynamic,113,&search,&sr)&&sr.entity==secret);
+        assert(search_api->classname(secret,113,&search,&sr)&&sr.completed&&!sr.entity);
+        // Original deletion clears targetname before registry unlink.
+        put(dynamic,0xc0,0u);
+        assert(search_api->named(dynamic,103,nullptr,nullptr,&search,&sr)&&sr.entity==secret);
+        assert(search_api->named(nullptr,103,nullptr,nullptr,&search,&sr)&&sr.entity==secret&&sr.visited==2);
+        // Independent cursor rejects stale serial or truncated owner extent.
+        entries[0].serial=9;
+        assert(!search_api->named(dynamic,103,nullptr,nullptr,&search,&sr));
+        entries[0].serial=3;
+        auto short_search=search;short_search.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=0x37c;return 1;};
+        assert(!search_api->named(dynamic,103,nullptr,nullptr,&short_search,&sr));
     }
