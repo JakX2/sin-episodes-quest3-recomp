@@ -101,6 +101,7 @@ struct DispatchResult {
     int native_result,global_index,global_state;
 };
 inline constexpr unsigned auto_vtable=0x2241f0d4,auto_extent=0x440;
+struct RelayQueueBindings;
 struct AutoBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -129,7 +130,6 @@ inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
 // Derived scalar-deleting destructor boundary, distinct from the
 // factory's owner networkable-release boundary.
 inline constexpr unsigned multicompare_vtable=0x22420b84,multicompare_extent=0x3d4;
-struct RelayQueueBindings;
 // Shared CBaseEntity::InputKill owner effects. Removal is deferred.
 struct EntityKillBindings {
     void* context;
