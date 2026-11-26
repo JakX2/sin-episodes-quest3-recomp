@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "server_entity_handle_core.h"
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; }
 namespace sin_port::native_resupply {
 inline constexpr char export_name[]="SiN_GetServerDynamicResupplyApi";
 inline constexpr unsigned count=6;
@@ -233,6 +234,32 @@ struct VialPickupResult {
     float value;
     int healed,rule;
 };
+inline constexpr unsigned item_touch_token=0x22175770u;
+struct ItemTouchBindings {
+    void* context;
+    int (__cdecl *vehicle)(void*,void*,void**) noexcept;
+    int (__cdecl *passenger)(void*,void*,int,void**) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *is_player)(void*,void*,bool*) noexcept;
+    int (__cdecl *can_pickup)(void*,void*,void*,bool*) noexcept;
+    int (__cdecl *picked_up)(void*,void*,void*) noexcept;
+    int (__cdecl *respawn_rule)(void*,void*,int*) noexcept;
+    int (__cdecl *respawn)(void*,void*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+    int (__cdecl *force_failed_pickup)(void*,bool*) noexcept;
+    const AmmoPickupBindings* ammo;
+    const VialPickupBindings* vial;
+    const native_weapon_tables::ServerEntityVoidOutputBindings* output;
+};
+struct ItemTouchResult {
+    void* player;
+    unsigned vehicle_reads,passenger_read,extent_reads,player_native,player_checked,blocked,
+        permission_read,subclass_called,accepted,force_read,output_called,output_actions,
+        touch_cleared,think_cleared,picked_up,rule_called,respawned,removed,completed;
+    int rule;
+    AmmoPickupResult ammo;
+    VialPickupResult vial;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -265,6 +292,8 @@ struct Api {
     int (__cdecl *ammo_pickup_touch)(void*,unsigned,void*,const AmmoPickupBindings*,AmmoPickupResult*) noexcept;
     int (__cdecl *vial_construct)(void*,unsigned,const VialPickupBindings*,VialPickupResult*) noexcept;
     int (__cdecl *vial_touch)(void*,unsigned,void*,const VialPickupBindings*,VialPickupResult*) noexcept;
+    // 22175770: native default CItem touch, on supported pickup classes.
+    int (__cdecl *item_touch)(void*,unsigned,void*,unsigned,const ItemTouchBindings*,ItemTouchResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
