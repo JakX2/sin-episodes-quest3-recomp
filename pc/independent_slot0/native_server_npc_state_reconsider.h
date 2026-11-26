@@ -1922,4 +1922,22 @@ struct ServerNpcGruntGroundDeathApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntGroundDeathBindings*,ServerNpcGruntGroundDeathResult*) noexcept;
 };
 using GetServerNpcGruntGroundDeathApi=const ServerNpcGruntGroundDeathApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_ground_life_export[]="SiN_GetServerNpcGruntGroundLifeApi";
+struct ServerNpcGruntGroundLifeBindings {
+    ServerNpcGruntLifeDispatchBindings life;
+    ServerNpcGruntGroundDeathBindings ground;
+    ServerNpcJetpackDeathModeBindings jet;
+};
+struct ServerNpcGruntGroundLifeResult {
+    ServerNpcGruntLifeDispatchResult life;
+    ServerNpcGruntGroundDeathResult ground;
+    ServerNpcJetpackDeathModeResult jet;
+    unsigned ground_called;
+};
+struct ServerNpcGruntGroundLifeApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntGroundLifeBindings*,ServerNpcGruntGroundLifeResult*) noexcept;
+};
+using GetServerNpcGruntGroundLifeApi=const ServerNpcGruntGroundLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
