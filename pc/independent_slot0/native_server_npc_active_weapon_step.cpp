@@ -837,7 +837,12 @@ bool search_handle(void* entity,const ServerEntitySearchBindings& b,unsigned& ha
         if(bytes<sin_port::native_map::removal_entity_extent(vt))return false;
         handle=rd<unsigned>(entity,0x378);return true;
     }
-    if(input_datamap(vt)||vt==sin_port::native_resupply::resupply_vtable){
+    // Phase1510/1512 audit pins +8=22001b00 for every table in
+    // campaign_player_marker, including relay and all known logic classes.
+    // Search continuation must read the same full serial handle, not
+    // delegate the second FindEntityByName call to a foreign callback.
+    if(input_datamap(vt)||vt==sin_port::native_resupply::resupply_vtable||
+       sin_port::native_map::campaign_player_marker(vt)!=sin_port::native_map::PlayerPredicate::Unknown){
         if(bytes<0x37c)return false;handle=rd<unsigned>(entity,0x378);return true;
     }
     return b.foreign_handle&&b.foreign_handle(b.context,entity,&handle)!=0;

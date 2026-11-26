@@ -432,7 +432,13 @@
         nw::ServerEntityEventServiceResult result{};int steps=0;
         auto tick=[&](float now){f.now=now;return service->service(f.root,sizeof(f.root),99,now,false,&steps,&sb,&result);};
         assert(tick(10.f)&&result.future_stopped&&!result.events&&f.relay[0x3ac]);
-        assert(tick(10.25f)&&result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&result.native_named_searches==2&&!f.relay[0x3ac]&&f.released==1);
+        // Separate success and postconditions so the first refusal is
+        // distinguishable from an accepted input or continuation error.
+        const bool first=tick(10.25f);
+        if(!first)std::fprintf(stderr,"campaign queue refusal: events=%u deliveries=%u native_inputs=%u named_searches=%u rejected=%u removed=%u relay_disabled=%u released=%u\n",
+            result.events,result.deliveries,result.native_inputs,result.native_named_searches,result.rejected_inputs,result.removed,unsigned(f.relay[0x3ac]),f.released);
+        assert(first);
+        assert(result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&result.native_named_searches==2&&!f.relay[0x3ac]&&f.released==1);
         assert(tick(10.5f)&&result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&f.relay[0x3ac]&&f.released==2);
         assert(tick(11.f)&&result.events==1&&result.native_inputs==1&&!result.rejected_inputs&&!f.relay[0x3ac]&&f.released==3&&!word(f.root,0x30)&&!f.locked);
     }
