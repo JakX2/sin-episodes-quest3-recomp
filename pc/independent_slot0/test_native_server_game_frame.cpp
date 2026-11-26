@@ -16,6 +16,7 @@ struct Fixture {
     int double_step=1,profile_cvar=1;
     unsigned depth=0,cleanup=0,clients=0,edict=0,other=0;
     bool fail=false,stationary_mode=false;
+    InvokeBoundary boundary=nullptr;const State* state=nullptr;const Bindings* bindings=nullptr;unsigned reentry_refused=0;
     unsigned edict_enters=0,edict_leaves=0,records=0;
     alignas(4) unsigned char edict_actor[0x3b0]{},foreign[0x3b0]{},native_actor[0x3b0]{};
     void* slots[3]{edict_actor,foreign,native_actor};
@@ -82,5 +83,27 @@ int main(int argc,char** argv){
     assert(api->run(true,&state,&b,&out)&&out.completed&&out.edict_calls==2&&!out.stationary_calls);
     put(f.native_actor,0x16c,0u);put(f.native_actor,0x50,1);
     assert(api->run(true,&state,&b,&out)&&out.completed&&out.named_context_fallbacks==2&&out.foreign_thinks==2&&!out.native_resupply);
+    // This is the actual ServerGameDLL003 slot4, not a parallel object.
+    // The boundary is synchronous and one-shot; a reentrant bind refuses.
+    const auto boundary=reinterpret_cast<InvokeBoundary>(GetProcAddress(server,boundary_export));
+    assert(boundary&&!GetProcAddress(client,boundary_export));
+    f.boundary=boundary;f.state=&state;f.bindings=&b;
+    assert(!boundary(true,nullptr,&b,&out)&&!out.completed);
+    f.transition=true;f.sequence.clear();
+    assert(boundary(true,&state,&b,&out)&&out.completed&&out.transition&&f.sequence=="[]");
+    f.transition=false;f.g.max_clients=1;f.skip=false;f.double_step=0;
+    f.slots[0]=f.native_actor;f.slots[1]=nullptr;f.slots[2]=f.native_actor;
+    put(f.native_actor,0x50,0);put(f.native_actor,0x388,static_cast<unsigned char>(0));put(f.native_actor,0x16c,123u);
+    put(f.native_actor,0xb0,80);put(f.native_actor,0xb8,0x400000u);
+    b.pre_systems=[](void* p) noexcept ->int{
+        auto& q=*static_cast<Fixture*>(p);Result nested{};
+        assert(!q.boundary(true,q.state,q.bindings,&nested)&&!nested.completed);++q.reentry_refused;return 1;
+    };
+    assert(boundary(true,&state,&b,&out)&&out.completed&&out.stationary_calls==2&&out.stationary_deduplicated==1&&out.native_resupply==1&&f.reentry_refused==1);
+    // Check no invocation leaks across a failed synchronous call.
+    b.pre_systems=[](void*) noexcept ->int{return 0;};
+    assert(!boundary(true,&state,&b,&out)&&!out.completed&&out.frametime_restored);
+    f.transition=true;
+    assert(boundary(true,&state,&b,&out)&&out.completed&&out.transition);
     FreeLibrary(server);FreeLibrary(client);
 }

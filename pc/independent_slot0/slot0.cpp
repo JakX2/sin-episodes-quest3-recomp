@@ -47,6 +47,10 @@
 #include "server_post_connect_core.h"
 #include "server_single_cvar_probe.h"
 #include "server_batch_cvar_probe.h"
+#if defined(SIN_NATIVE_GAME_FRAME)
+#include "native_server_game_frame.h"
+extern "C" const sin_port::native_game_frame::Api* __cdecl SiN_GetServerGameFrameApi(std::uint32_t,std::uint32_t) noexcept;
+#endif
 #include <new>
 #endif
 
@@ -1191,6 +1195,16 @@ static_assert(std::is_same<decltype(&Boundary::Init), ExpectedInit>::value,
 static_assert(std::is_same<decltype(&Boundary::Shutdown), ExpectedSecond>::value,
               "SDK2004 client Shutdown signature mismatch");
 #elif defined(SIN_ROLE_server)
+#if defined(SIN_NATIVE_GAME_FRAME)
+struct FrameInvocation {
+    const sin_port::native_game_frame::State* state;
+    const sin_port::native_game_frame::Bindings* bindings;
+    sin_port::native_game_frame::Result* result;
+    bool entered=false;
+    int success=0;
+};
+static thread_local FrameInvocation* g_frame_invocation=nullptr;
+#endif
 class Boundary final {
 public:
     virtual bool __thiscall DLLInit(
@@ -1250,7 +1264,20 @@ public:
     // Unimplemented slots remain terminal guards; verified methods are typed.
     SIN_GUARD_SLOT(2, "ServerGameDLL003")
     SIN_GUARD_SLOT(3, "ServerGameDLL003")
-    SIN_GUARD_SLOT(4, "ServerGameDLL003")
+    // Authenticated original 221e9080, slot4, RET 4. Typed on every
+    // build; only the full independent server has the one-shot adapter.
+    virtual void __thiscall GameFrame(bool simulating) noexcept {
+#if defined(SIN_NATIVE_GAME_FRAME)
+        auto* invocation=g_frame_invocation;
+        if(invocation&&!invocation->entered){
+            invocation->entered=true;
+            const auto* api=SiN_GetServerGameFrameApi(1,sizeof(sin_port::native_game_frame::Api));
+            if(api)invocation->success=api->run(simulating,invocation->state,invocation->bindings,invocation->result);
+            return;
+        }
+#endif
+        stopUnsupported("ServerGameDLL003.slot4");
+    }
     SIN_GUARD_SLOT(5, "ServerGameDLL003")
     SIN_GUARD_SLOT(6, "ServerGameDLL003")
     SIN_GUARD_SLOT(7, "ServerGameDLL003")
@@ -1316,6 +1343,8 @@ static_assert(std::is_same<decltype(&Boundary::DLLInit), ExpectedInit>::value,
               "SDK2004 server DLLInit signature mismatch");
 static_assert(std::is_same<decltype(&Boundary::GameInit), ExpectedSecond>::value,
               "SDK2004 server GameInit signature mismatch");
+using ExpectedGameFrame=void (__thiscall Boundary::*)(bool) noexcept;
+static_assert(std::is_same<decltype(&Boundary::GameFrame),ExpectedGameFrame>::value,"original server GameFrame x86 ABI");
 
 class EntityFactoryProbe final : public sin_independent::ServerGameEntsAbi {
 public:
@@ -1385,6 +1414,22 @@ ClientsFactoryProbe clientsFactoryProbe;
 #endif
 Boundary instance;
 } // namespace
+
+#if defined(SIN_ROLE_server) && defined(SIN_NATIVE_GAME_FRAME)
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameBoundary=_SiN_InvokeServerGameFrameBoundary")
+extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(bool simulating,const sin_port::native_game_frame::State* state,const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result) noexcept {
+    if(!result||g_frame_invocation)return 0;*result={};
+    if(!state||!bindings)return 0;
+    FrameInvocation invocation{state,bindings,result};
+    g_frame_invocation=&invocation;
+    using Slot=void (__thiscall *)(void*,bool) noexcept;
+    // Use the actual interface object and slot, not a second fake vtable.
+    auto** table=*reinterpret_cast<void***>(&instance);
+    reinterpret_cast<Slot>(table[sin_port::native_game_frame::original_slot])(&instance,simulating);
+    g_frame_invocation=nullptr;
+    return invocation.entered&&invocation.success;
+}
+#endif
 
 extern "C" __declspec(dllexport) void* __cdecl CreateInterface(
     const char* name, int* status) noexcept {
