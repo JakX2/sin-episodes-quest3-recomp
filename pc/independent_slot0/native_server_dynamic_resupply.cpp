@@ -247,11 +247,12 @@ bool spawn_normal(void* actor,const char* name,float* pos,const SpawnBindings& b
 }
 int __cdecl evaluate(void* actor,unsigned bytes,const void* player,unsigned player_bytes,int debug,const EvaluateBindings* b,EvaluateResult* out) noexcept {
     if(!out)return 0;*out={};out->selected_health=out->selected_ammo=-1;out->fallback.selected=-1;
-    if(!actor||bytes<0x3b0||!player||player_bytes<0xa0||!b||
+    if(!actor||bytes<0x3b0||!b||
        b->entry_count>sin_independent::kEntityHandleCapacity||(b->entry_count&&!b->entries))return 0;
     const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
     auto master=[&]()->void*{return b->master_handle?registry.Resolve(*b->master_handle):nullptr;};
     if(master()==actor){out->master_skipped=out->completed=1;return 1;}
+    if(!player||player_bytes<0xa0)return 0;
     if(!nearby(actor,true,debug,&out->health_row,1,&b->nearby,&out->health_nearby)||
        !nearby(actor,false,debug,out->ammo_rows,count,&b->nearby,&out->ammo_nearby))return 0;
     void* profile=actor;
@@ -345,7 +346,7 @@ int __cdecl activate(void* actor,unsigned bytes,const LifecycleBindings* b,Lifec
     if(field<unsigned>(actor,0xb4)&1u){
         float now=0;if(!b->now||!b->now(b->context,&now))return 0;o->clock_read=1;
         // Original x87 ordered strictly-less-than 1.0, not <=.
-        if(now<1.f&&registry.Resolve(*b->master_handle)){
+        if(now<1.f&&!registry.Resolve(*b->master_handle)){
             if(!b->warning||!b->warning(b->context,"item_dynamic_resupply set to 'Use Master', but no item_dynamic_resupply master exists.\n"))return 0;
             o->warning_called=1;
         }
@@ -361,7 +362,61 @@ int __cdecl kill(void* actor,unsigned bytes,const LifecycleBindings* b,Lifecycle
     if(!lifecycle_start(actor,bytes,b,o)||!b->remove||!b->remove(b->context,actor))return 0;
     o->removed=o->completed=1;return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill};
+bool dispatch_start(void* a,unsigned n,const DispatchBindings* b,DispatchResult* o) noexcept {
+    if(!o)return false;*o={};o->evaluation.selected_health=o->evaluation.selected_ammo=-1;
+    return a&&n>=0x3b0&&field<unsigned>(a,0)==resupply_vtable&&b&&b->evaluation;
+}
+bool edict_player(const void* edict,unsigned bytes,bool check_free,const DispatchBindings& b,DispatchResult& o,void*& player) noexcept {
+    player=nullptr;if(!edict)return true;o.edict_found=1;
+    if(bytes<4)return false;
+    if(check_free&&(field<unsigned>(edict,0)&2u)){o.edict_free=1;return true;}
+    if(bytes<0x10)return false;
+    const unsigned token=field<unsigned>(edict,0xc);
+    if(!token)return true;
+    if(!b.base_entity||!b.base_entity(b.context,token,&player))return false;
+    o.unknown_called=1;o.player_found=player!=nullptr;return true;
+}
+bool dispatch_evaluate(void* a,unsigned n,void* player,int debug,const DispatchBindings& b,DispatchResult& o) noexcept {
+    unsigned extent=0;
+    const auto& e=*b.evaluation;
+    // The original evaluator checks the master identity before reading player.
+    const sin_independent::EntityHandleView registry(e.entries,e.entry_count);
+    const bool self=e.entry_count<=sin_independent::kEntityHandleCapacity&&e.master_handle&&registry.Resolve(*e.master_handle)==a;
+    if(player&&!self){
+        if(!b.extent||!b.extent(b.context,player,&extent))return false;
+        o.extent_read=1;
+    }
+    o.evaluated=1;
+    if(!evaluate(a,n,player,extent,debug,&e,&o.evaluation))return false;
+    o.completed=1;return true;
+}
+int __cdecl check_pvs(void* a,unsigned n,int debug,const DispatchBindings* b,DispatchResult* o) noexcept {
+    if(!dispatch_start(a,n,b,o)||!b->pvs_edict)return 0;
+    const void* edict=nullptr;unsigned bytes=0;
+    if(!b->pvs_edict(b->context,field<unsigned>(a,0x16c),&edict,&bytes))return 0;
+    o->pvs_called=1;void* player=nullptr;
+    // Outer CheckPVSThink receives an already filtered edict.
+    if(!edict_player(edict,bytes,false,*b,*o,player))return 0;
+    if(player)return dispatch_evaluate(a,n,player,debug,*b,*o);
+    float now=0;if(!b->now||!b->now(b->context,&now))return 0;
+    o->next_time=float(double(now)+1.);
+    if(!b->schedule||!b->schedule(b->context,a,o->next_time))return 0;
+    o->retry=o->completed=1;return 1;
+}
+int __cdecl calculate_type(void* a,unsigned n,int debug,const DispatchBindings* b,DispatchResult* o) noexcept {
+    if(!dispatch_start(a,n,b,o)||!b->max_clients||!b->max_clients(b->context,&o->max_clients))return 0;
+    o->local_called=1;void* player=nullptr;
+    if(o->max_clients==1){
+        const void* edict=nullptr;unsigned bytes=0;
+        if(!b->edict||!b->edict(b->context,1,&edict,&bytes))return 0;
+        o->slot_checked=1;
+        if(!edict_player(edict,bytes,true,*b,*o,player))return 0;
+    }
+    // No retry for CalculateType. Retail passes null into evaluate;
+    // self-master early return is safe, other null players fail closed.
+    return dispatch_evaluate(a,n,player,debug,*b,*o);
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
