@@ -2126,7 +2126,62 @@ bool removal_metadata(void* a,const RemovalMetadataBindings& b,DeferredRemovalRe
     }
     o.metadata=1;return true;
 }
-bool removal_update_native(void* a,unsigned n,unsigned vt,const NativeRemovalUpdateBindings& b,DeferredRemovalQueue& q,DeferredRemovalResult& o) noexcept {
+bool hierarchy_storage(const RemovalHierarchyBindings* b) noexcept {
+    return b&&b->before_collect&&b->extent&&b->count&&b->capacity<=4096&&
+        *b->count<=b->capacity&&(!b->capacity||b->handles);
+}
+// 22174690 -> 221745b0. Collect descendant pointers in preorder;
+// 221447e6 consumes that snapshot in reverse. No recursive deletion
+// while collecting. Bound and reject cycles/aliasing independently.
+bool removal_hierarchy(void* a,const RemovalHierarchyBindings& b,const DeletionListenerBindings& l,
+                       const DeferredRemovalBindings& deferred,DeferredRemovalResult& o) noexcept {
+    if(!hierarchy_storage(&b)||!b.before_collect(b.context,a))return false;
+    const sin_independent::EntityHandleView registry(l.entries,l.entry_count);
+    constexpr unsigned max_children=256;
+    struct Child {void* actor;unsigned bytes;};
+    Child children[max_children]{};
+    auto collect=[&](auto&& self,unsigned handle)->bool{
+        for(auto* child=registry.Resolve(handle);child;child=registry.Resolve(handle)){
+            if(child==a||o.children_collected==max_children)return false;
+            for(unsigned i=0;i<o.children_collected;++i)if(children[i].actor==child)return false;
+            unsigned bytes=0;
+            if(!b.extent(b.context,child,&bytes)||bytes<0xfc)return false;
+            children[o.children_collected++]={child,bytes};
+            if(!self(self,read_field<unsigned>(child,0xf4)))return false;
+            handle=read_field<unsigned>(child,0xf8);
+        }
+        return true;
+    };
+    if(!collect(collect,read_field<unsigned>(a,0xf4)))return false;
+    // Preflight owner dispatch availability for the snapshot.
+    for(unsigned i=0;i<o.children_collected;++i){
+        const auto extent=logic_kill_extent(entity_vtable(children[i].actor));
+        if(extent?children[i].bytes<extent:!b.foreign_remove)return false;
+    }
+    if(o.children_collected&&(!b.warning||!b.warning(b.context,a,o.children_collected)))return false;
+    for(unsigned i=o.children_collected;i>0;--i){
+        const auto& child=children[i-1];
+        if(logic_kill_extent(entity_vtable(child.actor))){
+            DeferredRemovalResult r{};
+            if(!defer_logic_remove(child.actor,child.bytes,&deferred,&r))return false;
+            ++o.children_native;
+        }else{
+            if(!b.foreign_remove(b.context,child.actor))return false;
+            ++o.children_foreign;
+        }
+        ++o.children_requested;
+    }
+    // 220a21f0 compares RESOLVED pointers (including null), not raw
+    // serial words. Remove only first equal row and shift its suffix.
+    if(!hierarchy_storage(&b))return false;
+    const auto* target=registry.Resolve(read_field<unsigned>(a,0x378));
+    for(unsigned i=0;i<*b.count;++i)if(registry.Resolve(b.handles[i])==target){
+        std::memmove(b.handles+i,b.handles+i+1,(*b.count-i-1)*sizeof(unsigned));
+        --*b.count;o.handle_vector_removed=1;o.handle_vector_index=i;break;
+    }
+    o.hierarchy=1;return true;
+}
+bool removal_update_native(void* a,unsigned n,unsigned vt,const NativeRemovalUpdateBindings& b,DeferredRemovalQueue& q,DeferredRemovalResult& o,const DeferredRemovalBindings& deferred) noexcept {
     if(!listener_storage(b.listeners)||!b.tail)return false;
     const auto& l=*b.listeners;
     // CLogicNavigation::UpdateOnRemove unregisters its listener first,
@@ -2145,7 +2200,8 @@ bool removal_update_native(void* a,unsigned n,unsigned vt,const NativeRemovalUpd
     DeletionListenerResult notified{};
     const bool ok=notify_deleting(read_field<unsigned>(a,0x378),&l,&notified)!=0;
     o.notified=notified.notified;o.stale_notification=notified.stale;
-    if(!ok||(b.metadata&&!removal_metadata(a,*b.metadata,o))||!b.tail(b.context,a))return false;
+    if(!ok||(b.metadata&&!removal_metadata(a,*b.metadata,o))||
+        (b.hierarchy&&!removal_hierarchy(a,*b.hierarchy,l,deferred,o))||!b.tail(b.context,a))return false;
     o.native_update=1;return true;
 }
 // 22286bf0 -> 22286b90 -> 221636d0. The embedded networkable's
@@ -2160,7 +2216,8 @@ int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings*
     const auto flags=read_field<unsigned>(a,0xb8);
     if(flags&1u){o->already_marked=o->completed=1;return 1;}
     if(!b||!deferred_valid(b->queue)||(!b->update&&!b->native_update))return 0;
-    if(b->native_update&&(!listener_storage(b->native_update->listeners)||!b->native_update->tail))return 0;
+    if(b->native_update&&(!listener_storage(b->native_update->listeners)||!b->native_update->tail||
+       (b->native_update->hierarchy&&(!b->native_update->metadata||!hierarchy_storage(b->native_update->hierarchy)))))return 0;
     auto& q=*b->queue;
     // Independent capacity reservation: a reentrant update can append
     // other entities without consuming this request's slot. The original
@@ -2168,7 +2225,7 @@ int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings*
     if(q.count+q.reserved==q.capacity)return 0;
     ++q.reserved;
     write_field(a,0xb8,flags|1u);o->marked=1;q.chained_update=false;
-    const bool updated=b->native_update?removal_update_native(a,n,vt,*b->native_update,q,*o):
+    const bool updated=b->native_update?removal_update_native(a,n,vt,*b->native_update,q,*o,*b):
         b->update(b->context,a,vt==navigation_vtable?0x22177f50u:0x221446f0u)!=0;
     --q.reserved;
     if(!updated)return 0; // original virtual is void; do not roll back side effects
