@@ -1129,7 +1129,7 @@
         auto send=[&](unsigned token){return accept(f.seq,sizeof(f.seq),scripted_sequence_vtable,token,f.npc,nullptr,value,sizeof(value),99,&input,&ar,&route,&sr);};
         put(f.seq,0xc0,0u);put(f.seq,0x3d0,0x4001u);put(f.npc,0x970,0xffffffffu);
         put(f.npc,0x850,0u);put(f.npc,0x96c,0u);f.seq[0x1f0]=1;
-        assert(send(71)&&ar.completed&&ar.accepted&&ar.native_handler&&ar.dirty&&ar.map==0x22504fc0u&&ar.handler==0x221b0430u&&ar.expected_type==0&&ar.actual_type==5&&ar.converted&&sr.possessed&&f.seq[0x3c0]&&f.seq[0x200]);
+        assert(send(71)&&ar.completed&&ar.accepted&&ar.native_handler&&ar.dirty&&ar.map==0x22504fc0u&&ar.handler==0x221b0430u&&ar.expected_type==0&&ar.actual_type==0&&ar.converted&&sr.possessed&&f.seq[0x3c0]&&f.seq[0x200]);
         assert(send(73)&&ar.native_handler&&ar.handler==0x221af970u&&sr.cancelled&&word(f.seq,0x3d0)==0xffffffffu&&f.restores==2);
         assert(send(72)&&ar.native_handler&&ar.handler==0x221b0500u&&sr.think_installed&&sr.tick_scheduled&&!f.seq[0x3c0]);
         f.seq[0x3d9]=1;
@@ -1153,7 +1153,7 @@
         };
         qb.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=71&&token<=74;return 1;};
         auto native_search=search;native_search.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
-            *text=token==21?"target":token==74?"seq":token==22?"npc_sintek_grunt":token==0x2242ee1c?"scripted_sequence":nullptr;
+            *text=token==21?"target":token==74?"seq":token==23?"group":token==22?"npc_sintek_grunt":token==0x2242ee1c?"scripted_sequence":nullptr;
             if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
         };
         nw::ServerEntityEventServiceBindings eb{};eb.context=&q;eb.entities=input.entities;eb.resolve=qb.resolve;eb.native_input=&input;eb.native_search=&native_search;
@@ -1194,6 +1194,7 @@
         };
         pb.scope=[](void* p,void* a,bool enter) noexcept ->int{auto& t=*static_cast<PrimaryTrace*>(p);assert(a==t.actor);if(enter)++t.enters;else ++t.leaves;return 1;};
         ScriptedSequencePrimaryResult pr{};
+        search.string_text=native_search.string_text;
         f.now=20.125f;f.rules=0;
         assert(primary(f.seq,sizeof(f.seq),161,&pb,&pr)&&pr.not_due&&!trace.records);
         f.now=20.25f;

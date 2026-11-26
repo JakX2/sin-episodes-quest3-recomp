@@ -94,4 +94,19 @@ using InvokeBoundary=int (__cdecl *)(bool,const State*,const Bindings*,Result*) 
 inline constexpr char filter_boundary_export[]="SiN_InvokeServerGameFrameWithCampaignFilters";
 using InvokeFilterBoundary=int (__cdecl *)(bool,const State*,const Bindings*,Result*,
     const native_map::CampaignFilterInputBindings*,CampaignFilterServiceSummary*) noexcept;
+// Separate opt-in frame record; existing State/Bindings/Result sizes unchanged.
+struct ScriptedSequenceFrameBindings {
+    const native_map::ScriptedSequencePrimaryBindings* primary;
+    const native_map::ScriptedSequenceNativeControlBindings* control;
+    const native_map::CampaignFilterInputBindings* filters;
+};
+struct ScriptedSequenceFrameResult {
+    unsigned primary_calls,invoked,acquired,retries;
+    native_map::ScriptedSequencePrimaryResult last;
+    ScriptedSequenceServiceSummary events;
+    CampaignFilterServiceSummary filters;
+};
+inline constexpr char sequence_boundary_export[]="SiN_InvokeServerGameFrameWithScriptedSequences";
+using InvokeSequenceBoundary=int (__cdecl *)(bool,const State*,const Bindings*,Result*,
+    const ScriptedSequenceFrameBindings*,ScriptedSequenceFrameResult*) noexcept;
 }

@@ -8,6 +8,12 @@ extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(st
 extern "C" int __cdecl SiN_ServiceCampaignFilterEvents(void*,unsigned,unsigned,float,bool,int*,
     const sin_port::native_weapon_tables::ServerEntityEventServiceBindings*,sin_port::native_weapon_tables::ServerEntityEventServiceResult*,
     const sin_port::native_map::CampaignFilterInputBindings*,sin_port::native_weapon_tables::CampaignFilterServiceSummary*) noexcept;
+extern "C" int __cdecl SiN_ServiceScriptedSequenceEvents(void*,unsigned,unsigned,float,bool,int*,
+    const sin_port::native_weapon_tables::ServerEntityEventServiceBindings*,sin_port::native_weapon_tables::ServerEntityEventServiceResult*,
+    const sin_port::native_map::ScriptedSequenceNativeControlBindings*,sin_port::native_weapon_tables::ScriptedSequenceServiceSummary*,
+    const sin_port::native_map::CampaignFilterInputBindings*,sin_port::native_weapon_tables::CampaignFilterServiceSummary*) noexcept;
+extern "C" int __cdecl SiN_RunScriptedSequencePrimaryThink(void*,unsigned,int,
+    const sin_port::native_map::ScriptedSequencePrimaryBindings*,sin_port::native_map::ScriptedSequencePrimaryResult*) noexcept;
 namespace sin_port::native_game_frame {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -105,10 +111,54 @@ bool stationary(void* a,unsigned bytes,unsigned kind,const State& s,const Bindin
     const bool closed=b.edict_scope(b.context,false)!=0;if(closed)++o.edict_scopes_closed;
     return ok&&closed;
 }
-bool actor(void* a,const State& s,const Bindings& b,Result& o) noexcept {
+// Bind both actor and event stages to the same live clock and registry.
+// The owner still supplies the physical movement and animation services.
+struct SequenceFrameRoute {
+    native_map::ScriptedSequenceControlBindings c{};
+    native_map::ScriptedSequencePossessionBindings p{};
+    native_map::ScriptedSequenceCancelBindings cancel{};
+    native_map::ScriptedSequenceAcquireBindings acquire{};
+    native_map::ScriptedSequenceThinkBindings think{};
+    native_map::ScriptedSequencePrimaryBindings primary{};
+    native_map::ScriptedSequenceNativeControlBindings input{};
+    ServerEntitySearchBindings search{};
+};
+bool bind_sequence_frame(const State& s,const Bindings& b,const ScriptedSequenceFrameBindings& route,SequenceFrameRoute& bound) noexcept {
+    if(!route.primary||!route.primary->think||!route.primary->think->acquire||!route.control||
+       !route.control->control||!route.control->possession||!route.control->cancel||!b.queue||
+       !b.queue->bindings||!b.queue->bindings->native_search||!b.queue->bindings->native_input)return false;
+    const auto& original=*route.primary->think;
+    if(original.acquire->control!=route.control->control||original.possession!=route.control->possession||
+       original.cancel!=route.control->cancel)return false;
+    const auto& queue=*b.queue->bindings;
+    bound.c=*route.control->control;bound.c.entries=queue.entities.entries;bound.c.entry_count=queue.entities.count;
+    bound.c.now=&s.globals->curtime;bound.c.interval=&s.globals->interval;
+    bound.search=*queue.native_search;bound.search.entities=queue.entities;
+    bound.p=*route.control->possession;bound.p.entries=bound.c.entries;bound.p.entry_count=bound.c.entry_count;
+    bound.p.now=bound.c.now;bound.p.search=&bound.search;
+    bound.cancel=*route.control->cancel;bound.cancel.control=&bound.c;bound.cancel.search=&bound.search;
+    bound.acquire=*original.acquire;bound.acquire.control=&bound.c;bound.acquire.search=&bound.search;
+    bound.think=original;bound.think.acquire=&bound.acquire;bound.think.possession=&bound.p;bound.think.cancel=&bound.cancel;
+    bound.primary=*route.primary;bound.primary.think=&bound.think;
+    bound.input={&bound.c,&bound.p,&bound.cancel};
+    return bound.c.cadence&&bound.c.extent&&bound.p.extent&&bound.search.extent&&
+        queue.entities.count<=sin_independent::kEntityHandleCapacity&&(!queue.entities.count||queue.entities.entries);
+}
+bool actor(void* a,const State& s,const Bindings& b,Result& o,SequenceFrameRoute* sequence,ScriptedSequenceFrameResult* sr) noexcept {
     if(!a){++o.nulls;return true;}++o.visited;
     unsigned bytes=0;
     if(!b.extent||!b.extent(b.context,a,&bytes)||bytes<0x170)return false;
+    if(sequence&&read<unsigned>(a,0)==native_map::scripted_sequence_vtable){
+        if(bytes<native_map::scripted_sequence_extent)return false;
+        // Only original non-edict default context; all other routes
+        // stay with owner callbacks instead of inventing movement.
+        if(!read<unsigned>(a,0x16c)&&read<int>(a,0x50)<=0){
+            ++sr->primary_calls;
+            if(!SiN_RunScriptedSequencePrimaryThink(a,bytes,s.globals->tick,&sequence->primary,&sr->last))return false;
+            sr->invoked+=sr->last.invoked;sr->acquired+=sr->last.behavior.acquired;sr->retries+=sr->last.behavior.retry_scheduled;return true;
+        }
+        if(read<int>(a,0x50)>0)++o.named_context_fallbacks;
+    }
     const auto kind=known_kind(a,bytes,b);
     // Full 22222c30 iterates named contexts after the default one.
     // These are not implemented by the primary API.
@@ -133,13 +183,13 @@ bool actor(void* a,const State& s,const Bindings& b,Result& o) noexcept {
     if(kind&&!named)return native_think(a,bytes,kind,s,b,o);
     if(!b.other_think||!b.other_think(b.context,a))return false;++o.foreign_thinks;return true;
 }
-bool actors(bool simulating,const State& s,const Bindings& b,Result& o) noexcept {
+bool actors(bool simulating,const State& s,const Bindings& b,Result& o,SequenceFrameRoute* sequence,ScriptedSequenceFrameResult* sr) noexcept {
     constexpr char name[]="Physics_RunThinkFunctions";
     if(!scope(b,o,name,true))return false;
     *s.profile_enabled=*s.think_profile!=0;o.profile_written=1;
     auto& g=*s.globals;const float saved=g.curtime;o.actor_curtime=saved;
     bool ok=cleanup_stage(b,o);
-    auto run_one=[&](void* a){if(!a){++o.nulls;return true;}g.curtime=saved;return actor(a,s,b,o);};
+    auto run_one=[&](void* a){if(!a){++o.nulls;return true;}g.curtime=saved;return actor(a,s,b,o,sequence,sr);};
     if(ok&&!simulating){
         // Original loop is strictly index < live maxClients (not <=).
         for(int i=1;i<g.max_clients&&ok;++i){
@@ -166,7 +216,7 @@ bool actors(bool simulating,const State& s,const Bindings& b,Result& o) noexcept
     const bool closed=scope(b,o,name,false);return ok&&closed;
 }
 bool events(const State& s,const Bindings& b,Result& o,const native_map::CampaignFilterInputBindings* filters,
-    CampaignFilterServiceSummary* summary) noexcept {
+    CampaignFilterServiceSummary* summary,SequenceFrameRoute* sequence,ScriptedSequenceFrameResult* sr) noexcept {
     constexpr char name[]="ServiceEventQueue()";
     if(!scope(b,o,name,true))return false;
     bool ok=false;
@@ -203,7 +253,8 @@ bool events(const State& s,const Bindings& b,Result& o,const native_map::Campaig
                 }
                 bindings.native_input=&input;
             }
-            if(filters)ok=SiN_ServiceCampaignFilterEvents(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events,filters,summary)!=0;
+            if(sequence)ok=SiN_ServiceScriptedSequenceEvents(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events,&sequence->input,&sr->events,filters,summary)!=0;
+            else if(filters)ok=SiN_ServiceCampaignFilterEvents(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events,filters,summary)!=0;
             else ok=api&&api->service(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events);
             if(ok)o.native_events=1;
         }
@@ -212,8 +263,9 @@ bool events(const State& s,const Bindings& b,Result& o,const native_map::Campaig
     const bool closed=scope(b,o,name,false);return ok&&closed;
 }
 int run_impl(bool simulating,const State* s,const Bindings* b,Result* o,
-    const native_map::CampaignFilterInputBindings* filters=nullptr,CampaignFilterServiceSummary* summary=nullptr) noexcept {
-    if(summary)*summary={};
+    const native_map::CampaignFilterInputBindings* filters=nullptr,CampaignFilterServiceSummary* summary=nullptr,
+    const ScriptedSequenceFrameBindings* sequence=nullptr,ScriptedSequenceFrameResult* sr=nullptr) noexcept {
+    if(sr)*sr={};if(summary)*summary={};
     if(!o)return 0;*o={};
     if(!s||!b||!s->globals||!s->level_transition||!s->skip_next||!s->double_step||
        !s->think_profile||!s->profile_enabled||!s->iteration_depth)return 0;
@@ -225,6 +277,8 @@ int run_impl(bool simulating,const State* s,const Bindings* b,Result* o,
     if(*s->level_transition){o->transition=1;return finish(true);}
     if(*s->skip_next){*s->skip_next=false;o->skip_consumed=1;return finish(true);}
     if(!coherent_removal(*b))return finish(false);
+    SequenceFrameRoute sequence_bound{};
+    if(sequence&&(!sr||!bind_sequence_frame(*s,*b,*sequence,sequence_bound)))return finish(false);
     if(filters&&(!summary||!filters->predicate||!filters->output||!filters->native_queue||!b->queue||
         !b->queue->bindings||!b->queue->bindings->native_input||!b->queue->bindings->native_search||
         filters->native_queue->root!=b->queue->sentinel||filters->native_queue->root_token!=b->queue->token))return finish(false);
@@ -234,7 +288,7 @@ int run_impl(bool simulating,const State* s,const Bindings* b,Result* o,
     bool ok=std::isfinite(g.frametime)&&cleanup_stage(*b,*o)&&
         stage(*b,b->pre_systems,o->pre_systems)&&stage(*b,b->pre_actors,o->pre_actors)&&
         stage(*b,b->manager,o->manager)&&stage(*b,b->engine_begin,o->engine_begin)&&
-        actors(simulating,*s,*b,*o)&&stage(*b,b->post_systems,o->post_systems)&&events(*s,*b,*o,filters,summary)&&
+        actors(simulating,*s,*b,*o,sequence?&sequence_bound:nullptr,sr)&&stage(*b,b->post_systems,o->post_systems)&&events(*s,*b,*o,filters,summary,sequence?&sequence_bound:nullptr,sr)&&
         cleanup_stage(*b,*o)&&stage(*b,b->post_cleanup,o->post_cleanup);
     if(ok&&b->rules_frame)ok=stage(*b,b->rules_frame,o->rules_called);
     if(ok&&b->trace_report)ok=stage(*b,b->trace_report,o->trace_report);
@@ -259,4 +313,10 @@ int __cdecl SinGameFrameWithFiltersInternal(bool simulating,const sin_port::nati
     sin_port::native_game_frame::Result* o,const sin_port::native_map::CampaignFilterInputBindings* filters,
     sin_port::native_weapon_tables::CampaignFilterServiceSummary* summary) noexcept {
     return filters&&summary&&sin_port::native_game_frame::run_impl(simulating,s,b,o,filters,summary);
+}
+
+int __cdecl SinGameFrameWithSequencesInternal(bool simulating,const sin_port::native_game_frame::State* s,const sin_port::native_game_frame::Bindings* b,
+    sin_port::native_game_frame::Result* o,const sin_port::native_game_frame::ScriptedSequenceFrameBindings* sequence,
+    sin_port::native_game_frame::ScriptedSequenceFrameResult* sr) noexcept {
+    return sequence&&sr&&sin_port::native_game_frame::run_impl(simulating,s,b,o,sequence->filters,&sr->filters,sequence,sr);
 }
