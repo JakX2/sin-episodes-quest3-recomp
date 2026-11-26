@@ -1206,3 +1206,58 @@
         put(f.seq,0xb8,0u);put(f.seq,8,0u);put(f.seq,0x74,172u);f.now=21.5f;
         assert(primary(f.seq,sizeof(f.seq),172,&pb,&pr)&&pr.completed&&!pr.invoked&&pr.next_tick==-1&&pr.last_tick==172&&trace.enters==3&&trace.leaves==3);
     }
+
+    // Original Spawn/Activate: named manual vs auto-start/unnamed;
+    // activation checks presence without claiming NPC and binds first
+    // named successor even when it is not a scripted_sequence.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct SpawnSequenceFixture{
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x974]{},other[scripted_sequence_extent]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float now=50.f,interval=.125f;
+            unsigned solid=0,base=0,notify=0;
+        } f;
+        const auto spawn=reinterpret_cast<SpawnScriptedSequence>(GetProcAddress(server,scripted_sequence_spawn_export));
+        const auto activate=reinterpret_cast<ActivateScriptedSequence>(GetProcAddress(server,scripted_sequence_activate_export));
+        assert(spawn&&activate&&!GetProcAddress(client,scripted_sequence_spawn_export));
+        void* actors[]{f.other,f.npc,f.seq};
+        for(unsigned i=0;i<3;++i){
+            f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;put(actors[i],0x378,((3+i)<<12)|i);
+            if(i)f.entries[i].previous=&f.entries[i-1];if(i<2)f.entries[i].next=&f.entries[i+1];
+        }
+        put(f.seq,0,scripted_sequence_vtable);put(f.other,0,scripted_sequence_vtable);put(f.npc,0,0x224954a4u);
+        put(f.seq,0xc,0x2242ee1cu);put(f.other,0xc,0x2242ee1cu);put(f.npc,0xc,22u);
+        put(f.seq,0xc0,23u);put(f.seq,0x3a8,21u);put(f.seq,0x3d0,0xffffffffu);
+        put(f.other,0xc0,21u);put(f.npc,0xc0,21u);
+        auto extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<SpawnSequenceFixture*>(p);*bytes=a==f.npc?sizeof(f.npc):a==f.seq||a==f.other?sizeof(f.seq):0;return *bytes!=0;
+        };
+        nw::ServerEntitySearchBindings search{};search.context=&f;search.head=f.entries;search.extent=extent;
+        search.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==21?"target":token==22?"npc_sintek_grunt":token==23?"seq":token==24?"missing":token==0x2242ee1c?"scripted_sequence":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        nw::ServerNpcOuterCadenceBindings cadence{};cadence.context=&f;
+        cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<SpawnSequenceFixture*>(p);assert(a==f.seq);++f.notify;return 1;};
+        ScriptedSequenceControlBindings c{};c.context=&f;c.entries=f.entries;c.entry_count=3;c.extent=extent;c.now=&f.now;c.interval=&f.interval;c.cadence=&cadence;
+        ScriptedSequenceSpawnBindings sb{&c,&f};
+        sb.solid_type=[](void* p,void* member,int type) noexcept ->int{auto& f=*static_cast<SpawnSequenceFixture*>(p);assert(member==f.seq+0xfc&&type==0);++f.solid;return 1;};
+        ScriptedSequenceActivateBindings ab{&c,&search,&f};
+        ab.base_activate=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<SpawnSequenceFixture*>(p);assert(a==f.seq);++f.base;return 1;};
+        ScriptedSequenceSpawnResult so{};ScriptedSequenceActivateResult ao{};
+        put(f.seq,0x3d4,0x3000u);put(f.seq,0x3dc,0x4001u);put(f.seq,0xb8,0x400000u);put(f.seq,0x74,0xffffffffu);
+        assert(spawn(f.seq,sizeof(f.seq),&sb,&so)&&so.solid_called&&!so.scheduled&&so.interruptible&&!so.waiting&&word(f.seq,0x3d4)==0xffffffffu&&word(f.seq,0x3dc)==0xffffffffu);
+        put(f.seq,0xb4,0x30u);
+        assert(spawn(f.seq,sizeof(f.seq),&sb,&so)&&so.scheduled&&so.due_tick==408&&so.waiting&&!so.interruptible&&f.notify==1&&word(f.seq,8)==0x221afc90u);
+        put(f.seq,0xc0,0u);put(f.seq,0xb4,0u);f.seq[0x3c0]=0;
+        assert(spawn(f.seq,sizeof(f.seq),&sb,&so)&&so.scheduled&&!so.waiting&&so.interruptible&&f.solid==3);
+        put(f.seq,0x3a4,21u);
+        assert(activate(f.seq,sizeof(f.seq),&ab,&ao)&&ao.base_called&&ao.npc_found&&ao.visited==2&&ao.next_found&&ao.next_handle==0x3000u&&word(f.seq,0x3d0)==0xffffffffu);
+        // No named target for this token; fall back to NPC classname.
+        put(f.seq,0x3a8,22u);put(f.seq,0x3a4,24u);
+        assert(activate(f.seq,sizeof(f.seq),&ab,&ao)&&ao.npc_found&&ao.visited==1&&ao.next_name_cleared&&!word(f.seq,0x3a4)&&word(f.seq,0x3d4)==0xffffffffu&&f.base==2);
+        // First successor is an NPC rather than script: retail doesn't cast.
+        put(f.other,0xc0,23u);put(f.seq,0x3a4,21u);
+        assert(activate(f.seq,sizeof(f.seq),&ab,&ao)&&ao.next_handle==0x4001u&&ao.next_found);
+    }
