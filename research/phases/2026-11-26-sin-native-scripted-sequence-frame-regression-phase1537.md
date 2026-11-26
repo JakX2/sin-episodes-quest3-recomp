@@ -1,0 +1,3 @@
+# Phase 1537: actual GameFrame sequence regression
+
+Loaded replacement DLL actual slot4 test drives delayed named BeginSequence, actor-before-event timing, rules-denied retry, strict due tick, native NPC acquisition/possession, and direct CancelSequence. Uses no hosted accept/search/possession/cancel callback; retains flag mutation/report and scope owner callbacks only. Tests stale clock/interval and omitted registry on owner graph, live authoritative queue registry and timing, notification count, balanced scopes, cleanup and release. This test is authored, not yet CI-proven.

@@ -400,6 +400,97 @@ int main(int argc,char** argv){
         assert(camp.api->enqueue(camp.root,sizeof(camp.root),99,f.g.curtime,0x6001,0x6001,&a,&camp.queue,&qr));
         assert(frame_filters(true,&state,&frame,&out,&fb,&summary)&&out.events.native_inputs==2&&summary.failed==1&&camp.relay[0x3ac]&&camp.event_releases==4&&out.cleanup_calls==3&&!camp.locked);
     }
+    // Real GameFrame: event stage schedules default think; the actor
+    // stage on a later frame retries and acquires through native registry.
+    {
+        const auto frame_sequences=reinterpret_cast<InvokeSequenceBoundary>(GetProcAddress(server,sequence_boundary_export));
+        assert(frame_sequences&&!GetProcAddress(client,sequence_boundary_export));
+        struct SequenceFrameFixture {
+            alignas(4) unsigned char seq[nm::scripted_sequence_extent]{},npc[0x974]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            Fixture* frame=nullptr;CampaignFixture* campaign=nullptr;
+            unsigned records=0,enters=0,leaves=0,notifications=0,flags=0,reports=0,cancels=0;
+            unsigned char rules=0;
+            float stale_now=-100.f,stale_interval=.5f;
+        } sf;
+        sf.frame=&f;sf.campaign=&camp;
+        put(sf.seq,0,nm::scripted_sequence_vtable);put(sf.seq,0x378,0x8000u);put(sf.seq,0xc,0x2242ee1cu);
+        put(sf.seq,0xc0,302u);put(sf.seq,0x3a8,301u);put(sf.seq,0x3d0,0xffffffffu);put(sf.seq,0x3d4,0xffffffffu);put(sf.seq,0x3dc,0xffffffffu);
+        put(sf.seq,0xb8,0x400000u);put(sf.seq,0x74,-1);
+        put(sf.npc,0,0x224954a4u);put(sf.npc,0x378,0x9001u);put(sf.npc,0xc0,301u);put(sf.npc,0x970,0xffffffffu);
+        sf.entries[0].entity=reinterpret_cast<CBaseEntity*>(sf.seq);sf.entries[0].serial=8;sf.entries[0].next=&sf.entries[1];
+        sf.entries[1].entity=reinterpret_cast<CBaseEntity*>(sf.npc);sf.entries[1].serial=9;sf.entries[1].previous=&sf.entries[0];
+        auto extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);*bytes=a==sf.seq?sizeof(sf.seq):a==sf.npc?sizeof(sf.npc):0;return *bytes!=0;
+        };
+        auto strings=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==301?"target":token==302?"sequence":token==303?"BeginSequence":token==304?"CancelSequence":token==0x2242ee1c?"scripted_sequence":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        ServerEntitySearchBindings seq_search{};seq_search.context=&sf;seq_search.extent=extent;seq_search.head=sf.entries;seq_search.string_text=strings;
+        auto seq_input=input;seq_input.timer=nullptr;seq_input.string_text=strings;
+        std::memset(camp.root,0,sizeof(camp.root));std::memset(camp.events,0,sizeof(camp.events));camp.event_alloc=camp.event_releases=0;
+        camp.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=301&&token<=304;return 1;};
+        auto seq_events=events;seq_events.entities.entries=sf.entries;seq_events.entities.count=2;seq_events.native_input=&seq_input;
+        seq_events.native_search=&seq_search;seq_events.find_named=nullptr;seq_events.accept=nullptr;
+        auto seq_queue=eq;seq_queue.bindings=&seq_events;
+        ServerNpcOuterCadenceBindings cadence{};cadence.context=&sf;
+        cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);assert(a==sf.seq);++sf.notifications;return 1;
+        };
+        nm::ScriptedSequenceControlBindings c{};c.context=&sf;c.extent=extent;c.now=&sf.stale_now;c.interval=&sf.stale_interval;c.cadence=&cadence;
+        c.cancel_warning=[](void*,unsigned) noexcept ->int{return 1;};
+        nm::ScriptedSequencePossessionBindings pos{};pos.context=&sf;pos.extent=extent;
+        pos.add_flags=[](void* p,void* a,unsigned) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);assert(a==sf.npc&&sf.frame->depth==1&&!sf.campaign->locked);++sf.flags;return 1;
+        };
+        nm::ScriptedSequenceCancelBindings cancel{};cancel.context=&sf;cancel.control=&c;
+        cancel.restore_flags=[](void* p,void* a,unsigned) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);assert(a==sf.npc&&!sf.frame->depth&&sf.campaign->locked);++sf.cancels;return 1;
+        };
+        nm::ScriptedSequenceAcquireBindings acquire{&c,&seq_search,&sf};
+        nm::ScriptedSequenceThinkBindings think{&acquire,&pos,&cancel,&sf.rules,&sf};
+        think.report=[](void* p,void* seq,unsigned stage,void* npc,unsigned) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);assert(seq==sf.seq&&stage==1&&npc==sf.npc&&sf.frame->depth==1);++sf.reports;return 1;
+        };
+        nm::ScriptedSequencePrimaryBindings primary{&think,&sf};
+        primary.record=[](void* p,void* a,int tick,float time,int due) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);assert(a==sf.seq&&sf.frame->depth==1&&tick==due&&time==sf.frame->g.curtime);++sf.records;return 1;
+        };
+        primary.scope=[](void* p,void* a,bool enter) noexcept ->int{
+            auto& sf=*static_cast<SequenceFrameFixture*>(p);assert(a==sf.seq&&sf.frame->depth==1);if(enter)++sf.enters;else ++sf.leaves;return 1;
+        };
+        nm::ScriptedSequenceNativeControlBindings route{&c,&pos,&cancel};
+        ScriptedSequenceFrameBindings seq_frame{&primary,&route,nullptr};
+        ScriptedSequenceFrameResult sr{};
+        auto frame=b;frame.logic_timer=nullptr;frame.logic_auto=nullptr;frame.queue=&seq_queue;
+        f.slots[0]=sf.seq;f.order[0]=0;
+        frame.active=[](void* p,ActiveList* list) noexcept ->int{
+            auto& f=*static_cast<Fixture*>(p);assert(f.depth==1);*list={f.order,1,4,f.slots,3};return 1;
+        };
+        frame.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<Fixture*>(p);if(a!=f.slots[0])return 0;*bytes=nm::scripted_sequence_extent;return 1;
+        };
+        auto tick=[&](){return frame_sequences(true,&state,&frame,&out,&seq_frame,&sr);};
+        f.g.curtime=40.f;f.g.tick=320;f.skip=false;single_step=0;
+        ServerEntityVoidOutputAction begin{302,303,0,0,99,.125f};ServerEntityNamedEventQueueResult qr{};
+        assert(camp.api->enqueue(camp.root,sizeof(camp.root),99,f.g.curtime,0x9001u,0x9001u,&begin,&camp.queue,&qr));
+        assert(tick()&&sr.primary_calls==1&&sr.last.no_think&&out.events.future_stopped&&!sr.events.attempted);
+        f.g.curtime=40.125f;f.g.tick=321;
+        assert(tick()&&sr.last.no_think&&sr.events.scheduled==1&&word(sf.seq,0x74)==321&&sf.notifications==1&&!sr.invoked);
+        // Same engine tick: original actor stage runs before event stage.
+        assert(tick()&&sr.invoked==1&&sr.retries==1&&sr.last.behavior.rules_blocked&&word(sf.seq,0x74)==329&&sf.notifications==3);
+        f.g.curtime=41.f;f.g.tick=328;sf.rules=1;
+        assert(tick()&&sr.last.not_due&&!sr.invoked);
+        f.g.curtime=41.125f;f.g.tick=329;
+        assert(tick()&&sr.invoked==1&&sr.acquired==1&&!sr.retries&&word(sf.npc,0x970)==0x8000u&&word(sf.seq,0x74)==0xffffffffu&&sf.flags==1&&sf.reports==1);
+        assert(sf.records==2&&sf.enters==2&&sf.leaves==2&&sf.notifications==4);
+        unsigned empty[5]{0,0,0,0xffffffffu,0};
+        assert(camp.api->enqueue_direct(camp.root,sizeof(camp.root),99,f.g.curtime,0x8000u,304,0x9001u,0x9001u,empty,sizeof(empty),0.f,99,&camp.queue,&qr));
+        assert(tick()&&sr.last.no_think&&sr.events.cancelled==1&&sf.cancels==1&&word(sf.npc,0x970)==0xffffffffu&&word(sf.seq,0x3d0)==0xffffffffu&&camp.event_releases==2&&out.cleanup_calls==3&&!camp.locked&&!f.depth);
+        // Original owner bindings were never modified by scoped rebinding.
+        assert(!c.entries&&!pos.entries&&c.now==&sf.stale_now&&c.interval==&sf.stale_interval&&sf.stale_now==-100.f);
+    }
 #include "test_native_game_frame_deferred.inc"
     FreeLibrary(server);FreeLibrary(client);
 }
