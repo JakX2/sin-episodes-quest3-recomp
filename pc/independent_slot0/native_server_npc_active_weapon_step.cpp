@@ -382,6 +382,23 @@ int wake_policy_impl(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNp
     return done();
 }
 bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept;
+// 2213c980. All authenticated Grunt primary +18/+1c virtuals
+// are 22001bc0 (read +38) and 22001af0 (copy +240).
+bool wake_refresh_entity(void* a,const ServerNpcWakeTransitionBindings& b) noexcept {
+    const auto token=rd<unsigned>(a,0x16c);
+    if(!token)return true;
+    if(!b.storage)return false;
+    void* word=nullptr;if(!resolve(*b.storage,token,4,&word))return false;
+    const auto flags=rd<unsigned>(a,0xb8),kind=rd<unsigned>(a,0x38);
+    const auto prior=rd<unsigned>(word,0);
+    unsigned value=0;
+    if((rd<unsigned>(a,0x78)&0x20u)||(!(flags&0x80u)&&(!kind||!rd<unsigned>(a,0x240))))
+        value=(prior&~0x28u)|0x10u;
+    else if(kind==1||(flags&0x20000u))
+        value=(prior&~0x30u)|8u;
+    else value=(prior&~0x18u)|0x20u;
+    wr<unsigned>(word,0,value);return true;
+}
 bool wake_member(void* e,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept {
     unsigned n=0;
     if(!e||!b.extent||!b.extent(b.context,e,&n)||n<4)return false;
@@ -416,7 +433,7 @@ bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const 
         if(!b.storage||!dirty(a,*b.storage))return false;
         wr<unsigned>(a,0x78,flags&~0x20u);++o.flags_changed;
     }
-    if(!b.refresh_entity||!b.refresh_entity(b.context,a))return false;++o.refreshed;
+    if(!(b.refresh_entity?b.refresh_entity(b.context,a):wake_refresh_entity(a,b)))return false;++o.refreshed;
     if(output){if(!b.output||!b.output(b.context,a,0xbc8u))return false;++o.outputs;}
     if(!rd<std::uint8_t>(a,0x870)||!rd<unsigned>(a,0x9c4))return true;
     int cursor=-1;

@@ -190,7 +190,7 @@ struct ServerNpcWakeTransitionBindings {
     ServerWeaponActivityBindings entities;
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
-    int (__cdecl *refresh_entity)(void*,void*) noexcept; // +58 (2213c980)
+    int (__cdecl *refresh_entity)(void*,void*) noexcept; // optional +58 override; native authenticated 2213c980 when null
     int (__cdecl *output)(void*,void*,unsigned) noexcept; // 22156900, +bc8
     // Original filtered squad iterator 220a9300/220a93c0. Cursor starts at -1.
     int (__cdecl *squad_next)(void*,std::uint32_t,int*,void**) noexcept;
