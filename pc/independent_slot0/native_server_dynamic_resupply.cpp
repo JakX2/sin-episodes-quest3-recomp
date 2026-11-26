@@ -46,7 +46,55 @@ int __cdecl ratios(const float* desired,unsigned desired_count,AmmoRow* rows,uns
     }
     return 1;
 }
-const Api api{1,sizeof(Api),&ratios};
+int __cdecl health(int hp,int max_hp,float desired,AmmoRow* row,const HealthBindings* b,HealthResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!row||!b||!b->vial_value||!b->scale)return 0;
+    float vial=0;if(!b->vial_value(b->context,&vial))return 0;++out->vial_reads;
+    // FILD/FMul/FIAdd/FILD/Fdivp; max health is not pre-rounded to float.
+    row->current=float((double(row->nearby)*double(vial)+double(hp))/double(max_hp));
+    float scale=0;if(!b->scale(b->context,&scale))return 0;++out->scale_reads;
+    const double product=double(desired)*double(scale);
+    row->desired=float(product);
+    const double delta=product-double(row->current);
+    // Health clamps the live x87 value, unlike ammo's stored delta.
+    row->delta=delta>1.?1.f:delta<0.?0.f:float(delta);
+    out->completed=1;return 1;
+}
+int __cdecl greatest(const AmmoRow* rows,unsigned n,int* selected) noexcept {
+    if(!selected)return 0;*selected=-1;
+    if(!rows||!n||n>count)return 0;
+    float best=0.f;
+    for(unsigned i=0;i<n;++i)if(rows[i].delta>best){best=rows[i].delta;*selected=int(i);}
+    return 1;
+}
+int __cdecl fallback(unsigned flags,const float* desired,unsigned n,const FallbackBindings* b,FallbackResult* out) noexcept {
+    if(!out)return 0;*out={};out->selected=-1;
+    if(!(flags&4u))return 1;
+    out->enabled=1;
+    if(!desired||n<count||!b||!b->has_weapon||!b->random_float)return 0;
+    const auto* ammo=SiN_GetOriginalAmmoDefinitionApi(original_ammo::version,sizeof(original_ammo::Api));
+    if(!b->index&&!ammo)return 0;
+    for(unsigned i=0;i<count;++i){
+        int index=-1;
+        if(b->index){if(!b->index(b->context,ammo_types[i].name,&index))return 0;}
+        else index=ammo->index(ammo_types[i].name);
+        ++out->index_reads;
+        bool owned=false;if(!b->has_weapon(b->context,index,&owned))return 0;++out->ownership_reads;
+        // FUCOMPP equality excludes exactly zero; NaN remains eligible.
+        if(!owned||ammo_types[i].full_weight==0.f||desired[i]==0.f){out->cumulative[i]=-1.f;continue;}
+        out->total=float(double(out->total)+double(ammo_types[i].full_weight));
+        out->cumulative[i]=out->total;++out->eligible;
+    }
+    // Retail sets first threshold to one when the total is exactly zero.
+    if(out->total==0.f){out->total=out->cumulative[0]=1.f;out->forced_magnum=1;}
+    if(!b->random_float(b->context,0.f,out->total,&out->draw))return 0;
+    out->random_called=1;
+    for(unsigned i=0;i<count;++i)if(out->draw<=out->cumulative[i]){
+        out->selected=int(i);out->classname=ammo_types[i].classname;break;
+    }
+    return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

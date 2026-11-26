@@ -7,6 +7,8 @@
 #endif
 #include <cassert>
 #include <cmath>
+#include <limits>
+#include <cstring>
 using namespace sin_port::native_resupply;
 struct Fixture {
     bool owned[18]{};int ammo[18]{};int maxima[18]{};
@@ -49,5 +51,37 @@ int main(int argc,char** argv){
     assert(!api->ammo_ratios(desired,count-1,rows,count,&b,&o)&&!o.rows);
     assert(!api->ammo_ratios(desired,count,rows,count-1,&b,&o)&&!o.rows);
     f.fail_scale=true;assert(!api->ammo_ratios(desired,count,rows,count,&b,&o)&&!o.rows);
+    // Health uses the live health-vial amount and the same desired scale.
+    struct HealthFixture{float vial=10.f,scale=1.f;unsigned calls=0;} hf;
+    HealthBindings hb{&hf,
+        [](void* p,float* v) noexcept ->int{auto& q=*static_cast<HealthFixture*>(p);assert(q.calls++%2==0);*v=q.vial;return 1;},
+        [](void* p,float* v) noexcept ->int{auto& q=*static_cast<HealthFixture*>(p);assert(q.calls++%2==1);*v=q.scale;return 1;}};
+    HealthResult hr{};AmmoRow health_row{};health_row.nearby=2;
+    assert(api->health_ratio(30,100,.75f,&health_row,&hb,&hr)&&hr.completed&&hr.vial_reads==1&&hr.scale_reads==1);
+    assert(health_row.current==.5f&&health_row.desired==.75f&&health_row.delta==.25f&&health_row.nearby==2);
+    hf.scale=2.f;assert(api->health_ratio(0,100,1.f,&health_row,&hb,&hr)&&health_row.delta==1.f);
+    hf.scale=1.f;assert(api->health_ratio(100,100,.5f,&health_row,&hb,&hr)&&health_row.delta==0.f);
+    health_row.nearby=0;assert(api->health_ratio(0,0,.5f,&health_row,&hb,&hr)&&std::isnan(health_row.current)&&std::isnan(health_row.delta));
+    int selected=99;AmmoRow deficits[count]{};
+    deficits[0].delta=std::numeric_limits<float>::quiet_NaN();deficits[1].delta=-1.f;
+    assert(api->greatest_deficit(deficits,count,&selected)&&selected==-1);
+    deficits[1].delta=.5f;deficits[4].delta=.5f;assert(api->greatest_deficit(deficits,count,&selected)&&selected==1);
+    deficits[5].delta=.75f;assert(api->greatest_deficit(deficits,count,&selected)&&selected==5);
+    assert(!api->greatest_deficit(deficits,count+1,&selected)&&selected==-1);
+    // Fallback: flag 4, fixed .5 weights, inclusive threshold, NaN skip.
+    struct FallbackFixture{bool owned[18]{};float draw=0,hi=0;unsigned draws=0;} ff;
+    FallbackBindings fb{};fb.context=&ff;
+    fb.has_weapon=[](void* p,int i,bool* yes) noexcept ->int{auto& q=*static_cast<FallbackFixture*>(p);assert(i>0&&i<18);*yes=q.owned[i];return 1;};
+    fb.random_float=[](void* p,float lo,float hi,float* v) noexcept ->int{auto& q=*static_cast<FallbackFixture*>(p);assert(lo==0);q.hi=hi;*v=q.draw;++q.draws;return 1;};
+    FallbackResult fr{};float wants[count]{.5f,.5f,0.f,.5f,.5f,.5f};
+    assert(api->fallback(0,nullptr,0,nullptr,&fr)&&!fr.enabled&&fr.selected==-1&&!ff.draws);
+    ff.draw=1.f;assert(api->fallback(4,wants,count,&fb,&fr)&&fr.enabled&&fr.forced_magnum&&fr.selected==0&&fr.total==1.f&&ff.hi==1.f&&!std::strcmp(fr.classname,"item_ammo_magnum"));
+    ff.owned[2]=ff.owned[3]=ff.owned[10]=true;
+    ff.draw=.5f;assert(api->fallback(4,wants,count,&fb,&fr)&&fr.eligible==2&&fr.index_reads==6&&fr.ownership_reads==6&&fr.cumulative[1]==.5f&&fr.cumulative[2]==-1.f&&fr.cumulative[4]==1.f&&fr.selected==1);
+    ff.draw=std::nextafter(.5f,1.f);assert(api->fallback(4,wants,count,&fb,&fr)&&fr.selected==4);
+    ff.draw=std::numeric_limits<float>::quiet_NaN();assert(api->fallback(4,wants,count,&fb,&fr)&&fr.random_called&&fr.selected==-1&&!fr.classname);
+    // Negative and unordered desired ratios are not exactly zero.
+    wants[2]=std::numeric_limits<float>::quiet_NaN();wants[4]=-1.f;ff.draw=1.f;
+    assert(api->fallback(4,wants,count,&fb,&fr)&&fr.eligible==3&&fr.total==1.5f&&fr.selected==2);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
