@@ -3014,4 +3014,40 @@ struct ServerNpcGruntJetSelectorApi {
     int (__cdecl *choose)(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept;
 };
 using GetServerNpcGruntJetSelectorApi=const ServerNpcGruntJetSelectorApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_special_combat_export[]="SiN_GetServerNpcGruntSpecialCombatApi";
+struct ServerNpcGruntSpecialCombatBindings {
+    const ServerNpcGruntCombatSelectorBindings* combat;
+    void* context;
+    int (__cdecl *class_matches)(void*,std::uint32_t,std::uint32_t,bool*) noexcept;
+    int (__cdecl *target_class)(void*,void*,int*) noexcept; // target +d0
+    int (__cdecl *target_view)(void*,void*,void*,bool*) noexcept; // 22139f60 then +300
+    int (__cdecl *memory_stamp)(void*,void*,void*,bool,double*) noexcept; // true: 2206b5b0, false: 2206b450
+    int (__cdecl *memory_position)(void*,void*,void*,float*) noexcept; // 2206b3b0
+    int (__cdecl *memory_policy)(void*,void*,bool*) noexcept; // +78c(false)
+    // Original query 220cdc10, radius 500, mask 0x2000000, at most 10 entries in engine order.
+    int (__cdecl *enumerate)(void*,const float*,float,std::uint32_t,void**,unsigned,unsigned*) noexcept;
+    int (__cdecl *cast_candidate)(void*,void*,void**) noexcept; // typed RTTI cast
+    int (__cdecl *trace)(void*,void*,void*,void*,std::uint32_t,float*) noexcept; // candidate -> target; ignore actor
+    int (__cdecl *candidate_radius)(void*,void*,float*) noexcept; // 222ff670
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept; // +8
+};
+struct ServerNpcGruntSpecialCombatResult {
+    ServerNpcConditionResult condition;
+    ServerNpcGruntSquadSlotsResult slot;
+    int schedule,target_class;
+    std::uint32_t candidate_handle;
+    unsigned completed,condition_tests,target_queries,extent_calls,slot_calls,slot_allowed,class_checks,
+        obstacle_valid,obstacle_class_matched,target_class_called,target_view_called,stamp_calls,
+        policy_calls,position_calls,enumerated,candidates,casts,trace_calls,radius_calls,
+        candidate_written,flag_written,memory_position_called;
+    double stamp,distance_squared;
+    float age,distance,trace_fraction,radius;
+};
+struct ServerNpcGruntSpecialCombatApi {
+    std::uint32_t version,size;
+    int (__cdecl *special)(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,ServerNpcGruntSpecialCombatResult*) noexcept; // 2235a560
+    int (__cdecl *choose)(void*,unsigned,float,const ServerNpcGruntSpecialCombatBindings*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntSpecialCombatResult*) noexcept;
+};
+using GetServerNpcGruntSpecialCombatApi=const ServerNpcGruntSpecialCombatApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

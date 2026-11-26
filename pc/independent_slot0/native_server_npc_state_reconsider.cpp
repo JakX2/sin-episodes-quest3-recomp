@@ -6489,7 +6489,122 @@ int __cdecl grunt_jet_special(void* a,unsigned n,float now,const ServerNpcGruntJ
     return done(41);
 }
 
-int grunt_combat_select_impl(void* a,unsigned n,float now,const ServerNpcGruntCombatSelectorBindings* b,ServerNpcGruntCombatSelectorResult* o,const JetSelectorRoute* jet=nullptr) noexcept{
+
+struct SpecialCombatRoute {const ServerNpcGruntSpecialCombatBindings* bindings;ServerNpcGruntSpecialCombatResult* result;};
+int __cdecl grunt_special_combat(void* a,unsigned n,float now,const ServerNpcGruntSpecialCombatBindings* b,ServerNpcGruntSpecialCombatResult* o) noexcept{
+    if(!o)return 0;*o={};o->target_class=o->condition.global=o->condition.bit=o->slot.index=o->slot.selected=-1;o->candidate_handle=0xffffffffu;
+    if(!a||n<0xde8||!std::isfinite(now)||!b||!b->combat||!b->combat->tail||!b->combat->tail->request||!b->combat->tail->request->acquisition)return 0;
+    const auto& cb=*b->combat;const auto& ac=*cb.tail->request->acquisition;
+    if(!ac.arbitration||!ac.arbitration->activation||!ac.arbitration->activation->schedule)return 0;
+    const auto& activation=*ac.arbitration->activation;const auto& ab=activation.schedule->admission;
+    const auto vt=ab.actor_vtable;
+    if((vt!=0x2248df04&&vt!=0x224954a4&&vt!=0x2249aaa4&&vt!=0x224a416c)||ab.count>sin_independent::kEntityHandleCapacity||(ab.count&&!ab.entries))return 0;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](int id){o->schedule=id;o->completed=1;return 1;};
+    auto cond=[&](int id,bool& yes){++o->condition_tests;if(!api->test(a,n,id,NpcConditionCurrent,&ac.schedule.conditions,&o->condition))return false;yes=o->condition.value!=0;return true;};
+    auto target=[&](){++o->target_queries;return assault_owner_target(a,registry);};
+    auto span=[&](void* e,unsigned min){unsigned extent=0;++o->extent_calls;return e&&cb.extent&&cb.extent(cb.context,e,&extent)&&extent>=min;};
+    auto slot=[&](int first,int last,bool& yes){
+        ++o->slot_calls;if(!read<unsigned>(a,0x9c4)){yes=true;o->slot_allowed=1;return true;}
+        if(!activation.slots)return false;auto slots=*activation.slots;slots.entries=ab.entries;slots.count=ab.count;
+        if(!slots_reserve(a,n,first,last,now,&slots,&o->slot))return false;
+        yes=o->slot.allowed!=0;o->slot_allowed=yes;return true;
+    };
+    auto policy=[&](bool recent,bool& yes){++o->policy_calls;
+        if(recent)return cb.target_policy&&cb.target_policy(cb.context,a,&yes);
+        return b->memory_policy&&b->memory_policy(b->context,a,&yes);
+    };
+    auto class_match=[&](void* e,std::uint32_t tok,bool& yes){
+        if(!span(e,0x10))return false;auto name=read<unsigned>(e,0xc);if(!name)name=0x223d47a8u;
+        ++o->class_checks;yes=name==tok;return yes||(b->class_matches&&b->class_matches(b->context,name,tok,&yes));
+    };
+    auto position=[&](void* e,float* v){++o->position_calls;return e&&cb.position&&cb.position(cb.context,e,false,v);};
+    auto squared=[](const float* x,const float* y){const double dx=static_cast<double>(x[0])-y[0],dy=static_cast<double>(x[1])-y[1],dz=static_cast<double>(x[2])-y[2];return dz*dz+dy*dy+dx*dx;};
+    bool yes=false;
+    if(!cond(43,yes))return 0;if(!yes&&!cond(12,yes))return 0;
+    if(yes){
+        void* e=registry.Resolve(read<unsigned>(a,0x98c));o->obstacle_valid=e!=nullptr;
+        if(e){
+            if(!span(e,0xa0))return 0;const int health=read<int>(e,0x9c);
+            if(health<1000){
+                if(health>0){if(!slot(14,14,yes))return 0;if(yes)return done(112);}
+                for(auto tok:{0x2244edfcu,0x224059fcu,0x223f01f8u,0x22410428u}){
+                    if(!class_match(e,tok,yes))return 0;
+                    if(yes){o->obstacle_class_matched=1;return done(112);}
+                }
+            }
+        }
+    }
+    if(!cond(69,yes))return 0;if(yes)return done(102);
+    if(!cond(22,yes))return 0;if(yes)return done(registry.Resolve(read<unsigned>(a,0xcb4))?114:39);
+    if(target()){
+        void* e=target();if(!e||!b->target_class||!b->target_class(b->context,e,&o->target_class))return 0;o->target_class_called=1;
+        if(o->target_class==6){
+            if(!class_match(target(),0x22461d34u,yes))return 0;
+            if(yes){
+                e=target();if(!e||!b->memory_stamp||!b->memory_stamp(b->context,a,e,true,&o->stamp))return 0;++o->stamp_calls;
+                if(o->stamp!=-static_cast<double>(std::numeric_limits<float>::max())&&static_cast<double>(now)-o->stamp>4.0){
+                    if(!policy(true,yes))return 0;if(yes){if(!slot(12,12,yes))return 0;if(yes)return done(42);}
+                }
+                e=target();if(!e||!b->target_view||!b->target_view(b->context,a,e,&yes))return 0;o->target_view_called=1;
+                if(!yes){if(!slot(12,12,yes))return 0;if(yes)return done(101);}
+            }
+        }
+    }
+    if(!cond(20,yes))return 0;
+    if(yes){
+        if(target()&&!read<std::uint8_t>(a,0xdb1)){
+            float enemy[3]{},owner[3]{};
+            if(!position(target(),enemy)||!position(a,owner))return 0;
+            o->distance_squared=squared(enemy,owner);
+            if(o->distance_squared>=2500.0){
+                if(!position(target(),enemy))return 0;
+                void* candidates[10]{};unsigned count=0;
+                if(!b->enumerate||!b->enumerate(b->context,enemy,500.f,0x2000000u,candidates,10,&count)||count>10)return 0;o->enumerated=count;
+                for(unsigned i=0;i<count;++i){
+                    ++o->candidates;void* e=nullptr;if(!b->cast_candidate||!b->cast_candidate(b->context,candidates[i],&e))return 0;++o->casts;
+                    if(!e)continue;if(!span(e,0x630))return 0;const auto flags=read<unsigned>(e,0x62c);
+                    if(!(flags&0x44u)||(flags&0x100u))continue;
+                    void* enemy_entity=target();if(!enemy_entity||!b->trace||!b->trace(b->context,e,enemy_entity,a,0x46004003u,&o->trace_fraction))return 0;++o->trace_calls;
+                    if(o->trace_fraction!=1.f)continue;
+                    if(!b->candidate_radius||!b->candidate_radius(b->context,e,&o->radius))return 0;++o->radius_calls;
+                    float pos[3]{};if(!position(target(),enemy)||!position(e,pos))return 0;
+                    // 220adad0 sums z^2+x^2+y^2 then rounds to float and takes sqrt.
+                    const double x=static_cast<double>(pos[0])-enemy[0],y=static_cast<double>(pos[1])-enemy[1],z=static_cast<double>(pos[2])-enemy[2];
+                    o->distance=std::sqrt(static_cast<float>(z*z+x*x+y*y));
+                    if(o->distance<=o->radius){
+                        if(!b->entity_handle||!b->entity_handle(b->context,e,&o->candidate_handle)||registry.Resolve(o->candidate_handle)!=e)return 0;
+                        write(a,0xcbc,o->candidate_handle);o->candidate_written=1;return done(116);
+                    }
+                }
+            }
+        }
+        if(!slot(0,2,yes))return 0;if(yes)return done(41);
+        if(!policy(true,yes))return 0;if(yes){if(!slot(12,12,yes))return 0;if(yes)return done(42);}
+        write<std::uint8_t>(a,0xc66,1);o->flag_written=1;return done(25);
+    }
+    if(target()){
+        if(!cond(10,yes))return 0;
+        if(!yes){
+            void* e=target();if(!e||!b->memory_stamp||!b->memory_stamp(b->context,a,e,false,&o->stamp))return 0;++o->stamp_calls;
+            o->age=static_cast<float>(static_cast<double>(now)-o->stamp);
+            float remembered[3]{},enemy[3]{};e=target();
+            if(!e||!b->memory_position||!b->memory_position(b->context,a,e,remembered))return 0;o->memory_position_called=1;
+            if(!position(target(),enemy))return 0;
+            // 22027db0 stores each delta as float; 22027d60 returns length, not squared length.
+            const float x=static_cast<float>(static_cast<double>(enemy[0])-remembered[0]),
+                y=static_cast<float>(static_cast<double>(enemy[1])-remembered[1]),z=static_cast<float>(static_cast<double>(enemy[2])-remembered[2]);
+            o->distance=std::sqrt(static_cast<float>(static_cast<double>(x)*x+static_cast<double>(y)*y+static_cast<double>(z)*z));
+            if(o->age<=3.f&&o->distance<=256.f){
+                if(!policy(false,yes))return 0;if(yes){if(!slot(12,12,yes))return 0;if(yes)return done(42);}
+            }
+        }
+    }
+    return done(0);
+}
+
+int grunt_combat_select_impl(void* a,unsigned n,float now,const ServerNpcGruntCombatSelectorBindings* b,ServerNpcGruntCombatSelectorResult* o,const JetSelectorRoute* jet=nullptr,const SpecialCombatRoute* special=nullptr) noexcept{
     if(!o)return 0;*o={};o->roll=o->special_schedule=o->condition.global=o->condition.bit=o->slot.index=o->slot.selected=-1;
     if(!a||n<0xde8||!b||!b->tail||!b->tail->request||!b->tail->request->acquisition||!std::isfinite(now))return 0;
     const auto& ac=*b->tail->request->acquisition;
@@ -6566,6 +6681,8 @@ int grunt_combat_select_impl(void* a,unsigned n,float now,const ServerNpcGruntCo
     }
     if(o->jet&&jet){
         if(!grunt_jet_special(a,n,now,jet->bindings,jet->special))return 0;o->special_schedule=jet->special->schedule;
+    }else if(!o->jet&&special){
+        if(!grunt_special_combat(a,n,now,special->bindings,special->result))return 0;o->special_schedule=special->result->schedule;
     }else if(!b->special_combat||!b->special_combat(b->context,a,o->jet!=0,&o->special_schedule))return 0;
     o->special_called=1;
     if(o->special_schedule)return done(o->special_schedule);
@@ -6647,7 +6764,7 @@ int __cdecl grunt_jet_tail(void* a,unsigned n,float now,const ServerNpcGruntJetS
     }
     return done(118);
 }
-struct CombatSelectorRoute {const ServerNpcGruntCombatSelectorBindings* bindings;ServerNpcGruntCombatSelectorResult* result;const JetSelectorRoute* jet=nullptr;};
+struct CombatSelectorRoute {const ServerNpcGruntCombatSelectorBindings* bindings;ServerNpcGruntCombatSelectorResult* result;const JetSelectorRoute* jet=nullptr;const SpecialCombatRoute* special=nullptr;};
 
 
 int grunt_selector_tail_impl(void* a,unsigned n,float now,const ServerNpcGruntSelectorTailBindings* b,ServerNpcGruntSelectorTailResult* o,const CombatSelectorRoute* combat=nullptr) noexcept{
@@ -6699,7 +6816,7 @@ int grunt_selector_tail_impl(void* a,unsigned n,float now,const ServerNpcGruntSe
             }
         }
         int id=0;
-        if(combat){if(!grunt_combat_select_impl(a,n,now,combat->bindings,combat->result,combat->jet))return 0;id=combat->result->schedule;}
+        if(combat){if(!grunt_combat_select_impl(a,n,now,combat->bindings,combat->result,combat->jet,combat->special))return 0;id=combat->result->schedule;}
         else if(!b->combat_schedule||!b->combat_schedule(b->context,a,&id))return 0;
         o->combat_called=1;return done(id);
     }
@@ -6837,6 +6954,13 @@ int __cdecl grunt_jet_choose(void* a,unsigned n,float now,const ServerNpcGruntJe
     return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route);
 }
 const ServerNpcGruntJetSelectorApi grunt_jet_selector_api{1,sizeof(ServerNpcGruntJetSelectorApi),&grunt_jet_special,&grunt_jet_tail,&grunt_jet_choose};
+int __cdecl grunt_special_choose(void* a,unsigned n,float now,const ServerNpcGruntSpecialCombatBindings* b,ServerNpcGruntScheduleRequestResult* o,ServerNpcGruntSelectorTailResult* tail,ServerNpcGruntCombatSelectorResult* combat,ServerNpcGruntSpecialCombatResult* special) noexcept{
+    if(!tail||!combat||!special)return 0;*tail={};*combat={};*special={};
+    if(!b||!b->combat||!b->combat->tail)return 0;
+    const SpecialCombatRoute sp{b,special};const CombatSelectorRoute route{b->combat,combat,nullptr,&sp};
+    return schedule_request_choose_impl(a,n,now,b->combat->tail->request,o,b->combat->tail,tail,&route);
+}
+const ServerNpcGruntSpecialCombatApi grunt_special_combat_api{1,sizeof(ServerNpcGruntSpecialCombatApi),&grunt_special_combat,&grunt_special_choose};
 int __cdecl schedule_request_failure(void* a,unsigned n,float now,const ServerNpcGruntScheduleRequestBindings* b,ServerNpcGruntScheduleRequestResult* o) noexcept{
     if(!schedule_request_init(a,n,now,b,o))return 0;
     const auto& ac=*b->acquisition;const auto& ab=ac.arbitration->activation->schedule->admission;
@@ -8832,4 +8956,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntJetSelectorApi=_SiN_GetServerNpcGruntJetSelectorApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntJetSelectorApi* __cdecl SiN_GetServerNpcGruntJetSelectorApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntJetSelectorApi)?&grunt_jet_selector_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSpecialCombatApi=_SiN_GetServerNpcGruntSpecialCombatApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpecialCombatApi* __cdecl SiN_GetServerNpcGruntSpecialCombatApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSpecialCombatApi)?&grunt_special_combat_api:nullptr;
 }
