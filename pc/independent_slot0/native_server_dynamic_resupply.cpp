@@ -343,6 +343,17 @@ int __cdecl spawn(void* actor,unsigned bytes,const LifecycleBindings* b,Lifecycl
     if(!b->schedule||!b->schedule(b->schedule_context?b->schedule_context:b->context,actor,o->next_time))return 0;o->scheduled=1;
     set_field(actor,8,check_pvs_think);o->think_installed=o->completed=1;return 1;
 }
+bool assign_master(void* actor,const LifecycleBindings& b,LifecycleResult& o) noexcept {
+    if(!b.master_handle)return false;
+    if(b.entity_handle){
+        if(!b.entity_handle(b.context,actor,b.master_handle))return false;
+    }else{
+        // Primary +8 is 22001b00: LEA EAX,[ECX+378]; RET.
+        *b.master_handle=field<unsigned>(actor,0x378);
+        o.native_handle=1;
+    }
+    o.master_assigned=1;return true;
+}
 bool registry_ok(const LifecycleBindings& b) noexcept {
     return b.master_handle&&b.entry_count<=sin_independent::kEntityHandleCapacity&&(!b.entry_count||b.entries);
 }
@@ -352,8 +363,7 @@ int __cdecl activate(void* actor,unsigned bytes,const LifecycleBindings* b,Lifec
     const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
     if(field<unsigned>(actor,0xb4)&2u){
         if(!registry.Resolve(*b->master_handle)){
-            if(!b->entity_handle||!b->entity_handle(b->context,actor,b->master_handle))return 0;
-            o->master_assigned=1;
+            if(!assign_master(actor,*b,*o))return 0;
         }else o->master_retained=1;
     }
     if(field<unsigned>(actor,0xb4)&1u){
@@ -367,9 +377,8 @@ int __cdecl activate(void* actor,unsigned bytes,const LifecycleBindings* b,Lifec
     o->completed=1;return 1;
 }
 int __cdecl become_master(void* actor,unsigned bytes,const LifecycleBindings* b,LifecycleResult* o) noexcept {
-    if(!lifecycle_start(actor,bytes,b,o)||!b->master_handle||!b->entity_handle||
-       !b->entity_handle(b->context,actor,b->master_handle))return 0;
-    o->master_assigned=1;set_field(actor,8,0u);o->think_cleared=o->completed=1;return 1;
+    if(!lifecycle_start(actor,bytes,b,o)||!assign_master(actor,*b,*o))return 0;
+    set_field(actor,8,0u);o->think_cleared=o->completed=1;return 1;
 }
 int __cdecl kill(void* actor,unsigned bytes,const LifecycleBindings* b,LifecycleResult* o) noexcept {
     if(!lifecycle_start(actor,bytes,b,o)||!b->remove||!b->remove(b->context,actor))return 0;
@@ -429,7 +438,35 @@ int __cdecl calculate_type(void* a,unsigned n,int debug,const DispatchBindings* 
     // self-master early return is safe, other null players fail closed.
     return dispatch_evaluate(a,n,player,debug,*b,*o);
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type};
+int __cdecl factory_create(const char* classname,const FactoryBindings* b,FactoryResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!classname||!class_equal(classname,resupply_classname)||!b||!b->allocate||!b->initialize||!b->lifecycle)return 0;
+    o->allocation_called=1;
+    if(!b->allocate(b->context,resupply_extent,&o->actor,&o->bytes))return 0;
+    if(!o->actor)return 0; // retail dereferences allocation failure; fail closed
+    o->allocated=1;
+    // Allocation belongs to the caller even on a partial failure; no
+    // destructor guess or double-free. Only publish interface after init.
+    if(o->bytes<resupply_extent||!construct(o->actor,o->bytes,b->lifecycle,&o->lifecycle))return 0;
+    o->constructed=1;
+    if(!b->initialize(b->context,o->actor,classname))return 0;
+    o->initialized=1;
+    o->networkable=static_cast<unsigned char*>(o->actor)+resupply_networkable_offset;
+    o->completed=1;return 1;
+}
+int __cdecl factory_destroy(void* actor,unsigned bytes,void* networkable,const FactoryBindings* b,FactoryResult* o) noexcept {
+    if(!o)return 0;*o={};
+    // Original factory's second virtual returns on a null networkable.
+    if(!networkable){o->completed=1;return 1;}
+    if(!actor||bytes<resupply_extent||field<unsigned>(actor,0)!=resupply_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+resupply_networkable_offset||
+       !b||!b->release_networkable)return 0;
+    o->actor=actor;o->bytes=bytes;
+    // The service may synchronously destroy actor storage. Do not read it after.
+    if(!b->release_networkable(b->context,networkable))return 0;
+    o->released=o->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
