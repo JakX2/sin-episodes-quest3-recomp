@@ -1160,6 +1160,10 @@ add_executable(sin_server_npc_weapon_ammo_audit test_original_npc_weapon_ammo.cp
 target_compile_features(sin_server_npc_weapon_ammo_audit PRIVATE cxx_std_17)
 add_test(NAME independent_server_npc_weapon_ammo_matrix COMMAND sin_server_npc_weapon_ammo_audit --self-test "$<TARGET_FILE:sin_slot0_server>")
 
+add_executable(sin_server_npc_weapon_melee_audit test_original_npc_weapon_melee.cpp)
+target_compile_features(sin_server_npc_weapon_melee_audit PRIVATE cxx_std_17)
+add_test(NAME independent_server_npc_weapon_melee_matrix COMMAND sin_server_npc_weapon_melee_audit --self-test "$<TARGET_FILE:sin_slot0_server>")
+
 add_executable(sin_server_npc_schedule_resolution_test test_native_server_npc_schedule_resolution.cpp)
 target_compile_features(sin_server_npc_schedule_resolution_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_npc_schedule_resolution_native COMMAND sin_server_npc_schedule_resolution_test "$<TARGET_FILE:sin_slot0_client>" "$<TARGET_FILE:sin_slot0_server>")
