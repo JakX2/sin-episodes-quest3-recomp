@@ -4363,7 +4363,96 @@ int takecover_event_route(void* a,unsigned n,void* p,unsigned extent,int id,floa
     if(o.fraction==1.f&&!request(0x224ae350u))return 0;
     return reset()?done():0;
 }
-struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;const TakecoverEventRoute* cover=nullptr;};
+
+struct StandoffEventRoute {const ServerNpcGruntStandoffEventBindings* bindings;ServerNpcGruntStandoffEventResult* result;};
+int standoff_event_route(void* a,unsigned n,void* p,unsigned extent,const void* ev,float now,const StandoffEventRoute& route,const RappelScheduleRoute* schedule) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;const auto& cb=b.events;const auto& tb=cb.events;const auto& rb=tb.events.events;
+    const auto& sb=rb.events.events.gate.speech.speech.sentence;
+    o.entered=1;o.random=-1;
+    if(n<0x9dc||extent<0xcd||!b.zero_vector||!finite_vec(b.zero_vector))return 0;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    auto done=[&](){o.completed=1;return 1;};
+    auto origin=[&](void* e,float* out){return e&&b.origin&&b.origin(b.context,e,out)&&finite_vec(out);};
+    auto equal=[](const float* x,const float* y){return x[0]==y[0]&&x[1]==y[1]&&x[2]==y[2];};
+    auto zero=[&](){return equal(o.point,b.zero_vector);};
+    auto player=[&](void** out,bool check){
+        *out=nullptr;
+        if(b.max_clients>1)return true;
+        if(!b.single_player||!b.single_player(b.context,out))return false;
+        ++o.player_queries;
+        if(check&&*out){int d=0;if(!b.disposition||!b.disposition(b.context,a,*out,&d))return false;if(d!=3)*out=nullptr;}
+        return true;
+    };
+    write(p,0x88,-1.f);write(p,0x9c,8.f);write(p,0xa0,16.f);
+    double delay=0;if(!rb.random_float||!rb.random_float(rb.context,8.f,16.f,&delay)||!std::isfinite(delay))return 0;
+    o.deadline=static_cast<float>(static_cast<double>(now)+delay);if(!std::isfinite(o.deadline))return 0;
+    write(p,0x98,o.deadline);
+    void* subject=registry.Resolve(read<unsigned>(a,0x8a0));o.enemy_valid=subject!=nullptr;if(!subject)subject=a;
+    void* single=nullptr;if(!player(&single,true))return 0;
+    o.player_accepted=single!=nullptr;
+    if(single){float v[3]{};if(!origin(single,v))return 0;for(unsigned i=0;i<3;++i)write(p,0x78+4*i,v[i]);write(p,0x84,60.f);o.player_saved=1;}
+    std::memcpy(o.point,b.zero_vector,12);
+    const auto search_token=read<unsigned>(a,0x9d8);
+    if(!origin(subject,o.reference)||!b.eye_point||!b.eye_point(b.context,subject,o.eye)||!finite_vec(o.eye))return 0;
+    const float max=std::numeric_limits<float>::max(),sentinel[3]{max,max,max};
+    for(unsigned i=0;i<3;++i)o.anchor[i]=read<float>(p,0x34+4*i);
+    const bool uncached=equal(o.anchor,sentinel);o.cached_anchor=!uncached;
+    if(uncached){
+        void* anchor=nullptr;if(!player(&anchor,true))return 0;
+        if(anchor){if(!player(&anchor,false)||!anchor)return 0;}
+        else{if(!b.anchor_entity||!b.anchor_entity(b.context,a,&anchor))return 0;o.anchor_fallback=1;if(!anchor)anchor=a;}
+        if(!origin(anchor,o.anchor))return 0;
+    }
+    bool skip_arc=false;
+    if(single&&uncached){
+        if(!rb.random_int||!rb.random_int(rb.context,1,100,&o.random)||o.random<1||o.random>100)return 0;
+        o.random_called=1;skip_arc=o.random<=50;
+    }
+    if(!skip_arc){
+        if(!b.arc||!b.arc(b.context,search_token,o.anchor,o.reference,o.eye,0.f,180.f,o.point))return 0;
+        ++o.arc_calls;
+        if(zero()){
+            if(!b.arc(b.context,search_token,o.anchor,o.reference,o.eye,179.899993896484375f,480.f,o.point))return 0;
+            ++o.arc_calls;
+        }
+    }
+    auto near=[&](bool& yes){
+        const auto token=read<unsigned>(a,0x9d8);
+        if(!b.near||!b.near(b.context,token,o.reference,o.eye,1024.f,o.point,&yes))return false;
+        ++o.near_calls;return true;
+    };
+    auto lateral=[&](bool& yes){
+        const auto token=read<unsigned>(a,0x9d8);
+        if(!b.lateral||!b.lateral(b.context,token,o.eye,o.point,&yes))return false;
+        ++o.lateral_calls;return true;
+    };
+    if(zero()){
+        bool yes=false;
+        if(!near(yes))return 0;
+        if(!yes){
+            if(!lateral(yes))return 0;
+            if(!yes){
+                write<std::uint8_t>(p,0xcc,1);o.guard_set=1;
+                const bool ok=near(yes)&&(yes||lateral(yes));
+                write<std::uint8_t>(p,0xcc,0);o.guard_cleared=1;
+                if(!ok)return 0;
+            }
+        }
+    }
+    if(!finite_vec(o.point))return 0;
+    o.point_found=!zero();
+    if(!o.point_found){if(!tb.request||!tb.request(tb.context,a,8u))return 0;o.request_called=1;return done();}
+    bool result=false;
+    if(!b.goal||!b.goal(b.context,a,o.point,&result))return 0;
+    o.goal_called=1;o.goal_result=result;
+    // Retail ignores the navigation return value and always writes the event's deadline.
+    o.goal_deadline=static_cast<float>(static_cast<double>(now)+read<float>(ev,4));
+    if(!std::isfinite(o.goal_deadline))return 0;
+    write(a,0x8f0,o.goal_deadline);
+    if(!schedule||!rappel_schedule_reset(a,n,now,*schedule))return 0;
+    o.reset_called=1;return done();
+}
+struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;const TankEventRoute* tank=nullptr;const TakecoverEventRoute* cover=nullptr;const StandoffEventRoute* standoff=nullptr;};
 int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const RappelEventRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;
     o.entered=1;auto done=[&](){o.completed=1;return 1;};
@@ -4483,7 +4572,8 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
         const bool native_rappel=rappel&&entry&&identity.behavior_vtable==0x223f956c;
         const bool native_tank=rappel&&rappel->tank&&entry&&identity.behavior_vtable==0x224abec4;
         const bool native_cover=rappel&&rappel->cover&&entry&&identity.behavior_vtable==0x224ae624;
-        if(entry&&!no_op&&!native_rappel&&!native_tank&&!native_cover&&!b->special)return 0;
+        const bool native_standoff=rappel&&rappel->standoff&&entry&&identity.behavior_vtable==0x22495344;
+        if(entry&&!no_op&&!native_rappel&&!native_tank&&!native_cover&&!native_standoff&&!b->special)return 0;
         write<std::uint8_t>(p,8,1);out->marker_set=1;
         if(native_rappel){
             if(!rappel_event_route(a,n,p,extent,id,now,*rappel))return 0;
@@ -4491,6 +4581,8 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
             if(!tank_event_route(a,n,p,extent,id,now,*rappel->tank,rappel->schedule))return 0;
         }else if(native_cover){
             if(!takecover_event_route(a,n,p,extent,id,now,*rappel->cover,rappel->schedule))return 0;
+        }else if(native_standoff){
+            if(!standoff_event_route(a,n,p,extent,ev,now,*rappel->standoff,rappel->schedule))return 0;
         }else if(entry&&!no_op){
             out->special_called=1;if(!b->special(b->context,a,p,extent,entry,ev,en))return 0;
         }
@@ -4692,6 +4784,22 @@ int __cdecl grunt_takecover_event(void* a,unsigned n,const void* ev,unsigned en,
     return grunt_event43_impl(a,n,ev,en,now,&b->events.events.events.events.events,&e.events.events,&rappel,&timer);
 }
 const ServerNpcGruntTakecoverEventApi takecover_event_api{1,sizeof(ServerNpcGruntTakecoverEventApi),&grunt_takecover_event};
+int __cdecl grunt_standoff_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntStandoffEventBindings* b,ServerNpcGruntStandoffEventResult* out) noexcept{
+    if(!out)return 0;*out={};out->random=-1;
+    auto& tank_out=out->events.events;tank_out.handle=0xffffffffu;tank_out.random=-1;
+    auto& timer_out=tank_out.events;auto& e=timer_out.events;e.events.rope_handle=0xffffffffu;
+    e.condition.global=e.condition.bit=e.slot.index=e.slot.selected=-1;
+    if(!b)return 0;
+    const auto& cb=b->events;const auto& tb=cb.events;const auto& timer_bind=tb.events;const auto& sched=timer_bind.events;
+    const RappelScheduleRoute schedule{&sched,&e};
+    const TankEventRoute tank{&tb,&tank_out};
+    const TakecoverEventRoute cover{&cb,&out->events};
+    const StandoffEventRoute standoff{b,out};
+    const RappelEventRoute rappel{&sched.events,&e.events,&schedule,&tank,&cover,&standoff};
+    const EventTimerRoute timer{&timer_bind,&timer_out};
+    return grunt_event43_impl(a,n,ev,en,now,&sched.events.events,&e.events.events,&rappel,&timer);
+}
+const ServerNpcGruntStandoffEventApi standoff_event_api{1,sizeof(ServerNpcGruntStandoffEventApi),&grunt_standoff_event};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6523,4 +6631,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntTakecoverEventApi=_SiN_GetServerNpcGruntTakecoverEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntTakecoverEventApi* __cdecl SiN_GetServerNpcGruntTakecoverEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntTakecoverEventApi)?&takecover_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntStandoffEventApi=_SiN_GetServerNpcGruntStandoffEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntStandoffEventApi* __cdecl SiN_GetServerNpcGruntStandoffEventApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntStandoffEventApi)?&standoff_event_api:nullptr;
 }

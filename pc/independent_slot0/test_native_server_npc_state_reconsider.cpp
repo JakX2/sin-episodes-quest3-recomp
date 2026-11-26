@@ -3476,5 +3476,54 @@ int main(int argc,char** argv){
         f.put(q.a,0xa18,0xffffffffu);q.a[0xd31]=1;
         assert(run(100005)&&o.flag_cleared&&!q.a[0xd31]&&!o.origin_called&&o.reset_called);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntStandoffEventApi>(GetProcAddress(s,server_npc_grunt_standoff_event_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_standoff_event_export)&&!g(0,sizeof(ServerNpcGruntStandoffEventApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntStandoffEventApi));assert(api);
+        struct StandoffFixture{
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},enemy[4]{},player[4]{},descriptor[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            float zero[3]{};int roll=50,arc_hit=0,near_hit=0,lateral_hit=0;
+            unsigned arcs=0,nears=0,laterals=0,requests=0,shared=0;
+            bool available=true,goal_result=false;
+            static StandoffFixture& self(void* p){return *static_cast<StandoffFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.enemy);
+        ServerNpcGruntStandoffEventBindings b{};b.context=&q;b.zero_vector=q.zero;b.max_clients=1;
+        auto& tb=b.events.events;tb.context=&q;auto& rb=tb.events.events;rb.context=&q;
+        auto& gate=rb.events.events.gate;gate.actor_token=0x10000;gate.context=&q;
+        auto& sb=gate.speech.speech.sentence;sb.entries=q.entries;sb.count=2;sb.speech.original_vtable=0x2249aaa4;
+        gate.shared=[](void* p,void* a,const void*,unsigned) noexcept -> int{auto& q=StandoffFixture::self(p);assert(a==q.a);++q.shared;return 1;};
+        rb.conditions.context=&q;rb.conditions.descriptor=[](void* p,void*,const void** v,unsigned* n) noexcept -> int{auto& q=StandoffFixture::self(p);*v=q.descriptor;*n=sizeof(q.descriptor);return 1;};
+        rb.random_float=[](void*,float lo,float hi,double* v) noexcept -> int{assert(lo==8&&hi==16);*v=12;return 1;};
+        rb.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{auto& q=StandoffFixture::self(p);assert(lo==1&&hi==100);*v=q.roll;return 1;};
+        tb.request=[](void* p,void* a,std::uint32_t v) noexcept -> int{auto& q=StandoffFixture::self(p);assert(a==q.a&&v==8);++q.requests;return 1;};
+        b.single_player=[](void* p,void** e) noexcept -> int{auto& q=StandoffFixture::self(p);*e=q.available?q.player:nullptr;return 1;};
+        b.disposition=[](void* p,void* a,void* e,int* v) noexcept -> int{auto& q=StandoffFixture::self(p);assert(a==q.a&&e==q.player);*v=3;return 1;};
+        b.anchor_entity=[](void* p,void* a,void** e) noexcept -> int{auto& q=StandoffFixture::self(p);assert(a==q.a);*e=nullptr;return 1;};
+        b.origin=[](void* p,void* e,float* v) noexcept -> int{auto& q=StandoffFixture::self(p);assert(e==q.enemy||e==q.player||e==q.a);v[0]=e==q.player?5:e==q.enemy?1:7;v[1]=2;v[2]=3;return 1;};
+        b.eye_point=[](void* p,void* e,float* v) noexcept -> int{auto& q=StandoffFixture::self(p);assert(e==q.enemy||e==q.a);v[0]=4;v[1]=5;v[2]=6;return 1;};
+        b.arc=[](void* p,std::uint32_t token,const float*,const float*,const float*,float lo,float hi,float* v) noexcept -> int{auto& q=StandoffFixture::self(p);assert(token==77);++q.arcs;assert(q.arcs==1?(lo==0&&hi==180):(lo==179.899993896484375f&&hi==480));if(q.arcs==static_cast<unsigned>(q.arc_hit))v[0]=10;return 1;};
+        b.near=[](void* p,std::uint32_t token,const float*,const float*,float range,float* v,bool* yes) noexcept -> int{auto& q=StandoffFixture::self(p);assert(token==77&&range==1024);++q.nears;assert(q.a[0xde8+0xcc]==(q.nears==2));*yes=q.nears==static_cast<unsigned>(q.near_hit);if(*yes)v[0]=20;return 1;};
+        b.lateral=[](void* p,std::uint32_t token,const float*,float* v,bool* yes) noexcept -> int{auto& q=StandoffFixture::self(p);assert(token==77);++q.laterals;assert(q.a[0xde8+0xcc]==(q.laterals==2));*yes=q.laterals==static_cast<unsigned>(q.lateral_hit);if(*yes)v[0]=30;return 1;};
+        b.goal=[](void* p,void* a,const float* v,bool* yes) noexcept -> int{auto& q=StandoffFixture::self(p);assert(a==q.a&&v[0]!=0);*yes=q.goal_result;return 1;};
+        f.put(q.descriptor,0x34,1000000000);f.put(q.descriptor,0x38,0);f.put(q.descriptor,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10de8u);f.put(q.a,0xde8,0x22495344u);f.put(q.a,0xdec,0x10000u);f.put(q.a,0xdf4,0x10c14u);
+        f.put(q.a,0x8a0,0x1001u);f.put(q.a,0x9d8,77u);f.put(q.raw,0,0x62);f.put(q.raw,4,2.f);
+        for(unsigned i=0;i<3;++i)f.put(q.a,0xde8+0x34+4*i,std::numeric_limits<float>::max());
+        ServerNpcGruntStandoffEventResult o{};
+        auto run=[&](){q.arcs=q.nears=q.laterals=q.requests=0;f.put(q.a,0xde8+0x88,11.f);return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        q.lateral_hit=2;
+        assert(run()&&o.entered&&o.completed&&o.deadline==22&&o.player_saved&&o.player_queries==3&&o.random==50&&o.arc_calls==0&&o.near_calls==2&&o.lateral_calls==2&&o.guard_set&&o.guard_cleared&&o.point_found&&o.goal_called&&!o.goal_result&&o.goal_deadline==12&&o.reset_called);
+        q.roll=51;q.arc_hit=2;
+        assert(run()&&o.arc_calls==2&&!o.near_calls&&o.point[0]==10&&o.goal_called);
+        q.arc_hit=0;q.lateral_hit=0;q.near_hit=0;
+        assert(run()&&o.arc_calls==2&&o.near_calls==2&&o.lateral_calls==2&&!o.point_found&&o.request_called&&!o.goal_called&&q.requests==1);
+        b.max_clients=2;q.arc_hit=1;f.put(q.a,0x8a0,0x9001u);
+        assert(run()&&!o.enemy_valid&&!o.player_queries&&!o.random_called&&o.anchor_fallback&&o.anchor[0]==7&&o.arc_calls==1);
+        f.put(q.a,0xde8+0x34,3.f);assert(run()&&o.cached_anchor&&!o.anchor_fallback&&o.arc_calls==1);
+        q.a[0xde8+0x60]=1;assert(run()&&!o.entered&&q.shared==1);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
