@@ -1208,4 +1208,30 @@ struct ServerNpcGruntSquadEnemyApi {
     int (__cdecl *broadcast)(std::uint32_t,void*,float,const ServerNpcGruntSquadEnemyBindings*,ServerNpcGruntSquadEnemyResult*) noexcept;
 };
 using GetServerNpcGruntSquadEnemyApi=const ServerNpcGruntSquadEnemyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_native_state_export[]="SiN_GetServerNpcGruntNativeStateApi";
+struct ServerNpcGruntNativeStateBindings {
+    ServerNpcGruntSquadEnemyBindings squad;
+    ServerNpcGruntSentenceBindings sentence;
+    ServerNpcGruntSentenceRequestBindings request;
+    std::uint32_t original_vtable;
+    void* context;
+    int (__cdecl *target_classification)(void*,void*,int*) noexcept; // target +d0
+};
+struct ServerNpcGruntNativeStateResult {
+    ServerNpcStateResult state;
+    ServerNpcGruntSquadEnemyResult broadcast;
+    ServerNpcEnemyStateResult clear;
+    ServerNpcGruntPerceptionSlotsResult clear_slots;
+    ServerNpcGruntSentenceResult sentence;
+    ServerNpcGruntSentenceRequestResult request;
+    const char* cue;
+    int classification;
+    unsigned cue_calls,broadcast_calls,clear_calls;
+};
+struct ServerNpcGruntNativeStateApi {
+    std::uint32_t version,size;
+    int (__cdecl *choose)(void*,unsigned,float,const ServerNpcStateBindings*,const ServerNpcGruntNativeStateBindings*,ServerNpcGruntNativeStateResult*) noexcept;
+    int (__cdecl *apply)(void*,unsigned,int,float,const ServerNpcStateBindings*,const ServerNpcGruntNativeStateBindings*,ServerNpcGruntNativeStateResult*) noexcept;
+};
+using GetServerNpcGruntNativeStateApi=const ServerNpcGruntNativeStateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

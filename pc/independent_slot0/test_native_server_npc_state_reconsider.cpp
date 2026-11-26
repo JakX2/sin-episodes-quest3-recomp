@@ -1639,6 +1639,25 @@ int main(int argc,char** argv){
         assert(api->broadcast(91,q.targets[1],101,&bb,&br)&&br.condition_blocked==1&&!br.assigned&&br.same==2);
         f.put(q.actor[1],0x7cc,0u);
         assert(api->broadcast(91,q.targets[1],101,&bb,&br)&&br.assigned==1&&br.same==2&&br.last_slots.release_calls==1&&br.last_slots.last_release.old_cleared&&BroadcastFixture::rd(q.bitmap,4)==0&&BroadcastFixture::rd(q.actor[1],0x8a0)==0x5005u&&BroadcastFixture::rd(q.actor[1],0x9cc)==0xffffffffu);
+        auto gs=reinterpret_cast<GetServerNpcGruntNativeStateApi>(GetProcAddress(s,server_npc_grunt_native_state_export));
+        assert(gs&&!GetProcAddress(c,server_npc_grunt_native_state_export)&&!gs(0,sizeof(ServerNpcGruntNativeStateApi))&&!gs(1,0));
+        const auto* native=gs(1,sizeof(ServerNpcGruntNativeStateApi));assert(native);
+        ServerNpcStateBindings state{};state.schedule.conditions=q.conditions;state.entities.entries=q.entries;state.entities.count=6;
+        state.state_query=[](void*,void*,int current,int* out) noexcept -> int{assert(current==1);*out=3;return 1;};
+        state.state_changed=[](void*,void*,int old,int next) noexcept -> int{assert(old==3&&next==1);return 1;};
+        ServerNpcGruntNativeStateBindings nb{};nb.squad=bb;nb.original_vtable=0x2249aaa4;nb.context=&q;
+        nb.target_classification=[](void* p,void* e,int* out) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(e==q.targets[1]);*out=static_cast<int>(BroadcastFixture::rd(q.targets[1],0));return 1;};
+        ServerNpcGruntNativeStateResult nr{};
+        f.put(q.actor[0],0x850,1);f.put(q.actor[0],0x7cc,1u<<25);f.put(q.actor[1],0x8a0,0xffffffffu);
+        assert(native->choose(q.actor[0],sizeof(q.actor[0]),102,&state,&nb,&nr)&&nr.state.squad_called&&nr.state.ideal==3&&nr.broadcast_calls==1&&nr.broadcast.assigned==1&&BroadcastFixture::rd(q.actor[1],0x8a0)==0x5005u);
+        // Known original kill cue selection; no squad means mode2 rejects before engine request.
+        f.put(q.actor[0],0x850,3);f.put(q.actor[0],0x9c4,0u);f.put(q.actor[0],0x7cc,1u<<29);
+        for(int category:{1,10,7}){
+            f.put(q.targets[1],0,category);
+            assert(native->choose(q.actor[0],sizeof(q.actor[0]),103,&state,&nb,&nr)&&nr.state.lost_enemy_called&&nr.cue_calls==1&&nr.classification==category&&!nr.sentence.mode_allowed&&!std::strcmp(nr.cue,category==1?"GRUNT_PLAYER_DEAD":category==10?"GRUNT_KILLMUTANT":"GRUNT_KILL_MONST"));
+        }
+        f.put(q.actor[0],0x9c4,91u);
+        assert(native->apply(q.actor[0],sizeof(q.actor[0]),1,104,&state,&nb,&nr)&&nr.state.changed&&nr.state.enemy_cleared&&nr.clear_calls==1&&nr.clear.squad_released&&nr.clear_slots.release_calls==1&&!nr.clear_slots.last_release.accesses&&BroadcastFixture::rd(q.actor[0],0x8a0)==0xffffffffu);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

@@ -37,7 +37,15 @@ int __cdecl should_reconsider(void* a,unsigned bytes,const ServerNpcStateBinding
     out->reconsider=(out->current==3&&!enemy(a,*b))||((out->current==1||out->current==2)&&enemy(a,*b));
     return 1;
 }
-int __cdecl choose_ideal(void* a,unsigned bytes,const ServerNpcStateBindings* b,ServerNpcStateResult* out) noexcept {
+struct NativeStateRoute {
+    const ServerNpcGruntNativeStateBindings& bindings;
+    ServerNpcGruntNativeStateResult& out;
+    float now;
+};
+bool native_state_kill(void*,unsigned,void*,const ServerNpcStateBindings&,const NativeStateRoute&) noexcept;
+bool native_state_broadcast(std::uint32_t,void*,const ServerNpcStateBindings&,const NativeStateRoute&) noexcept;
+bool native_state_clear(void*,unsigned,const ServerNpcStateBindings&,const NativeStateRoute&) noexcept;
+int choose_ideal_impl(void* a,unsigned bytes,const ServerNpcStateBindings* b,ServerNpcStateResult* out,const NativeStateRoute* native=nullptr) noexcept {
     if(!init(a,bytes,b,out))return 0;
     const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
     const int current=out->current;
@@ -47,12 +55,20 @@ int __cdecl choose_ideal(void* a,unsigned bytes,const ServerNpcStateBindings* b,
             if(!lost){ServerNpcConditionResult cr{};if(!api->store(a,bytes,0x44,NpcConditionCurrent,true,&b->schedule.conditions,&cr))return 0;out->patrol_set=1;}
             out->ideal=2;return 1;
         }
-        if(lost){if(!b->lost_enemy||!b->lost_enemy(b->context,a,enemy(a,*b)))return 0;out->lost_enemy_called=1;}
+        if(lost){
+            if(native){if(!native_state_kill(a,bytes,enemy(a,*b),*b,*native))return 0;}
+            else if(!b->lost_enemy||!b->lost_enemy(b->context,a,enemy(a,*b)))return 0;
+            out->lost_enemy_called=1;
+        }
     }
     const auto squad=read<std::uint32_t>(a,0x9c4);
     if(squad&&(current==1||current==2)){
         unsigned yes=0;if(!test(a,bytes,0x19,*b,yes))return 0;
-        if(yes){if(!b->squad_enemy||!b->squad_enemy(b->context,squad,enemy(a,*b)))return 0;out->squad_called=1;}
+        if(yes){
+            if(native){if(!native_state_broadcast(squad,enemy(a,*b),*b,*native))return 0;}
+            else if(!b->squad_enemy||!b->squad_enemy(b->context,squad,enemy(a,*b)))return 0;
+            out->squad_called=1;
+        }
     }
     if(current==7){out->ideal=7;return 1;}
     if(current==1||current==2||current==4){
@@ -61,18 +77,25 @@ int __cdecl choose_ideal(void* a,unsigned bytes,const ServerNpcStateBindings* b,
     }else if(current==3&&!enemy(a,*b))out->ideal=2;
     return 1;
 }
-int __cdecl apply(void* a,unsigned bytes,int desired,float now,const ServerNpcStateBindings* b,ServerNpcStateResult* out) noexcept {
+int __cdecl choose_ideal(void* a,unsigned bytes,const ServerNpcStateBindings* b,ServerNpcStateResult* out) noexcept{
+    return choose_ideal_impl(a,bytes,b,out);
+}
+int apply_impl(void* a,unsigned bytes,int desired,float now,const ServerNpcStateBindings* b,ServerNpcStateResult* out,const NativeStateRoute* native=nullptr) noexcept {
     if(!init(a,bytes,b,out)||!std::isfinite(now))return 0;
     const int old=out->current;
     if(old!=desired)write(a,0x854,now);
     if(desired==1&&enemy(a,*b)){
-        if(!b->clear_enemy||!b->clear_enemy(b->context,a))return 0;
+        if(native){if(!native_state_clear(a,bytes,*b,*native))return 0;}
+        else if(!b->clear_enemy||!b->clear_enemy(b->context,a))return 0;
         out->enemy_cleared=1;
     }
     const bool changed=read<int>(a,0x850)!=desired;
     write(a,0x850,desired);write(a,0x858,desired);out->ideal=desired;out->changed=changed;
     if(changed&&(!b->state_changed||!b->state_changed(b->context,a,old,desired)))return 0;
     return 1;
+}
+int __cdecl apply(void* a,unsigned bytes,int desired,float now,const ServerNpcStateBindings* b,ServerNpcStateResult* out) noexcept{
+    return apply_impl(a,bytes,desired,now,b,out);
 }
 int __cdecl clear_combat_conditions(void*,unsigned,const ServerNpcConditionMapBindings*,ServerNpcEnemyConditionResult*) noexcept;
 int __cdecl slots_release(std::uint32_t,void*,int,float,const ServerNpcGruntSquadSlotsBindings*,ServerNpcGruntSquadSlotsResult*) noexcept;
@@ -3035,6 +3058,44 @@ int __cdecl squad_enemy_broadcast(std::uint32_t token,void* target,float now,con
     }
     return done();
 }
+bool native_state_kill(void* a,unsigned n,void* e,const ServerNpcStateBindings& b,const NativeStateRoute& route) noexcept{
+    if(!e)return true;
+    const auto& s=route.bindings;auto& out=route.out;
+    if(!s.target_classification||!s.target_classification(s.context,e,&out.classification))return false;
+    out.cue=out.classification==1?"GRUNT_PLAYER_DEAD":out.classification==10?"GRUNT_KILLMUTANT":"GRUNT_KILL_MONST";
+    auto sentence=s.sentence;sentence.speech.original_vtable=s.original_vtable;sentence.entries=b.entities.entries;sentence.count=b.entities.count;
+    ++out.cue_calls;
+    return sentence_dispatch_request(a,n,route.now,out.cue,2,2,&sentence,&s.request,&out.sentence,&out.request)!=0;
+}
+bool native_state_broadcast(std::uint32_t token,void* target,const ServerNpcStateBindings& b,const NativeStateRoute& route) noexcept{
+    auto bound=route.bindings.squad;bound.slots.entries=b.entities.entries;bound.slots.count=b.entities.count;
+    ++route.out.broadcast_calls;
+    return squad_enemy_broadcast(token,target,route.now,&bound,&route.out.broadcast)!=0;
+}
+bool native_state_clear(void* a,unsigned n,const ServerNpcStateBindings& b,const NativeStateRoute& route) noexcept{
+    const auto& squad=route.bindings.squad;ServerNpcEnemyStateBindings bound{};ServerNpcEnemyMemoryQueryBindings memory{};
+    unsigned vt=0,extent=0;
+    if(!squad.member||!squad.member(squad.context,a,&vt,&extent,&bound,&memory)||vt!=route.bindings.original_vtable||extent<n)return false;
+    bound.entries=b.entities.entries;bound.count=b.entities.count;bound.conditions=b.schedule.conditions;
+    ++route.out.clear_calls;
+    reset_perception_slots(route.out.clear_slots);
+    const SquadReleaseRoute release{squad.slots,route.out.clear_slots};
+    return set_enemy_impl(a,n,nullptr,true,route.now,&bound,&route.out.clear,true,&release)!=0;
+}
+bool state_route_init(float now,const ServerNpcGruntNativeStateBindings* b,ServerNpcGruntNativeStateResult* out) noexcept{
+    if(!out)return false;*out={};out->classification=-1;out->sentence.request_result=-1;
+    out->request.group_id=out->request.pick_result=out->request.sentence_id=out->request.request_result=-1;
+    return b&&relation_grunt_class(b->original_vtable)&&std::isfinite(now);
+}
+int __cdecl native_state_choose(void* a,unsigned n,float now,const ServerNpcStateBindings* b,const ServerNpcGruntNativeStateBindings* native,ServerNpcGruntNativeStateResult* out) noexcept{
+    if(!state_route_init(now,native,out))return 0;const NativeStateRoute route{*native,*out,now};
+    return choose_ideal_impl(a,n,b,&out->state,&route);
+}
+int __cdecl native_state_apply(void* a,unsigned n,int desired,float now,const ServerNpcStateBindings* b,const ServerNpcGruntNativeStateBindings* native,ServerNpcGruntNativeStateResult* out) noexcept{
+    if(!state_route_init(now,native,out))return 0;const NativeStateRoute route{*native,*out,now};
+    return apply_impl(a,n,desired,now,b,&out->state,&route);
+}
+const ServerNpcGruntNativeStateApi native_state_api{1,sizeof(ServerNpcGruntNativeStateApi),&native_state_choose,&native_state_apply};
 const ServerNpcGruntSquadEnemyApi squad_enemy_api{1,sizeof(ServerNpcGruntSquadEnemyApi),&squad_enemy_broadcast};
 const ServerNpcGruntSquadReportApi squad_report_api{1,sizeof(ServerNpcGruntSquadReportApi),&squad_report,&squad_report_update,&squad_report_gather};
 const ServerNpcGruntPerceptionSlotsApi perception_slots_api{1,sizeof(ServerNpcGruntPerceptionSlotsApi),&slots_set_enemy,&slots_enemy_switch,&slots_perception_update,&slots_perception_gather};
@@ -3462,4 +3523,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadEnemyApi=_SiN_GetServerNpcGruntSquadEnemyApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadEnemyApi* __cdecl SiN_GetServerNpcGruntSquadEnemyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadEnemyApi)?&squad_enemy_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntNativeStateApi=_SiN_GetServerNpcGruntNativeStateApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntNativeStateApi* __cdecl SiN_GetServerNpcGruntNativeStateApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntNativeStateApi)?&native_state_api:nullptr;
 }
