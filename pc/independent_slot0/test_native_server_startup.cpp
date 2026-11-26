@@ -16,22 +16,45 @@ struct Events {
         virtual void s1(){} virtual void s2(){} virtual void s3(){} virtual void s4(){}
         virtual void s5(){} virtual void s6(){} virtual void s7(){} virtual void s8(){} virtual void s9(){}
         virtual void integer(const char* key,int value){
-            const char* keys[]{"descriptor","owner","subject"};assert(fields<3&&!std::strcmp(key,keys[fields]));
-            assert(value==(fields?-1:descriptor));++fields;
+            const char* game_keys[]{"descriptor","owner","subject"};
+            const char* health_keys[]{"descriptor","owner","subject","inflictor","health","amount"};
+            const int health_values[]{21,0x5002,-1,-1,43,0};
+            if(kind==0){assert(fields==0&&!std::strcmp(key,"descriptor")&&value==descriptor);}
+            else if(kind==1){assert(fields<3&&!std::strcmp(key,game_keys[fields])&&value==(fields?-1:descriptor));}
+            else{assert(kind==2&&fields<6&&!std::strcmp(key,health_keys[fields])&&value==health_values[fields]);}
+            ++fields;
         }
         virtual void real(const char*,float){assert(false);}
-        virtual void string(const char* key,const char* value){assert(fields==3&&!std::strcmp(key,"name")&&!std::strcmp(value,"secret"));++fields;}
-        unsigned fields=0;int descriptor=11;
+        virtual void string(const char* key,const char* value){
+            if(kind==0)assert((fields==1&&!std::strcmp(key,"mapname")&&!std::strcmp(value,"SE1_intro01"))||
+                (fields==2&&!std::strcmp(key,"filename")&&!*value));
+            else assert(kind==1&&fields==3&&!std::strcmp(key,"name")&&!std::strcmp(value,"secret"));
+            ++fields;
+        }
+        unsigned fields=0,kind=0;int descriptor=11;
     } event;
-    unsigned calls=0,creates=0,fires=0,frees=0;bool live=false;
+    unsigned calls=0,creates=0,fires=0,frees=0;bool live=false,fire_ok=true,unavailable=false;
     virtual void unused() noexcept {assert(false);}
     virtual int load(const char* name) noexcept {
         assert(!std::strcmp(name,calls?"resource/ModEvents.res":"resource/gameevents.res"));
         return calls++?0:-7;
     }
     virtual void s2(){} virtual void s3(){} virtual void s4(){} virtual void s5(){}
-    virtual void* create(const char* name,bool force){assert(calls==2&&!live&&!force&&!std::strcmp(name,"game"));++creates;live=true;event.fields=0;return &event;}
-    virtual bool fire(void* object,bool no_broadcast){assert(live&&object==&event&&!no_broadcast&&event.fields==4);++fires;live=false;return true;}
+    virtual void* create(const char* name,bool force){
+        assert(calls==2&&!live&&!force);
+        // LevelInit map(1), secret Spawn(11), secret Touch(12),
+        // ServerActivate map(7), then health(21).
+        constexpr const char* names[]{"map","game","game","map","health"};
+        constexpr int descriptors[]{1,11,12,7,21};
+        assert(creates<5&&!std::strcmp(name,names[creates]));
+        event.descriptor=descriptors[creates++];event.kind=!std::strcmp(name,"map")?0:!std::strcmp(name,"game")?1:2;
+        if(unavailable)return nullptr;
+        live=true;event.fields=0;return &event;
+    }
+    virtual bool fire(void* object,bool no_broadcast){
+        const unsigned expected=event.kind==0?3:event.kind==1?4:6;
+        assert(live&&object==&event&&!no_broadcast&&event.fields==expected);++fires;live=false;return fire_ok;
+    }
     virtual void s8(){} virtual void s9(){}
     virtual void release(void* object){assert(live&&object==&event);++frees;live=false;}
 };
@@ -165,7 +188,8 @@ int main(int argc,char** argv){
     const auto init_events=reinterpret_cast<InvokeEventSession>(GetProcAddress(server,event_session_export));
     const auto level_events=reinterpret_cast<nl::InvokeLevelWithEvents>(GetProcAddress(server,nl::engine_events_level_export));
     const auto touch_events=reinterpret_cast<nl::TouchStartedTrigger>(GetProcAddress(server,nl::engine_events_touch_export));
-    assert(init_events&&level_events&&touch_events&&!GetProcAddress(client,event_session_export)&&!GetProcAddress(client,nl::engine_events_level_export));
+    const auto activate_events=reinterpret_cast<nl::InvokeActivateWithEvents>(GetProcAddress(server,nl::engine_events_activate_export));
+    assert(init_events&&level_events&&touch_events&&activate_events&&!GetProcAddress(client,event_session_export)&&!GetProcAddress(client,nl::engine_events_level_export)&&!GetProcAddress(client,nl::engine_events_activate_export));
     Fixture started(api);active=&started;b=started.bindings();b.engine=&engine_factory;b.filesystem=&filesystem_factory;
     b.event_manager=&reject.events;queries=sound_calls=0;
     EngineEventSession session{};
@@ -173,8 +197,11 @@ int main(int argc,char** argv){
     assert(!reject.events.calls&&started.events.calls==2);
     struct Map {
         alignas(4) unsigned char actor[nm::secret_trigger_extent]{};
-        unsigned player=0,removed=0;
+        alignas(4) unsigned char player[0x37c]{};
+        unsigned removed=0;
     } m;
+    const unsigned player_vt=0x224aec3cu,handle=0x5002u;const int hp=43;
+    std::memcpy(m.player,&player_vt,4);std::memcpy(m.player+0x378,&handle,4);std::memcpy(m.player+0x9c,&hp,4);
     auto put=[&](unsigned off,unsigned value){std::memcpy(m.actor+off,&value,4);};
     put(0,nm::secret_trigger_vtable);put(0xc0,1);m.actor[0x120]=8;
     nm::CampaignTriggerBindings tr{};tr.context=&m;
@@ -208,15 +235,29 @@ int main(int argc,char** argv){
     lb.pre_level=lb.post_level=lb.motd=lb.cleanup=[](void*) noexcept ->int{return 1;};
     lb.chapter=[](void*,const char*) noexcept ->int{return 1;};
     lb.filename=[](void*,char* name,unsigned) noexcept ->int{*name=0;return 1;};
-    lb.map_event=[](void*,int,const char*,const char*) noexcept ->int{return 1;};
+    // No hosted map/health event callbacks on the session route.
+    lb.context=&m;
+    lb.delete_queue_count=[](void*,unsigned* count) noexcept ->int{*count=0;return 1;};
+    lb.next_entity=[](void*,void*,void** next) noexcept ->int{*next=nullptr;return 1;};
+    lb.extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{assert(actor==static_cast<Map*>(p)->player);*bytes=0x37c;return 1;};
+    lb.entity_scope=[](void*,bool) noexcept ->int{return 1;};
+    lb.system_activate=[](void*,void*) noexcept ->int{return 1;};
+    lb.set_activation_flag=[](void*,int flag) noexcept ->int{assert(!flag);return 1;};
+    lb.local_player=[](void* p,void** actor) noexcept ->int{*actor=static_cast<Map*>(p)->player;return 1;};
+    lb.activation_cvar=[](void*,bool* value) noexcept ->int{*value=true;return 1;};
+    lb.manager_activate=[](void*) noexcept ->int{return 1;};
     nl::LevelArgs la{current,lump,nullptr,nullptr,false,false};nl::Result lr{};
     auto wrong=session;wrong.startup=&live.state;
     assert(!level_events(&ls,&la,&lb,&lr,&wrong)&&!ls.level_ready&&!started.events.creates);
     wrong=session;wrong.thread=0;
     assert(!level_events(&ls,&la,&lb,&lr,&wrong)&&!ls.level_ready);
-    assert(level_events(&ls,&la,&lb,&lr,&session)&&lr.completed&&lr.map_pipeline.spawn.native_spawns==1&&started.events.fires==1&&started.events.creates==1);
-    started.events.event.descriptor=12;
-    assert(touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&cr.removed&&m.removed==1&&started.events.fires==2&&!started.events.frees);
+    assert(level_events(&ls,&la,&lb,&lr,&session)&&lr.completed&&lr.map_event&&lr.map_pipeline.spawn.native_spawns==1&&started.events.fires==2&&started.events.creates==2);
+    assert(touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&cr.removed&&m.removed==1&&started.events.fires==3&&!started.events.frees);
+    // Original map writer ignores ordinary FireEvent false. Health
+    // remains published and activation continues; no double free.
+    started.events.fire_ok=false;
+    assert(activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&lr.completed&&lr.map_event&&lr.health_event&&started.events.creates==5&&started.events.fires==5&&!started.events.frees);
+    assert(!activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&started.events.creates==5);
     session={};assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&m.removed==1);
     FreeLibrary(server);FreeLibrary(client);
 }
