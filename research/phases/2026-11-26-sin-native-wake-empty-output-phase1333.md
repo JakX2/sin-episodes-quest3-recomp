@@ -1,0 +1,3 @@
+# Phase 1333: Native unconnected OnWake output
+
+Authenticated server.dll SHA-256 `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`. Wake output at 22040ef5–22040eff passes actor as caller and activator, zero extra delay, and output at actor+bc8 to 22156900. This wraps a void variant and calls 22156680. At 22156686–22156698 that routine reads output+14 (actor+bdc) and returns immediately when null. A missing hosted output is therefore valid only on the unconnected branch. Connected output still requires real dispatch and fails explicitly without it; the original sleep and network mutations precede the output call. Tests distinguish null vs nonzero action head and verify the preceding state writes. No model/physics/prop work. CI pending.
