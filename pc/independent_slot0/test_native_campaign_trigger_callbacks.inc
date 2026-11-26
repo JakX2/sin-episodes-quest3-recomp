@@ -1489,3 +1489,66 @@
         f.calls.clear();put(f.seq,0xb4,0u);put(f.seq,0x3d4,0x3000u);put(f.seq,0xb8,0x400000u);put(f.seq,0x74,-1);
         assert(complete(f.seq,sizeof(f.seq),f.npc,&b,&anim,&out)&&out.removal_scheduled&&out.self_skipped&&!out.transferred&&f.calls=="TCSXO");
     }
+
+
+    // Scheduled SUB_Remove runs through the real primary dispatcher,
+    // with the original health gate and cancellation-before-queue order.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct RemovalThinkFixture {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{};
+            sin_independent::EntityHandleEntry entries[1]{};
+            void* slots[1]{};DeferredRemovalQueue queue{slots,1};
+            float now=10.f,interval=.1f;
+            unsigned notices=0;std::string calls;
+        } f;
+        const auto run=reinterpret_cast<RunScriptedSequencePrimaryWithRemoval>(GetProcAddress(server,scripted_sequence_primary_removal_export));
+        const auto direct=reinterpret_cast<RunScriptedSequenceRemovalThink>(GetProcAddress(server,scripted_sequence_remove_think_export));
+        assert(run&&direct&&!GetProcAddress(client,scripted_sequence_primary_removal_export)&&!GetProcAddress(client,scripted_sequence_remove_think_export));
+        put(f.seq,0,scripted_sequence_vtable);put(f.seq,0xc,0x2242ee1cu);put(f.seq,0xc0,99u);put(f.seq,0x378,0x3000u);
+        put(f.seq,0x160,0x22454f00u);put(f.seq,0x168,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.seq)));
+        put(f.seq,0x3d0,0xffffffffu);put(f.seq,0x3b8,2u);
+        put(f.seq,8,0x221c0d40u);put(f.seq,0x74,101);put(f.seq,0x9c,10);
+        f.entries[0].entity=reinterpret_cast<CBaseEntity*>(f.seq);f.entries[0].serial=3;
+        nw::ServerNpcOuterCadenceBindings cadence{};cadence.context=&f;
+        cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<RemovalThinkFixture*>(p);assert(a==f.seq);++f.notices;return 1;
+        };
+        ScriptedSequenceControlBindings c{};c.context=&f;c.entries=f.entries;c.entry_count=1;c.now=&f.now;c.interval=&f.interval;c.cadence=&cadence;
+        c.extent=[](void* p,void* a,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<RemovalThinkFixture*>(p);*n=a==f.seq?sizeof(f.seq):0;return *n!=0;
+        };
+        ScriptedSequenceCancelBindings cancel{};cancel.context=&f;cancel.control=&c;
+        ScriptedSequenceAcquireBindings acquire{};acquire.control=&c;
+        ScriptedSequenceThinkBindings think{};think.acquire=&acquire;think.cancel=&cancel;
+        ScriptedSequencePrimaryBindings primary{};primary.think=&think;primary.context=&f;
+        primary.record=[](void* p,void* a,int tick,float time,int due) noexcept ->int{
+            auto& f=*static_cast<RemovalThinkFixture*>(p);assert(a==f.seq&&tick==101&&due==101&&time==f.now);f.calls+='R';return 1;
+        };
+        primary.scope=[](void* p,void* a,bool enter) noexcept ->int{
+            auto& f=*static_cast<RemovalThinkFixture*>(p);assert(a==f.seq);f.calls+=enter?'[':']';return 1;
+        };
+        DeferredRemovalBindings deferred{};deferred.context=&f;deferred.queue=&f.queue;
+        deferred.update=[](void* p,void* a,unsigned handler) noexcept ->int{
+            auto& f=*static_cast<RemovalThinkFixture*>(p);unsigned count=1;std::memcpy(&count,f.seq+0x3b8,4);
+            assert(a==f.seq&&handler==0x221446f0u&&!count&&f.seq[0xc0]==99&&(f.seq[0xb8]&1));f.calls+='U';return 1;
+        };
+        deferred.release=[](void* p,void* net) noexcept ->int{
+            auto& f=*static_cast<RemovalThinkFixture*>(p);assert(net==f.seq+0x160&&f.queue.handle_access_disabled);f.calls+='D';f.entries[0].entity=nullptr;return 1;
+        };
+        ScriptedSequenceRemovalThinkBindings removal{&deferred,&cancel,&f};
+        removal.positive_health=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<RemovalThinkFixture*>(p);assert(a==f.seq&&f.seq[0x9c]==10);f.calls+='H';return 1;
+        };
+        removal.warning=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<RemovalThinkFixture*>(p);assert(a==f.seq&&!f.seq[0x9c]);f.calls+='W';return 1;
+        };
+        ScriptedSequencePrimaryResult out{};ScriptedSequenceRemovalThinkResult removed{};
+        assert(run(f.seq,sizeof(f.seq),100,&primary,&out,&removal,&removed)&&out.not_due&&!removed.completed&&f.calls.empty()&&!f.queue.count);
+        f.now=10.1f;
+        assert(run(f.seq,sizeof(f.seq),101,&primary,&out,&removal,&removed)&&out.completed&&out.invoked&&!out.native_result&&out.last_tick==101&&out.next_tick==-1);
+        assert(removed.completed&&removed.positive_health&&removed.warning_called&&removed.health_cleared&&removed.cancelled.missing&&removed.cancelled.count_reset&&removed.removal.queued&&f.queue.count==1&&f.calls=="R[HWU]");
+        assert(!word(f.seq,0xc0)&&!word(f.seq,0x9c)&&f.notices==2);
+        DeferredRemovalResult dr{};
+        assert(api->cleanup_deferred(&deferred,&dr)&&dr.released==1&&!f.queue.count&&!f.entries[0].entity&&f.calls=="R[HWU]D");
+    }

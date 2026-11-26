@@ -943,6 +943,25 @@ struct DeferredRemovalResult {
 inline constexpr char scripted_sequence_defer_export[]="SiN_DeferScriptedSequenceRemoval";
 using DeferScriptedSequenceRemoval=int (__cdecl *)(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*,
     const ScriptedSequenceCancelBindings*,ScriptedSequenceCancelResult*) noexcept;
+// SUB_Remove (221c0d40) calls a health-sensitive virtual and warning
+// before requesting removal. The cancellation sidecar uses live handles.
+struct ScriptedSequenceRemovalThinkBindings {
+    const DeferredRemovalBindings* deferred;
+    const ScriptedSequenceCancelBindings* cancel;
+    void* context;
+    int (__cdecl *positive_health)(void*,void*) noexcept; // original +1b4
+    int (__cdecl *warning)(void*,void*) noexcept;
+};
+struct ScriptedSequenceRemovalThinkResult {
+    unsigned completed,positive_health,warning_called,health_cleared;
+    ScriptedSequenceCancelResult cancelled;
+    DeferredRemovalResult removal;
+};
+inline constexpr char scripted_sequence_remove_think_export[]="SiN_RunScriptedSequenceRemovalThink";
+inline constexpr char scripted_sequence_primary_removal_export[]="SiN_RunScriptedSequencePrimaryWithRemoval";
+using RunScriptedSequenceRemovalThink=int (__cdecl *)(void*,unsigned,const ScriptedSequenceRemovalThinkBindings*,ScriptedSequenceRemovalThinkResult*) noexcept;
+using RunScriptedSequencePrimaryWithRemoval=int (__cdecl *)(void*,unsigned,int,const ScriptedSequencePrimaryBindings*,ScriptedSequencePrimaryResult*,
+    const ScriptedSequenceRemovalThinkBindings*,ScriptedSequenceRemovalThinkResult*) noexcept;
 // Original CBaseEntityList active and non-networked free chains.
 struct RegistryChain {sin_independent::EntityHandleEntry* head;sin_independent::EntityHandleEntry* tail;};
 struct RemovalRegistry {
