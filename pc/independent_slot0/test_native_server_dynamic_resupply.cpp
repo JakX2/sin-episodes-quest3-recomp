@@ -768,5 +768,75 @@ int main(int argc,char** argv){
         EvalFixture::u(hf2.player,0x9c,50);
         assert(api->player_take_health(hf2.player,-2.75f,dmg[i],&ph,&phr)&&phr.completed&&phr.accepted&&phr.after==48&&phr.raw_delta==-2&&phr.event_type==cats[i]&&phr.fade_called);
     }
+    // One continuous evaluation -> actual pickup factories -> player
+    // consumption -> reevaluation, with one live player and inventory.
+    struct LoopFixture{
+        alignas(4) unsigned char pickups[2][0x4d8]{};
+        unsigned allocated=0,initialized=0,constructed=0,finalized=0,removed=0,release=0;
+        unsigned messages=0,sounds=0,respawns=0;bool undersize=false;
+        void* actor=nullptr;void* player=nullptr;
+    } loop;
+    loop.actor=ef.actor;loop.player=hf2.player;
+    PickupFactoryBindings pfb{};pfb.context=&loop;
+    pfb.allocate=[](void* p,unsigned need,void** a,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<LoopFixture*>(p);assert(q.allocated<2&&(need==0x4cc||need==0x4d8));*a=q.pickups[q.allocated++];*bytes=q.undersize?need-1:need;return 1;
+    };
+    pfb.initialize=[](void* p,void* a,const char* name) noexcept ->int{
+        auto& q=*static_cast<LoopFixture*>(p);assert(q.initialized<2&&a==q.pickups[q.initialized]&&q.constructed>q.initialized);
+        assert(!std::strcmp(name,q.initialized?"item_ammo_magnum":"item_healthvial"));
+        ++q.initialized;EvalFixture::u(a,0x7c,item_touch_token);EvalFixture::u(a,0x16c,0x4321);return 1;
+    };
+    pfb.release_networkable=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.pickups[0]+0x160||a==q.pickups[1]+0x160);++q.release;return 1;};
+    AmmoPickupBindings ac{};ac.context=&loop;
+    ac.base_construct=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.pickups[q.constructed]);++q.constructed;return 1;};
+    VialPickupBindings vc{};vc.context=&loop;vc.base_construct=ac.base_construct;
+    pfb.ammo=&ac;pfb.vial=&vc;
+    PickupFactoryResult pfr{};
+    assert(!api->pickup_factory_create("weapon_magnum",&pfb,&pfr)&&!pfr.allocation_called);
+    loop.undersize=true;
+    assert(!api->pickup_factory_create(health_classname,&pfb,&pfr)&&pfr.allocated&&!pfr.constructed&&!pfr.networkable&&pfr.actor==loop.pickups[0]);
+    loop.allocated=0;loop.undersize=false;
+    seed();EvalFixture::u(ef.actor,0,resupply_vtable);EvalFixture::u(ef.actor,0xb8,0);
+    EvalFixture::u(hf2.player,0,0x224aec3c);EvalFixture::u(hf2.player,0x94,2);
+    EvalFixture::u(hf2.player,0x98,100);EvalFixture::u(hf2.player,0x9c,25);EvalFixture::u(hf2.player,0x650,1);
+    for(unsigned i=0;i<48;++i)EvalFixture::u(hf2.player,0x6cc+4*i,0xffffffffu);
+    EvalFixture::u(hf2.player,0x6cc,0x8000);EvalFixture::u(hf2.player,0x78c,0xffffffffu);
+    EvalFixture::u(gf.weapon,0x4e4,1);EvalFixture::u(gf.weapon,0x4e8,0xffffffffu);
+    EvaluateBindings continuous{};continuous.entries=&ge;continuous.entry_count=1;
+    continuous.extent_context=&gf;continuous.extent=gb.inventory.extent;continuous.native_player_inventory=true;
+    continuous.engine_cvar=&cv;continuous.nearby=eb.nearby;
+    continuous.spawn.context=&loop;continuous.spawn.native_factory=&pfb;
+    continuous.spawn.position=[](void*,void*,const float*) noexcept ->int{return 1;};
+    continuous.spawn.orientation=continuous.spawn.position;
+    continuous.spawn.owner=[](void* p,void*,void* owner) noexcept ->int{assert(owner==static_cast<LoopFixture*>(p)->actor);return 1;};
+    continuous.spawn.finalize=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.pickups[q.finalized]&&q.initialized>q.finalized);++q.finalized;return 1;};
+    continuous.spawn.linear=continuous.spawn.position;continuous.spawn.angular=continuous.spawn.position;
+    continuous.spawn.world_bounds=[](void*,void*,float* min,float* max) noexcept ->int{min[2]=100;max[2]=110;return 1;};
+    continuous.spawn.random_float=[](void*,float lo,float hi,float* v) noexcept ->int{assert(lo==-6&&hi==6);*v=0;return 1;};
+    continuous.spawn.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.actor&&!EvalFixture::rd(a,8));++q.removed;return 1;};
+    cv.calls=0;cv.roots[0].SetFloat(1.f);cv.roots[1].SetFloat(25.f);cv.roots[3].SetFloat(10.f);
+    assert(api->evaluate(ef.actor,sizeof(ef.actor),hf2.player,sizeof(hf2.player),0,&continuous,&er)&&er.completed&&er.native_factory_calls==2&&er.normal_spawns==2&&er.ammo.ownership_native==6&&er.ammo.reserve_native==1&&er.removed);
+    assert(loop.allocated==2&&loop.constructed==2&&loop.initialized==2&&loop.finalized==2&&loop.removed==1&&er.health_row.current==.25f&&er.ammo_rows[0].current==1.f/80.f);
+    PlayerAmmoBindings loop_grant=gb;loop_grant.inventory.player=hf2.player;loop_grant.inventory.player_bytes=sizeof(hf2.player);
+    loop_grant.context=&loop;
+    loop_grant.sound=[](void* p,void* a,const char* n) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.player&&!std::strcmp(n,"BaseCombatCharacter.AmmoPickup"));++q.sounds;return 1;};
+    loop_grant.auto_switch_enabled=[](void*,bool* yes) noexcept ->int{*yes=false;return 1;};
+    loop_grant.mark_edict=[](void*,unsigned,unsigned) noexcept ->int{return 1;};
+    ac.native_grant=&loop_grant;ac.live_metric2=&metric2;ac.native_singleplayer_rules=true;
+    ac.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.pickups[0]||a==q.pickups[1]);++q.removed;return 1;};
+    vc.native_heal=&ph;vc.engine_cvar=&cv;vc.native_singleplayer_rules=true;
+    vc.item_pickup=[](void* p,void* a,unsigned) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.player);++q.messages;return 1;};
+    vc.sound=[](void* p,void* a,unsigned,const char* n) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.player&&!std::strcmp(n,"HealthVial.Touch"));++q.sounds;return 1;};
+    vc.respawn=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<LoopFixture*>(p);assert(a==q.pickups[0]);++q.respawns;return 1;};
+    ItemTouchBindings ct{};ct.context=&loop;ct.native_singleplayer_rules=true;ct.ammo=&ac;ct.vial=&vc;ct.remove=ac.remove;
+    assert(api->item_touch(loop.pickups[0],0x4cc,hf2.player,sizeof(hf2.player),&ct,&tr)&&tr.completed&&tr.vial.native_heal.after==35&&tr.vial.respawned&&tr.removed);
+    assert(api->item_touch(loop.pickups[1],0x4d8,hf2.player,sizeof(hf2.player),&ct,&tr)&&tr.completed&&tr.ammo.native_grant.after==6&&tr.ammo.requested==5&&tr.ammo.granted==5&&tr.removed);
+    assert(EvalFixture::rd(hf2.player,0x9c)==35&&EvalFixture::rd(hf2.player,0x650)==6&&loop.messages==1&&loop.sounds==2&&loop.respawns==1&&loop.removed==4);
+    assert(api->pickup_factory_destroy(loop.pickups[0],0x4cc,loop.pickups[0]+0x160,&pfb,&pfr)&&pfr.released&&pfr.type==count);
+    assert(api->pickup_factory_destroy(loop.pickups[1],0x4d8,loop.pickups[1]+0x160,&pfb,&pfr)&&pfr.released&&pfr.type==0&&loop.release==2);
+    assert(!api->pickup_factory_destroy(loop.pickups[1],0x4d8,loop.pickups[1]+0x15c,&pfb,&pfr));
+    // Re-evaluate same player after collection with demand below new stock.
+    EvalFixture::u(ef.actor,8,123);EvalFixture::f(ef.actor,0x394,.3f);EvalFixture::f(ef.actor,0x398,.05f);cv.calls=0;
+    assert(api->evaluate(ef.actor,sizeof(ef.actor),hf2.player,sizeof(hf2.player),0,&continuous,&er)&&er.completed&&!er.factories&&er.selected_health==-1&&er.selected_ammo==-1&&er.health_row.current==.35f&&er.ammo_rows[0].current==6.f/80.f&&loop.allocated==2);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }

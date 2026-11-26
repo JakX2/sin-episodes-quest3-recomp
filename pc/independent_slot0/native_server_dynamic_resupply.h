@@ -81,6 +81,7 @@ struct NearbyBindings {
     int (__cdecl *debug_count)(void*,const char*,int) noexcept;
 };
 struct NearbyResult {unsigned visited,within,matched,center_reads,class_reads,lines,reports,completed;};
+struct PickupFactoryBindings;
 struct SpawnBindings {
     void* context;
     int (__cdecl *refresh_origin)(void*,void*) noexcept;
@@ -96,6 +97,7 @@ struct SpawnBindings {
     int (__cdecl *move_origin)(void*,void*,const float*) noexcept;
     int (__cdecl *random_float)(void*,float,float,float*) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
+    const PickupFactoryBindings* native_factory;
 };
 struct EvaluateBindings {
     const sin_independent::EntityHandleEntry* entries;
@@ -115,6 +117,8 @@ struct EvaluateResult {
     unsigned master_skipped,master_profile,origin_refreshes,motion_refreshes,
         factories,finalizes,normal_spawns,fallback_spawns,null_factory,
         corrections,randoms,think_cleared,removed,completed;
+    unsigned native_factory_calls,native_factory_failures;
+    void* partial_pickup;
     int selected_health,selected_ammo;
     unsigned debug_native;
     int debug_value;
@@ -297,6 +301,31 @@ struct ItemTouchResult {
     AmmoPickupResult ammo;
     VialPickupResult vial;
 };
+struct PickupFactorySpec {unsigned object,vtable,create,extent;};
+inline constexpr PickupFactorySpec pickup_factory_specs[count+1]{
+    {0x22528114,0x22468a9c,0x222f5470,0x4d8},
+    {0x22528118,0x22468aa8,0x222f55c0,0x4d8},
+    {0x2252811c,0x22468ab4,0x222f5690,0x4d8},
+    {0x22528128,0x22468ad8,0x222f5900,0x4d8},
+    {0x2252812c,0x22468ae4,0x222f59d0,0x4d8},
+    {0x22528130,0x22468af0,0x222f5aa0,0x4d8},
+    {0x22528c08,0x2246b920,0x222fa280,0x4cc}
+};
+struct PickupFactoryBindings {
+    void* context;
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *initialize)(void*,void*,const char*) noexcept;
+    int (__cdecl *release_networkable)(void*,void*) noexcept;
+    const AmmoPickupBindings* ammo;
+    const VialPickupBindings* vial;
+};
+struct PickupFactoryResult {
+    void* actor;
+    void* networkable;
+    unsigned type,bytes,allocation_called,allocated,constructed,initialized,released,completed;
+    AmmoPickupResult ammo;
+    VialPickupResult vial;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -333,6 +362,8 @@ struct Api {
     int (__cdecl *item_touch)(void*,unsigned,void*,unsigned,const ItemTouchBindings*,ItemTouchResult*) noexcept;
     int (__cdecl *player_give_ammo)(void*,int,int,bool,const PlayerAmmoBindings*,PlayerAmmoResult*) noexcept;
     int (__cdecl *player_take_health)(void*,float,unsigned,const PlayerHealthBindings*,PlayerHealthResult*) noexcept;
+    int (__cdecl *pickup_factory_create)(const char*,const PickupFactoryBindings*,PickupFactoryResult*) noexcept;
+    int (__cdecl *pickup_factory_destroy)(void*,unsigned,void*,const PickupFactoryBindings*,PickupFactoryResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
