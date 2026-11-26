@@ -4113,7 +4113,11 @@ int __cdecl grunt_impact(void* a,unsigned n,void* damage,unsigned dn,float now,c
     return grunt_impact_impl(a,n,damage,dn,now,b,out,nullptr);
 }
 
-struct BehaviorDamageRoute {const ServerNpcGruntBehaviorDamageBindings* bindings;ServerNpcGruntBehaviorDamageResult* result;};
+struct BehaviorConditionRoute {
+    const ServerNpcConditionMapBindings* descriptor;
+    ServerNpcGruntBehaviorConditionLifeResult* result;
+};
+struct BehaviorDamageRoute {const ServerNpcGruntBehaviorDamageBindings* bindings;ServerNpcGruntBehaviorDamageResult* result;const BehaviorConditionRoute* conditions=nullptr;};
 struct DamageDetailRoute {const ServerNpcGruntDamageDetailBindings* bindings;ServerNpcGruntDamageDetailResult* result;const DamageNotifyRoute* notify=nullptr;const SpecialImpactRoute* special=nullptr;const BehaviorDamageRoute* behavior=nullptr;};
 struct ComponentParentRoute {
     void* actor;unsigned bytes;float now;
@@ -4122,6 +4126,7 @@ struct ComponentParentRoute {
     const DamageNotifyRoute* notify;
     std::uint32_t expected_parent;
     unsigned* called;
+    const BehaviorConditionRoute* conditions;
 };
 int grunt_component_damage_impl(void*,unsigned,const void*,unsigned,const ServerNpcGruntComponentDamageBindings*,ServerNpcGruntComponentDamageResult*,const ComponentParentRoute*) noexcept;
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
@@ -4164,7 +4169,7 @@ int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,
        read<unsigned>(component,4)!=binding.actor_token||read<unsigned>(component,0xc)!=parent)return 0;
     result.identity_valid=1;
     auto bound=binding.component;bound.entries=sb.entries;bound.count=sb.count;bound.original_behavior_vtable=expected;
-    const ComponentParentRoute native{a,n,now,&b.base,&out.base,route.notify,parent,&result.parent_native};
+    const ComponentParentRoute native{a,n,now,&b.base,&out.base,route.notify,parent,&result.parent_native,route.behavior->conditions};
     if(!grunt_component_damage_impl(component,n-offset,damage,dn,&bound,&result.component,&native))return 0;
     out.native_result=result.component.native_result;
     return 1;
@@ -4910,14 +4915,27 @@ int __cdecl ragdoll_life(void* a,unsigned n,std::uint32_t handle,const void* dam
     return elite_life_impl(a,n,handle,damage,dn,now,&b->life,&out->life,&route);
 }
 const ServerNpcGruntRagdollLifeApi ragdoll_life_api{1,sizeof(ServerNpcGruntRagdollLifeApi),&ragdoll_life};
-int __cdecl behavior_life(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntBehaviorLifeBindings* b,ServerNpcGruntBehaviorLifeResult* out) noexcept{
+int behavior_life_impl(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntBehaviorLifeBindings* b,ServerNpcGruntBehaviorLifeResult* out,const BehaviorConditionRoute* conditions=nullptr) noexcept{
     if(!out)return 0;out->behavior={};out->combat.ragdoll={};out->combat.ragdoll_entered=0;
     if(!b)return 0;
     const RagdollLifeRoute ragdoll{&b->combat.ragdoll,&out->combat.ragdoll,&out->combat.ragdoll_entered};
-    const BehaviorDamageRoute behavior{&b->behavior,&out->behavior};
+    const BehaviorDamageRoute behavior{&b->behavior,&out->behavior,conditions};
     return elite_life_impl(a,n,handle,damage,dn,now,&b->combat.life,&out->combat.life,&ragdoll,&behavior);
 }
+int __cdecl behavior_life(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntBehaviorLifeBindings* b,ServerNpcGruntBehaviorLifeResult* out) noexcept{
+    return behavior_life_impl(a,n,handle,damage,dn,now,b,out);
+}
 const ServerNpcGruntBehaviorLifeApi behavior_life_api{1,sizeof(ServerNpcGruntBehaviorLifeApi),&behavior_life};
+int __cdecl behavior_condition_life(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntBehaviorConditionLifeBindings* b,ServerNpcGruntBehaviorConditionLifeResult* out) noexcept{
+    if(!out)return 0;
+    out->tank_mapping={};out->owner_condition={};
+    out->tank_mapping.global=out->tank_mapping.bit=out->owner_condition.global=out->owner_condition.bit=-1;
+    out->tank_mapping_called=out->owner_condition_called=0;
+    if(!b)return 0;
+    const BehaviorConditionRoute route{&b->tank_descriptor,out};
+    return behavior_life_impl(a,n,handle,damage,dn,now,&b->life,&out->life,&route);
+}
+const ServerNpcGruntBehaviorConditionLifeApi behavior_condition_life_api{1,sizeof(ServerNpcGruntBehaviorConditionLifeApi),&behavior_condition_life};
 
 int linked_activity_route(void* a,void* link,const ServerNpcGruntSentenceBindings& entities,const ServerNpcGruntLinkedActivityBindings& b,ServerNpcGruntLinkedActivityResult& out) noexcept{
     out={};out.native_result=0x42;out.lookup=-1;
@@ -5132,10 +5150,26 @@ int grunt_component_damage_impl(void* component,unsigned n,const void* damage,un
     if(!tank||!b->tank_predicate||!b->tank_predicate(b->context,tank,source,&yes))return 0;
     out->tank_checked=1;out->tank_predicate_value=yes;
     if(yes)return done();
-    if(!b->condition_map||!b->condition_map(b->context,component,100000,&out->mapped_condition))return 0;
-    out->mapped=1;
-    out->owner=read<unsigned>(component,4);
-    if(!out->owner||!b->condition_set||!b->condition_set(b->context,out->owner,out->mapped_condition))return 0;
+    
+    if(native&&native->conditions){
+        auto& c=*native->conditions->result;
+        c.tank_mapping_called=1;
+        // Raw range mapping deliberately does not require a global ID; the
+        // subsequent owner setter performs its own namespace resolution.
+        if(!resolve_npc_condition_range(component,100000,native->conditions->descriptor,&c.tank_mapping))return 0;
+        out->mapped_condition=c.tank_mapping.global;out->mapped=1;
+        out->owner=read<unsigned>(component,4);
+        if(!out->owner||out->owner!=native->expected_parent-0xc14)return 0;
+        const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+        if(!api)return 0;
+        c.owner_condition_called=1;
+        if(!api->store(native->actor,native->bytes,out->mapped_condition,NpcConditionCurrent,true,&native->base->chain.outputs.conditions,&c.owner_condition))return 0;
+    }else{
+        if(!b->condition_map||!b->condition_map(b->context,component,100000,&out->mapped_condition))return 0;
+        out->mapped=1;
+        out->owner=read<unsigned>(component,4);
+        if(!out->owner||!b->condition_set||!b->condition_set(b->context,out->owner,out->mapped_condition))return 0;
+    }
     out->condition_set=1;return done();
 }
 int __cdecl grunt_component_damage(void* component,unsigned n,const void* damage,unsigned dn,const ServerNpcGruntComponentDamageBindings* b,ServerNpcGruntComponentDamageResult* out) noexcept{
@@ -5783,4 +5817,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorLifeApi=_SiN_GetServerNpcGruntBehaviorLifeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorLifeApi* __cdecl SiN_GetServerNpcGruntBehaviorLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorLifeApi)?&behavior_life_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntBehaviorConditionLifeApi=_SiN_GetServerNpcGruntBehaviorConditionLifeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntBehaviorConditionLifeApi* __cdecl SiN_GetServerNpcGruntBehaviorConditionLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntBehaviorConditionLifeApi)?&behavior_condition_life_api:nullptr;
 }

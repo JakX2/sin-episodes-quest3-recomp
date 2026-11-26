@@ -2370,6 +2370,33 @@ int main(int argc,char** argv){
         assert(!behavior->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),23,&bc,&br)&&!br.behavior.identity_valid);
         f.put(q.actor,0xc14,0x2249aa40u);
         assert(!behavior->run(q.actor,sizeof(q.actor),0x9002u,q.damage,sizeof(q.damage),23,&bc,&br)&&!br.behavior.entered);
+        auto gtc=reinterpret_cast<GetServerNpcGruntBehaviorConditionLifeApi>(GetProcAddress(s,server_npc_grunt_behavior_condition_life_export));
+        assert(gtc&&!GetProcAddress(c,server_npc_grunt_behavior_condition_life_export)&&!gtc(0,sizeof(ServerNpcGruntBehaviorConditionLifeApi))&&!gtc(1,0));
+        const auto* tank=gtc(1,sizeof(ServerNpcGruntBehaviorConditionLifeApi));assert(tank);
+        static ServerNpcGruntBehaviorConditionLifeBindings tc;tc.life=bc;
+        auto& tb=tc.life.behavior.component;tb.context=&q;
+        tb.source_predicate=[](void* p,void* source,bool* yes) noexcept -> int{auto& q=TailFixture::self(p);assert(source==q.other);*yes=true;return 1;};
+        tb.tank_predicate=[](void* p,void* tank,void* source,bool* yes) noexcept -> int{auto& q=TailFixture::self(p);assert(tank==q.actor&&source==q.other);*yes=false;return 1;};
+        tb.condition_map=nullptr;tb.condition_set=nullptr;
+        static unsigned char tank_desc[0x48]{},tank_row[0x14]{};
+        tc.tank_descriptor.context=&q;
+        tc.tank_descriptor.descriptor=[](void* p,void* component,const void** desc,unsigned* n) noexcept -> int{auto& q=TailFixture::self(p);assert(component==q.actor+0xcd8);*desc=tank_desc;*n=sizeof(tank_desc);return 1;};
+        tc.tank_descriptor.storage=[](void*,std::uint32_t token,const void** row,unsigned* n) noexcept -> int{assert(token==99);*row=tank_row;*n=sizeof(tank_row);return 1;};
+        f.put(q.actor,0xc18,0x10cd8u);f.put(q.actor,0xcd8,0x224abec4u);f.put(q.actor,0xcdc,0x10000u);f.put(q.actor,0xce4,0x10c14u);f.put(q.actor,0xcec,0x2002u);
+        f.put(q.actor,0x9c,79);f.put(q.actor,0x994,24.f);f.put(q.damage,0x2c,1.f);
+        f.put(tank_desc,0x38,9999);f.put(tank_desc,0x44,99u);
+        f.put(tank_row,0,1000000200);f.put(tank_row,4,100000);f.put(tank_row,8,100000);
+        f.put(q.actor,0x7cc+24,0u);
+        static ServerNpcGruntBehaviorConditionLifeResult tr;
+        assert(tank->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),24,&tc,&tr)&&tr.life.behavior.component.tank&&tr.life.behavior.parent_native&&tr.tank_mapping_called&&tr.tank_mapping.visited==2&&tr.tank_mapping.global==1000000200&&tr.owner_condition_called&&tr.owner_condition.bit==200&&tr.owner_condition.changed&&(TailFixture::rd(q.actor,0x7cc+24)&256u)&&TailFixture::rd(q.actor,0x9c)==78);
+        // A local result from the behavior descriptor must be resolved again through the owner descriptor.
+        f.put(tank_row,0,5);f.put(q.actor,0x994,25.f);f.put(q.actor,0x7cc,0u);
+        assert(tank->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),25,&tc,&tr)&&tr.tank_mapping.global==5&&tr.owner_condition.bit==5&&(TailFixture::rd(q.actor,0x7cc)&32u));
+        f.put(tank_row,8,99999);f.put(q.actor,0x994,26.f);
+        assert(tank->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),26,&tc,&tr)&&tr.tank_mapping.global==-1&&tr.owner_condition_called&&!tr.owner_condition.mapped&&tr.life.behavior.component.condition_set);
+        f.put(tank_row,0x10,99u);f.put(q.actor,0x994,27.f);
+        assert(!tank->run(q.actor,sizeof(q.actor),0x2002u,q.damage,sizeof(q.damage),27,&tc,&tr)&&tr.tank_mapping_called&&!tr.owner_condition_called);
+
 
 
 
