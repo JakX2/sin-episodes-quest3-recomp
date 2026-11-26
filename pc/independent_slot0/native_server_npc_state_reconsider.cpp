@@ -6391,6 +6391,37 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
     const auto& ab=b.arbitration->activation->schedule->admission;
     const sin_independent::EntityHandleView registry(ab.entries,ab.count);
     auto target=[&](){return assault_owner_target(a,registry);};
+    auto span=[&](void* p,unsigned bytes){
+        unsigned extent=0;return p&&ab.extent&&ab.extent(ab.context,p,&extent)&&extent>=bytes;
+    };
+    // Original PE32 primary-vtable tokens in the bounded object view, not host pointers.
+    auto weapon_caps=[&](void* w,unsigned& caps){
+        if(!span(w,4))return false;
+        switch(read<unsigned>(w,0)){
+        case 0x2245a554u:caps=0;return true; // CBaseCombatWeapon
+        case 0x22478d0cu:caps=0x8000;return true; // Melee
+        case 0x2247875cu:case 0x224776acu:case 0x2247a1e4u:
+        case 0x22477c8cu:case 0x22478214u:case 0x2247924cu:case 0x2247ab9cu:
+            caps=0x2000;return true; // seven SiN weapon +4a0 constant leaves
+        default:return false;
+        }
+    };
+    auto target_kind=[&](void* e,bool& player,bool& npc){
+        if(!span(e,4))return false;
+        const auto v=read<unsigned>(e,0);
+        player=v==0x2245222cu||v==0x224aec3cu;
+        npc=relation_grunt_class(v);
+        unsigned caps=0;return player||npc||weapon_caps(e,caps);
+    };
+    // 22027db0 stores float deltas, 22027d60 stores float sum before sqrt.
+    auto distance=[&](void* e,unsigned offset,double& result){
+        if(!span(e,offset+12))return false;
+        float d[3];for(unsigned i=0;i<3;++i)
+            d[i]=static_cast<float>(static_cast<double>(read<float>(a,offset+4*i))-read<float>(e,offset+4*i));
+        const double x=d[0],y=d[1],z=d[2];
+        result=std::sqrt(static_cast<double>(static_cast<float>(x*x+y*y+z*z)));
+        return true;
+    };
     auto condition=[&](int bit,bool& yes){
         const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
         ServerNpcConditionResult cr{};
@@ -6419,7 +6450,10 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
             if(!condition(17,yes))return false;
             if(!yes&&registry.Resolve(read<unsigned>(a,0x78c))){
                 // No target skips the distance/scene branch and preserves +c64.
-                if(!target())return native(91);
+                void* e=target();if(!e)return native(91);
+                double length=0;if(!distance(e,0x360,length))return false;
+                // TEST 41 rejects less, equal and unordered. Only >256 enters scene calls.
+                if(!(length>256.0))return native(91);
                 return false;
             }
         }
@@ -6435,16 +6469,36 @@ bool schedule_translate_grunt(void* a,unsigned n,int id,float now,const ServerNp
         if(!e||!ab.extent||!ab.extent(ab.context,e,&extent)||extent<0x90)return false;
         return native(read<int>(e,0x8c)==0?103:100);
     }
-    case 42: // 2235d9d3: live weapon needs +4a0 service
-        if(!registry.Resolve(read<unsigned>(a,0x78c)))return native(92);
-        return false;
-    case 80: // 2235da1b: missing enemy takes the unmodified route
-        if(!target())return native(80);
-        return false;
-    case 87: // 2235d79a: missing enemy and no secondary state
-        if(target())return false;
+    case 42:{ // 2235d9d3: +4a0 mask 0x4000
+        void* w=registry.Resolve(read<unsigned>(a,0x78c));
+        if(!w)return native(92);
+        unsigned caps=0;if(!weapon_caps(w,caps))return false;
+        return native(caps&0x4000?42:92);
+    }
+    case 80:{ // 2235da1b: player predicate, latch, clean cached absolute origins
+        void* e=target();if(!e)return native(80);
+        bool player=false,npc=false;if(!target_kind(e,player,npc))return false;
+        if(!player||!read<std::uint8_t>(a,0xc67))return native(80);
+        if(!span(e,0x2c8)||(read<unsigned>(a,0xb8)&0x800)||(read<unsigned>(e,0xb8)&0x800))return false;
+        double length=0;if(!distance(e,0x2bc,length))return false;
+        if(length>=256.0){write<std::uint8_t>(a,0xc67,0);return native(86);}
+        return native(80);
+    }
+    case 87:{ // 2235d79a: +f4 NPC cast, +5c0 owner/weapon capability merge
+        void* e=target();
+        if(e){
+            bool player=false,npc=false;if(!target_kind(e,player,npc))return false;
+            if(npc){
+                if(!span(e,0x8f0))return false;
+                unsigned caps=read<unsigned>(e,0x8ec);
+                void* w=registry.Resolve(read<unsigned>(e,0x78c));
+                if(w){unsigned wc=0;if(!weapon_caps(w,wc))return false;caps|=wc;}
+                if(!(caps&0x2000))return schedule_translate_grunt(a,n,33,now,b,o,route);
+            }
+        }
         if(read<unsigned>(a,0x9d0))return schedule_translate_grunt(a,n,33,now,b,o,route);
         return native(87);
+    }
     case 36:{
         bool yes=false;if(!condition(10,yes))return false;
         if(yes)return schedule_translate_grunt(a,n,25,now,b,o,route);
