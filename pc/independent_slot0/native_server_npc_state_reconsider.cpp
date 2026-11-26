@@ -2265,7 +2265,50 @@ int __cdecl pending_object(void* a,unsigned bytes,float now,const ServerNpcGrunt
     if(!preschedule_init(a,bytes,now,b,out)||!pending_policy(a,now,*b,*out))return 0;
     out->completed=1;return 1;
 }
-int __cdecl grunt_preschedule(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out) noexcept{
+int __cdecl speech_queue_tick(void* a,unsigned bytes,float now,const ServerNpcGruntSpeechQueueBindings* b,ServerNpcGruntSpeechQueueResult* out) noexcept{
+    if(!out)return 0;*out={};out->index=-1;
+    if(!a||bytes<0xcd8||!b||!relation_grunt_class(b->original_vtable)||!std::isfinite(now))return 0;
+    out->index=read<int>(a,0xccc);
+    auto done=[&](){out->completed=1;return 1;};
+    auto clear=[&](){write(a,0xccc,-1);out->cleared=1;return done();};
+    if(out->index==-1){out->empty=1;return done();}
+    // Finite game-clock values; strict expiry, equality remains eligible.
+    const float expiration=read<float>(a,0xcd0);
+    if(!std::isfinite(expiration))return 0;
+    if(expiration<now){out->expired=1;return clear();}
+    out->priority=read<int>(a,0xcd4);
+    const auto squad=read<unsigned>(a,0x9c4);
+    auto get_squad=[&](unsigned token,void*& data){unsigned n=0;data=nullptr;return b->squad_storage&&b->squad_storage(b->context,token,&data,&n)&&data&&n>=0x58;};
+    void* squad_data=nullptr;
+    float deadline=read<float>(a,0xc04);int prior=read<int>(a,0xc08);
+    if(squad){
+        out->squad_used=1;if(!get_squad(squad,squad_data))return 0;
+        deadline=read<float>(squad_data,0x50);prior=read<int>(squad_data,0x54);
+    }
+    if(!std::isfinite(deadline))return 0;
+    // Owner +584 -> 22037960 / squad 220a7cd0. Equal clock admits.
+    if(now<deadline&&out->priority<=prior){out->priority_blocked=1;return done();}
+    if((read<unsigned>(a,0xb4)&2u)&&read<int>(a,0x850)!=3){out->state_blocked=1;return done();}
+    // 221b37c0 itself skips negative indexes. Diagnostic lookups are omitted.
+    if(out->index>=0){
+        if(!std::isfinite(b->volume)||!b->deliver||!b->deliver(b->context,read<unsigned>(a,0x16c),out->index,b->volume,b->level,0,read<unsigned>(a,0xcc8)))return 0;
+        out->delivered=1;
+    }
+    // Owner +588 -> 220319d0 with zero additional seconds, after delivery.
+    auto next=[&](float& stamp){
+        float sample=0;if(!b->random_float||!b->random_float(b->context,1.5f,2.f,&sample)||!std::isfinite(sample)||sample<1.5f||sample>2.f)return false;
+        stamp=static_cast<float>(static_cast<double>(now)+sample);return std::isfinite(stamp);
+    };
+    const int priority=read<int>(a,0xcd4);
+    if(!next(out->owner_deadline))return 0;
+    write(a,0xc08,priority);write(a,0xc04,out->owner_deadline);out->owner_written=1;
+    if(const auto token=read<unsigned>(a,0x9c4)){
+        if(!next(out->squad_deadline)||!get_squad(token,squad_data))return 0;
+        write(squad_data,0x50,out->squad_deadline);write(squad_data,0x54,priority);out->squad_written=1;
+    }
+    return clear();
+}
+int grunt_preschedule_impl(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out,const ServerNpcGruntSpeechQueueBindings* speech=nullptr,ServerNpcGruntSpeechQueueResult* speech_out=nullptr) noexcept{
     if(!preschedule_init(a,bytes,now,b,out))return 0;
     const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
     const float threshold=read<float>(a,0xc70);
@@ -2280,7 +2323,11 @@ int __cdecl grunt_preschedule(void* a,unsigned bytes,float now,const ServerNpcGr
     }
     const auto component=read<unsigned>(a,0xc18);
     if(component){out->component_called=1;if(!b->component_tick||!b->component_tick(b->context,component))return 0;}
-    out->speech_called=1;if(!b->speech_queue_tick||!b->speech_queue_tick(b->context,a,now))return 0;
+    out->speech_called=1;
+    if(speech){
+        auto bound=*speech;bound.original_vtable=b->original_vtable;
+        if(!speech_queue_tick(a,bytes,now,&bound,speech_out))return 0;
+    }else if(!b->speech_queue_tick||!b->speech_queue_tick(b->context,a,now))return 0;
     const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
     auto store=[&](int id,bool value,unsigned& flag){ServerNpcConditionResult cr{};if(!cond->store(a,bytes,id,NpcConditionCurrent,value,&b->conditions,&cr))return false;flag=cr.mapped;return true;};
     if(read<std::uint8_t>(a,0xbf)&8u){
@@ -2298,6 +2345,14 @@ int __cdecl grunt_preschedule(void* a,unsigned bytes,float now,const ServerNpcGr
     if(!store(0x4c,out->accepted!=0,out->condition4c_written))return 0;
     out->completed=1;return 1;
 }
+int __cdecl grunt_preschedule(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out) noexcept{
+    return grunt_preschedule_impl(a,bytes,now,b,out);
+}
+int __cdecl grunt_preschedule_speech(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,const ServerNpcGruntSpeechQueueBindings* speech,ServerNpcGruntPrescheduleResult* out,ServerNpcGruntSpeechQueueResult* speech_out) noexcept{
+    if(!speech||!speech_out)return 0;*speech_out={};speech_out->index=-1;
+    return grunt_preschedule_impl(a,bytes,now,b,out,speech,speech_out);
+}
+const ServerNpcGruntSpeechQueueApi speech_queue_api{1,sizeof(ServerNpcGruntSpeechQueueApi),&speech_queue_tick,&grunt_preschedule_speech};
 const ServerNpcGruntPrescheduleApi preschedule_api{1,sizeof(ServerNpcGruntPrescheduleApi),&grunt_preschedule,&pending_object};
 const ServerNpcGruntGatherNativeApi gather_native_api{1,sizeof(ServerNpcGruntGatherNativeApi),&grunt_gather_native};
 const ServerNpcGruntObjectSearchApi object_search_api{1,sizeof(ServerNpcGruntObjectSearchApi),&grunt_object_search};
@@ -2599,4 +2654,9 @@ SiN_GetServerNpcGruntGatherNativeApi(std::uint32_t version,std::uint32_t size) n
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPrescheduleApi=_SiN_GetServerNpcGruntPrescheduleApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPrescheduleApi* __cdecl SiN_GetServerNpcGruntPrescheduleApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPrescheduleApi)?&preschedule_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSpeechQueueApi=_SiN_GetServerNpcGruntSpeechQueueApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpeechQueueApi* __cdecl SiN_GetServerNpcGruntSpeechQueueApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSpeechQueueApi)?&speech_queue_api:nullptr;
 }

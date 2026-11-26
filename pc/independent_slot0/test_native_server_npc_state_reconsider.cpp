@@ -26,6 +26,7 @@ struct F{
     unsigned char combat_nav[0x3c]{},goal_path[0x6c]{};unsigned goal_retargets=0,goal_refreshes=0,goal_failures=0;bool goal_success=true;void* goal_target=nullptr;float combat_center[3]{},combat_velocity[3]{},combat_origin[3]{70,0,0};bool combat_facing=true;
     bool combat_trace=true,combat_fov=true;unsigned combat_output_count=0,combat_output_offsets[8]{};bool combat_output_value[8]{};std::uint32_t combat_output_handles[8]{};
     int speech_code=0;unsigned speech_calls=0,random_calls=0;const char* speech_name=nullptr;
+    unsigned char speech_squad[0x58]{};unsigned queue_deliveries=0,queue_randoms=0;
     unsigned report_cues=0,report_forwarded=0,lost_cues=0,outputs=0;unsigned output_offsets[2]{};
     sin_independent::EntityHandleEntry entries[4]{};
     unsigned clears=0,changes=0,lost=0,squad=0,removed_index=255,removed_token=0;int query=-1;
@@ -1161,6 +1162,50 @@ int main(int argc,char** argv){
         f.actor[0xbf]=0;
         assert(pre->run(f.actor,sizeof(f.actor),702,&pb,&result)&&!result.rule_called&&!(f.get<unsigned>(0x7d4)&(1u<<6)));
         assert(!pre->run(f.actor,0xdb1,702,&pb,&result));
+    }
+    {
+        auto getter=reinterpret_cast<GetServerNpcGruntSpeechQueueApi>(GetProcAddress(s,server_npc_grunt_speech_queue_export));
+        assert(getter&&!GetProcAddress(c,server_npc_grunt_speech_queue_export)&&!getter(0,sizeof(ServerNpcGruntSpeechQueueApi))&&!getter(1,0));
+        const auto* api=getter(1,sizeof(ServerNpcGruntSpeechQueueApi));assert(api);
+        ServerNpcGruntSpeechQueueBindings qb{};qb.original_vtable=0x2249aaa4;qb.context=&f;qb.volume=1;qb.level=75;
+        qb.squad_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+            auto& f=F::self(p);assert(token==91);*out=f.speech_squad;*n=sizeof(f.speech_squad);return 1;
+        };
+        qb.deliver=[](void* p,std::uint32_t token,int index,float volume,int level,int zero,std::uint32_t extra) noexcept -> int{
+            auto& f=F::self(p);assert(token==37&&index==17&&volume==1&&level==75&&zero==0&&extra==9&&f.get<int>(0xccc)==17);
+            ++f.queue_deliveries;return 1;
+        };
+        qb.random_float=[](void* p,float lo,float hi,float* out) noexcept -> int{
+            auto& f=F::self(p);assert(lo==1.5f&&hi==2.f&&f.queue_deliveries&&f.get<int>(0xccc)==17);
+            *out=(++f.queue_randoms%2)?1.5f:2.f;return 1;
+        };
+        std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0xccc,-1);
+        ServerNpcGruntSpeechQueueResult qr{};
+        assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.empty&&!qr.cleared&&!f.queue_deliveries);
+        auto pending=[&](float expires,int priority){f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,expires);f.put(f.actor,0xcd4,priority);f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);};
+        pending(99,2);assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.expired&&qr.cleared&&f.get<int>(0xccc)==-1&&!f.queue_deliveries);
+        pending(100,2);f.put(f.actor,0xc04,101.f);f.put(f.actor,0xc08,2);
+        assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.priority_blocked&&!qr.cleared&&f.get<int>(0xccc)==17);
+        f.put(f.actor,0xcd4,3);f.put(f.actor,0xb4,2u);
+        assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.state_blocked&&!qr.cleared);
+        f.put(f.actor,0x850,3);
+        assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.delivered&&qr.owner_written&&qr.cleared&&f.get<int>(0xccc)==-1&&f.get<int>(0xc08)==3&&f.get<float>(0xc04)==101.5f&&f.queue_deliveries==1&&f.queue_randoms==1);
+        // Squad gate overrides local deadline, admits at equality, updates independent random deadlines.
+        pending(110,1);f.put(f.actor,0x9c4,91u);f.put(f.speech_squad,0x50,105.f);f.put(f.speech_squad,0x54,2);
+        assert(api->tick(f.actor,sizeof(f.actor),104,&qb,&qr)&&qr.squad_used&&qr.priority_blocked&&!qr.cleared);
+        f.queue_randoms=0;f.put(f.actor,0xc04,999.f);f.put(f.actor,0xc08,99);
+        assert(api->tick(f.actor,sizeof(f.actor),105,&qb,&qr)&&qr.delivered&&qr.squad_written&&qr.owner_written&&qr.cleared&&qr.owner_deadline==106.5f&&qr.squad_deadline==107.f&&f.queue_randoms==2);
+        float sd=0;int sp=0;std::memcpy(&sd,f.speech_squad+0x50,4);std::memcpy(&sp,f.speech_squad+0x54,4);assert(sd==107&&sp==1);
+        // Native preschedule replaces the legacy callback, preserving order.
+        std::memset(f.actor,0,sizeof(f.actor));pending(120,4);f.put(f.actor,0xc18,711u);
+        ServerNpcGruntPrescheduleBindings pb{};pb.original_vtable=0x2249aaa4;pb.conditions=b.schedule.conditions;pb.context=&f;
+        pb.component_tick=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);F::self(p).actor[0x101]=1;return 1;};
+        qb.deliver=[](void* p,std::uint32_t token,int index,float volume,int level,int zero,std::uint32_t extra) noexcept -> int{
+            auto& f=F::self(p);assert(token==37&&index==17&&volume==1&&level==75&&!zero&&extra==9&&f.actor[0x101]);++f.queue_deliveries;return 1;
+        };
+        ServerNpcGruntPrescheduleResult pr{};
+        assert(api->preschedule(f.actor,sizeof(f.actor),120,&pb,&qb,&pr,&qr)&&pr.completed&&pr.component_called&&pr.speech_called&&qr.delivered&&qr.cleared&&f.get<int>(0xccc)==-1);
+        assert(!api->tick(f.actor,0xcd7,120,&qb,&qr));
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
