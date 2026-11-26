@@ -999,5 +999,53 @@ int main(int argc,char** argv){
         assert(api->case_input(actor,sizeof(actor),"PickRandom",timer,nullptr,0,&behavior,&result)&&result.warned&&f.warnings==1&&!result.fired&&f.randoms==3);
         assert(api->case_input(actor,sizeof(actor),"Unknown",timer,nullptr,0,&behavior,&result)&&!result.handled);
     }
+    {
+        FactoryDictionary dict{};
+        assert(api->register_factories(&dict)&&api->register_case(&dict)&&api->register_branch(&dict)&&api->register_auto(&dict)&&api->register_timer(&dict)&&api->register_relay(&dict)&&dict.count==17);
+        assert(!api->register_case(&dict));
+        const auto* spec=api->find_factory(&dict,"LOGIC_CASE");
+        assert(spec&&spec->family==Family::LogicCase&&spec->original_object==0x224fb620&&spec->original_vtable==0x2241f5e4&&spec->extent==case_extent);
+        struct CaseFactoryFixture {alignas(4) unsigned char storage[case_extent]{};unsigned alloc=0,base=0,init=0,released=0,cleared=0,accepted=0;bool short_alloc=false;} f;
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<CaseFactoryFixture*>(p);assert(n==case_extent);++f.alloc;*a=f.storage;*bytes=f.short_alloc?n-1:n;return 1;
+        };
+        owner.base_construct=[](void* p,void* a,int arg) noexcept ->int{
+            auto& f=*static_cast<CaseFactoryFixture*>(p);assert(a==f.storage&&arg==1);++f.base;
+            unsigned marker=0x12345678;std::memcpy(f.storage+0x3d8,&marker,4);return 1;
+        };
+        owner.initialize=[](void* p,void* a,const char* cls) noexcept ->int{
+            auto& f=*static_cast<CaseFactoryFixture*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"logic_case"));++f.init;return 1;
+        };
+        owner.release_networkable=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<CaseFactoryFixture*>(p);assert(a==f.storage+0x160);++f.released;return 1;
+        };
+        FactoryBindings factories{};factories.dictionary=&dict;
+        FactoryResult result{};
+        assert(!api->create_factory("logic_case",&factories,&result)&&result.matched&&!result.actor);
+        factories.logic_case=&owner;f.short_alloc=true;
+        assert(!api->create_factory("logic_case",&factories,&result)&&result.matched&&!result.networkable&&!f.base);f.short_alloc=false;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=case_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            const char* values[]{"logic_case","Alpha","Omega","relay","Trigger"};
+            for(unsigned i=0;i<5;++i)if(!std::strcmp(text,values[i])){*token=201+i;return 1;}return 0;
+        };
+        Bindings parse{};parse.context=&f;parse.native_factory=&factories;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<CaseFactoryFixture*>(p)->cleared;return 1;};
+        parse.accept_entity=[](void* p,void* a,const char* text,unsigned bytes,const EntitySlice* slice) noexcept ->int{
+            auto& f=*static_cast<CaseFactoryFixture*>(p);assert(a==f.storage&&text&&slice&&slice->begin<slice->end&&slice->end<=bytes);++f.accepted;return 1;
+        };
+        const char map[]="{ classname logic_case Case01 Alpha Case16 Omega OnCase01 \"relay,Trigger,,0,-1\" OnCase16 \"relay,Trigger,,1,1\" OnDefault \"relay,Trigger,,2,-1\" }";
+        Result parsed{};
+        assert(api->parse(map,sizeof(map),&parse,&parsed)&&parsed.native_creates==1&&parsed.created==1&&parsed.last_factory.networkable==f.storage+0x160);
+        assert(f.alloc==2&&f.base==1&&f.init==1&&f.cleared==1&&f.accepted==1&&word(f.storage,0)==case_vtable);
+        assert(word(f.storage,0x394)==202&&word(f.storage,0x3d0)==203&&word(f.storage,0x3d8)==0x12345678);
+        for(unsigned i=1;i<15;++i)assert(!word(f.storage,0x394+4*i));
+        for(unsigned off=0x3d4;off<=0x554;off+=0x18)assert(word(f.storage,off)==0&&word(f.storage,off+0xc)==0xffffffffu&&word(f.storage,off+0x10)==0);
+        assert(word(f.storage,0x3e8)==ptrword(pool.rows[0])&&word(f.storage,0x550)==ptrword(pool.rows[1])&&word(f.storage,0x568)==ptrword(pool.rows[2]));
+        assert(api->destroy_case(nullptr,0,nullptr,nullptr)&&!api->destroy_case(f.storage,case_extent,f.storage+0x164,&owner)&&!f.released);
+        assert(api->destroy_case(f.storage,case_extent,f.storage+0x160,&owner)&&f.released==1);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
