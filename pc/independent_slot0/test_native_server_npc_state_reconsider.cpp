@@ -69,6 +69,33 @@ int main(int argc,char** argv){
     f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x9c4,1u);f.condition(0x19);f.query=3;
     assert(api->choose_ideal(f.actor,sizeof(f.actor),&b,&out)&&out.ideal==3&&out.squad_called&&f.squad==1);
     gate(true);
+    // Authenticated native state leaf tests, independent of the old state_query.
+    {
+        auto gn=reinterpret_cast<GetServerNpcGruntNativeStateApi>(GetProcAddress(s,server_npc_grunt_native_state_export));
+        assert(gn);const auto* native=gn(1,sizeof(ServerNpcGruntNativeStateApi));assert(native);
+        ServerNpcGruntNativeStateBindings nb{};nb.original_vtable=0x2249aaa4u;
+        ServerNpcGruntNativeStateResult nr{};auto direct=b;direct.state_query=nullptr;direct.state_changed=nullptr;
+        f.put(f.actor,0x9c4,0u);f.put(f.actor,0x798,1u);
+        for(int current:{1,2})for(unsigned flags=0;flags<4;++flags){
+            std::memset(f.actor+0x7cc,0,32);f.put(f.actor,0x850,current);f.put(f.actor,0x858,current);
+            f.put(f.actor,0x8a0,0x7001u);
+            if(flags&1)f.condition(25);if(flags&2)f.condition(10);
+            assert(native->choose(f.actor,sizeof(f.actor),30.f,&direct,&nb,&nr)&&nr.state.ideal==(flags||current==2?3:1));
+        }
+        std::memset(f.actor+0x7cc,0,32);f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);
+        f.condition(35);f.put(f.schedule,0x10,8u);
+        assert(native->choose(f.actor,sizeof(f.actor),30.f,&direct,&nb,&nr)&&nr.state.ideal==2);
+        f.put(f.schedule,0x10,0u);
+        assert(native->choose(f.actor,sizeof(f.actor),30.f,&direct,&nb,&nr)&&nr.state.ideal==1);
+        f.condition(16);assert(!native->choose(f.actor,sizeof(f.actor),30.f,&direct,&nb,&nr));
+        std::memset(f.actor+0x7cc,0,32);f.put(f.actor,0x850,2);f.put(f.actor,0x858,2);f.put(f.actor,0x8a0,0x8001u);
+        assert(native->choose(f.actor,sizeof(f.actor),30.f,&direct,&nb,&nr)&&nr.state.ideal==2);
+        f.condition(48);assert(!native->choose(f.actor,sizeof(f.actor),30.f,&direct,&nb,&nr));
+        std::memset(f.actor+0x7cc,0,32);f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);
+        assert(native->choose(f.actor,sizeof(f.actor),30.f,&direct,&nb,&nr)&&nr.state.ideal==4);
+        assert(native->apply(f.actor,sizeof(f.actor),3,30.f,&direct,&nb,&nr)&&nr.state.changed&&f.get<int>(0x850)==3);
+        f.put(f.actor,0x850,1);f.put(f.actor,0x858,3);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x9c4,1u);f.condition(25);
+    }
     auto ge=reinterpret_cast<GetServerNpcEnemyStateApi>(GetProcAddress(s,server_npc_enemy_state_export));
     assert(ge&&!GetProcAddress(c,server_npc_enemy_state_export)&&!ge(0,sizeof(ServerNpcEnemyStateApi))&&!ge(1,0));
     const auto* es=ge(1,sizeof(ServerNpcEnemyStateApi));assert(es);

@@ -8,10 +8,10 @@ struct ServerNpcStateBindings {
     ServerWeaponActivityBindings entities;
     void* context;
     int (__cdecl *clear_enemy)(void*,void*) noexcept; // 2203e740(0,1)
-    int (__cdecl *state_changed)(void*,void*,int,int) noexcept; // +4d0
+    int (__cdecl *state_changed)(void*,void*,int,int) noexcept; // +4d0, optional on authenticated native route (RET 8)
     int (__cdecl *lost_enemy)(void*,void*,void*) noexcept; // 22358810
     int (__cdecl *squad_enemy)(void*,std::uint32_t,void*) noexcept; // 220a9520
-    int (__cdecl *state_query)(void*,void*,int,int*) noexcept; // 2203be80/2203c0f0/220415c0
+    int (__cdecl *state_query)(void*,void*,int,int*) noexcept; // optional native direct branches; unresolved damage/sound/script leaves require callback
 };
 struct ServerNpcStateResult {int current,ideal;unsigned reconsider,changed,enemy_cleared,patrol_set,lost_enemy_called,squad_called;};
 struct ServerNpcStateApi {
