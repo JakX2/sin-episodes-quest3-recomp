@@ -1199,7 +1199,8 @@ int main(int argc,char** argv){
     assert(run_leaf(0x223db374u,1u,0x7fc00000u)&&catalog_o.native_handler&&f.get<float>(f.actor,0xc0c)==41.f);
     assert(run_leaf(0x223db374u,5u,4u)&&catalog_o.converted&&f.get<float>(f.actor,0xc0c)==35.f);
     assert(!run_leaf(0x22485b74u,0,0,ground_vt,0xc65u)&&!catalog_o.completed);
-    // Still-unrecovered concrete inputs never report a fake success.
+    // Missing damage service fails only on the lowering branch.
+    f.put(f.actor,0x9c,101);
     assert(!run_leaf(0x223db434u,5u,100u)&&catalog_o.matched&&!catalog_o.completed&&!catalog_o.native_handler);
     // Voice group setter preserves token identity and canonicalizes null or
     // empty strings, including the original void-to-string exception.
@@ -1466,6 +1467,37 @@ int main(int argc,char** argv){
     assert(!rappel_input(0x223db414u)&&!catalog_o.completed);
     f.put(f.actor,0xd00,static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.actor)));
     assert(!rappel_input(0x223db414u,ground_vt,0xd1fu)&&!catalog_o.completed);
+    // Native SetHealth increase uses maximum and damageability gates.
+    auto health_b=leaves;health_b.context=&f;
+    health_b.health_damage=[](void* p,void* actor,const void* record,unsigned bytes) noexcept -> int{
+        auto& q=*static_cast<F*>(p);assert(actor==q.actor&&bytes==0x48);
+        auto* info=const_cast<void*>(record);
+        for(unsigned off=0;off<0x24;off+=4)assert(q.get<unsigned>(info,off)==0);
+        assert(q.get<unsigned>(info,0x24)==0x8002u&&q.get<unsigned>(info,0x28)==0x8002u);
+        assert(q.get<float>(info,0x2c)==q.get<float>(info,0x30)&&q.get<unsigned>(info,0x34)==0x7f7fffffu);
+        assert(!q.get<unsigned>(info,0x38)&&!q.get<unsigned>(info,0x3c)&&q.get<unsigned>(info,0x40)==0xffffffffu&&!q.get<unsigned>(info,0x44));
+        q.trace.push_back(880);return 1;
+    };
+    auto set_health=[&](int value,unsigned cls){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,value);f.put(inp.variant,0x10,5u);
+        return accept->run(f.actor,sizeof(f.actor),cls,0x223db434u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&health_b,&catalog_o);
+    };
+    f.put(f.actor,0x378,0x8002u);f.actor[0x1f0]=1;
+    for(unsigned cls:{ground_vt,0x2248df04u,vt}){
+        f.put(f.actor,0x98,100);f.put(f.actor,0x9c,40);f.put(f.actor,0x94,2);
+        f.put(f.actor,0x16c,0u);
+        assert(set_health(70,cls)&&catalog_o.native_handler&&catalog_o.health_blocked&&f.get<int>(f.actor,0x9c)==40);
+        f.put(f.actor,0x16c,333u);f.put(f.actor,0x94,1);
+        assert(set_health(70,cls)&&catalog_o.health_blocked&&f.get<int>(f.actor,0x9c)==40);
+        f.put(f.actor,0x94,2);
+        assert(set_health(70,cls)&&catalog_o.health_healed&&f.get<int>(f.actor,0x9c)==70);
+        assert(set_health(130,cls)&&catalog_o.health_healed&&f.get<int>(f.actor,0x9c)==100);
+        assert(set_health(130,cls)&&catalog_o.health_blocked&&f.get<int>(f.actor,0x9c)==100);
+        assert(set_health(100,cls)&&!catalog_o.health_healed&&!catalog_o.health_damage&&!catalog_o.health_blocked);
+        f.trace.clear();
+        assert(set_health(20,cls)&&catalog_o.health_damage==1&&f.get<int>(f.actor,0x9c)==100&&(f.trace==std::vector<int>{880}));
+    }
+    f.put(f.actor,0x16c,0u);f.put(f.actor,0x378,saved_handle);f.trace.clear();
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
