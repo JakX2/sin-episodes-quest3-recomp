@@ -54,6 +54,8 @@
 extern "C" const sin_port::native_level::Api* __cdecl SiN_GetServerLevelApi(std::uint32_t,std::uint32_t) noexcept;
 int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::LevelArgs*,
     const sin_port::native_level::Bindings*,sin_port::native_level::Result*,void*) noexcept;
+int __cdecl SinServerActivateWithEventsInternal(sin_port::native_level::State*,const sin_port::native_level::Bindings*,
+    sin_port::native_level::Result*,void*) noexcept;
 extern "C" int __cdecl SiN_TouchCampaignTriggerWithEngineEvents(void*,unsigned,void*,const sin_port::native_map::CampaignTriggerBindings*,
     void*,sin_port::native_map::CampaignTriggerResult*,int*) noexcept;
 extern "C" const sin_port::native_server_startup::Api* __cdecl SiN_GetServerStartupApi(std::uint32_t,std::uint32_t) noexcept;
@@ -1340,7 +1342,9 @@ public:
             if(!invocation->entered&&invocation->activating){
                 invocation->entered=true;
                 const auto* api=SiN_GetServerLevelApi(1,sizeof(sin_port::native_level::Api));
-                if(api)invocation->success=api->server_activate(invocation->state,invocation->bindings,invocation->result);
+                if(invocation->event_manager)
+                    invocation->success=SinServerActivateWithEventsInternal(invocation->state,invocation->bindings,invocation->result,invocation->event_manager);
+                else if(api)invocation->success=api->server_activate(invocation->state,invocation->bindings,invocation->result);
                 return;
             }
         }
@@ -1575,6 +1579,19 @@ extern "C" int __cdecl SiN_InvokeServerLevelInitWithEngineEvents(
     auto** table=*reinterpret_cast<void***>(&instance);
     const bool success=reinterpret_cast<Slot>(table[2])(&instance,args->map,args->entities,args->old_level,args->landmark,args->load_game,args->background);
     g_level_invocation=nullptr;return invocation.entered&&success;
+}
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerActivateWithEngineEvents=_SiN_InvokeServerActivateWithEngineEvents")
+extern "C" int __cdecl SiN_InvokeServerActivateWithEngineEvents(
+    sin_port::native_level::State* state,void* edicts,int count,int clients,
+    const sin_port::native_level::Bindings* bindings,sin_port::native_level::Result* out,
+    const sin_port::native_server_startup::EngineEventSession* session) noexcept {
+    if(!out||g_level_invocation||g_startup_invocation||g_gameinit_invocation||g_frame_invocation)return 0;*out={};
+    if(!state||!bindings||!eventSessionReady(session)||state->startup!=session->startup)return 0;
+    LevelInvocation invocation{state,bindings,out,true};invocation.event_manager=session->manager;g_level_invocation=&invocation;
+    using Slot=void (__thiscall *)(void*,edict_t*,int,int) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    reinterpret_cast<Slot>(table[3])(&instance,static_cast<edict_t*>(edicts),count,clients);
+    g_level_invocation=nullptr;return invocation.entered&&invocation.success;
 }
 #pragma comment(linker,"/EXPORT:SiN_TouchStartedCampaignTrigger=_SiN_TouchStartedCampaignTrigger")
 extern "C" int __cdecl SiN_TouchStartedCampaignTrigger(

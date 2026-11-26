@@ -2397,6 +2397,67 @@ extern "C" int SIN_FIXED_CALL SiN_PublishCampaignTriggerEvent(void* manager,
     return SinPublishCampaignEventInternal(manager,input,nullptr,nullptr,nullptr);
 }
 
+// Map and activation-health writers use the same verified manager/event
+// slots and ownership policy as the original campaign event adapter.
+namespace {
+template<class Writer>
+int publish_level_event(void* manager,const char* event_name,bool needs_string,Writer writer) noexcept {
+    if(native_event_active||reading_engine_skill||!manager)return abi::EventRejected;
+    NativeEventScope scope;
+    methods::CallResult refused=methods::CallResult::InvalidObject;
+    const auto create=methods::VerifiedMethod(manager,6,refused);
+    const auto fire=methods::VerifiedMethod(manager,7,refused);
+    const auto release=methods::VerifiedMethod(manager,10,refused);
+    if(!create||!fire||!release)return abi::EventRejected;
+    using Create=void* (__thiscall *)(void*,const char*,bool);
+    using Fire=bool (__thiscall *)(void*,void*,bool);
+    using Release=void (__thiscall *)(void*,void*);
+    using Int=void (__thiscall *)(void*,const char*,int);
+    using String=void (__thiscall *)(void*,const char*,const char*);
+    void* event=nullptr;
+    try{event=reinterpret_cast<Create>(create)(manager,event_name,false);}
+    catch(...){return abi::EventCreateUncertain;}
+    if(!event)return abi::EventUnavailable;
+    if(!methods::VerifiedMethod(event,0,refused))return abi::EventObjectUnverified;
+    const auto integer=methods::VerifiedMethod(event,10,refused);
+    const auto string=needs_string?methods::VerifiedMethod(event,12,refused):nullptr;
+    const auto discard=[&]() noexcept {
+        try{reinterpret_cast<Release>(release)(manager,event);return abi::EventDiscarded;}
+        catch(...){return abi::EventCleanupUncertain;}
+    };
+    if(!integer||(needs_string&&!string))return discard();
+    try{
+        writer(event,reinterpret_cast<Int>(integer),reinterpret_cast<String>(string));
+    }catch(...){return discard();}
+    try{return reinterpret_cast<Fire>(fire)(manager,event,false)?abi::EventFired:abi::EventFireReturnedFalse;}
+    catch(...){return abi::EventFireUncertain;}
+}
+}
+// 222b5f80: descriptor, mapname, filename, then FireEvent(false).
+int __cdecl SinPublishMapEventInternal(void* manager,int descriptor,const char* map,const char* filename) noexcept {
+    if(!bounded_string(map)||!bounded_string(filename))return abi::EventRejected;
+    std::string map_copy,file_copy;
+    try{map_copy=map;file_copy=filename;}catch(...){return abi::EventRejected;}
+    return publish_level_event(manager,"map",true,[&](void* e,auto integer,auto string){
+        integer(e,"descriptor",descriptor);
+        string(e,"mapname",map_copy.c_str());string(e,"filename",file_copy.c_str());
+    });
+}
+// 221e9047 calls 222b6260(descriptor=21, player, null, health, 0, null).
+// The CHL2_Player primary slot +8 is 22001b00, returning &actor+378.
+// Read the full handle at its original setter position, not a low index.
+int __cdecl SinPublishActivationHealthInternal(void* manager,const void* player,unsigned bytes,int health) noexcept {
+    if(!player||bytes<0x37c)return abi::EventRejected;
+    unsigned vt=0;std::memcpy(&vt,player,4);
+    if(vt!=0x224aec3cu)return abi::EventRejected;
+    return publish_level_event(manager,"health",false,[&](void* e,auto integer,auto){
+        integer(e,"descriptor",21);
+        int owner=0;std::memcpy(&owner,static_cast<const unsigned char*>(player)+0x378,4);
+        integer(e,"owner",owner);integer(e,"subject",-1);integer(e,"inflictor",-1);
+        integer(e,"health",health);integer(e,"amount",0);
+    });
+}
+
 #pragma comment(linker,"/EXPORT:SiN_ApplyEngineSkill=_SiN_ApplyEngineSkill")
 extern "C" int SIN_FIXED_CALL SiN_ApplyEngineSkill(void* engine,std::uint32_t op) noexcept {
     if(reading_engine_skill || !engine ||

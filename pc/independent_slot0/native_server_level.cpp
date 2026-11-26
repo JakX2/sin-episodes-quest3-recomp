@@ -1,4 +1,5 @@
 #include "native_server_level.h"
+#include "server_fixed_difficulty_service.h"
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -7,6 +8,8 @@ extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi*
 extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t,std::uint32_t) noexcept;
 int __cdecl SinParseMapWithEventsInternal(const char*,unsigned,bool,const sin_port::native_map::PipelineBindings*,
     sin_port::native_map::PipelineResult*,void*) noexcept;
+int __cdecl SinPublishMapEventInternal(void*,int,const char*,const char*) noexcept;
+int __cdecl SinPublishActivationHealthInternal(void*,const void*,unsigned,int) noexcept;
 namespace sin_port::native_level {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -79,6 +82,14 @@ bool queue_autosave(const Bindings& b,Result& o,void* target,const char* input,f
     }
     ++o.queued;return true;
 }
+bool event_completed(int code) noexcept {
+    using namespace fixed_service;
+    return code==EventFired||code==EventUnavailable||code==EventFireReturnedFalse;
+}
+bool map_event(const Bindings& b,void* manager,int descriptor,const char* map,const char* filename) noexcept {
+    if(manager)return event_completed(SinPublishMapEventInternal(manager,descriptor,map,filename));
+    return b.map_event&&b.map_event(b.context,descriptor,map,filename);
+}
 int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void* event_manager) noexcept {
     if(!o)return 0;*o={};
     if(!ready(s,b,o)||!a||!a->map||s->level_ready||!b->scope)return 0;
@@ -94,7 +105,7 @@ int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void
     constexpr int descriptors[]{1,2,4,3};o->load_kind=*s->load_kind;o->descriptor=descriptors[o->load_kind];
     char filename[260]{};
     if(!b->filename||!b->filename(b->context,filename,sizeof(filename))||!std::memchr(filename,0,sizeof(filename))||
-       !b->map_event||!b->map_event(b->context,o->descriptor,*s->current_map?*s->current_map:"",filename))return finish(false);o->map_event=1;
+       !map_event(*b,event_manager,o->descriptor,*s->current_map?*s->current_map:"",filename))return finish(false);o->map_event=1;
     auto parse=[&](){
         if(b->parse_entities){if(!b->parse_entities(b->context,a->entities,nullptr,false))return false;}
         else{
@@ -133,7 +144,7 @@ int level_init_impl(State* s,const LevelArgs* a,const Bindings* b,Result* o,void
 int __cdecl level_init(State* s,const LevelArgs* a,const Bindings* b,Result* o) noexcept {
     return level_init_impl(s,a,b,o,nullptr);
 }
-int __cdecl server_activate(State* s,const Bindings* b,Result* o) noexcept {
+int server_activate_impl(State* s,const Bindings* b,Result* o,void* event_manager) noexcept {
     if(!o)return 0;*o={};
     if(!ready(s,b,o)||!s->level_ready||s->activation_attempted)return 0;
     // Original transition guard returns before any callbacks.
@@ -168,15 +179,23 @@ int __cdecl server_activate(State* s,const Bindings* b,Result* o) noexcept {
         if(!ok||!closed)return finish(false);++o->systems;
     }
     if(!b->set_activation_flag||!b->set_activation_flag(b->context,0))return finish(false);o->activation_flag=1;
-    if(*s->load_kind!=3){if(!b->map_event||!b->map_event(b->context,7,*s->current_map?*s->current_map:"",""))return finish(false);o->map_event=1;}
+    if(*s->load_kind!=3){if(!map_event(*b,event_manager,7,*s->current_map?*s->current_map:"",""))return finish(false);o->map_event=1;}
     void* player=nullptr;if(!b->local_player||!b->local_player(b->context,&player))return finish(false);
     if(player){
-        unsigned n=0;if(!b->extent(b->context,player,&n)||n<0xa0||!b->health_event||!b->health_event(b->context,player,21,read<int>(player,0x9c)))return finish(false);o->health_event=1;
+        unsigned n=0;if(!b->extent||!b->extent(b->context,player,&n)||n<0xa0)return finish(false);
+        const int health=read<int>(player,0x9c);
+        if(event_manager){
+            if(!event_completed(SinPublishActivationHealthInternal(event_manager,player,n,health)))return finish(false);
+        }else if(!b->health_event||!b->health_event(b->context,player,21,health))return finish(false);
+        o->health_event=1;
     }
     bool enabled=false;if(!b->activation_cvar||!b->activation_cvar(b->context,&enabled))return finish(false);
     if(!enabled){if(!b->activation_cvar_set||!b->activation_cvar_set(b->context,0))return finish(false);o->cvar_set=1;}
     if(!stage(*b,b->manager_activate,o->manager))return finish(false);
     return finish(true);
+}
+int __cdecl server_activate(State* s,const Bindings* b,Result* o) noexcept {
+    return server_activate_impl(s,b,o,nullptr);
 }
 const Api api{1,sizeof(Api),&level_init,&server_activate,&unlock_chapter};
 }
@@ -189,4 +208,9 @@ extern "C" __declspec(dllexport) const sin_port::native_level::Api* __cdecl SiN_
 int __cdecl SinLevelInitWithEventsInternal(sin_port::native_level::State* s,const sin_port::native_level::LevelArgs* a,
     const sin_port::native_level::Bindings* b,sin_port::native_level::Result* o,void* manager) noexcept {
     return manager&&b&&!b->parse_entities&&sin_port::native_level::level_init_impl(s,a,b,o,manager);
+}
+
+int __cdecl SinServerActivateWithEventsInternal(sin_port::native_level::State* s,const sin_port::native_level::Bindings* b,
+    sin_port::native_level::Result* o,void* manager) noexcept {
+    return manager&&sin_port::native_level::server_activate_impl(s,b,o,manager);
 }
