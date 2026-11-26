@@ -2620,4 +2620,27 @@ struct ServerNpcGruntAssaultAdmissionApi {
     int (__cdecl *admit)(void*,unsigned,float,const ServerNpcGruntAssaultAdmissionBindings*,ServerNpcGruntAssaultAdmissionResult*) noexcept; // 220ceaf0
 };
 using GetServerNpcGruntAssaultAdmissionApi=const ServerNpcGruntAssaultAdmissionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_schedule_export[]="SiN_GetServerNpcGruntAssaultScheduleApi";
+struct ServerNpcGruntAssaultScheduleBindings {
+    ServerNpcGruntAssaultAdmissionBindings admission;
+    void* context;
+    int (__cdecl *origin)(void*,void*,float*) noexcept; // original origin with dirty refresh
+    int (__cdecl *parent_schedule)(void*,void*,int*) noexcept; // 220cd2d0 -> parent +4
+};
+struct ServerNpcGruntAssaultScheduleResult {
+    ServerNpcGruntAssaultAdmissionResult admission;
+    ServerNpcConditionResult condition;
+    std::uint32_t reservation;
+    int schedule,last_condition,signal;
+    unsigned completed,condition_tests,origin_calls,distance_called,primary_flag_cleared,secondary_flag_cleared,
+        target_called,target_present,signal_ignored,reservation_checked,reservation_released,parent_called;
+    double distance_squared;
+};
+struct ServerNpcGruntAssaultScheduleApi {
+    std::uint32_t version,size;
+    int (__cdecl *deactivate)(void*,unsigned,const ServerNpcGruntAssaultScheduleBindings*,ServerNpcGruntAssaultScheduleResult*) noexcept; // 220cebf0
+    int (__cdecl *select)(void*,unsigned,const ServerNpcGruntAssaultScheduleBindings*,ServerNpcGruntAssaultScheduleResult*) noexcept; // 220cedb0
+};
+using GetServerNpcGruntAssaultScheduleApi=const ServerNpcGruntAssaultScheduleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
