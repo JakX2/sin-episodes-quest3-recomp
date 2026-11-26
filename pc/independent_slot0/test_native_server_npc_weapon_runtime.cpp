@@ -252,6 +252,40 @@ int main(int argc,char** argv){
     assert(!step->run(f.actor,sizeof(f.actor),&in,&step_bind,&step_out)&&!step_out.animation_called&&f.trace.empty());
     assert(jet_step->run(f.actor,sizeof(f.actor),&in,&jet_bind,&jet_out)&&jet_out.completed&&!jet_out.think_called&&jet_out.animation.fixed_resets==1&&f.get<int>(f.weapon,0x4ec)==31);
     assert((f.trace==std::vector<int>{10,11,109,80,80,70,70,70,12,1,102,102,2,3}));
+    // Original post-animation orchestration: use independent bounded nav/path tokens.
+    auto gp=reinterpret_cast<GetServerNpcActivePostAnimationApi>(GetProcAddress(server,server_npc_active_post_animation_export));
+    assert(gp&&!GetProcAddress(client,server_npc_active_post_animation_export)&&!gp(0,sizeof(ServerNpcActivePostAnimationApi)));
+    const auto* post=gp(1,sizeof(ServerNpcActivePostAnimationApi));assert(post);
+    struct PostFixture {F* f;alignas(4) unsigned char nav[0x28]{},path[0x48]{};unsigned dirty{};} pf{&f};
+    f.put(pf.nav,0x24,0x2222u);f.put(pf.path,0x44,2u);
+    ServerNpcActivePostAnimationBindings pb{};pb.context=&pf;
+    pb.resolve=[](void* p,std::uint32_t token,void** data,unsigned* n) noexcept -> int {
+        auto& q=*static_cast<PostFixture*>(p);
+        if(token==0x1111u){*data=q.nav;*n=sizeof(q.nav);return 1;}
+        if(token==0x2222u){*data=q.path;*n=sizeof(q.path);return 1;}
+        if(token==0x3333u){*data=&q.dirty;*n=4;return 1;}return 0;
+    };
+    pb.navigation_update=[](void* p,void* a,std::uint32_t token,float dt) noexcept -> int {
+        auto& q=*static_cast<PostFixture*>(p);assert(a==q.f->actor&&token==0x1111u&&q.f->actor[0x794]==1&&dt>0.09f&&dt<0.11f);
+        q.f->trace.push_back(201);return 1;
+    };
+    pb.prepare_pose=[](void* p,void*) noexcept -> int {static_cast<PostFixture*>(p)->f->trace.push_back(202);return 1;};
+    pb.capability_pose=[](void* p,void* a) noexcept -> int {auto& q=*static_cast<PostFixture*>(p);q.f->trace.push_back(203);q.f->put(a,0x8ec,0x800000u);return 1;};
+    pb.timed_pose=[](void* p,void*,float dt) noexcept -> int {assert(dt==0.2f);static_cast<PostFixture*>(p)->f->trace.push_back(204);return 1;};
+    pb.finish_pose=[](void* p,void*) noexcept -> int {static_cast<PostFixture*>(p)->f->trace.push_back(205);return 1;};
+    pb.motor_finish=[](void* p,void*,std::uint32_t token) noexcept -> int {assert(token==0x5678u);static_cast<PostFixture*>(p)->f->trace.push_back(206);return 1;};
+    f.trace.clear();f.put(f.actor,0x8f8,0x1111u);f.put(f.actor,0x908,0x5678u);f.put(f.actor,0x78c,0xffffffffu);
+    f.put(f.actor,0x8c,0);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x8ec,0x20000000u);
+    f.put(f.actor,0x2c,1.f);f.put(f.actor,0x30,1.f);f.put(f.actor,0x16c,0x3333u);f.actor[0x1f0]=0;f.actor[0xc11]=0;
+    ServerNpcActivePostAnimationResult po{};
+    assert(post->run(f.actor,sizeof(f.actor),2.f,0.05f,&schedule,&pb,&po)&&po.completed&&po.path_changed&&po.timestamp_changed&&po.capability_called&&po.timed_called);
+    assert(po.capabilities_first==0x20000000u&&po.capabilities_second==0x800000u&&pf.dirty==1&&f.actor[0xc11]==1&&!f.actor[0x794]&&f.get<float>(f.actor,0x910)==2.f&&f.get<float>(f.actor,0x30)==2.f);
+    assert((f.trace==std::vector<int>{201,202,203,204,205,206}));
+    f.trace.clear();pf.dirty=0;f.put(f.actor,0x8c,1);f.put(f.actor,0x8ec,0u);
+    assert(post->run(f.actor,sizeof(f.actor),2.f,0.05f,&schedule,&pb,&po)&&po.completed&&!po.navigation_called&&!po.path_changed&&!po.timestamp_changed&&pf.dirty==0);
+    assert((f.trace==std::vector<int>{202,205,206}));
+    f.trace.clear();f.put(pf.path,0x44,0u);f.actor[0x1f0]=1;f.actor[0x200]=0;
+    assert(post->run(f.actor,sizeof(f.actor),3.f,0.05f,&schedule,&pb,&po)&&po.path_changed&&po.timestamp_changed&&!f.actor[0xc11]&&f.actor[0x200]==1);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
