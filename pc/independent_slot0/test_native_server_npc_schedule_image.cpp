@@ -15,6 +15,7 @@ struct F{
     unsigned char actor[0x1088]{},desc[0x48]{};
     unsigned char motor[0x18]{},nav[0x50]{},path[0x48]{};
     unsigned clear_paths=0,stop_paths=0,move_updates=0;
+    unsigned char think_component[9]{};unsigned think_component_tasks=0;
     unsigned char sound_record[0x2c]{},sound_cache[0x2c]{};
     bool sound_goal_accept=false;
     bool observation_pvs=false;
@@ -370,6 +371,14 @@ int main(int argc,char** argv){
     auto gthink=reinterpret_cast<GetServerNpcThinkCatalogApi>(GetProcAddress(s,server_npc_think_catalog_export));
     assert(gthink&&!GetProcAddress(c,server_npc_think_catalog_export)&&!gthink(0,sizeof(ServerNpcThinkCatalogApi))&&!gthink(1,0));
     const auto* think_api=gthink(1,sizeof(ServerNpcThinkCatalogApi));assert(think_api);
+    // A live +c18 component receives task dispatch before inherited native work.
+    ab.shared.component_storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{
+        auto& f=F::self(p);assert(token==711);*out=f.think_component;*n=sizeof(f.think_component);return 1;
+    };
+    ab.shared.component_task=[](void* p,std::uint32_t token,const ServerNpcScheduleTask* task,bool running) noexcept -> int{
+        auto& f=F::self(p);assert(token==711&&task->id==103&&!running&&f.think_component[8]==1);
+        ++f.think_component_tasks;f.think_component[8]=0;return 1;
+    };
     ServerNpcThinkCatalogBindings think{};think.gather=gb;think.context=&f;
     think.preschedule=[](void* p,void* a,std::uint32_t cls,float) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&cls==0x2249aaa4&&f.actor[0x84d]==1&&!f.actor[0x84e]);f.actor[0x101]=1;return 1;};
     auto old_submit=tcb.submit_goal;tcb.submit_goal=[](void* p,std::uint32_t nav,const ServerNpcSoundCoverGoal*,bool* accepted) noexcept -> int{
@@ -380,12 +389,37 @@ int main(int argc,char** argv){
     ServerNpcThinkCatalogResult think_run;
     install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);f.actor[0x84d]=f.actor[0x84e]=1;
     component_calls=0;
-    assert(think_api->run(f.actor,sizeof(f.actor),69.44f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&think,&think_run)&&think_run.outer_called&&think_run.outer_gather.gather.completed&&think_run.preschedule_called&&think_run.maintenance_called&&think_run.completed&&!think_run.scheduler.gather_calls&&think_run.scheduler.scheduler.tactical.last.accepted&&component_calls==1&&think_run.conditions_cleared==4);
+    const int think_ok=think_api->run(f.actor,sizeof(f.actor),69.44f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&think,&think_run);
+    std::fprintf(stderr,"outer think diagnostic: status=%d outer=%u gather=%u pre=%u maintenance=%u completed=%u inner_gather=%u tactical=%u components=%u cleared=%u\n",think_ok,think_run.outer_called,think_run.outer_gather.gather.completed,think_run.preschedule_called,think_run.maintenance_called,think_run.completed,think_run.scheduler.gather_calls,think_run.scheduler.scheduler.tactical.last.accepted,component_calls,think_run.conditions_cleared);
+    assert(think_ok);
+    assert(think_run.outer_called);
+    assert(think_run.outer_gather.gather.completed);
+    assert(think_run.preschedule_called);
+    assert(think_run.maintenance_called);
+    assert(think_run.completed);
+    assert(!think_run.scheduler.gather_calls);
+    assert(think_run.scheduler.scheduler.tactical.last.accepted);
+    assert(component_calls==1);
+    assert(think_run.conditions_cleared==4);
+    assert(f.think_component_tasks==1&&think_run.scheduler.scheduler.tactical.last.shared.component_called&&!think_run.scheduler.scheduler.tactical.last.shared.component_handled);
     tcb.submit_goal=old_submit;
     // Invalidated schedule can invoke +420 again because +84e remains false.
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0xc18,711u);component_calls=0;
     think.gather.gather.component_update=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);return ++*static_cast<unsigned*>(p)==1;};
     assert(!think_api->run(f.actor,sizeof(f.actor),69.45f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&think,&think_run)&&think_run.outer_gather.gather.completed&&think_run.preschedule_called&&think_run.maintenance_called&&think_run.scheduler.gather_calls==1&&component_calls==2&&!think_run.completed);
+    // Same outer route, now remove the complete hosted +424 method.
+    auto gnpt=reinterpret_cast<GetServerNpcNativePrescheduleThinkApi>(GetProcAddress(s,server_npc_native_preschedule_think_export));
+    assert(gnpt&&!GetProcAddress(c,server_npc_native_preschedule_think_export)&&!gnpt(0,sizeof(ServerNpcNativePrescheduleThinkApi))&&!gnpt(1,0));
+    const auto* npt=gnpt(1,sizeof(ServerNpcNativePrescheduleThinkApi));assert(npt);
+    ServerNpcNativePrescheduleThinkBindings nt{};nt.think=think;nt.think.preschedule=nullptr;nt.think.gather=gb;
+    nt.preschedule.context=&f;
+    nt.preschedule.component_tick=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);F::self(p).actor[0x101]=1;return 1;};
+    nt.preschedule.speech_queue_tick=[](void* p,void* a,float) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&f.actor[0x101]);f.actor[0x102]=1;return 1;};
+    ServerNpcNativePrescheduleThinkResult ntr;
+    install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
+    assert(npt->run(f.actor,sizeof(f.actor),69.46f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.think.completed&&ntr.preschedule.completed&&ntr.preschedule.component_called&&ntr.preschedule.speech_called&&f.actor[0x102]&&component_calls==1&&ntr.think.scheduler.scheduler.tactical.last.accepted&&!ntr.elite_called&&!ntr.jet_called);
+    assert(f.think_component_tasks==2);
+    ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;
     m.before_selection=old_before;
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     install_at(96,4); // SCHED_GRUNT_GRENADE_COVER1: original timestamp task53
@@ -423,5 +457,20 @@ int main(int argc,char** argv){
     f.put(f.actor,0xfdc,0x7001u);f.put(f.actor,0x78c,0x7001u);f.put(f.actor,0x6cc,0x7001u);
     f.actor[0x3e0]=1;f.put(f.actor,0x3ec,7);f.put(f.actor,0x884,7);
     assert(attack_api->run(f.actor,sizeof(f.actor),53,&f.image,&runtime,&full,&ab,&ar)&&ar.attack.calls==1&&ar.attack.last.task==67&&ar.attack.last.lifecycle.completed&&ar.shared.full.combat.combat.calls==2&&f.actor[0xfd9]);
+    // Elite +424 prefix uses the existing native spin update before base speech.
+    install_at(118,1);f.put(f.actor,0xc18,711u);f.put(f.actor,0xfdc,0x7001u);
+    f.put(chain,0x594,1);f.put(chain,0x590,79.f);component_calls=0;
+    nt.preschedule.speech_queue_tick=[](void*,void*,float) noexcept -> int{return 0;}; // stop after native prefix, no unrelated task services
+    assert(!npt->run(f.actor,sizeof(f.actor),80,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.elite_called&&ntr.elite.spin_changed&&ntr.preschedule.component_called&&ntr.preschedule.speech_called&&!ntr.think.maintenance_called);
+    int spin=0;std::memcpy(&spin,chain+0x594,4);assert(spin==2);
+    // Jetpack prefix invokes attachment +8 only after true +10.
+    assert(f.api->build(f.actor,NpcSubclassJetpack,6000,99,&b,&f.image,&result));
+    scheduler.original_vtable=0x2249964c;std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0xc18,711u);f.put(f.actor,0x218,321u);
+    bool ready=true;nt.jet_context=&ready;
+    nt.jet_ready=[](void* p,std::uint32_t token,bool* out) noexcept -> int{assert(token==321);*out=*static_cast<bool*>(p);return 1;};
+    nt.jet_tick=[](void*,std::uint32_t token) noexcept -> int{assert(token==321);return 1;};
+    assert(!npt->run(f.actor,sizeof(f.actor),81,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.jet_queried&&ntr.jet_called&&ntr.preschedule.component_called&&ntr.preschedule.speech_called&&!ntr.think.maintenance_called);
+    ready=false;
+    assert(!npt->run(f.actor,sizeof(f.actor),82,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nt,&ntr)&&ntr.jet_queried&&!ntr.jet_called&&ntr.preschedule.speech_called);
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS original schedule descriptor materialization and real task cursor");
 }
