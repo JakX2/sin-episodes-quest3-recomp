@@ -1700,5 +1700,46 @@ int main(int argc,char** argv){
         assert(!api->destroy_logic(f.storage,sizeof(f.storage),1,&invalid,&f.destroyed)&&!f.released&&!f.unregistered);
         assert(api->destroy_menu(f.storage,sizeof(f.storage),f.storage+0x160,&owner)&&f.destroyed.completed&&f.destroyed.unregistered&&f.destroyed.outputs==16&&f.destroyed.released==2&&f.destroyed.freed&&f.freed==1);
     }
+    {
+        alignas(4) unsigned char actor[navigation_extent]{},target[3][0x238]{};
+        put(actor,0,navigation_vtable);put(actor,0x394,navigation_listener_vtable);
+        struct NavigationFixture {void* actor;unsigned char (*targets)[0x238];unsigned warnings=0,registered=0,unregistered=0,finds=0,matches=0,activated=0,removed=0,edict=0;bool cycle=false;} f{actor,target};
+        auto keys=kb;keys.context=&f;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=navigation_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{if(std::strcmp(text,"victim"))return 0;*token=201;return 1;};
+        keys.navigation_warning=[](void* p,void* a,const char* value) noexcept ->int{auto& f=*static_cast<NavigationFixture*>(p);assert(a==f.actor&&!std::strcmp(value,"unknown"));++f.warnings;return 1;};
+        assert(api->key_value(actor,"navprop","IgNoRe",&keys,&kr)&&kr.handled&&word(actor,0x39c)==1);
+        assert(api->key_value(actor,"navprop","unknown",&keys,&kr)&&kr.handled&&f.warnings==1&&word(actor,0x39c)==1);
+        assert(api->key_value(actor,"target","victim",&keys,&kr)&&kr.offset==0x90&&word(actor,0x90)==201);
+        put(target[0],0xc0,201);put(target[1],0xc0,202);put(target[2],0xc0,203);
+        put(target[1],0x234,0x7f800000u); // already greater than FLT_MAX
+        NavigationBindings b{};b.context=&f;
+        b.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{auto& f=*static_cast<NavigationFixture*>(p);*bytes=(a==f.targets[0]||a==f.targets[1]||a==f.targets[2])?0x238:0;return *bytes!=0;};
+        b.find=[](void* p,void* prev,unsigned token,void** found) noexcept ->int{auto& f=*static_cast<NavigationFixture*>(p);assert(token==201);++f.finds;*found=!prev?f.targets[0]:f.cycle?f.targets[0]:prev==f.targets[0]?f.targets[1]:nullptr;return 1;};
+        b.listen=[](void* p,void* listener,bool on) noexcept ->int{auto& f=*static_cast<NavigationFixture*>(p);assert(listener==static_cast<unsigned char*>(f.actor)+0x394);if(on)++f.registered;else ++f.unregistered;return 1;};
+        b.match=[](void* p,void* a,unsigned token,bool* matched) noexcept ->int{auto& f=*static_cast<NavigationFixture*>(p);assert(token==201);++f.matches;*matched=a==f.targets[1];return 1;};
+        b.base_activate=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<NavigationFixture*>(p);assert(a==f.actor);++f.activated;return 1;};
+        b.base_remove=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<NavigationFixture*>(p);assert(a==f.actor);++f.removed;return 1;};
+        b.mark_edict=[](void* p,unsigned token) noexcept ->int{auto& f=*static_cast<NavigationFixture*>(p);assert(token==77);++f.edict;return 1;};
+        NavigationResult result{};
+        put(actor,0xb4,5);actor[0x1f0]=1;
+        assert(api->navigation_activate(actor,sizeof(actor),&b,&result)&&result.base_called&&result.registered==1&&result.visited==2&&result.written==1&&result.dirty&&actor[0x200]&&word(actor,0xb4)==4);
+        assert(word(target[0],0x234)==0x7f7fffffu&&word(target[1],0x234)==0x7f800000u);
+        assert(api->navigation_input(actor,sizeof(actor),"TurnOn",&b,&result)&&!result.changed&&!result.visited&&f.registered==1);
+        put(target[0],0x234,0);assert(api->navigation_created(actor,sizeof(actor),target[0],&b,&result)&&result.matched&&result.written==1&&!f.matches);
+        put(target[1],0x234,0);assert(api->navigation_created(actor,sizeof(actor),target[1],&b,&result)&&result.matched&&result.written==1&&f.matches==1);
+        assert(api->navigation_created(actor,sizeof(actor),target[2],&b,&result)&&!result.matched&&!result.written&&f.matches==2);
+        assert(api->navigation_input(actor,sizeof(actor),"Toggle",&b,&result)&&!result.on&&result.unregistered==1&&result.written==2&&!word(target[0],0x234)&&!word(target[1],0x234));
+        assert(api->navigation_created(actor,sizeof(actor),target[0],&b,&result)&&!result.matched);
+        actor[0x1f0]=0;put(actor,0x16c,77);put(actor,0xb4,1);
+        assert(api->navigation_activate(actor,sizeof(actor),&b,&result)&&result.dirty&&f.edict==1&&result.registered==1);
+        unsigned searches=f.finds;
+        assert(api->navigation_activate(actor,sizeof(actor),&b,&result)&&result.registered==1&&!result.visited&&f.finds==searches);
+        assert(api->navigation_remove(actor,sizeof(actor),&b,&result)&&result.unregistered==1&&result.base_called&&actor[0x398]&&word(target[0],0x234)==0x7f7fffffu);
+        assert(api->navigation_input(actor,sizeof(actor),"TurnOff",&b,&result)&&!result.on&&result.written==2);
+        put(actor,0x39c,0);assert(api->navigation_input(actor,sizeof(actor),"TurnOn",&b,&result)&&result.visited==2&&!result.written);
+        assert(api->navigation_input(actor,sizeof(actor),"TurnOff",&b,&result));
+        f.cycle=true;assert(!api->navigation_input(actor,sizeof(actor),"TurnOn",&b,&result)&&result.visited==1&&!result.completed);
+        assert(!api->navigation_activate(actor,navigation_extent-1,&b,&result));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
