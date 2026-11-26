@@ -1826,7 +1826,7 @@ const ServerNpcWeaponMeleeApi weapon_melee_api{1,sizeof(ServerNpcWeaponMeleeApi)
 const ServerNpcWeaponAmmoApi weapon_ammo_api{1,sizeof(ServerNpcWeaponAmmoApi),&weapon_ammo_query,&weapon_ammo_attack};
 const ServerNpcGruntNativeLineAttackApi native_line_attack_api{1,sizeof(ServerNpcGruntNativeLineAttackApi),&grunt_native_line_attack};
 int __cdecl grunt_goal_refresh(void*,unsigned,unsigned,float,const ServerNpcGruntGoalRefreshBindings*,ServerNpcGruntGoalRefreshResult*) noexcept;
-int combat_conditions_impl(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out,const ServerNpcGruntGoalRefreshBindings* goals,ServerNpcGruntGoalRefreshResult* goal_results,const PerceptionSpeechRoute* speech=nullptr,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntNativeLineAttackResult* line_out=nullptr) noexcept{
+int combat_conditions_impl(void* actor,unsigned bytes,void* target,float now,const ServerNpcGruntCombatConditionsBindings* b,ServerNpcGruntCombatConditionsResult* out,const ServerNpcGruntGoalRefreshBindings* goals,ServerNpcGruntGoalRefreshResult* goal_results,const PerceptionSpeechRoute* speech=nullptr,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntNativeLineAttackResult* line_out=nullptr,const ServerNpcWeaponPolicyBindings* weapons=nullptr,ServerNpcWeaponPolicyResult* weapon_out=nullptr) noexcept{
     if(!out)return 0;
     out->range={};out->attack={};out->cache={};
     out->completed=out->attack_called=out->cleanup_called=out->nav_calls=out->unreachable_set=out->old_sight=out->close_mark=out->point_mark=out->point_queries=0;
@@ -1843,7 +1843,9 @@ int combat_conditions_impl(void* actor,unsigned bytes,void* target,float now,con
         void* e=current();if(!e)return 0;
         if(native_line){
             if(!line_out)return 0;
-            const int status=grunt_native_line_attack(actor,bytes,e,out->range.distance,now,&ab,native_line,line_out);
+            if(weapons&&!weapon_out)return 0;
+            const int status=native_line_attack_impl(actor,bytes,e,out->range.distance,now,&ab,native_line,line_out,
+                weapons?weapons->ammo:nullptr,weapons?weapons->melee:nullptr,weapon_out?&weapon_out->melee:nullptr);
             out->attack=line_out->attack;if(!status)return 0;
         }else if(!grunt_attack_gather(actor,bytes,e,out->range.distance,&ab,&out->attack))return 0;
         out->attack_called=1;
@@ -2074,7 +2076,7 @@ int __cdecl grunt_target_conditions(void* actor,unsigned bytes,float now,const S
     auto gb=b->goals;gb.original_vtable=b->visibility.original_vtable;gb.memory.entries=mb.entries;gb.memory.count=mb.count;
     if(!grunt_goal_refresh(actor,bytes,1,now,&gb,&out->goal))return 0;out->target_refresh=1;return 1;
 }
-int __cdecl grunt_ammo_conditions(void* actor,unsigned bytes,const ServerNpcGruntAuxConditionsBindings* b,ServerNpcGruntAuxConditionsResult* out) noexcept{
+int grunt_ammo_conditions_impl(void* actor,unsigned bytes,const ServerNpcGruntAuxConditionsBindings* b,ServerNpcGruntAuxConditionsResult* out,const ServerNpcGruntAssaultAdmissionBindings* admission=nullptr,const ServerNpcWeaponAmmoBindings* ammo=nullptr,ServerNpcWeaponPolicyResult* diagnostics=nullptr) noexcept{
     if(!out)return 0;*out={};if(!aux_valid(actor,bytes,b))return 0;
     const auto& mb=b->visibility.memory;const auto registry=sin_independent::EntityHandleView(mb.entries,mb.count);
     auto active=[&](){return static_cast<void*>(registry.Resolve(read<unsigned>(actor,0x78c)));};
@@ -2082,7 +2084,23 @@ int __cdecl grunt_ammo_conditions(void* actor,unsigned bytes,const ServerNpcGrun
     unsigned n=0;if(!b->visibility.extent||!b->visibility.extent(b->visibility.context,w,&n)||n<0x4e8)return 0;
     const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));ServerNpcConditionResult cr{};
     auto set=[&](int id,unsigned& flag){if(!cond||!cond->store(actor,bytes,id,NpcConditionCurrent,true,&b->visibility.conditions,&cr))return false;flag=cr.mapped;return true;};
-    auto query=[&](unsigned slot,bool& yes){void* p=active();return p&&b->weapon_predicate&&b->weapon_predicate(b->context,p,slot,&yes);};
+    auto query=[&](unsigned slot,bool& yes){
+        void* p=active();if(!p)return false;
+        if(!ammo)return b->weapon_predicate&&b->weapon_predicate(b->context,p,slot,&yes);
+        if(!admission||!diagnostics)return false;
+        auto bound=*admission;bound.entries=mb.entries;bound.count=mb.count;
+        bound.actor_vtable=b->visibility.original_vtable;bound.conditions=b->visibility.conditions;
+        if(slot==0x330||slot==0x334){
+            auto& result=slot==0x330?diagnostics->primary:diagnostics->secondary;
+            if(!weapon_ammo_query(p,slot,&bound,ammo,&result))return false;
+            yes=result.available!=0;return true;
+        }
+        unsigned extent=0,caps=0;int uses=0;
+        const auto* api=SiN_GetServerWeaponScriptViewApi(1,sizeof(ServerWeaponScriptViewApi));
+        if(slot!=0x43c||!api||!bound.extent||!bound.extent(bound.context,p,&extent)||extent<0x51e||
+           !line_weapon_caps(p,bound,caps)||!api->value(ammo->scripts,p,extent,slot,&uses))return false;
+        yes=uses!=0;return true;
+    };
     bool yes=false;
     if(read<int>(w,0x4e4)>=0){
         out->primary_checked=1;if(!query(0x330,yes))return 0;
@@ -2091,6 +2109,9 @@ int __cdecl grunt_ammo_conditions(void* actor,unsigned bytes,const ServerNpcGrun
     out->secondary_checked=1;if(!query(0x334,yes))return 0;
     if(!yes){if(!query(0x43c,yes))return 0;out->secondary_uses_ammo=yes;if(yes&&!set(5,out->secondary_empty))return 0;}
     return 1;
+}
+int __cdecl grunt_ammo_conditions(void* a,unsigned n,const ServerNpcGruntAuxConditionsBindings* b,ServerNpcGruntAuxConditionsResult* o) noexcept{
+    return grunt_ammo_conditions_impl(a,n,b,o);
 }
 int __cdecl grunt_snapshot_conditions(void* actor,unsigned bytes,const ServerNpcGruntAuxConditionsBindings* b,ServerNpcGruntAuxConditionsResult* out) noexcept{
     if(!out)return 0;*out={};if(!aux_valid(actor,bytes,b))return 0;
@@ -2159,7 +2180,7 @@ int __cdecl grunt_flinch(void* actor,unsigned bytes,float now,const ServerNpcGru
     }
     return 1;
 }
-int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out,int inactive_override,const PerceptionSpeechRoute* speech=nullptr,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntNativeLineAttackResult* line_out=nullptr) noexcept{
+int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,ServerNpcGruntPostUpdateResult* out,int inactive_override,const PerceptionSpeechRoute* speech=nullptr,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntNativeLineAttackResult* line_out=nullptr,const ServerNpcWeaponPolicyBindings* weapons=nullptr,ServerNpcWeaponPolicyResult* weapon_out=nullptr) noexcept{
     if(!out)return 0;
     out->search={};out->combat={};out->combat_goals[0]={};out->combat_goals[1]={};out->target={};out->ammo={};out->snapshot={};out->flinch={};out->cleared_enemy={};
     out->completed=out->skipped_state=out->skipped_perception=out->cleared_sense_conditions=out->new_enemy_condition=out->combat_called=out->enemy_cleared=0;
@@ -2197,14 +2218,14 @@ int grunt_post_update_impl(void* actor,unsigned bytes,float now,bool perceived,c
             if(!(read<unsigned>(actor,0xb4)&0x10u)){
                 auto combat=b->combat;combat.range.visibility.memory=mb;combat.range.visibility.conditions=b->schedule.conditions;combat.range.visibility.original_vtable=aux.visibility.original_vtable;
                 out->combat_goals[0]={};out->combat_goals[1]={};
-                if(!combat_conditions_impl(actor,bytes,e,now,&combat,&out->combat,&aux.goals,out->combat_goals,speech,native_line,line_out))return 0;
+                if(!combat_conditions_impl(actor,bytes,e,now,&combat,&out->combat,&aux.goals,out->combat_goals,speech,native_line,line_out,weapons,weapon_out))return 0;
                 write(actor,0x9a0,now);out->combat_called=1;
             }else{
                 auto eb=b->enemy;eb.entries=mb.entries;eb.count=mb.count;eb.conditions=b->schedule.conditions;
                 if(!set_enemy_impl(actor,bytes,nullptr,true,now,&eb,&out->cleared_enemy,true,speech?speech->slots:nullptr))return 0;out->enemy_cleared=1;
             }
         }
-        if(!grunt_target_conditions(actor,bytes,now,&aux,&out->target)||!grunt_ammo_conditions(actor,bytes,&aux,&out->ammo))return 0;
+        if(!grunt_target_conditions(actor,bytes,now,&aux,&out->target)||!grunt_ammo_conditions_impl(actor,bytes,&aux,&out->ammo,native_line?native_line->admission:nullptr,weapons?weapons->ammo:nullptr,weapon_out))return 0;
         auto flinch=b->flinch;flinch.schedule=b->schedule;
         if(!grunt_flinch(actor,bytes,now,&flinch,&out->flinch))return 0;
     }
@@ -2284,7 +2305,7 @@ int grunt_update_gate_impl(void* actor,unsigned bytes,const ServerNpcGruntUpdate
 int __cdecl grunt_update_gate(void* actor,unsigned bytes,const ServerNpcGruntUpdateGateBindings* b,ServerNpcGruntUpdateGateResult* out) noexcept{
     return grunt_update_gate_impl(actor,bytes,b,out);
 }
-int grunt_condition_update_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntConditionUpdateBindings* b,ServerNpcGruntConditionUpdateResult* out,const PerceptionSpeechRoute* speech=nullptr,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntNativeLineAttackResult* line_out=nullptr) noexcept{
+int grunt_condition_update_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntConditionUpdateBindings* b,ServerNpcGruntConditionUpdateResult* out,const PerceptionSpeechRoute* speech=nullptr,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntNativeLineAttackResult* line_out=nullptr,const ServerNpcWeaponPolicyBindings* weapons=nullptr,ServerNpcWeaponPolicyResult* weapon_out=nullptr) noexcept{
     if(!out)return 0;
     out->gate={};out->perception={};out->post={};out->completed=out->perception_called=out->post_called=0;
     if(!actor||bytes<0xdb2||!b||!std::isfinite(now)||!relation_grunt_class(b->gate.original_vtable))return 0;
@@ -2300,7 +2321,7 @@ int grunt_condition_update_impl(void* actor,unsigned bytes,float now,const Serve
         out->perception_called=1;
     }
     // Inactive branch is selected at entry, not re-evaluated after engine callbacks.
-    if(!grunt_post_update_impl(actor,bytes,now,out->gate.perceive!=0,&post,&out->post,out->gate.inactive?1:0,speech,native_line,line_out))return 0;
+    if(!grunt_post_update_impl(actor,bytes,now,out->gate.perceive!=0,&post,&out->post,out->gate.inactive?1:0,speech,native_line,line_out,weapons,weapon_out))return 0;
     out->post_called=out->completed=1;return 1;
 }
 int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const ServerNpcGruntConditionUpdateBindings* b,ServerNpcGruntConditionUpdateResult* out) noexcept{
@@ -2308,7 +2329,7 @@ int __cdecl grunt_condition_update(void* actor,unsigned bytes,float now,const Se
 }
 int __cdecl grunt_point_policy(void*,unsigned,const float[3],float,const ServerNpcGruntPointPolicyBindings*,ServerNpcGruntPointPolicyResult*) noexcept;
 int __cdecl grunt_object_search(void*,unsigned,int,const ServerNpcGruntObjectSearchBindings*,ServerNpcGruntObjectSearchResult*) noexcept;
-int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out,const ServerNpcGruntPointPolicyBindings* point_bindings,ServerNpcGruntPointPolicyResult* point_result,const ServerNpcGruntObjectSearchBindings* object_bindings=nullptr,ServerNpcGruntObjectSearchResult* object_result=nullptr,const PerceptionSpeechRoute* speech=nullptr,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntNativeLineAttackResult* line_out=nullptr) noexcept{
+int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const ServerNpcGruntGatherConditionsBindings* b,ServerNpcGruntGatherConditionsResult* out,const ServerNpcGruntPointPolicyBindings* point_bindings,ServerNpcGruntPointPolicyResult* point_result,const ServerNpcGruntObjectSearchBindings* object_bindings=nullptr,ServerNpcGruntObjectSearchResult* object_result=nullptr,const PerceptionSpeechRoute* speech=nullptr,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntNativeLineAttackResult* line_out=nullptr,const ServerNpcWeaponPolicyBindings* weapons=nullptr,ServerNpcWeaponPolicyResult* weapon_out=nullptr) noexcept{
     if(!out)return 0;
     out->base={};out->completed=out->base_called=out->component_called=out->hopper_exit=out->search_called=out->search_no_enemy=out->object_live=out->object_condition=out->point_called=out->point_schedule_blocked=out->point_condition=out->player_called=out->player_condition=0;
     for(float& v:out->point)v=0;
@@ -2325,7 +2346,7 @@ int grunt_gather_conditions_impl(void* actor,unsigned bytes,float now,const Serv
     if(component){
         if(!b->component_update||!b->component_update(b->context,component))return 0;out->component_called=1;
     }else{
-        if(!grunt_condition_update_impl(actor,bytes,now,&b->base,&out->base,speech,native_line,line_out))return 0;out->base_called=1;
+        if(!grunt_condition_update_impl(actor,bytes,now,&b->base,&out->base,speech,native_line,line_out,weapons,weapon_out))return 0;out->base_called=1;
     }
     if(read<int>(actor,0x850)==3){
         void* e=current();
@@ -2562,6 +2583,16 @@ int __cdecl native_line_cycle_gather(void* a,unsigned n,float now,const ServerNp
     out->gather={};out->point={};out->object={};out->object.selected_handle=0xffffffffu;
     return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,nullptr,line,result);
 }
+int __cdecl weapon_policy_ammo(void* a,unsigned n,const ServerNpcGruntAuxConditionsBindings* b,const ServerNpcGruntAssaultAdmissionBindings* admission,const ServerNpcWeaponAmmoBindings* ammo,ServerNpcGruntAuxConditionsResult* o,ServerNpcWeaponPolicyResult* result) noexcept{
+    if(!result)return 0;*result={};if(!admission||!ammo||!ammo->scripts)return 0;
+    return grunt_ammo_conditions_impl(a,n,b,o,admission,ammo,result);
+}
+int __cdecl weapon_policy_post(void* a,unsigned n,float now,bool perceived,const ServerNpcGruntPostUpdateBindings* b,const ServerNpcGruntCombatLineBindings* line,const ServerNpcWeaponPolicyBindings* weapons,ServerNpcGruntPostUpdateResult* o,ServerNpcGruntNativeLineAttackResult* attack,ServerNpcWeaponPolicyResult* result) noexcept{
+    if(!result)return 0;*result={};
+    if(!native_line_cycle_init(line,attack)||!weapons||!weapons->ammo||!weapons->ammo->scripts||!weapons->melee)return 0;
+    return grunt_post_update_impl(a,n,now,perceived,b,o,-1,nullptr,line,attack,weapons,result);
+}
+const ServerNpcWeaponPolicyCycleApi weapon_policy_cycle_api{1,sizeof(ServerNpcWeaponPolicyCycleApi),&weapon_policy_ammo,&weapon_policy_post};
 const ServerNpcGruntNativeLineCycleApi native_line_cycle_api{1,sizeof(ServerNpcGruntNativeLineCycleApi),&native_line_cycle_combat,&native_line_cycle_post,&native_line_cycle_update,&native_line_cycle_gather};
 void reset_perception_speech(ServerNpcGruntPerceptionSpeechResult& out) noexcept{
     out={};
@@ -3294,11 +3325,12 @@ int __cdecl squad_report_gather(void* a,unsigned n,float now,const ServerNpcGrun
     const PerceptionSpeechRoute route{reports->perception.dialogue,result->perception.dialogue,&release,&forward};
     return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route);
 }
-int native_line_squad_report_gather_impl(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntSquadReportResult* result,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* line_result) noexcept{
-    if(!native_line_cycle_init(line,line_result)||!reports||!result||!out||!b)return 0;reset_squad_report(*result);out->gather={};out->point={};out->object={};out->object.selected_handle=0xffffffffu;
+int native_line_squad_report_gather_impl(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntSquadReportResult* result,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* line_result,const ServerNpcWeaponPolicyBindings* weapons,ServerNpcWeaponPolicyResult* weapon_result) noexcept{
+    if(weapon_result)*weapon_result={};
+    if((weapons&&(!weapon_result||!weapons->ammo||!weapons->ammo->scripts||!weapons->melee))||!native_line_cycle_init(line,line_result)||!reports||!result||!out||!b)return 0;reset_squad_report(*result);out->gather={};out->point={};out->object={};out->object.selected_handle=0xffffffffu;
     const SquadReleaseRoute release{reports->perception.slots,result->perception};const SquadReportRoute forward{*reports,*result};
     const PerceptionSpeechRoute route{reports->perception.dialogue,result->perception.dialogue,&release,&forward};
-    return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route,line,line_result);
+    return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object,&route,line,line_result,weapons,weapon_result);
 }
 int __cdecl squad_enemy_broadcast(std::uint32_t token,void* target,float now,const ServerNpcGruntSquadEnemyBindings* b,ServerNpcGruntSquadEnemyResult* out) noexcept{
     if(!out)return 0;*out={};out->last_seen=-std::numeric_limits<float>::max();
@@ -10046,8 +10078,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 }
 
 namespace sin_port::native_weapon_tables {
-int native_line_squad_report_gather(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntSquadReportResult* result,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* line_result) noexcept{
-    return native_line_squad_report_gather_impl(a,n,now,b,reports,out,result,line,line_result);
+int native_line_squad_report_gather(void* a,unsigned n,float now,const ServerNpcGruntGatherNativeBindings* b,const ServerNpcGruntSquadReportBindings* reports,ServerNpcGruntGatherNativeResult* out,ServerNpcGruntSquadReportResult* result,const ServerNpcGruntCombatLineBindings* line,ServerNpcGruntNativeLineAttackResult* line_result,const ServerNpcWeaponPolicyBindings* weapons,ServerNpcWeaponPolicyResult* weapon_result) noexcept{
+    return native_line_squad_report_gather_impl(a,n,now,b,reports,out,result,line,line_result,weapons,weapon_result);
 }
 }
 
@@ -10059,4 +10091,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcWeaponMeleeApi=_SiN_GetServerNpcWeaponMeleeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWeaponMeleeApi* __cdecl SiN_GetServerNpcWeaponMeleeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcWeaponMeleeApi)?&weapon_melee_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcWeaponPolicyCycleApi=_SiN_GetServerNpcWeaponPolicyCycleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcWeaponPolicyCycleApi* __cdecl SiN_GetServerNpcWeaponPolicyCycleApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcWeaponPolicyCycleApi)?&weapon_policy_cycle_api:nullptr;
 }

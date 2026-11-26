@@ -3236,7 +3236,22 @@ struct ServerNpcGruntNativeLineCycleApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntNativeLineAttackResult*) noexcept;
 };
 using GetServerNpcGruntNativeLineCycleApi=const ServerNpcGruntNativeLineCycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
-int native_line_squad_report_gather(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntSquadReportBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntSquadReportResult*,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntNativeLineAttackResult*) noexcept;
+struct ServerNpcWeaponPolicyBindings {
+    const ServerNpcWeaponAmmoBindings* ammo;
+    const ServerNpcWeaponMeleeBindings* melee;
+};
+struct ServerNpcWeaponPolicyResult {
+    ServerNpcWeaponAmmoResult primary,secondary;
+    ServerNpcWeaponMeleeResult melee;
+};
+inline constexpr char server_npc_weapon_policy_cycle_export[]="SiN_GetServerNpcWeaponPolicyCycleApi";
+struct ServerNpcWeaponPolicyCycleApi {
+    std::uint32_t version,size;
+    int (__cdecl *ammo)(void*,unsigned,const ServerNpcGruntAuxConditionsBindings*,const ServerNpcGruntAssaultAdmissionBindings*,const ServerNpcWeaponAmmoBindings*,ServerNpcGruntAuxConditionsResult*,ServerNpcWeaponPolicyResult*) noexcept;
+    int (__cdecl *post)(void*,unsigned,float,bool,const ServerNpcGruntPostUpdateBindings*,const ServerNpcGruntCombatLineBindings*,const ServerNpcWeaponPolicyBindings*,ServerNpcGruntPostUpdateResult*,ServerNpcGruntNativeLineAttackResult*,ServerNpcWeaponPolicyResult*) noexcept;
+};
+using GetServerNpcWeaponPolicyCycleApi=const ServerNpcWeaponPolicyCycleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+int native_line_squad_report_gather(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,const ServerNpcGruntSquadReportBindings*,ServerNpcGruntGatherNativeResult*,ServerNpcGruntSquadReportResult*,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntNativeLineAttackResult*,const ServerNpcWeaponPolicyBindings* = nullptr,ServerNpcWeaponPolicyResult* = nullptr) noexcept;
 // Original shared weapon +330/+334; owner cast is explicit for adjusted subobjects.
 struct ServerWeaponScriptView;
 struct ServerNpcWeaponAmmoBindings {
