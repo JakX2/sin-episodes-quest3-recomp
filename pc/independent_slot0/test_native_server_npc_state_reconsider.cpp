@@ -1186,16 +1186,19 @@ int main(int argc,char** argv){
         pending(99,2);assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.expired&&qr.cleared&&f.get<int>(0xccc)==-1&&!f.queue_deliveries);
         pending(100,2);f.put(f.actor,0xc04,101.f);f.put(f.actor,0xc08,2);
         assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.priority_blocked&&!qr.cleared&&f.get<int>(0xccc)==17);
+        f.put(f.actor,0xc04,100.f);
+        assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.priority_blocked&&!qr.cleared);
         f.put(f.actor,0xcd4,3);f.put(f.actor,0xb4,2u);
         assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.state_blocked&&!qr.cleared);
         f.put(f.actor,0x850,3);
         assert(api->tick(f.actor,sizeof(f.actor),100,&qb,&qr)&&qr.delivered&&qr.owner_written&&qr.cleared&&f.get<int>(0xccc)==-1&&f.get<int>(0xc08)==3&&f.get<float>(0xc04)==101.5f&&f.queue_deliveries==1&&f.queue_randoms==1);
-        // Squad gate overrides local deadline, admits at equality, updates independent random deadlines.
+        // Squad gate overrides local deadline, blocks equal priority at equality, updates independent random deadlines.
         pending(110,1);f.put(f.actor,0x9c4,91u);f.put(f.speech_squad,0x50,105.f);f.put(f.speech_squad,0x54,2);
         assert(api->tick(f.actor,sizeof(f.actor),104,&qb,&qr)&&qr.squad_used&&qr.priority_blocked&&!qr.cleared);
+        assert(api->tick(f.actor,sizeof(f.actor),105,&qb,&qr)&&qr.squad_used&&qr.priority_blocked&&!qr.cleared);
         f.queue_randoms=0;f.put(f.actor,0xc04,999.f);f.put(f.actor,0xc08,99);
-        assert(api->tick(f.actor,sizeof(f.actor),105,&qb,&qr)&&qr.delivered&&qr.squad_written&&qr.owner_written&&qr.cleared&&qr.owner_deadline==106.5f&&qr.squad_deadline==107.f&&f.queue_randoms==2);
-        float sd=0;int sp=0;std::memcpy(&sd,f.speech_squad+0x50,4);std::memcpy(&sp,f.speech_squad+0x54,4);assert(sd==107&&sp==1);
+        assert(api->tick(f.actor,sizeof(f.actor),105.25f,&qb,&qr)&&qr.delivered&&qr.squad_written&&qr.owner_written&&qr.cleared&&qr.owner_deadline==106.75f&&qr.squad_deadline==107.25f&&f.queue_randoms==2);
+        float sd=0;int sp=0;std::memcpy(&sd,f.speech_squad+0x50,4);std::memcpy(&sp,f.speech_squad+0x54,4);assert(sd==107.25f&&sp==1);
         // Native preschedule replaces the legacy callback, preserving order.
         std::memset(f.actor,0,sizeof(f.actor));pending(120,4);f.put(f.actor,0xc18,711u);
         ServerNpcGruntPrescheduleBindings pb{};pb.original_vtable=0x2249aaa4;pb.conditions=b.schedule.conditions;pb.context=&f;

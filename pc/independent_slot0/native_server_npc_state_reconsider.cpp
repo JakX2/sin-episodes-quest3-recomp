@@ -2286,8 +2286,9 @@ int __cdecl speech_queue_tick(void* a,unsigned bytes,float now,const ServerNpcGr
         deadline=read<float>(squad_data,0x50);prior=read<int>(squad_data,0x54);
     }
     if(!std::isfinite(deadline))return 0;
-    // Owner +584 -> 22037960 / squad 220a7cd0. Equal clock admits.
-    if(now<deadline&&out->priority<=prior){out->priority_blocked=1;return done();}
+    // Owner +584 -> 22037960 / squad 220a7cd0: TEST AH,41; JP.
+    // For finite values, both less and equal still require greater priority.
+    if(now<=deadline&&out->priority<=prior){out->priority_blocked=1;return done();}
     if((read<unsigned>(a,0xb4)&2u)&&read<int>(a,0x850)!=3){out->state_blocked=1;return done();}
     // 221b37c0 itself skips negative indexes. Diagnostic lookups are omitted.
     if(out->index>=0){
