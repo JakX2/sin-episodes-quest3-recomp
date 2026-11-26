@@ -794,6 +794,7 @@ int __cdecl remap_spawn(void*,unsigned,RemapResult*) noexcept;
 int __cdecl colorblend_spawn(void*,unsigned,ColorBlendResult*) noexcept;
 int __cdecl menu_listen(void*,unsigned,bool,const MenuBindings*,MenuResult*) noexcept;
 int __cdecl navigation_activate(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
+int __cdecl defer_logic_remove(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
 bool campaign_valid(void* a,unsigned n,const CampaignTriggerBindings* b,CampaignTriggerResult* o) noexcept {
     if(!o)return false;*o={};
     if(!a||n<4||!b)return false;
@@ -988,7 +989,6 @@ int __cdecl auto_activate(void* actor,unsigned bytes,const AutoBindings* b,AutoR
 }
 // CLogicAuto Think original 22178460, virtual +bc.
 bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
-int __cdecl defer_logic_remove(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
 int __cdecl auto_think(void* actor,unsigned bytes,const AutoBindings* b,AutoResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!actor||bytes<auto_extent||entity_vtable(actor)!=auto_vtable||!b)return 0;
