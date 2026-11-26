@@ -2736,7 +2736,7 @@ int main(int argc,char** argv){
         unsigned changed=0,l=0,e=0;float zero[3]={0,-0.f,0};
         assert(api->set_vector(q.a,sizeof(q.a),zero,&b.dirty_storage,&changed,&l,&e)&&!changed&&!l&&!e&&q.dirty==0x20);
         ServerNpcGruntSpecialImpactResult o{};
-        assert(api->prefix(q.a,sizeof(q.a),q.damage,sizeof(q.damage),&b,&o)&&o.completed&&o.latch_written&&o.vector_writes==2&&o.external_dirty==3&&o.tail_required&&o.scaled[0]==120&&o.scaled[1]==160&&o.origin[2]==50&&q.dirty==0x21);
+        assert(api->prefix(q.a,sizeof(q.a),q.damage,sizeof(q.damage),&b,&o)&&o.completed&&o.latch_written&&o.vector_writes==2&&o.external_dirty==3&&o.tail_required&&o.scaled[0]==static_cast<float>(static_cast<double>(0.6f)*200.0)&&o.scaled[1]==static_cast<float>(static_cast<double>(0.8f)*200.0)&&o.origin[2]==50&&q.dirty==0x21);
         q.a[0x1f0]=1;q.a[0xc64]=1;f.put(q.a,0x798,1u);f.put(q.a,0x79c,1007);f.put(q.a,0xb8,0x800u);f.put(q.other,0xb8,0x800u);f.put(q.damage,0x2c,300.f);q.bound=300;
         assert(api->prefix(q.a,sizeof(q.a),q.damage,sizeof(q.damage),&b,&o)&&!o.latch_written&&o.local_dirty==2&&q.a[0x200]&&o.schedule_adjusted&&o.origin[2]==41&&q.refreshes==2&&o.scale_bound==300);
         b.entities.speech.original_vtable=0x2248df04;

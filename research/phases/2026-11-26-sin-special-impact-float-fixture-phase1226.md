@@ -1,0 +1,2 @@
+# Phase 1226: exact floating-point regression expectation
+Phase1224 special impact test used integer literal 120 for scaled float 0.6f * 200. Original normalized vector is float, then multiply and store float. Binary32 0.6f = 0.6000000238418579; product = 120.00000476837158; float-rounded result 120.00000762939453. Assert exact representation computed from float input rather than tolerance or decimal integer; production unchanged. CI pending.
