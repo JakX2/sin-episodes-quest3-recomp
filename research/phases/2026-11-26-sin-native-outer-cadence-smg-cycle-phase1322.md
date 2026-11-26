@@ -1,0 +1,3 @@
+# Phase 1322: Real outer cadence controls engaged SMG think eligibility
+
+Exercise Phase1321's composed outer ground update for three sequential synthetic animation fixtures, only seed first deadline. 75.5 due, 75.55 future (animation fires without gather), 75.6 due (observe remaining clip before firing). Verify native scheduling updates deadline, engine ticks 1512..1514 at .05 interval, same active clip 3->2->1->0, and no gather on intermediate tick. Post-animation uses same registry and bounded nav/path tokens as animation. Synthetic sequence metadata is reseeded to dispatch one event per test frame; projectile and navigation leaves remain test services, not continuous real model playback. No manual reload or engine parity claim. CI pending.
