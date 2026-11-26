@@ -2294,4 +2294,29 @@ struct ServerNpcGruntEvent43Api {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntEvent43Bindings*,ServerNpcGruntEvent43Result*) noexcept;
 };
 using GetServerNpcGruntEvent43Api=const ServerNpcGruntEvent43Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_rappel_event_export[]="SiN_GetServerNpcGruntRappelEventApi";
+struct ServerNpcGruntRappelEventBindings {
+    ServerNpcGruntEvent43Bindings events;
+    void* context;
+    ServerNpcEnemyMemoryBindings navigation;
+    const float* zero_vector; // live 225885b8
+    int (__cdecl *refresh_origin)(void*,void*) noexcept; // 2213fa60
+    int (__cdecl *trace)(void*,void*,const float*,const float*,unsigned,float*) noexcept; // 22014cc0, end Z
+    int (__cdecl *sound)(void*,void*,const char*) noexcept; // 221b77b0
+    int (__cdecl *rope)(void*,void*,void*,std::uint32_t*) noexcept; // 220de910 creation subroute; invalid sentinel if no attachment
+    int (__cdecl *velocity)(void*,void*,const float*) noexcept; // 22141a00
+    int (__cdecl *schedule_reset)(void*,void*,bool) noexcept; // 2203fff0 -> 2203d2d0
+};
+struct ServerNpcGruntRappelEventResult {
+    ServerNpcGruntEvent43Result events;
+    float angle,distances[2],velocity[3];
+    std::uint32_t rope_handle;
+    unsigned entered,completed,angle_written,refreshes,traces,sound_called,rope_valid,rope_created,velocity_called,flag_written,schedule_called;
+    const char* sound;
+};
+struct ServerNpcGruntRappelEventApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntRappelEventBindings*,ServerNpcGruntRappelEventResult*) noexcept;
+};
+using GetServerNpcGruntRappelEventApi=const ServerNpcGruntRappelEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

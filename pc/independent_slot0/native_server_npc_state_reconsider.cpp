@@ -4166,7 +4166,76 @@ int embedded_behavior_identity(void* a,unsigned n,std::uint32_t actor_vtable,std
        read<unsigned>(component,4)!=actor_token||read<unsigned>(component,0xc)!=parent)return 0;
     return 1;
 }
-int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntBehaviorEventBindings* b,ServerNpcGruntBehaviorEventResult* out,bool bypass43=true) noexcept{
+
+struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;};
+int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const RappelEventRoute& route) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;
+    o.entered=1;auto done=[&](){o.completed=1;return 1;};
+    if(n<0x90c||extent<0x18)return 0;
+    if(id==13){
+        const float angle=static_cast<float>(static_cast<double>(read<float>(a,0x370))-180.0);
+        const double integral=std::trunc(static_cast<double>(angle)*182.0444488525390625);
+        int value=std::numeric_limits<int>::min();
+        if(std::isfinite(integral)&&integral>=std::numeric_limits<int>::min()&&integral<=std::numeric_limits<int>::max())value=static_cast<int>(integral);
+        o.angle=static_cast<float>((static_cast<unsigned>(value)&0xffffu)*0.0054931640625);
+        void* navigation=nullptr;unsigned bytes=0;
+        if(!memory_storage(&b.navigation,read<unsigned>(a,0x908),0x18,navigation,bytes))return 0;
+        write(navigation,0x14,o.angle);o.angle_written=1;return done();
+    }
+    if(id==100001||id==100002){
+        if(id==100001){write<std::uint8_t>(p,0x12,1);o.flag_written=1;}
+        else{
+            if(!b.zero_vector||!finite_vec(b.zero_vector)||!b.velocity)return 0;
+            std::memcpy(o.velocity,b.zero_vector,sizeof(o.velocity));
+            if(!b.velocity(b.context,a,o.velocity))return 0;
+            o.velocity_called=1;
+        }
+        if(!b.schedule_reset||!b.schedule_reset(b.context,a,false))return 0;
+        o.schedule_called=1;return done();
+    }
+    if(id!=100000)return 0;
+    auto origin=[&](float* v){
+        if(read<unsigned>(a,0xb8)&0x800u){
+            if(!b.refresh_origin||!b.refresh_origin(b.context,a))return false;
+            ++o.refreshes;
+        }
+        for(unsigned i=0;i<3;++i)v[i]=read<float>(a,0x2bc+4*i);
+        return finite_vec(v);
+    };
+    auto measure=[&](unsigned index){
+        float start[3]{},end[3]{},actual[3]{},z=0;
+        if(!origin(end))return false;
+        end[2]=static_cast<float>(static_cast<double>(end[2])-8192.0);
+        if(!origin(start)||!b.trace||!b.trace(b.context,a,start,end,0x46004003u,&z)||!std::isfinite(z))return false;
+        ++o.traces;
+        if(!origin(actual))return false;
+        const double distance=std::fabs(static_cast<double>(actual[2])-z);
+        o.distances[index]=static_cast<float>(distance);
+        if(index==0)o.sound=distance>240.0?"NPC_grunt.RappelOneStory":"NPC_grunt.RappelTwoStory";
+        return std::isfinite(o.distances[index]);
+    };
+    if(!measure(0))return 0;
+    if(!b.sound||!b.sound(b.context,a,o.sound))return 0;
+    o.sound_called=1;
+    const auto& sb=b.events.gate.speech.speech.sentence;
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    o.rope_handle=read<unsigned>(p,0x14);
+    o.rope_valid=registry.Resolve(o.rope_handle)!=nullptr;
+    if(!o.rope_valid){
+        // Original 220de910 does nothing if the rope attachment is absent.
+        // Host returns the original resolved handle or invalid sentinel.
+        if(!b.rope||!b.rope(b.context,a,p,&o.rope_handle))return 0;
+        if(o.rope_handle!=0xffffffffu){write(p,0x14,o.rope_handle);o.rope_created=1;}
+    }
+    if(!measure(1)||!b.zero_vector||!finite_vec(b.zero_vector)||!b.velocity)return 0;
+    const double dist=o.distances[1];
+    const double speed=dist>240.0?600.0:(dist*static_cast<double>(0.004166666883975267f)*600.0);
+    o.velocity[0]=b.zero_vector[0];o.velocity[1]=b.zero_vector[1];
+    o.velocity[2]=static_cast<float>(-(speed<60.0?60.0:speed));
+    if(!b.velocity(b.context,a,o.velocity))return 0;
+    o.velocity_called=1;return done();
+}
+int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntBehaviorEventBindings* b,ServerNpcGruntBehaviorEventResult* out,bool bypass43=true,const RappelEventRoute* rappel=nullptr) noexcept{
     if(!out)return 0;*out={};
     if(!a||n<0xc1c||!ev||en<8||!b||!std::isfinite(now))return 0;
     const auto vt=b->speech.speech.sentence.speech.original_vtable;
@@ -4214,9 +4283,12 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
         default:return 0;
         }
         out->special_entry=entry;
-        if(entry&&!no_op&&!b->special)return 0;
+        const bool native_rappel=rappel&&entry&&identity.behavior_vtable==0x223f956c;
+        if(entry&&!no_op&&!native_rappel&&!b->special)return 0;
         write<std::uint8_t>(p,8,1);out->marker_set=1;
-        if(entry&&!no_op){
+        if(native_rappel){
+            if(!rappel_event_route(a,n,p,extent,id,*rappel))return 0;
+        }else if(entry&&!no_op){
             out->special_called=1;if(!b->special(b->context,a,p,extent,entry,ev,en))return 0;
         }
         if(!entry||force_default)write<std::uint8_t>(p,8,0);
@@ -4237,14 +4309,14 @@ int __cdecl grunt_behavior_event(void* a,unsigned n,const void* ev,unsigned en,f
     return grunt_behavior_event_impl(a,n,ev,en,now,b,out);
 }
 const ServerNpcGruntBehaviorEventApi behavior_event_api{1,sizeof(ServerNpcGruntBehaviorEventApi),&grunt_behavior_event};
-int __cdecl grunt_event43(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntEvent43Bindings* b,ServerNpcGruntEvent43Result* out) noexcept{
+int grunt_event43_impl(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntEvent43Bindings* b,ServerNpcGruntEvent43Result* out,const RappelEventRoute* rappel=nullptr) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!ev||en<8||!b||!std::isfinite(now))return 0;
     const auto& sb=b->gate.speech.speech.sentence;
     if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
     auto done=[&](){out->completed=1;return 1;};
     if(read<int>(ev,0)!=0x43){
-        if(!grunt_behavior_event_impl(a,n,ev,en,now,&b->gate,&out->gate))return 0;
+        if(!grunt_behavior_event_impl(a,n,ev,en,now,&b->gate,&out->gate,true,rappel))return 0;
         return done();
     }
     out->capabilities=read<unsigned>(a,0x8ec);
@@ -4258,7 +4330,7 @@ int __cdecl grunt_event43(void* a,unsigned n,const void* ev,unsigned en,float no
         out->capabilities|=caps;
     }
     if(!(out->capabilities&0x1000000u)){
-        if(!grunt_behavior_event_impl(a,n,ev,en,now,&b->gate,&out->gate,false))return 0;
+        if(!grunt_behavior_event_impl(a,n,ev,en,now,&b->gate,&out->gate,false,rappel))return 0;
         return done();
     }
     out->capability_route=1;out->gate.event=0x43;out->gate.bypass=1;
@@ -4282,7 +4354,17 @@ int __cdecl grunt_event43(void* a,unsigned n,const void* ev,unsigned en,float no
     }
     out->gate.completed=1;return done();
 }
+int __cdecl grunt_event43(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntEvent43Bindings* b,ServerNpcGruntEvent43Result* out) noexcept{
+    return grunt_event43_impl(a,n,ev,en,now,b,out);
+}
 const ServerNpcGruntEvent43Api event43_api{1,sizeof(ServerNpcGruntEvent43Api),&grunt_event43};
+int __cdecl grunt_rappel_event(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntRappelEventBindings* b,ServerNpcGruntRappelEventResult* out) noexcept{
+    if(!out)return 0;*out={};out->rope_handle=0xffffffffu;
+    if(!b)return 0;
+    const RappelEventRoute route{b,out};
+    return grunt_event43_impl(a,n,ev,en,now,&b->events,&out->events,&route);
+}
+const ServerNpcGruntRappelEventApi rappel_event_api{1,sizeof(ServerNpcGruntRappelEventApi),&grunt_rappel_event};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6089,4 +6171,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEvent43Api=_SiN_GetServerNpcGruntEvent43Api")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEvent43Api* __cdecl SiN_GetServerNpcGruntEvent43Api(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEvent43Api)?&event43_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRappelEventApi=_SiN_GetServerNpcGruntRappelEventApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRappelEventApi* __cdecl SiN_GetServerNpcGruntRappelEventApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRappelEventApi)?&rappel_event_api:nullptr;
 }
