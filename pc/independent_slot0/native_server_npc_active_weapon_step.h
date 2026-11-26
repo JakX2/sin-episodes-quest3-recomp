@@ -355,6 +355,15 @@ struct ServerNpcInputBreakBindings {
 };
 // Type-zero self-damage route from InputSetHealth through 2213f460.
 // Parent admission and deferred physics-callback queue are engine boundaries.
+// Bind native void-output actions directly to a named event queue.
+// The queue owner supplies persistent storage and allocators, not delivery.
+struct ServerNpcHealthOutputQueueBindings {
+    const ServerEntityVoidOutputBindings* actions;
+    const ServerEntityNamedEventQueueBindings* queue;
+    void* sentinel;
+    unsigned sentinel_bytes;
+    std::uint32_t sentinel_token;
+};
 struct ServerNpcInputHealthDispatchBindings {
     void* context;
     bool defer_damage;
@@ -362,6 +371,7 @@ struct ServerNpcInputHealthDispatchBindings {
     int (__cdecl *enqueue)(void*,void*,const void*,unsigned) noexcept;
     const ServerNpcGruntLifeDispatchBindings* life;
     ServerNpcGruntLifeDispatchResult* life_result;
+    const ServerNpcHealthOutputQueueBindings* outputs;
 };
 struct ServerEntityAcceptInputBindings {
     const ServerNpcActivePostAnimationBindings* storage;
@@ -409,6 +419,7 @@ struct ServerEntityAcceptInputResult {
     ServerNpcGruntSquadLeaveResult squad_leave;
     unsigned health_admission_blocked,health_deferred,health_multiplier_rows,health_life_called;
     float health_outgoing_scale,health_incoming_scale,health_scaled_amount;
+    unsigned health_outputs,health_output_actions,health_output_removed,health_output_enqueued;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
