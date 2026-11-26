@@ -1,4 +1,5 @@
 #include "native_server_map_entity.h"
+#include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -103,5 +104,50 @@ int main(int argc,char** argv){
     // Cyclic parent dependency is refused before spawning.
     put(sf.actors[1],0x14,12);SpawnRow cyclic[]{ {sf.actors[0],0,0} };
     assert(!api->spawn_ordinary(cyclic,1,false,&sp,&so)&&!so.spawned);
+    // Real native global state service and original post-Spawn admission.
+    using namespace sin_port::fixed_service;
+    const auto global_get=reinterpret_cast<GetGlobalStateApi>(GetProcAddress(server,global_state_export_name));assert(global_get);
+    const auto* globals=global_get(global_state_version,sizeof(GlobalStateApi));assert(globals&&globals->clear());
+    struct DispatchFixture {
+        alignas(4) unsigned char actor[0x3b0]{};
+        sin_independent::EntityHandleEntry entries[1]{};
+        unsigned listeners[2]{},count=2,mode=0,spawns=0,removes=0,dormant=0,enters=0,closes=0,precache=0;
+        void* list[2]{&listeners[0],&listeners[1]};
+        const char* map="SE1_docks01";std::string order;
+    } df;
+    put(df.actor,0x378,0x3000u);put(df.actor,0x10,21);
+    df.entries[0].serial=3;df.entries[0].entity=reinterpret_cast<CBaseEntity*>(df.actor);
+    DispatchBindings db{};db.context=&df;db.entries=df.entries;db.entry_count=1;db.current_map=&df.map;
+    db.resolve_string=[](void*,unsigned token,const char** s) noexcept ->int{assert(token==21);*s="campaign_item";return 1;};
+    db.scope=[](void* p,bool enter) noexcept ->int{auto& f=*static_cast<DispatchFixture*>(p);if(enter)++f.enters;else ++f.closes;return 1;};
+    db.remove=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<DispatchFixture*>(p);assert(a==f.actor);++f.removes;return 1;};
+    db.dormant=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<DispatchFixture*>(p);assert(a==f.actor);++f.dormant;return 1;};
+    db.listeners=df.list;db.listener_count=&df.count;db.listener_capacity=2;
+    db.notify=[](void* p,void* listener,void* a) noexcept ->int{auto& f=*static_cast<DispatchFixture*>(p);assert(a==f.actor);f.order+=listener==&f.listeners[1]?'1':'0';return 1;};
+    SpawnBindings ds{};ds.context=&df;ds.native_dispatch=&db;
+    ds.extent=[](void* p,void* a,unsigned* n) noexcept ->int{auto& f=*static_cast<DispatchFixture*>(p);assert(a==f.actor);*n=sizeof(f.actor);return 1;};
+    ds.virtual_spawn=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<DispatchFixture*>(p);assert(a==f.actor&&f.enters==f.closes+1);++f.spawns;
+        if(f.mode==1)f.entries[0].serial=4;
+        if(f.mode==2){unsigned flags=1;std::memcpy(f.actor+0xb8,&flags,4);}return 1;};
+    DispatchResult dr{};
+    assert(api->dispatch_spawn(nullptr,&ds,&dr)&&dr.completed&&!dr.entered);
+    assert(api->dispatch_spawn(df.actor,&ds,&dr)&&dr.completed&&dr.global_added&&dr.global_state==1&&dr.notified==2&&df.order=="10");
+    int gi=globals->find("campaign_item");assert(gi>=0);
+    df.map="SE1_DOCKS01";df.order.clear();
+    assert(api->dispatch_spawn(df.actor,&ds,&dr)&&!dr.dormant&&!dr.global_added&&df.order=="10");
+    df.map="SE1_docks02";df.order.clear();
+    assert(api->dispatch_spawn(df.actor,&ds,&dr)&&dr.dormant&&df.dormant==1&&df.order=="10");
+    assert(globals->set_state(gi,2));df.order.clear();
+    assert(api->dispatch_spawn(df.actor,&ds,&dr)&&dr.global_dead&&dr.removed&&dr.native_result==-1&&df.removes==1&&df.order.empty());
+    df.mode=1;
+    assert(api->dispatch_spawn(df.actor,&ds,&dr)&&dr.stale&&dr.native_result==-1&&!dr.global_lookup);
+    df.entries[0].serial=3;df.mode=2;
+    assert(api->dispatch_spawn(df.actor,&ds,&dr)&&dr.marked&&dr.native_result==-1&&!dr.global_lookup);
+    df.mode=0;put(df.actor,0xb8,0);put(df.actor,0x10,0);put(df.actor,0,nr::resupply_vtable);put(df.actor,0xb4,2);
+    nr::LifecycleBindings dlife{};dlife.context=&df;
+    dlife.precache=[](void* p,const char*,int) noexcept ->int{++static_cast<DispatchFixture*>(p)->precache;return 1;};
+    ds.resupply=&dlife;ds.virtual_spawn=nullptr;
+    assert(api->dispatch_spawn(df.actor,&ds,&dr)&&dr.native_spawn&&df.precache==7&&dr.notified==2&&df.enters==df.closes);
+    assert(globals->clear());
     FreeLibrary(server);FreeLibrary(client);
 }
