@@ -915,8 +915,7 @@ int main(int argc,char** argv){
     }
     f.actor[0x870]=0;
     // Scripted source OnWake -> named event -> real inherited Wake input.
-    // The CAI_BaseNPC row count/index and tokens are original; other entries
-    // are zeroed in this deliberately sparse single-input fixture.
+    // Original NPC input projection, not a sparse synthetic datamap.
     auto get_search=reinterpret_cast<GetServerEntitySearchApi>(GetProcAddress(server,server_entity_search_export));
     assert(get_search&&!GetProcAddress(client,server_entity_search_export)&&!get_search(0,sizeof(ServerEntitySearchApi))&&!get_search(1,0));
     const auto* entity_search=get_search(1,sizeof(ServerEntitySearchApi));assert(entity_search);
@@ -927,7 +926,6 @@ int main(int argc,char** argv){
         const ServerEntitySearchApi* search_api;
         ServerEntitySearchBindings search{};
         ServerEntitySearchResult search_result{};
-        alignas(4) unsigned char grunt_map[0x10]{},base_map[0x10]{},grunt_rows[39*0x34]{},base_rows[139*0x34]{};
         ServerNpcActivePostAnimationBindings storage{};
         ServerEntityAcceptInputBindings input{};
         ServerEntityAcceptInputResult input_result{};
@@ -935,21 +933,7 @@ int main(int argc,char** argv){
         ServerNpcWakeTransitionResult wake_result{};
     };
     static ScriptWakeFixture scripted{};scripted.f=&f;scripted.output=&outf;scripted.target=wt.member;scripted.accept=accept;scripted.previous_service=&service_bind;scripted.search_api=entity_search;
-    f.put(scripted.grunt_map,0,0x22534e8cu);f.put(scripted.grunt_map,4,39);f.put(scripted.grunt_map,0xc,0x224dbd9cu);
-    f.put(scripted.base_map,0,0x224dc27cu);f.put(scripted.base_map,4,139);
-    auto* wake_row=scripted.base_rows+126*0x34;
-    f.put(wake_row,0,0u);f.put(wake_row,4,0x223db3ccu);f.put(wake_row,0x12,std::uint16_t{8});f.put(wake_row,0x14,0x223db3c4u);f.put(wake_row,0x1c,0x220320b0u);
     scripted.storage.context=&scripted;
-    scripted.storage.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
-        auto& q=*static_cast<ScriptWakeFixture*>(p);
-        switch(token){
-        case 0x22534da4u:*out=q.grunt_map;*n=sizeof(q.grunt_map);return 1;
-        case 0x224dbd9cu:*out=q.base_map;*n=sizeof(q.base_map);return 1;
-        case 0x22534e8cu:*out=q.grunt_rows;*n=sizeof(q.grunt_rows);return 1;
-        case 0x224dc27cu:*out=q.base_rows;*n=sizeof(q.base_rows);return 1;
-        default:return 0;
-        }
-    };
     sin_independent::EntityHandleEntry script_slots[3]{};
     script_slots[1].serial=7;script_slots[1].entity=reinterpret_cast<CBaseEntity*>(wt.member);
     script_slots[2].serial=8;script_slots[2].entity=reinterpret_cast<CBaseEntity*>(f.actor);
