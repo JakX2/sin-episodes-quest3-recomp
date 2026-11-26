@@ -9,6 +9,8 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeWeaponPolicyThinkApi* __cdecl SiN_GetServerNpcNativeWeaponPolicyThinkApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcNativeJetWeaponPolicyThinkApi* __cdecl SiN_GetServerNpcNativeJetWeaponPolicyThinkApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScriptWeaponEventFrameApi* __cdecl SiN_GetServerNpcScriptWeaponEventFrameApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyStateApi* __cdecl SiN_GetServerNpcEnemyStateApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcEnemyMemoryMutationApi* __cdecl SiN_GetServerNpcEnemyMemoryMutationApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -970,6 +972,51 @@ int native_relationship(void* a,unsigned n,const ServerEntityInputData& d,const 
     }
     return 1;
 }
+// 2203f1f0: search once, clear the current enemy if equal, then
+// remove the exact pointer-keyed memory record via the native tree API.
+int native_forget(void* a,unsigned n,unsigned vt,const ServerEntityInputData& d,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    if(!b.forget||!b.search)return -1;
+    if(n<0xc04||!std::isfinite(b.now)||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
+    const unsigned type=rd<unsigned>(d.variant,0x10);
+    if(type!=0&&type!=2)return -1;
+    const auto& f=*b.forget;
+    const unsigned token=type==2?rd<unsigned>(d.variant,0):0u;
+    const char* text=nullptr;if(!input_text(b,token,&text))return 0;
+    const auto length=std::strlen(text);
+    if(f.developer&&length&&text[length-1]=='*'){
+        if(f.warning&&!f.warning(f.context,0x223da448u))return 0;++o.forget_warning;
+    }
+    auto search=*b.search;search.entities=b.entities;ServerEntitySearchResult target{};
+    if(!search_named(nullptr,token,nullptr,nullptr,&search,&target))return 0;
+    if(!target.entity)return 1;
+    ++o.forget_found;
+    const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+    if(registry.Resolve(rd<unsigned>(a,0x8a0))==target.entity){
+        const auto* api=SiN_GetServerNpcEnemyStateApi(1,sizeof(ServerNpcEnemyStateApi));if(!api)return 0;
+        struct EnemyContext {const ServerNpcEnemyStateApi* api;const ServerNpcEnemyStateBindings* original;unsigned bytes;} ctx{api,&f.enemy,n};
+        auto enemy=f.enemy;enemy.entries=b.entities.entries;enemy.count=b.entities.count;enemy.context=&ctx;
+        enemy.enemy_changing=[](void* p,void* a) noexcept -> int{
+            auto& q=*static_cast<EnemyContext*>(p);ServerNpcEnemyConditionResult result{};
+            return q.api->clear_combat_conditions(a,q.bytes,&q.original->conditions,&result);
+        };
+        enemy.release_squad_slot=[](void* p,unsigned group,void* enemy,int slot) noexcept -> int{
+            const auto& q=*static_cast<EnemyContext*>(p)->original;
+            return q.release_squad_slot&&q.release_squad_slot(q.context,group,enemy,slot);
+        };
+        ServerNpcEnemyStateResult result{};
+        if(!api->set(a,n,nullptr,true,b.now,&enemy,&result))return 0;
+        if(rd<int>(a,0x858)!=2)wr<int>(a,0x858,2);
+        ++o.forget_cleared;
+    }
+    auto mem=f.memory;mem.entries=b.entities.entries;mem.count=b.entities.count;
+    void* owner=nullptr;unsigned bytes=0,key=0;
+    if(!mem.entity_key||!mem.entity_key(mem.context,target.entity,&key)||!key||
+       !mem.storage.storage||!mem.storage.storage(mem.storage.context,rd<unsigned>(a,0x984),&owner,&bytes)||!owner||bytes<0x40)return 0;
+    const auto* mutation=SiN_GetServerNpcEnemyMemoryMutationApi(1,sizeof(ServerNpcEnemyMemoryMutationApi));
+    ServerNpcEnemyMemoryMutationResult result{};
+    if(!mutation||!mutation->remove(owner,bytes,key,&mem,&result))return 0;
+    o.forget_removed=result.removed;return 1;
+}
 // Original concrete handlers, independent from the descriptor projection.
 // Return -1 for a handler not implemented here, 0 for malformed storage,
 // and 1 for a successfully executed native leaf.
@@ -990,6 +1037,7 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
     };
     switch(handler){
     case 0x22031f90u:return native_relationship(a,n,d,b,o);
+    case 0x2203f1f0u:return native_forget(a,n,vt,d,b,o);
     case 0x22037a30u:{ // SetHealth: heal through 222a57a0/22140be0,
         // or lower by constructing damage info via 221f89c0/221f8550.
         if(n<0x37c)return 0;
