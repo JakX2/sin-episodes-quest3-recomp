@@ -2011,7 +2011,7 @@ int main(int argc,char** argv){
             auto& f=*static_cast<MultiQueue*>(p);assert(attached==f.activator&&actor==f.actor&&!f.kill_order);f.kill_order=1;return 1;
         };
         kill.clear_attachment=[](void* p,void* actor) noexcept ->int{
-            auto& f=*static_cast<MultiQueue*>(p);assert(actor==f.actor&&f.kill_order==1);put(actor,0x20c,0xffffffffu);f.kill_order=2;return 1;
+            auto& f=*static_cast<MultiQueue*>(p);assert(actor==f.actor&&f.kill_order==1);const unsigned invalid=0xffffffffu;std::memcpy(static_cast<unsigned char*>(actor)+0x20c,&invalid,4);f.kill_order=2;return 1;
         };
         kill.remove=[](void* p,void* actor) noexcept ->int{
             auto& f=*static_cast<MultiQueue*>(p);assert(actor==f.actor&&f.kill_order==2);++f.removes;return 1;
@@ -2097,13 +2097,13 @@ int main(int argc,char** argv){
         };
         nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
         fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
-            auto& f=*static_cast<Chain*>(p);for(unsigned i=0;i<2;++i)if(token==ptrword(f.pool->rows[i])){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+            auto& f=*static_cast<Chain*>(p);for(unsigned i=0;i<2;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
         };
         fire.debug_action=[](void* p,void* caller,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
             auto& f=*static_cast<Chain*>(p);assert(caller==f.actor&&action->action_id==41+f.debug&&action->target==201&&!action->variant_type&&!action->delay);++f.debug;return 1;
         };
         fire.release=[](void* p,unsigned token,void* row) noexcept ->int{
-            auto& f=*static_cast<Chain*>(p);assert(token==ptrword(row)&&row==f.pool->rows[f.pool->released]&&!word(row,0x10));++f.pool->released;return 1;
+            auto& f=*static_cast<Chain*>(p);unsigned count=0;std::memcpy(&count,static_cast<unsigned char*>(row)+0x10,4);assert(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(row))&&row==f.pool->rows[f.pool->released]&&!count);++f.pool->released;return 1;
         };
         behavior.output=&fire; // intentionally no enqueue callback
         RelayQueueBindings direct{};direct.context=&f;direct.root=co.root;direct.root_bytes=sizeof(co.root);direct.root_token=99;direct.queue=&co.queue;
