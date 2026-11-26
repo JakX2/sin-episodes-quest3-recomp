@@ -1555,6 +1555,39 @@ int __cdecl combat_range_gather(void* actor,unsigned bytes,void* target,float no
 }
 int __cdecl grunt_combat_line(void*,unsigned,const float*,const float*,float,bool,const ServerNpcGruntCombatLineBindings*,ServerNpcGruntCombatLineResult*) noexcept;
 bool line_weapon_caps(void*,const ServerNpcGruntAssaultAdmissionBindings&,unsigned&) noexcept;
+// Original weapon condition leaves, selected by the authenticated primary vtable.
+// Return 1 for reconstructed, 0 for an explicit unresolved engine-dependent arm,
+// -1 for invalid bounds/class. Never use a hosted callback to hide bad object data.
+int native_weapon_attack_condition(void* w,unsigned slot,float dot,float distance,const ServerNpcGruntAssaultAdmissionBindings& ab,int& id) noexcept{
+    unsigned n=0,caps=0;
+    if(!w||!ab.extent||!ab.extent(ab.context,w,&n)||n<4||!line_weapon_caps(w,ab,caps))return -1;
+    const auto vt=read<unsigned>(w,0);
+    switch(slot){
+    case 0x4b0: // 222aafd0 / 22313870 / 2230b340 / 2231d040
+    case 0x4b8: // 222aab70
+        id=0;return 1;
+    case 0x4b4: // 222aab60 except actual melee prediction 22317300
+        if(vt==0x22478d0cu)return 0;
+        id=0;return 1;
+    case 0x4ac:break;
+    default:return -1;
+    }
+    if(vt==0x22477c8cu){id=0x14;return 1;} // 22315560
+    if(n<0x504)return -1;
+    if(vt==0x224776acu||vt==0x2247ab9cu){ // 2230b2d0
+        if(read<int>(w,0x4ec)<=0){id=4;return 1;}
+    }else{
+        // 222aaae0: only nonnegative primary ammo type invokes +330.
+        // Its 222ad690 owner-ammo / script-max-clip branch is not replaced
+        // with a guessed clip-only predicate. For these cases retain the
+        // original complete weapon-condition service.
+        if(read<int>(w,0x4e4)>=0)return 0;
+    }
+    id=distance<read<float>(w,0x4f8)?0x24:
+       distance>read<float>(w,0x500)?0x25:
+       dot<.5f?0x26:0x14;
+    return 1;
+}
 int grunt_attack_gather_impl(void* actor,unsigned bytes,void* target,float distance,const ServerNpcGruntAttackBindings* b,ServerNpcGruntAttackResult* out,float now=0,const ServerNpcGruntCombatLineBindings* native_line=nullptr,ServerNpcGruntCombatLineResult* line_results=nullptr) noexcept{
     if(!out)return 0;*out={};for(auto& id:out->conditions)id=-1;out->distance=distance;
     if(!actor||bytes<0x8f0||!target||!b||!relation_grunt_class(b->original_vtable)||!std::isfinite(distance)||distance<0||
@@ -1607,6 +1640,11 @@ int grunt_attack_gather_impl(void* actor,unsigned bytes,void* target,float dista
     };
     auto weapon=[&](void* w,unsigned i,unsigned slot,int ready){
         int id=0;++out->weapon_queries;
+        if(native_line){
+            const int resolved=native_weapon_attack_condition(w,slot,out->dot,distance,*native_line->admission,id);
+            if(resolved<0)return false;
+            if(resolved>0){++out->native_queries;return set(i,id,ready);}
+        }
         return b->weapon_condition&&b->weapon_condition(b->context,w,slot,out->dot,distance,&id)&&set(i,id,ready);
     };
     auto native=[&](unsigned i,int id,int ready){++out->native_queries;return set(i,id,ready);};

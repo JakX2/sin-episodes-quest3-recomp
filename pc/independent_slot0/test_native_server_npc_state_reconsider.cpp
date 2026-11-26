@@ -5009,7 +5009,7 @@ int main(int argc,char** argv){
         };
         cl.line=&line;cone.line=&line;f.put(q.a,0x78c,0xffffffffu);f.put(q.a,0x8ec,0x20000u);bits(0);
         ServerNpcGruntNativeLineAttackResult nar{};
-        auto gather_attack=[&](){return native_attack->gather(q.a,sizeof(q.a),q.enemy,200,60,&nab,&cl,&nar);};
+        auto gather_attack=[&](float distance=200.f){return native_attack->gather(q.a,sizeof(q.a),q.enemy,distance,60,&nab,&cl,&nar);};
         lf.hit=nullptr;
         assert(gather_attack()&&nar.attack.line_calls==1&&nar.attack.cleanup_calls==1&&nar.attack.line_clear&&nar.attack.conditions[0]==20&&nar.lines[0].point_called&&!nar.lines[1].completed);
         lf.hit=q.weapon;lf.combat=nullptr;
@@ -5017,7 +5017,32 @@ int main(int argc,char** argv){
         cl.point_blocker=[](void* p,void*,const float* end,unsigned,void** out) noexcept -> int{*out=end[2]==0?static_cast<LineFixture*>(p)->hit:nullptr;return 1;};
         assert(gather_attack()&&nar.attack.line_calls==2&&nar.attack.line_clear&&nar.lines[0].initial_condition==43&&nar.lines[1].allowed&&nar.attack.conditions[0]==20);
         f.put(q.a,0x78c,0x2002u);f.put(q.a,0x8ec,0u);lf.fraction=1.f;
-        assert(gather_attack()&&nar.attack.line_calls==1&&nar.attack.weapon_queries==1&&nar.attack.weapon_capabilities==0x2000u&&nar.lines[0].weapon_called&&nar.attack.line_clear);
+        // Original 2230b2d0: clip, ordered min/max, then dot, no hosted callback.
+        nab.weapon_condition=nullptr;
+        f.put(q.weapon,0x4ec,1);f.put(q.weapon,0x4f8,100.f);f.put(q.weapon,0x500,300.f);
+        assert(gather_attack()&&nar.attack.line_calls==1&&nar.attack.weapon_queries==1&&nar.attack.native_queries==1&&nar.attack.weapon_capabilities==0x2000u&&nar.lines[0].weapon_called&&nar.attack.line_clear&&nar.attack.conditions[0]==20);
+        f.put(q.weapon,0x4ec,0);assert(gather_attack()&&nar.attack.conditions[0]==4);
+        f.put(q.weapon,0x4ec,-1);assert(gather_attack()&&nar.attack.conditions[0]==4);
+        f.put(q.weapon,0x4ec,1);assert(gather_attack(99.f)&&nar.attack.conditions[0]==36);
+        assert(gather_attack(100.f)&&nar.attack.conditions[0]==20);
+        assert(gather_attack(300.f)&&nar.attack.conditions[0]==20);
+        assert(gather_attack(301.f)&&nar.attack.conditions[0]==37);
+        nab.forward=[](void*,void*,float* out) noexcept -> int{out[0]=.49f;out[1]=out[2]=0;return 1;};
+        assert(gather_attack()&&nar.attack.conditions[0]==38);
+        nab.forward=[](void*,void*,float* out) noexcept -> int{out[0]=.5f;out[1]=out[2]=0;return 1;};
+        assert(gather_attack()&&nar.attack.conditions[0]==20);
+        // 22315560 is unconditionally ready even with an empty clip.
+        f.put(q.weapon,0,0x22477c8cu);f.put(q.weapon,0x4ec,0);
+        assert(gather_attack(301.f)&&nar.attack.conditions[0]==20);
+        // Base range leaf with primary ammo type -1 bypasses +330.
+        f.put(q.weapon,0,0x2247875cu);f.put(q.weapon,0x4e4,-1);
+        assert(gather_attack(99.f)&&nar.attack.conditions[0]==36);
+        assert(gather_attack()&&nar.attack.conditions[0]==20);
+        f.put(q.weapon,0x4e4,0);assert(!gather_attack()); // unresolved +330, fail closed
+        // No hosted melee/secondary conditions for the reviewed zero-return slots.
+        f.put(q.weapon,0,0x224776acu);f.put(q.weapon,0x4ec,1);
+        f.put(q.a,0x8ec,0x18000u);
+        assert(gather_attack()&&nar.attack.weapon_queries==3&&nar.attack.native_queries==3&&nar.attack.conditions[2]==0&&nar.attack.conditions[3]==0);
         f.put(q.a,0x78c,0x2002u);bits(0);
         f.put(q.a,0x8ec,0u);ab.entries=q.entries;ab.count=3;
 
