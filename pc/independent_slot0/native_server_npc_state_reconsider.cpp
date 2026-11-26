@@ -54,6 +54,45 @@ struct NativeStateRoute {
 bool native_state_kill(void*,unsigned,void*,const ServerNpcStateBindings&,const NativeStateRoute&) noexcept;
 bool native_state_broadcast(std::uint32_t,void*,const ServerNpcStateBindings&,const NativeStateRoute&) noexcept;
 bool native_state_clear(void*,unsigned,const ServerNpcStateBindings&,const NativeStateRoute&) noexcept;
+// Direct, engine-independent branches of 2203be80, 2203c0f0,
+// and 220415c0. Unrecovered damage/sound-facing services fail closed;
+// a caller may still provide the original full-state compatibility callback.
+bool native_ideal_state_leaf(void* a,unsigned bytes,int current,const ServerNpcStateBindings& b,int& result) noexcept {
+    result=-1;
+    auto has=[&](int id,unsigned& yes){return test(a,bytes,id,b,yes);};
+    unsigned yes=0;
+    if(current==4){
+        for(int id:{33,16,17}){if(!has(id,yes)||yes)return false;} // 2203f2b0 required
+        return read<int>(a,0x858)!=1; // +4c8 scripted exit not recovered here
+    }
+    if(current!=1&&current!=2)return false;
+    for(int id:{25,10}){
+        if(!has(id,yes))return false;
+        if(yes){result=3;return true;}
+    }
+    if(current==2){
+        if(enemy(a,b)){result=3;return true;}
+        for(int id:{48,51}){if(!has(id,yes)||yes)return false;} // best sound + motor
+        // All eight +4cc entries target 220443c0: XOR AL,AL; RET.
+        return true;
+    }
+    // Idle damage-facing / recent-damage timestamp branches remain hosted.
+    for(int id:{16,17}){if(!has(id,yes)||yes)return false;}
+    if(!enemy(a,b))return false;
+    for(int id:{48,51,52,53,49,54}){if(!has(id,yes)||yes)return false;}
+    // 22039a80: condition35 must be current AND declared by schedule.
+    const auto token=read<unsigned>(a,0x798);
+    if(!token)return true;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    ServerNpcConditionResult cr{};
+    if(!api||!api->test(a,bytes,35,NpcConditionCurrent,&b.schedule.conditions,&cr))return false;
+    if(!cr.value)return true;
+    const void* row=nullptr;unsigned n=0;
+    if(!cr.mapped||cr.bit<0||cr.bit>=256||!b.schedule.storage||
+       !b.schedule.storage(b.schedule.context,token,&row,&n)||!row||n<0x2c)return false;
+    if(read<unsigned>(row,0xc+4*(static_cast<unsigned>(cr.bit)/32))&(1u<<(cr.bit%32)))result=2;
+    return true;
+}
 int choose_ideal_impl(void* a,unsigned bytes,const ServerNpcStateBindings* b,ServerNpcStateResult* out,const NativeStateRoute* native=nullptr) noexcept {
     if(!init(a,bytes,b,out))return 0;
     const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
@@ -81,7 +120,9 @@ int choose_ideal_impl(void* a,unsigned bytes,const ServerNpcStateBindings* b,Ser
     }
     if(current==7){out->ideal=7;return 1;}
     if(current==1||current==2||current==4){
-        int result=-1;if(!b->state_query||!b->state_query(b->context,a,current,&result))return 0;
+        int result=-1;
+        if(b->state_query){if(!b->state_query(b->context,a,current,&result))return 0;}
+        else if(!native||!native_ideal_state_leaf(a,bytes,current,*b,result))return 0;
         if(result!=-1)out->ideal=result;
     }else if(current==3&&!enemy(a,*b))out->ideal=2;
     return 1;
@@ -100,7 +141,8 @@ int apply_impl(void* a,unsigned bytes,int desired,float now,const ServerNpcState
     }
     const bool changed=read<int>(a,0x850)!=desired;
     write(a,0x850,desired);write(a,0x858,desired);out->ideal=desired;out->changed=changed;
-    if(changed&&(!b->state_changed||!b->state_changed(b->context,a,old,desired)))return 0;
+    // Original +4d0 = 22027d90 (RET 8) for all authenticated Grunt classes.
+    if(changed){if(b->state_changed){if(!b->state_changed(b->context,a,old,desired))return 0;}else if(!native)return 0;}
     return 1;
 }
 int __cdecl apply(void* a,unsigned bytes,int desired,float now,const ServerNpcStateBindings* b,ServerNpcStateResult* out) noexcept{

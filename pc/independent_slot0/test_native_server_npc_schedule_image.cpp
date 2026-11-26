@@ -881,20 +881,14 @@ int main(int argc,char** argv){
         assert(step->run(f.actor,sizeof(f.actor),&reloaded,&step_bind,&step_result)&&!step_result.think_called&&step_result.animation.fixed_resets==1&&step_result.animation.frame.frame.npc_events==1&&step_result.completed);
         int loaded=-1;std::memcpy(&loaded,equipped.weapon+0x4ec,4);assert(loaded==8&&equipped.sounds==3);
         assert(conditions->test(f.actor,sizeof(f.actor),4,NpcConditionCurrent,&sb.conditions,&condition)&&!condition.value);
-        // Reproduce automatic selection on an exhausted, still-engaged
-        // weapon. Original state1 ideal query is an explicit engine boundary;
-        // after it returns combat state3, the native selector must choose 48.
+        // Exhausted engaged weapon: native idle state query sees condition10,
+        // returns combat state3 and the native selector must choose 48.
         prepare_engaged(0,0);f.put(equipped.weapon,0,0x2247ab9cu);
         assert(state->install(f.actor,sizeof(f.actor),attack_schedule,76.f,&sb,&sr));
         f.put(f.actor,0x79c,global+191);
         for(int i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),&sb,&sr));
         const auto prior_changed=selection.state.state_changed;
-        selection.state.state_query=[](void* p,void*,int current,int* out) noexcept -> int{
-            assert(current==1);++static_cast<EquippedThinkFixture*>(p)->queries;*out=3;return 1;
-        };
-        selection.state.state_changed=[](void*,void*,int old,int desired) noexcept -> int{
-            assert(old==1&&desired==3);return 1;
-        };
+        selection.state.state_query=nullptr;selection.state.state_changed=nullptr;
         ServerNpcGruntPointPolicyBindings grenade{};
         ServerNpcGruntSchedulePolicyServices reload_policy{};
         reload_policy.enemy_memory=&vis.memory;reload_policy.grenade=&grenade;
@@ -907,7 +901,8 @@ int main(int argc,char** argv){
         auto reload_cone=engaged_cone;reload_cone.line=&reload_line;
         auto reload_combat=engaged_combat;reload_combat.line=&reload_line;reload_combat.cone=&reload_cone;
         active.cone=&reload_cone;active.combat_line=&reload_combat;
-        assert(run_engaged(76.f)&&cycle.completed&&cycle.scheduler.gather_calls==1&&equipped.queries==1);
+        assert(run_engaged(76.f)&&cycle.completed&&cycle.scheduler.gather_calls==1&&!equipped.queries);
+        assert(req_run.requests.scheduler.maintenance.ideal.ideal==3&&req_run.requests.scheduler.maintenance.applied.changed);
         assert(!outer_weapon.primary.available&&!inner_weapon.primary.available&&outer_line.attack.conditions[0]==4);
         assert(req_run.requests.requests==1&&req_run.requests.combat.schedule==48&&req_run.requests.request.requested==48);
         assert(req_run.requests.request.acquisition.translated==84&&reload_rolls==1&&req_run.requests.scheduler.maintenance.state.schedule==find(84));
