@@ -2643,4 +2643,29 @@ struct ServerNpcGruntAssaultScheduleApi {
     int (__cdecl *select)(void*,unsigned,const ServerNpcGruntAssaultScheduleBindings*,ServerNpcGruntAssaultScheduleResult*) noexcept; // 220cedb0
 };
 using GetServerNpcGruntAssaultScheduleApi=const ServerNpcGruntAssaultScheduleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_assault_policy_export[]="SiN_GetServerNpcGruntAssaultPolicyApi";
+struct ServerNpcGruntAssaultPolicyBindings {
+    ServerNpcGruntAssaultAdmissionBindings admission;
+    ServerNpcConditionMapBindings behavior_schedules; // descriptor callback receives component, first range +4
+    ServerNpcConditionMapBindings owner_schedules; // descriptor callback receives actor, first range +4
+    ServerNpcGruntSquadSlotsBindings slots;
+    void* context;
+    int (__cdecl *parent_translate)(void*,void*,int,int*) noexcept; // parent +8
+    int (__cdecl *owner_target)(void*,void*,void**) noexcept; // +154, actual target
+};
+struct ServerNpcGruntAssaultPolicyResult {
+    ServerNpcGruntAssaultAdmissionResult admission;
+    ServerNpcGruntSquadSlotsResult slot;
+    ServerNpcConditionResult condition;
+    int incoming,schedule,local_schedule,global_schedule,matched_schedule,slot_before;
+    unsigned completed,condition_tests,parent_called,timer_active,slot_checked,slot_released,
+        target_called,primary_checked,primary_valid,node_flag,schedule_checks,owner_maps,interrupt_stores;
+};
+struct ServerNpcGruntAssaultPolicyApi {
+    std::uint32_t version,size;
+    int (__cdecl *translate)(void*,unsigned,int,float,const ServerNpcGruntAssaultPolicyBindings*,ServerNpcGruntAssaultPolicyResult*) noexcept; // 220cec60
+    int (__cdecl *interrupts)(void*,unsigned,const ServerNpcGruntAssaultPolicyBindings*,ServerNpcGruntAssaultPolicyResult*) noexcept; // 220ced00
+};
+using GetServerNpcGruntAssaultPolicyApi=const ServerNpcGruntAssaultPolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
