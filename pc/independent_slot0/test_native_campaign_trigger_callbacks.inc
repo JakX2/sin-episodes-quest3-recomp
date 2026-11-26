@@ -509,3 +509,68 @@
         f.filters[1][0x394]=1;
         assert(filter(f.trigger,sizeof(f.trigger),f.player,sizeof(f.player),&outer,&result)&&!result.accepted&&result.custom_called);
     }
+
+// Original Activate ordering, real native name lookup, first-match cast,
+// full serial handle, five independent child rows and untouched empty names.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct ActivationFixture {
+            alignas(4) unsigned char trigger[dynamic_trigger_extent]{},filters[3][0x3f4]{},relay[relay_extent]{};
+            sin_independent::EntityHandleEntry entries[4]{};
+            unsigned base_calls=0,expected=0,mode=0;
+        } f;
+        const auto activate=reinterpret_cast<ActivateCampaignFilter>(GetProcAddress(server,filter_activation_export));
+        assert(activate&&!GetProcAddress(client,filter_activation_export));
+        put(f.trigger,0,dynamic_trigger_vtable);put(f.trigger,0x410,0xffffffffu);
+        put(f.filters[0],0,name_filter_vtable);put(f.filters[1],0,class_filter_vtable);put(f.filters[2],0,multi_filter_vtable);
+        put(f.relay,0,relay_vtable);
+        void* actors[]{f.relay,f.filters[0],f.filters[1],f.filters[2]};
+        for(unsigned i=0;i<4;++i){
+            f.entries[i].entity=reinterpret_cast<CBaseEntity*>(actors[i]);f.entries[i].serial=3+i;
+            put(actors[i],0x378,((3+i)<<12)|i);put(actors[i],0xc0,10+i);
+            if(i)f.entries[i].previous=&f.entries[i-1];
+            if(i<3)f.entries[i].next=&f.entries[i+1];
+        }
+        nw::ServerEntitySearchBindings search{};search.context=&f;search.head=f.entries;search.entities.entries=f.entries;search.entities.count=4;
+        search.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<ActivationFixture*>(p);
+            if(a==f.relay){*bytes=sizeof(f.relay);return 1;}
+            for(auto& row:f.filters)if(a==row){*bytes=sizeof(row);return 1;}
+            return 0;
+        };
+        search.string_text=[](void*,unsigned token,const char** value,unsigned* bytes) noexcept ->int{
+            constexpr const char* names[]{"relay","name_filter","class_filter","multi_filter","missing","name*"};
+            if(token<10||token>15)return 0;*value=names[token-10];*bytes=static_cast<unsigned>(std::strlen(*value)+1);return 1;
+        };
+        CampaignFilterActivationBindings b{};b.context=&f;b.search=&search;
+        b.base_activate=[](void* p,void* actor) noexcept ->int{
+            auto& f=*static_cast<ActivationFixture*>(p);++f.base_calls;
+            unsigned h=0;
+            if(actor==f.trigger)std::memcpy(&h,f.trigger+0x410,4);
+            else {assert(actor==f.filters[2]);std::memcpy(&h,f.filters[2]+0x3e0,4);}
+            assert(h==f.expected);
+            return f.mode!=1;
+        };
+        CampaignFilterActivationResult r{};
+        put(f.trigger,0x40c,11);f.expected=0x4001;
+        assert(activate(f.trigger,sizeof(f.trigger),&b,&r)&&r.resolved==1&&r.base_called&&word(f.trigger,0x410)==0x4001);
+        put(f.trigger,0x40c,15);assert(activate(f.trigger,sizeof(f.trigger),&b,&r)&&r.resolved==1&&word(f.trigger,0x410)==0x4001);
+        // The first result is a non-filter; do not keep searching for
+        // a second actor with the same targetname.
+        put(f.relay,0xc0,11);put(f.trigger,0x40c,11);f.expected=0xffffffffu;
+        assert(activate(f.trigger,sizeof(f.trigger),&b,&r)&&r.wrong_class==1&&r.lookups==1&&word(f.trigger,0x410)==0xffffffffu);
+        put(f.relay,0xc0,10);put(f.trigger,0x40c,14);
+        assert(activate(f.trigger,sizeof(f.trigger),&b,&r)&&r.missing==1&&word(f.trigger,0x410)==0xffffffffu);
+        put(f.trigger,0x40c,0);put(f.trigger,0x410,0x1234);f.expected=0x1234;
+        assert(activate(f.trigger,sizeof(f.trigger),&b,&r)&&r.preserved==1&&!r.lookups&&word(f.trigger,0x410)==0x1234);
+        put(f.trigger,0x40c,12);f.expected=0x5002;f.mode=1;
+        assert(!activate(f.trigger,sizeof(f.trigger),&b,&r)&&r.resolved==1&&r.written==1&&word(f.trigger,0x410)==0x5002);
+        f.mode=0;
+        auto* m=f.filters[2];
+        put(m,0x3cc,11);put(m,0x3d0,12);put(m,0x3d4,0);put(m,0x3d8,14);put(m,0x3dc,10);
+        put(m,0x3e0,0xdead);put(m,0x3e8,0x1234);f.expected=0xdead;
+        assert(activate(m,sizeof(f.filters[2]),&b,&r)&&r.lookups==4&&r.resolved==3&&r.missing==1&&r.preserved==1);
+        assert(word(m,0x3e0)==0x4001&&word(m,0x3e4)==0x5002&&word(m,0x3e8)==0x1234&&word(m,0x3ec)==0xffffffffu&&word(m,0x3f0)==0x3000);
+        f.expected=0x4001;f.mode=1;put(m,0x3cc,14);
+        assert(!activate(m,sizeof(f.filters[2]),&b,&r)&&r.base_called&&!r.lookups&&word(m,0x3e0)==0x4001);
+    }

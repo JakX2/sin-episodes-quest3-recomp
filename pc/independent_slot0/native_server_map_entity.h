@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; }
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; }
 namespace sin_port::native_map {
 inline constexpr char export_name[]="SiN_GetServerMapEntityApi";
 inline constexpr unsigned token_capacity=2048;
@@ -447,6 +447,22 @@ inline constexpr PlayerPredicate campaign_player_marker(unsigned vt) noexcept {
 // Supplied strings are live interned tokens in independent storage.
 inline constexpr unsigned base_filter_vtable=0x224149a4,name_filter_vtable=0x22414ed4,
     class_filter_vtable=0x2241516c,multi_filter_vtable=0x22414c3c;
+inline constexpr bool campaign_filter_class(unsigned vt) noexcept {
+    return vt==base_filter_vtable||vt==name_filter_vtable||vt==class_filter_vtable||vt==multi_filter_vtable;
+}
+struct CampaignFilterActivationBindings {
+    void* context;
+    const native_weapon_tables::ServerEntitySearchBindings* search;
+    int (__cdecl *base_activate)(void*,void*) noexcept;
+    // A foreign RTTI cast may return null (normal non-filter) or a live
+    // CBaseFilter subobject. Known primary tables require no cast callback.
+    int (__cdecl *foreign_cast)(void*,void*,void**) noexcept;
+};
+struct CampaignFilterActivationResult {
+    unsigned completed,handled,base_called,lookups,resolved,missing,wrong_class,preserved,written;
+};
+inline constexpr char filter_activation_export[]="SiN_ActivateCampaignFilter";
+using ActivateCampaignFilter=int (__cdecl *)(void*,unsigned,const CampaignFilterActivationBindings*,CampaignFilterActivationResult*) noexcept;
 struct CampaignCustomFilterBindings {
     void* context;
     const sin_independent::EntityHandleEntry* entries;unsigned entry_count;

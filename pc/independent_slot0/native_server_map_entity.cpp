@@ -19,6 +19,7 @@ extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicRes
 extern "C" const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcOuterCadenceApi* __cdecl SiN_GetServerNpcOuterCadenceApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerEntitySearchApi* __cdecl SiN_GetServerEntitySearchApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_map {
 namespace {
 bool delim(char c) noexcept {return c=='{'||c=='}'||c=='('||c==')'||c=='\'';}
@@ -2789,6 +2790,66 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
+// 221ce3e0 resolves the first named entity, casts it to CBaseFilter,
+// then calls the base Activate. 2216b3e0 calls base first and resolves
+// all five child names without a cast. Empty names preserve handles.
+int campaign_filter_activate(void* a,unsigned n,const CampaignFilterActivationBindings* b,CampaignFilterActivationResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned vt=0;if(!b||!b->base_activate||n<4||!SinReadCampaignTouchMarkerInternal(a,&vt))return 0;
+    const bool trigger=vt==dynamic_trigger_vtable||vt==secret_trigger_vtable;
+    const bool multi=vt==multi_filter_vtable;
+    const unsigned extent=vt==dynamic_trigger_vtable?dynamic_trigger_extent:vt==secret_trigger_vtable?secret_trigger_extent:
+        multi?0x3f4u:campaign_filter_class(vt)?0x395u:0;
+    if(!extent||n<extent||!SinCampaignStorageReadableInternal(a,extent))return 0;
+    o->handled=1;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    auto base=[&](){o->base_called=1;return b->base_activate(b->context,a)!=0;};
+    auto bind=[&](unsigned name_offset,unsigned handle_offset,bool cast){
+        const unsigned name=read_field<unsigned>(a,name_offset);
+        if(!name){++o->preserved;return true;}
+        const auto* search=b->search;
+        using namespace sin_port::native_weapon_tables;
+        const auto* api=SiN_GetServerEntitySearchApi(1,sizeof(ServerEntitySearchApi));
+        ServerEntitySearchResult found{};
+        ++o->lookups;
+        if(!search||!api||!api->named(nullptr,name,nullptr,nullptr,search,&found))return false;
+        void* entity=found.entity;
+        unsigned handle=0xffffffffu;
+        if(!entity)++o->missing;
+        else{
+            unsigned marker=0,bytes=0;
+            if(!search->extent||!search->extent(search->context,entity,&bytes)||bytes<4||
+               !SinReadCampaignTouchMarkerInternal(entity,&marker))return false;
+            if(cast&&!campaign_filter_class(marker)){
+                void* subobject=nullptr;
+                if(campaign_player_marker(marker)==PlayerPredicate::Unknown){
+                    if(!b->foreign_cast||!b->foreign_cast(b->context,entity,&subobject))return false;
+                }
+                entity=subobject;
+                if(!entity)++o->wrong_class;
+                else if(!search->extent(search->context,entity,&bytes)||bytes<4||
+                    !SinReadCampaignTouchMarkerInternal(entity,&marker))return false;
+            }
+            if(entity){
+                if(campaign_filter_class(marker)||campaign_player_marker(marker)!=PlayerPredicate::Unknown){
+                    if(!SinReadCampaignHandleInternal(entity,bytes,&handle))return false;
+                }else if(!search->foreign_handle||!search->foreign_handle(search->context,entity,&handle))return false;
+                // Independent storage must agree with the live registry.
+                if(sin_independent::EntityHandleView(search->entities.entries,search->entities.count).Resolve(handle)!=entity)return false;
+                ++o->resolved;
+            }
+        }
+        write_field(a,handle_offset,handle);++o->written;return true;
+    };
+    if(trigger){
+        if(!bind(0x40c,0x410,true)||!base())return 0;
+    }else{
+        if(!base())return 0;
+        if(multi)for(unsigned i=0;i<5;++i)if(!bind(0x3cc+i*4,0x3e0+i*4,false))return 0;
+    }
+    o->completed=1;return 1;
+}
 // CBaseFilter wrapper 2216b2a0 and RTTI-backed +28c leaves.
 // Recursion guards are independent safeguards against malformed/cyclic
 // owner records; retail assumes valid acyclic map filters.
@@ -3180,4 +3241,10 @@ extern "C" int __cdecl SiN_CampaignFilterEntityCallback(void* context,void* filt
     if(!sin_port::native_map::campaign_filter_entity(filter,other,
         static_cast<const sin_port::native_map::CampaignCustomFilterBindings*>(context),&result))return 0;
     *accepted=result.accepted!=0;return 1;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_ActivateCampaignFilter=_SiN_ActivateCampaignFilter")
+extern "C" int __cdecl SiN_ActivateCampaignFilter(void* actor,unsigned bytes,
+    const sin_port::native_map::CampaignFilterActivationBindings* b,sin_port::native_map::CampaignFilterActivationResult* o) noexcept {
+    return sin_port::native_map::campaign_filter_activate(actor,bytes,b,o);
 }
