@@ -462,6 +462,78 @@ int __cdecl enqueue_named_event(void* sentinel,unsigned n,std::uint32_t root,flo
     o->inserted=o->completed=1;return 1;
 }
 const ServerEntityNamedEventQueueApi named_event_queue_api{1,sizeof(ServerEntityNamedEventQueueApi),&enqueue_named_event};
+// 22155530: service each due node under an engine lock, dispatch all name
+// matches, then a live direct target, else class fallback if none matched.
+// Re-read links after dispatch: AcceptInput can insert another earlier event.
+int __cdecl service_events(void* sentinel,unsigned n,std::uint32_t root,float now,bool single_step,int* steps,const ServerEntityEventServiceBindings* b,ServerEntityEventServiceResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!sentinel||n<0x38||!root||!std::isfinite(now)||!b||(single_step&&!steps))return 0;
+    if(b->entities.count>sin_independent::kEntityHandleCapacity||(b->entities.count&&!b->entities.entries))return 0;
+    const sin_independent::EntityHandleView registry(b->entities.entries,b->entities.count);
+    if(single_step&&*steps<=0){o->step_stopped=o->completed=1;return 1;}
+    auto row_for=[&](unsigned token,void** row){
+        unsigned bytes=0;*row=nullptr;
+        return token&&token!=root&&b->resolve&&b->resolve(b->context,token,row,&bytes)&&*row&&*row!=sentinel&&bytes>=0x38;
+    };
+    for(unsigned processed=0;processed<512;++processed){
+        const unsigned token=rd<unsigned>(sentinel,0x30);
+        if(!token){o->completed=1;return 1;}
+        void* row=nullptr;if(!row_for(token,&row)||rd<unsigned>(row,0x34)!=root)return 0;
+        const float at=rd<float>(row,0);if(!std::isfinite(at))return 0;
+        if(at>now){o->future_stopped=o->completed=1;return 1;}
+        if(!b->lock||!b->lock(b->context,true))return 0;++o->locks;
+        auto dispatch=[&](){
+            const auto target=rd<unsigned>(row,4);
+            bool found=false;
+            auto deliver=[&](void* entity,unsigned& count){
+                unsigned char variant[0x14];std::memcpy(variant,static_cast<unsigned char*>(row)+0x1c,sizeof(variant));
+                if(!b->accept||!b->accept(b->context,entity,rd<unsigned>(row,8),registry.Resolve(rd<unsigned>(row,0xc)),registry.Resolve(rd<unsigned>(row,0x10)),variant,rd<unsigned>(row,0x14)))return false;
+                ++count;++o->deliveries;found=true;return true;
+            };
+            if(target){
+                if(!b->find_named)return false;
+                void* prev=nullptr;
+                for(unsigned i=0;;++i){
+                    void* entity=nullptr;
+                    if(!b->find_named(b->context,prev,target,registry.Resolve(rd<unsigned>(row,0xc)),registry.Resolve(rd<unsigned>(row,0x10)),&entity))return false;
+                    if(!entity)break;
+                    if(i==512||entity==prev||!deliver(entity,o->named))return false;prev=entity;
+                }
+            }
+            if(void* direct=registry.Resolve(rd<unsigned>(row,0x18))){
+                if(!deliver(direct,o->direct))return false;
+            }else if(!found&&target){
+                if(!b->find_class)return false;
+                void* prev=nullptr;
+                for(unsigned i=0;;++i){
+                    void* entity=nullptr;if(!b->find_class(b->context,prev,target,&entity))return false;
+                    if(!entity)break;
+                    if(i==512||entity==prev||!deliver(entity,o->classname))return false;prev=entity;
+                }
+            }
+            if(!found){
+                ++o->missing;
+                if(b->missing&&!b->missing(b->context,target,rd<unsigned>(row,8),registry.Resolve(rd<unsigned>(row,0x10))))return false;
+            }
+            const unsigned prev_token=rd<unsigned>(row,0x34),next=rd<unsigned>(row,0x30);
+            void* prev=sentinel;void* successor=nullptr;
+            if(prev_token!=root&&!row_for(prev_token,&prev))return false;
+            if(prev==row||rd<unsigned>(prev,0x30)!=token)return false;
+            if(next&&(!row_for(next,&successor)||successor==row||successor==prev||rd<unsigned>(successor,0x34)!=token))return false;
+            if(!b->release)return false;
+            wr<unsigned>(prev,0x30,next);if(successor)wr<unsigned>(successor,0x34,prev_token);
+            if(!b->release(b->context,token,row))return false;++o->removed;return true;
+        };
+        const bool success=dispatch();
+        if(success){++o->events;if(single_step&&*steps>0)--*steps;}
+        const bool unlocked=b->lock(b->context,false)!=0;
+        if(!success||!unlocked)return 0;
+        if(single_step&&*steps<=0){o->step_stopped=o->completed=1;return 1;}
+    }
+    if(!rd<unsigned>(sentinel,0x30)){o->completed=1;return 1;}
+    return 0;
+}
+const ServerEntityEventServiceApi event_service_api{1,sizeof(ServerEntityEventServiceApi),&service_events};
 bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const ServerNpcWakeTransitionBindings& b,ServerNpcWakeTransitionResult& o,unsigned depth) noexcept;
 // 2213c980. All authenticated Grunt primary +18/+1c virtuals
 // are 22001bc0 (read +38) and 22001af0 (copy +240).
@@ -658,4 +730,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEnt
 #pragma comment(linker,"/EXPORT:SiN_GetServerEntityNamedEventQueueApi=_SiN_GetServerEntityNamedEventQueueApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityNamedEventQueueApi* __cdecl SiN_GetServerEntityNamedEventQueueApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntityNamedEventQueueApi)?&named_event_queue_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerEntityEventServiceApi=_SiN_GetServerEntityEventServiceApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEntityEventServiceApi* __cdecl SiN_GetServerEntityEventServiceApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerEntityEventServiceApi)?&event_service_api:nullptr;
 }
