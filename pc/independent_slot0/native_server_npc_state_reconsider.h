@@ -877,4 +877,36 @@ struct ServerNpcGruntGatherNativeApi {
     int (__cdecl *gather)(void*,unsigned,float,const ServerNpcGruntGatherNativeBindings*,ServerNpcGruntGatherNativeResult*) noexcept;
 };
 using GetServerNpcGruntGatherNativeApi=const ServerNpcGruntGatherNativeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_preschedule_export[]="SiN_GetServerNpcGruntPrescheduleApi";
+struct ServerNpcGruntPrescheduleBindings {
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned count;
+    std::uint32_t original_vtable;
+    ServerNpcConditionMapBindings conditions;
+    void* context;
+    float pending_range; // original cvar 225980d8 +28
+    int (__cdecl *origin)(void*,void*,float[3]) noexcept;
+    int (__cdecl *center)(void*,void*,float[3]) noexcept; // +214
+    int (__cdecl *trace_fraction)(void*,void*,const float[3],const float[3],unsigned,float*) noexcept;
+    int (__cdecl *as_pending_prop)(void*,void*,const void**,unsigned*) noexcept;
+    int (__cdecl *entity_handle)(void*,void*,std::uint32_t*) noexcept;
+    int (__cdecl *component_tick)(void*,std::uint32_t) noexcept; // +4c
+    int (__cdecl *speech_queue_tick)(void*,void*,float) noexcept; // 220a3370 on actor+cc0
+    int (__cdecl *rule_query)(void*,bool*) noexcept; // game rules +170
+    int (__cdecl *death)(void*,void*) noexcept; // +1b4
+};
+struct ServerNpcGruntPrescheduleResult {
+    unsigned completed,height_written,component_called,speech_called,rule_called,death_called,condition46_written;
+    unsigned pending_live,enemy_live,height_rejected,range_rejected,direction_rejected,trace_rejected,cast_rejected,state_rejected,deadline_rejected,accepted,condition4c_written;
+    float height_delta,distance,dot,trace_fraction;
+    std::uint32_t target_handle;
+};
+struct ServerNpcGruntPrescheduleApi {
+    std::uint32_t version,size;
+    // Base Grunt 2235df10 (subclass-specific prefixes are separate).
+    int (__cdecl *run)(void*,unsigned,float,const ServerNpcGruntPrescheduleBindings*,ServerNpcGruntPrescheduleResult*) noexcept;
+    // Pure gameplay predicate of 22359a70, no handoff or condition write.
+    int (__cdecl *pending)(void*,unsigned,float,const ServerNpcGruntPrescheduleBindings*,ServerNpcGruntPrescheduleResult*) noexcept;
+};
+using GetServerNpcGruntPrescheduleApi=const ServerNpcGruntPrescheduleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
