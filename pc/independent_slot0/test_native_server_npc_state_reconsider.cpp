@@ -3040,7 +3040,8 @@ int main(int argc,char** argv){
         const auto* api=g(1,sizeof(ServerNpcGruntEliteLifeApi));assert(api);
         struct ElitePostFixture{
             alignas(4) unsigned char a[0xfe0]{},player[4]{},target[4]{};
-            bool rule=true,player_ok=true,entity_ok=true;unsigned step=0,rng=0;
+            bool rule=true,player_ok=true,entity_ok=true;unsigned step=0,rng=0,velocity_rng=0;
+            bool bad_velocity=false;
             static ElitePostFixture& self(void* p){return *static_cast<ElitePostFixture*>(p);}
         } q;
         ServerNpcGruntEliteDeathBindings b{};b.context=&q;
@@ -3060,6 +3061,27 @@ int main(int argc,char** argv){
         q.rule=true;q.player_ok=false;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.rule_allowed&&!o.player_found);
         q.player_ok=true;q.entity_ok=false;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.player_found&&!o.entity_found);
         q.entity_ok=true;assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.entity_found&&o.refreshed&&o.positioned&&o.random_calls==3&&o.oriented&&o.velocity_set&&o.finished&&q.step==6);
+        // The optional integer stream removes the complete hosted vector
+        // generator while retaining the separate original angle stream.
+        b.velocity=nullptr;
+        b.velocity_random_int=[](void* p,int lo,int hi,int* value) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);assert(q.step==3&&q.rng==3&&lo==0&&hi==32767&&q.velocity_rng<3);
+            const int samples[]{0,16384,32767};*value=q.bad_velocity&&q.velocity_rng==1?32768:samples[q.velocity_rng];++q.velocity_rng;return 1;
+        };
+        b.set_velocity=[](void* p,void* e,const float* v) noexcept -> int{
+            auto& q=ElitePostFixture::self(p);assert(e==q.target&&q.step==3&&q.velocity_rng==3);
+            assert(v[0]==-10.f&&v[1]==.00030517578125f&&v[2]==10.f);q.step=5;return 1;
+        };
+        q.step=q.rng=q.velocity_rng=0;q.rule=false;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&!o.velocity_native&&!q.velocity_rng&&!q.step);
+        q.rule=true;q.player_ok=false;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&!o.velocity_native&&!q.velocity_rng&&!q.step);
+        q.player_ok=true;q.entity_ok=false;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&!o.velocity_native&&!q.velocity_rng&&!q.step);
+        q.entity_ok=true;
+        assert(api->post(q.a,sizeof(q.a),&b,&o)&&o.completed&&o.velocity_native&&o.velocity_randoms==3&&o.random_calls==3&&o.velocity_set&&o.finished&&q.step==6);
+        q.step=q.rng=q.velocity_rng=0;q.bad_velocity=true;
+        assert(!api->post(q.a,sizeof(q.a),&b,&o)&&o.positioned&&o.oriented&&!o.velocity_native&&!o.velocity_generated&&!o.velocity_set&&!o.finished&&o.velocity_randoms==1&&q.velocity_rng==2&&q.step==3);
     }
 
     {

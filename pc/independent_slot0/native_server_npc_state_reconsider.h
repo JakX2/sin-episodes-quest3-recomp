@@ -2070,6 +2070,8 @@ struct ServerNpcGruntEliteDeathBindings {
     int (__cdecl *set_velocity)(void*,void*,const float*) noexcept;
     int (__cdecl *finish)(void*,void*) noexcept; // relocated entity +64
     const ServerNpcGruntEliteEffectBindings* native_effects;
+    // Optional native 2202e350 vector generation; raw 2226ffa0 stream.
+    int (__cdecl *velocity_random_int)(void*,int,int,int*) noexcept;
 };
 struct ServerNpcGruntEliteDeathResult {
     float origin[3],angles[3],velocity[3];
@@ -2077,6 +2079,7 @@ struct ServerNpcGruntEliteDeathResult {
     unsigned completed,grenades_cleared,effect_opened,effects_called,base_called,rule_checked,rule_allowed,player_found,entity_found,refreshed,positioned,random_calls,oriented,velocity_generated,velocity_set,finished,effect_closed;
     float effect_origin[3],effect_upper[3],effect_angles[3];
     unsigned native_effects_completed,effect_refreshes,effect_burst,effect_light,effect_randoms,effect_upward,effect_downward,effect_traces,effect_debug,effect_impacts,effect_iterations;
+    unsigned velocity_native,velocity_randoms;
 };
 struct ServerNpcGruntEliteLifeBindings {
     ServerNpcJetpackDeathBranchesBindings combat;
