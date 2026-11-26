@@ -71,6 +71,8 @@ using CreateCampaignFilterEntity=int (__cdecl *)(const char*,const CampaignFilte
 using CreateCampaignFilterForMap=int (__cdecl *)(void*,const char*,void**) noexcept;
 inline constexpr char scripted_sequence_factory_export[]="SiN_CreateScriptedSequence";
 using CreateScriptedSequence=int (__cdecl *)(const RelayFactoryBindings*,FactoryResult*) noexcept;
+inline constexpr char scripted_sequence_destroy_factory_export[]="SiN_DestroyScriptedSequenceEntity";
+using DestroyScriptedSequenceEntity=int (__cdecl *)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
 struct Result {unsigned completed,entities,pairs,filtered,created,missing_factory,missing_classname,clears;unsigned offset,native_creates,foreign_creates;FactoryResult last_factory;};
 // Pool storage must remain live until the native output firing path releases it.
 // The counter is shared across all entity outputs, not per entity.
@@ -884,6 +886,11 @@ struct DeferredRemovalResult {
     unsigned metadata,edict_flag_added,global_checked,global_dead,global_noop,cleanup_224,flags_cleared,dirty_marked;
     unsigned hierarchy,children_collected,children_requested,children_native,children_foreign,handle_vector_removed,handle_vector_index;
 };
+// Sequence UpdateOnRemove is an override, not an ordinary logic Kill.
+// Keep the cancellation sidecar explicit; never skip it in a base-only route.
+inline constexpr char scripted_sequence_defer_export[]="SiN_DeferScriptedSequenceRemoval";
+using DeferScriptedSequenceRemoval=int (__cdecl *)(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*,
+    const ScriptedSequenceCancelBindings*,ScriptedSequenceCancelResult*) noexcept;
 // Original CBaseEntityList active and non-networked free chains.
 struct RegistryChain {sin_independent::EntityHandleEntry* head;sin_independent::EntityHandleEntry* tail;};
 struct RemovalRegistry {
