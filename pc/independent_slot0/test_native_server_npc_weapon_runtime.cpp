@@ -1919,7 +1919,8 @@ int main(int argc,char** argv){
     struct SelfDamageFixture {
         F* f;void* parent;
         alignas(4) unsigned char rows[3*12]{},mods[3][12]{};
-        bool admitted=true;unsigned admissions{},queued{};
+        bool admitted=true;unsigned admissions{},queued{},centers{},normalizes{},casts{},bones{},deaths{};
+        float direction[3]{};std::vector<unsigned> outputs;
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -1953,8 +1954,8 @@ int main(int argc,char** argv){
     f.put(f.actor,0xc4,0xb100u);f.put(f.actor,0xd0,0u);f.put(f.actor,0xa4,0x7001u);f.put(f.actor,0xe8,0xffffffffu);
     f.put(f.actor,0x98,100);f.put(f.actor,0x9c,100);f.put(f.actor,0x8c,1);f.put(f.actor,0x94,2);
     f.put(f.actor,0x16c,0u);f.actor[0x1f0]=1;f.actor[0xa28]=0;
-    auto hd_run=[&](){
-        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,80);f.put(inp.variant,0x10,5u);
+    auto hd_run=[&](int desired=80){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,desired);f.put(inp.variant,0x10,5u);
         return accept->run(f.actor,sizeof(f.actor),ground_vt,0x223db434u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&hd_b,&catalog_o);
     };
     hd.admitted=false;
@@ -1969,6 +1970,62 @@ int main(int argc,char** argv){
     f.put(f.actor,0xd0,0u);f.put(hd.rows,32,0u);
     assert(!hd_run()&&!catalog_o.completed&&!catalog_o.health_life_called);
     assert(hd.admissions==3&&hd.queued==1);
+    // A live NPC now traverses native damage override, fractional health,
+    // damage outputs and the native death dispatch decision. Engine-owned
+    // bone/center queries and the class-specific death service remain explicit.
+    auto& alive_hd=hd_life.combat.alive;
+    alive_hd.life.context=&hd;alive_hd.life.shared_direction=hd.direction;
+    alive_hd.life.center=[](void* p,void* entity,float* result) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(entity==q.f->actor);
+        ++q.centers;result[0]=result[1]=result[2]=0.f;return 1;
+    };
+    alive_hd.life.normalize=[](void* p,float* result) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(result[0]==0.f&&result[1]==0.f&&result[2]==-10.f);
+        ++q.normalizes;result[2]=-1.f;return 1;
+    };
+    auto& detail_hd=alive_hd.chain.detail;
+    detail_hd.damage.context=&hd;
+    detail_hd.damage.cast_grunt=[](void* p,void* entity,void** cast,unsigned* extent) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(entity==q.f->actor);++q.casts;*cast=entity;*extent=sizeof(q.f->actor);return 1;
+    };
+    detail_hd.bone.context=&hd;
+    detail_hd.bone.index=[](void* p,void* entity,const char* name,int* index) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(entity==q.f->actor);
+        assert(!std::strcmp(name,q.bones%2?"ValveBiped.Bip01_L_Calf":"ValveBiped.Bip01_R_Calf"));
+        ++q.bones;*index=-1;return 1;
+    };
+    auto& output_hd=detail_hd.damage.base.chain.outputs;output_hd.context=&hd;output_hd.max_clients=2;
+    output_hd.output=[](void* p,void* entity,unsigned off) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(entity==q.f->actor);q.outputs.push_back(off);return 1;
+    };
+    output_hd.is_player=[](void* p,void* entity,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(entity==q.f->actor);*yes=false;return 1;
+    };
+    output_hd.cast_npc=[](void* p,void* entity,void** cast,unsigned* extent) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(entity==q.f->actor);*cast=entity;*extent=sizeof(q.f->actor);return 1;
+    };
+    hd_life.context=&hd;
+    hd_life.death=[](void* p,void* entity,void* record,unsigned vt) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(entity==q.f->actor&&vt==0x2249aaa4u);
+        assert(q.f->get<int>(entity,0x9c)==-80&&q.f->get<float>(record,0x2c)==120.f&&q.f->get<float>(record,0x30)==40.f);
+        assert(!q.f->get<unsigned>(record,0x38)&&q.f->get<unsigned>(record,0x28)==0x8002u);
+        ++q.deaths;return 1;
+    };
+    f.put(hd.rows,32,0xffffffffu);f.put(f.actor,0xd0,0u);f.put(f.actor,0x94,2);f.put(f.actor,0x8c,0);
+    f.put(f.actor,0x9c,100);f.put(f.actor,0x98,100);f.put(f.actor,0x634,0.f);
+    f.put(f.actor,0xcac,0.f);f.put(f.actor,0xc18,0u);f.put(f.actor,0x874,0u);f.put(f.actor,0x868,0);
+    f.put(f.actor,0x9c4,0u);f.put(f.actor,0xe8,0xffffffffu);f.put(f.actor,0x218,0u);
+    f.put(f.actor,0xbc,0x10000000u);f.actor[0xb6]=0;f.actor[0xdb1]=0;
+    f.put(f.actor,0x994,89.f);
+    assert(hd_run()&&catalog_o.health_life_called&&hd_life_result.route==NpcDamageAlive&&hd_life_result.native_result==1);
+    assert(hd_life_result.alive.alive.life.health_before==100&&hd_life_result.alive.alive.life.health_after==40&&f.get<int>(f.actor,0x9c)==40);
+    assert(!hd_life_result.death_called&&hd.centers==2&&hd.normalizes==1&&hd.casts==1&&hd.bones==2&&hd.direction[2]==-1.f);
+    assert((hd.outputs==std::vector<unsigned>{0xa48u,0xa78u}));
+    hd.outputs.clear();
+    assert(hd_run(0)&&catalog_o.health_scaled_amount==120.f&&hd_life_result.death_called&&hd_life_result.post_death_noop&&hd.deaths==1);
+    assert(f.get<int>(f.actor,0x9c)==-80&&hd_life_result.alive.alive.life.health_after==-80&&hd.centers==4&&hd.normalizes==2&&hd.bones==4);
+    assert((hd.outputs==std::vector<unsigned>{0xa48u,0xa78u}));
+    assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xd0,0xffffffffu);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
