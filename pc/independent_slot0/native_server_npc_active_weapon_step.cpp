@@ -2293,15 +2293,19 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
 constexpr NativeInputMap multicompare_map{0x224fb4b0u,0x224f0350u,7,multicompare_inputs,2};
 int native_multicompare_input(void* a,unsigned n,unsigned handler,const ServerEntityInputData& data,const ServerEntityAcceptInputBindings& b) noexcept {
     if(!b.logic_multicompare)return -1;
+    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
+    if(handler==0x2213cdc0u&&b.logic_multicompare->kill&&b.logic_multicompare->kill->remove){
+        sin_port::native_map::EntityKillResult result{};
+        return api&&api->multicompare_kill(a,n,b.entities.entries,b.entities.count,b.logic_multicompare->kill,&result)&&result.completed&&result.handled?1:0;
+    }
     const char* text=nullptr;
     for(const auto& row:multicompare_inputs)if(row.handler==handler){text=row.text;break;}
     if(!text)return -1;
-    const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
     sin_port::native_map::MultiCompareResult result{};
     return api&&api->multicompare_input(a,n,text,data.activator,data.variant,sizeof(data.variant),data.output_id,b.logic_multicompare,&result)&&result.completed&&result.handled?1:0;
 }
 constexpr NativeInputMap autosave_map{0x224fb5b8u,0x224f0350u,2,autosave_inputs,1};
-constexpr NativeInputMap autosave_base_kill_map{0x224f0350u,0,115,base_kill_inputs,1};
+constexpr NativeInputMap logic_base_kill_map{0x224f0350u,0,115,base_kill_inputs,1};
 int native_autosave_input(void* a,unsigned n,unsigned handler,const ServerEntityAcceptInputBindings& b) noexcept {
     if(!b.logic_autosave)return -1;
     const auto* api=SiN_GetServerMapEntityApi(1,sizeof(sin_port::native_map::Api));
@@ -2451,15 +2455,17 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
         for(unsigned i=0;i<o->maps;++i)if(seen[i]==token)return 0;
         seen[o->maps++]=token;
         // Project only the authenticated inherited Kill descriptor for
-        // opted-in autosave. Other inherited inputs retain owner storage.
+        // opted-in autosave/multicompare. Other inherited inputs retain owner storage.
         bool base_kill=false;
-        if(token==autosave_base_kill_map.token&&vt==sin_port::native_map::autosave_vtable&&b->logic_autosave&&b->logic_autosave->remove){
+        const bool native_kill=(vt==sin_port::native_map::autosave_vtable&&b->logic_autosave&&b->logic_autosave->remove)||
+            (vt==sin_port::native_map::multicompare_vtable&&b->logic_multicompare&&b->logic_multicompare->kill&&b->logic_multicompare->kill->remove);
+        if(token==logic_base_kill_map.token&&native_kill){
             if(b->name_equal){
                 if(!input_name_equal(*b,0x2240b624u,input,base_kill))return 0;
             }else if(input==0x2240b624u)base_kill=true;
             else{const char* actual=nullptr;if(!input_text(*b,input,&actual))return 0;base_kill=search_equal("Kill",actual);}
         }
-        const auto* native=base_kill?&autosave_base_kill_map:
+        const auto* native=base_kill?&logic_base_kill_map:
             token==multicompare_map.token&&b->logic_multicompare?&multicompare_map:
             token==autosave_map.token&&b->logic_autosave?&autosave_map:
             token==navigation_map.token&&b->logic_navigation?&navigation_map:
