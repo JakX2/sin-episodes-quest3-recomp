@@ -4611,7 +4611,30 @@ int main(int argc,char** argv){
         bits(0);translate(36,100);translate(98,79);f.put(q.a,0x8a0,0x1001u);translate(98,81);
         f.put(q.a,0x78c,0x9002u);translate(42,92);f.put(q.a,0x78c,0x2002u);
         assert(!acq->acquire(q.a,sizeof(q.a),42,10,&ac,&ar,&translation)&&!ar.completed);
+        // Live target, zero deadlines, +c64 set: external +790 body still unresolved.
+        q.a[0xb7]=0;q.a[0xc64]=1;f.put(q.a,0xc90,0.f);f.put(q.a,0xc84,0.f);
         assert(!acq->acquire(q.a,sizeof(q.a),41,10,&ac,&ar,&translation)&&!ar.completed);
+        // 33 writes +c64 before testing the policy; ordered deadline boundaries.
+        q.a[0xc64]=0;f.put(q.a,0xc90,11.f);translate(33,88);assert(q.a[0xc64]==1);
+        f.put(q.a,0xc90,10.f);
+        assert(!acq->acquire(q.a,sizeof(q.a),33,10,&ac,&ar,&translation)&&!ar.completed);
+        f.put(q.a,0xc90,0.f);f.put(q.a,0xc84,11.f);translate(33,88);
+        f.put(q.a,0xc84,0.f);q.a[0xb7]=1;translate(33,88);q.a[0xb7]=0;
+        // 41 early fallback writes +c64 unless the live-weapon/no-target branch skips it.
+        q.a[0xc64]=0;q.a[0xc66]=0;translate(41,91);assert(q.a[0xc64]==1);
+        q.a[0xc64]=0;q.a[0xc66]=1;bits(1u<<17);translate(41,91);assert(q.a[0xc64]==1);
+        bits(0);f.put(q.a,0x8a0,0x9001u);q.a[0xc64]=0;translate(41,91);assert(q.a[0xc64]==0);
+        f.put(q.a,0x78c,0x9002u);translate(41,91);assert(q.a[0xc64]==1);
+        f.put(q.a,0x78c,0x2002u);f.put(q.a,0x9d0,1u);translate(87,88);
+        ab.actor_vtable=0x2248c514;translate(87,2);ab.actor_vtable=0x2249aaa4;
+        f.put(q.a,0x9d0,0u);q.a[0xc66]=0;
+        // 98 condition20 reserves 0..2 before virtual recursion; exhausted slots go to 79.
+        bits(1u<<20);translate(98,91);
+        f.put(q.a,0x8a0,0x1001u);f.put(q.a,0x9c4,91u);f.put(q.a,0x9cc,-1);
+        f.put(q.row,4,7u);translate(98,81);assert(CombatFixture::rd(q.row,4)==7u);
+        f.put(q.row,4,5u);q.a[0xc64]=0;translate(98,91);
+        assert(CombatFixture::rd(q.row,4)==7u&&CombatFixture::rd(q.a,0x9cc)==1);
+        f.put(q.a,0x9c4,0u);bits(0);
         ac.special_translate=[](void*,void*,int id,float,int* out) noexcept -> int{*out=id;return 1;};
         f.put(q.record,0,1000000018);assert(acq->acquire(q.a,sizeof(q.a),18,10,&ac,&ar,&translation)&&ar.translated_special&&ar.translated==18);
 
