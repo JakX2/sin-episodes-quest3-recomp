@@ -3134,5 +3134,62 @@ int main(int argc,char** argv){
         assert(!api->run(q.component,0x10,q.damage,sizeof(q.damage),&b,&o));
         b.original_behavior_vtable=0;assert(!run());
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntBehaviorActivityApi>(GetProcAddress(s,server_npc_grunt_behavior_activity_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_behavior_activity_export)&&!g(0,sizeof(ServerNpcGruntBehaviorActivityApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntBehaviorActivityApi));assert(api);
+        struct BehaviorActivityFixture{
+            alignas(4) unsigned char actor[0x1088]{},linked[0xc24]{},tree[48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            std::uint32_t comparator=0;int symbol=777;unsigned symbol_calls=0;
+            static BehaviorActivityFixture& self(void* p){return *static_cast<BehaviorActivityFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.linked);
+        ServerNpcGruntBehaviorActivityBindings b{};b.context=&q;b.actor_token=0x10000u;b.standoff_comparator=&q.comparator;
+        auto& t=b.full.translation;t.entities.entries=q.entries;t.entities.count=2;t.entities.speech.original_vtable=0x2249aaa4;
+        t.entities.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xc24;return 1;};
+        t.special_identity=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        b.symbol_lookup=[](void* p,std::uint32_t token,int* v) noexcept -> int{auto& q=BehaviorActivityFixture::self(p);assert(token==88);++q.symbol_calls;*v=q.symbol;return 1;};
+        b.table_storage.context=&q;
+        b.table_storage.storage=[](void* p,std::uint32_t token,void** table,unsigned* n) noexcept -> int{auto& q=BehaviorActivityFixture::self(p);assert(token==77);*table=q.tree;*n=sizeof(q.tree);return 1;};
+        q.actor[0xc64]=1;f.put(q.actor,0xc14,0x2249aa40u);f.put(q.actor,0xa18,0x1001u);
+        auto configure=[&](unsigned off,unsigned vt){
+            f.put(q.actor,0xc18,0x10000u+off);f.put(q.actor,off,vt);f.put(q.actor,off+4,0x10000u);f.put(q.actor,off+0xc,0x10c14u);
+        };
+        ServerNpcGruntBehaviorActivityResult o{};
+        auto run=[&](int activity){return api->run(q.actor,sizeof(q.actor),activity,&b,&o);};
+        for(unsigned i=0;i<4;++i){
+            const unsigned offsets[]={0xcfc,0xda0,0xf88,0xdb8},tables[]={0x223f956c,0x224ab88c,0x224ab494,0x223f5544};
+            configure(offsets[i],tables[i]);assert(run(7)&&o.identity_valid&&o.parent_native&&o.full.translation.base_called&&o.native_result==7);
+        }
+        configure(0xcd8,0x224abec4);q.actor[0xcd8+0x18]=1;
+        assert(run(7)&&o.direct&&!o.parent_native&&o.native_result==369);
+        q.actor[0xcd8+0x18]=0;assert(run(7)&&o.parent_native&&o.native_result==7);
+        configure(0xd20,0x224ae624);
+        const int kinds[]={101,107,108,102},expected[]={18,232,233,16};
+        for(unsigned i=0;i<4;++i){f.put(q.linked,0x3a4,static_cast<std::int16_t>(kinds[i]));assert(run(16)&&o.native_result==expected[i]);}
+        assert(run(66)&&o.direct&&o.native_result==67);
+        assert(run(1)&&o.direct&&o.native_result==45);
+        assert(run(72)&&o.direct&&o.native_result==45);
+        f.put(q.actor,0xa18,0x9001u);assert(run(16)&&o.parent_native&&!o.link_valid&&o.native_result==16);
+        configure(0xde8,0x22495344);f.put(q.actor,0xa18,0x1001u);f.put(q.linked,0x3a4,static_cast<std::int16_t>(101));
+        f.put(q.actor,0xde8+0x10,0x220df9e0u);f.put(q.actor,0xde8+0x14,77u);f.put(q.actor,0xde8+0x20,static_cast<std::uint16_t>(1));f.put(q.actor,0xde8+0x2c,0x220deff0u);f.put(q.actor,0xde8+0x40,1);
+        for(unsigned off:{0u,16u,32u}){f.put(q.tree,off,0xffffffffu);}
+        f.put(q.tree,16+8,0x20005u);f.put(q.tree,16+12,333);
+        assert(run(1)&&o.state_written&&o.state_before==1&&o.state_after==2&&o.forwarded==5&&o.table_found&&o.table_index==1&&o.native_result==333&&q.comparator==0x220deff0u);
+        f.put(q.tree,16+12,-1);assert(run(1)&&o.table_found&&o.parent_native&&o.native_result==5);
+        f.put(q.tree,16+12,333);f.put(q.tree,16+2,static_cast<std::uint16_t>(2));f.put(q.tree,32+8,0x20007u);f.put(q.tree,32+12,444);
+        assert(run(7)&&o.table_visited==2&&o.table_index==2&&o.native_result==444);
+        f.put(q.tree,32+2,static_cast<std::uint16_t>(1));assert(!run(8)&&o.table_visited==3);
+        f.put(q.tree,32+2,static_cast<std::uint16_t>(0xffff));f.put(q.actor,0xde8+0x40,1);f.put(q.actor,0xa18,0x9001u);
+        assert(run(7)&&!o.table_checked&&o.parent_native&&o.native_result==7);
+        configure(0xeb8,0x223f6b7c);f.put(q.actor,0xa18,0x1001u);f.put(q.linked,0x3a4,static_cast<std::int16_t>(900));f.put(q.linked,0x3b4,88u);
+        assert(run(1)&&o.symbol_called&&o.symbol==777&&o.native_result==777);
+        q.symbol=-1;assert(run(1)&&o.symbol_called&&o.native_result==1);
+        f.put(q.linked,0x3b4,0u);assert(run(1)&&!o.symbol_called&&o.parent_native&&q.symbol_calls==2);
+        f.put(q.actor,0xeb8+0xc,0x10c10u);assert(!run(1)&&o.entered&&!o.identity_valid&&!o.parent_native);
+        f.put(q.actor,0xc18,0u);assert(run(7)&&!o.entered&&o.full.translation.native_result==7);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

@@ -2230,4 +2230,26 @@ struct ServerNpcGruntBehaviorConditionLifeApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntBehaviorConditionLifeBindings*,ServerNpcGruntBehaviorConditionLifeResult*) noexcept;
 };
 using GetServerNpcGruntBehaviorConditionLifeApi=const ServerNpcGruntBehaviorConditionLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_behavior_activity_export[]="SiN_GetServerNpcGruntBehaviorActivityApi";
+struct ServerNpcGruntBehaviorActivityBindings {
+    ServerNpcGruntActivityFullBindings full;
+    std::uint32_t actor_token;
+    void* context;
+    // Original 22022ab0 symbol lookup; token zero denotes the empty fallback string.
+    int (__cdecl *symbol_lookup)(void*,std::uint32_t,int*) noexcept;
+    ServerNpcEnemyMemoryBindings table_storage;
+    std::uint32_t* standoff_comparator; // live original global 2254c694 identity
+};
+struct ServerNpcGruntBehaviorActivityResult {
+    ServerNpcGruntActivityFullResult full;
+    std::uint32_t active_token,behavior_vtable,bridge_vtable,standoff_key,name_token;
+    int incoming,forwarded,native_result,subtype,linked_selection,state_before,state_after,symbol;
+    unsigned entered,identity_valid,embedded_offset,direct,parent_native,link_valid,state_written,table_checked,table_visited,table_found,table_index,symbol_called;
+};
+struct ServerNpcGruntBehaviorActivityApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,int,const ServerNpcGruntBehaviorActivityBindings*,ServerNpcGruntBehaviorActivityResult*) noexcept;
+};
+using GetServerNpcGruntBehaviorActivityApi=const ServerNpcGruntBehaviorActivityApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
