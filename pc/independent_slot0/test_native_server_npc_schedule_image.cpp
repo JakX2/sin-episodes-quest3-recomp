@@ -366,6 +366,26 @@ int main(int argc,char** argv){
     f.put(f.actor,0xcb4,0xffffffffu);
     assert(!gather_api->run(f.actor,sizeof(f.actor),69.43f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&gb,&gather_run)&&gather_run.gather_calls==1&&component_calls==2&&gather_run.gather.gather.completed&&gather_run.gather.gather.component_called&&f.actor[0x100]==1);
     selection.state.state_query=old_query;
+    // Outer +41c: gather once on valid schedule, before preschedule/task dispatch.
+    auto gthink=reinterpret_cast<GetServerNpcThinkCatalogApi>(GetProcAddress(s,server_npc_think_catalog_export));
+    assert(gthink&&!GetProcAddress(c,server_npc_think_catalog_export)&&!gthink(0,sizeof(ServerNpcThinkCatalogApi))&&!gthink(1,0));
+    const auto* think_api=gthink(1,sizeof(ServerNpcThinkCatalogApi));assert(think_api);
+    ServerNpcThinkCatalogBindings think{};think.gather=gb;think.context=&f;
+    think.preschedule=[](void* p,void* a,std::uint32_t cls,float) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&cls==0x2249aaa4&&f.actor[0x84d]==1&&!f.actor[0x84e]);f.actor[0x101]=1;return 1;};
+    auto old_submit=tcb.submit_goal;tcb.submit_goal=[](void* p,std::uint32_t nav,const ServerNpcSoundCoverGoal*,bool* accepted) noexcept -> int{
+        auto& f=F::self(p);assert(nav==100&&f.actor[0x101]==1);*accepted=true;
+        // Simulate transient conditions raised during execution, then native cleanup.
+        f.put(f.actor,0x7d0,7u<<4);f.put(f.actor,0x7d4,1u<<18);return 1;
+    };tcb.context=&f;
+    ServerNpcThinkCatalogResult think_run;
+    install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);f.actor[0x84d]=f.actor[0x84e]=1;
+    component_calls=0;
+    assert(think_api->run(f.actor,sizeof(f.actor),69.44f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&think,&think_run)&&think_run.outer_called&&think_run.outer_gather.gather.completed&&think_run.preschedule_called&&think_run.maintenance_called&&think_run.completed&&!think_run.scheduler.gather_calls&&think_run.scheduler.scheduler.tactical.last.accepted&&component_calls==1&&think_run.conditions_cleared==4);
+    tcb.submit_goal=old_submit;
+    // Invalidated schedule can invoke +420 again because +84e remains false.
+    std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0xc18,711u);component_calls=0;
+    think.gather.gather.component_update=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);return ++*static_cast<unsigned*>(p)==1;};
+    assert(!think_api->run(f.actor,sizeof(f.actor),69.45f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&think,&think_run)&&think_run.outer_gather.gather.completed&&think_run.preschedule_called&&think_run.maintenance_called&&think_run.scheduler.gather_calls==1&&component_calls==2&&!think_run.completed);
     m.before_selection=old_before;
     ab.shared.pending=old_pending;ab.shared.context=nullptr;
     install_at(96,4); // SCHED_GRUNT_GRENADE_COVER1: original timestamp task53
