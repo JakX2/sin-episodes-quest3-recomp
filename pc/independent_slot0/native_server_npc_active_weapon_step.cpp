@@ -1141,6 +1141,44 @@ int native_break_input(void* a,unsigned n,const ServerEntityInputData& d,const S
     if(!svc.defer_remove(svc.context,a))return 0;++o.break_removed;
     return 1;
 }
+// 22366a20: create both trails before configuring either. The retail
+// routine returns normally on a null/stale member of the resulting pair.
+bool fresh_jet_thrust(void* actor,unsigned n,const ServerWeaponActivityBindings& entities,const ServerNpcActivePostAnimationBindings* storage,const ServerNpcJetThrustBindings& b,ServerNpcJetThrustResult& o) noexcept {
+    if(n<0x102c||!storage||entities.count>sin_independent::kEntityHandleCapacity||(entities.count&&!entities.entries))return false;
+    const sin_independent::EntityHandleView registry(entities.entries,entities.count);
+    if(registry.Resolve(rd<unsigned>(actor,0xfe4))||registry.Resolve(rd<unsigned>(actor,0xfe8))){++o.reused;return true;}
+    if(!b.create)return false;
+    for(unsigned off:{0xfe4u,0xfe8u}){
+        unsigned handle=0xffffffffu;
+        if(!b.create(b.context,0x223d3248u,&handle))return false;
+        wr<unsigned>(actor,off,handle);
+        if(handle!=0xffffffffu)++o.created;
+    }
+    if(!registry.Resolve(rd<unsigned>(actor,0xfe4))||!registry.Resolve(rd<unsigned>(actor,0xfe8))){++o.partial;return true;}
+    if(!b.extent||!b.lifetime||!b.attach_parent||!b.attachment_index)return false;
+    constexpr unsigned offsets[]{0x3b0,0x3b4,0x3c4,0x3c8,0x3cc,0x3bc,0x3c0,0x3dc,0x394,0x398,0x39c,0x3a0,0x3a4,0x3a8};
+    constexpr float values[]{10.f,1.f,8.f,20.f,10.f,15.f,25.f,.5f,.25f,.25f,.25f,0.f,0.f,0.f};
+    for(unsigned side=0;side<2;++side){
+        auto trail=[&](){return static_cast<void*>(registry.Resolve(rd<unsigned>(actor,0xfe4+4*side)));};
+        auto extent=[&](void* e){unsigned bytes=0;return e&&b.extent(b.context,e,&bytes)&&bytes>=0x3e0;};
+        for(unsigned i=0;i<14;++i){
+            void* e=trail();if(!extent(e))return false;
+            // x87 unordered/unequal writes, equality (including +/-0) skips.
+            if(rd<float>(e,offsets[i])!=values[i]){
+                if(!dirty(e,*storage))return false;
+                wr<float>(e,offsets[i],values[i]);++o.writes;
+            }
+        }
+        void* e=trail();if(!extent(e)||!b.lifetime(b.context,e,500.f))return false;++o.lifetimes;
+        e=trail();if(!extent(e)||!b.attach_parent(b.context,e,actor,0x1028u))return false;++o.parents;
+        unsigned index=0;
+        if(!b.attachment_index(b.context,actor,0x1028u,side?0x22498830u:0x22498838u,&index))return false;
+        e=trail();if(!extent(e))return false;
+        if(rd<unsigned>(e,0x3d4)!=index){if(!dirty(e,*storage))return false;wr<unsigned>(e,0x3d4,index);++o.writes;}
+        ++o.indices;++o.configured;
+    }
+    return true;
+}
 // Original concrete handlers, independent from the descriptor projection.
 // Return -1 for a handler not implemented here, 0 for malformed storage,
 // and 1 for a successfully executed native leaf.
@@ -1262,6 +1300,10 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
         if(b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
         const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
         if(registry.Resolve(rd<unsigned>(a,0xfe4))||registry.Resolve(rd<unsigned>(a,0xfe8))){++o.thrust_reused;return 1;}
+        if(b.jet&&b.jet->fresh){
+            if(!fresh_jet_thrust(a,n,b.entities,b.storage,*b.jet->fresh,o.thrust))return 0;
+            ++o.thrust_prepared;return 1;
+        }
         if(!b.jet||!b.jet->prepare_thrust)return -1;
         if(!b.jet->prepare_thrust(b.jet->context,a))return 0;
         ++o.thrust_prepared;return 1;
@@ -1449,7 +1491,9 @@ bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const 
         const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
         if(b.jet_prepare){
             if(!b.jet_prepare(b.context,a))return false;
-        }else if(!registry.Resolve(rd<unsigned>(a,0xfe4))&&!registry.Resolve(rd<unsigned>(a,0xfe8)))return false;
+        }else if(!registry.Resolve(rd<unsigned>(a,0xfe4))&&!registry.Resolve(rd<unsigned>(a,0xfe8))){
+            if(!b.fresh_thrust||!fresh_jet_thrust(a,n,b.entities,b.storage,*b.fresh_thrust,o.thrust))return false;
+        }
         ++o.jet_prepared;
         void* linked=registry.Resolve(rd<unsigned>(a,0x1024));
         if(!linked||linked==a||!wake_member(linked,true,b,o,depth+1))return false;

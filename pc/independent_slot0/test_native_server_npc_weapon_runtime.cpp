@@ -1734,6 +1734,95 @@ int main(int argc,char** argv){
     break_services.defer_remove=nullptr;break_f.order.clear();f.put(f.actor,0x94,2);
     assert(!break_run()&&!catalog_o.completed&&f.get<int>(f.actor,0x94)==2&&break_f.order.empty());
     f.put(f.actor,0x218,0u);
+    // Fresh env_rockettrail pair: original writes, partial factory outcomes
+    // and reuse. The factory publishes serial handles in the native registry.
+    struct FreshThrustFixture {
+        F* f;void* actor;
+        alignas(4) unsigned char trails[2][0x3e0]{};
+        unsigned handles[2]{},calls{},lifetimes{},parents{},indices{};
+        std::vector<unsigned> order;
+    } fresh_f{&f,path_actor};
+    sin_independent::EntityHandleEntry fresh_slots[3]{};
+    for(unsigned i=0;i<2;++i){
+        fresh_slots[i+1].serial=7+i;fresh_slots[i+1].entity=reinterpret_cast<CBaseEntity*>(fresh_f.trails[i]);
+    }
+    ServerNpcJetThrustBindings fresh_services{};fresh_services.context=&fresh_f;
+    fresh_services.create=[](void* p,unsigned classname,unsigned* handle) noexcept -> int{
+        auto& q=*static_cast<FreshThrustFixture*>(p);assert(classname==0x223d3248u&&q.calls<2);
+        *handle=q.handles[q.calls];q.order.push_back(++q.calls);return 1;
+    };
+    fresh_services.extent=[](void* p,void* e,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<FreshThrustFixture*>(p);
+        if(e!=q.trails[0]&&e!=q.trails[1])return 0;*n=sizeof(q.trails[0]);return 1;
+    };
+    fresh_services.lifetime=[](void* p,void* e,float duration) noexcept -> int{
+        auto& q=*static_cast<FreshThrustFixture*>(p);assert(q.calls==2&&duration==500.f);
+        const unsigned side=e==q.trails[0]?0u:1u;assert(e==q.trails[side]);
+        assert(q.f->get<unsigned>(q.actor,0xfe4)==0x7001u&&q.f->get<unsigned>(q.actor,0xfe8)==0x8002u);
+        assert(q.f->get<float>(e,0x3b0)==10.f&&q.f->get<float>(e,0x3b4)==1.f&&q.f->get<float>(e,0x3c4)==8.f&&q.f->get<float>(e,0x3c8)==20.f);
+        assert(q.f->get<float>(e,0x3cc)==10.f&&q.f->get<float>(e,0x3bc)==15.f&&q.f->get<float>(e,0x3c0)==25.f&&q.f->get<float>(e,0x3dc)==.5f);
+        for(unsigned i=0;i<3;++i){assert(q.f->get<float>(e,0x394+4*i)==.25f);assert(q.f->get<float>(e,0x3a0+4*i)==0.f);}
+        ++q.lifetimes;q.order.push_back(10+side);return 1;
+    };
+    fresh_services.attach_parent=[](void* p,void* e,void* a,unsigned off) noexcept -> int{
+        auto& q=*static_cast<FreshThrustFixture*>(p);assert(a==q.actor&&off==0x1028u);
+        assert(q.lifetimes==q.parents+1);++q.parents;q.order.push_back(e==q.trails[0]?20u:21u);return 1;
+    };
+    fresh_services.attachment_index=[](void* p,void* a,unsigned off,unsigned name,unsigned* index) noexcept -> int{
+        auto& q=*static_cast<FreshThrustFixture*>(p);assert(a==q.actor&&off==0x1028u&&q.parents==q.indices+1);
+        assert(name==(q.indices?0x22498830u:0x22498838u));
+        *index=11u+q.indices;q.order.push_back(30u+q.indices);++q.indices;return 1;
+    };
+    auto fresh_jet=jet_inputs_b;fresh_jet.prepare_thrust=nullptr;fresh_jet.fresh=&fresh_services;
+    auto fresh_b=path_b;fresh_b.jet=&fresh_jet;fresh_b.entities.entries=fresh_slots;fresh_b.entities.count=3;
+    auto fresh_run=[&](){
+        std::memset(inp.variant,0,sizeof(inp.variant));
+        return accept->run(path_actor,sizeof(path_actor),vt,0x224988b8u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&fresh_b,&catalog_o);
+    };
+    for(unsigned left:{0xffffffffu,0x9001u,0x7001u})for(unsigned right:{0xffffffffu,0x9002u,0x8002u}){
+        fresh_f.calls=fresh_f.lifetimes=fresh_f.parents=fresh_f.indices=0;fresh_f.order.clear();
+        fresh_f.handles[0]=left;fresh_f.handles[1]=right;
+        f.put(path_actor,0xfe4,0xffffffffu);f.put(path_actor,0xfe8,0xffffffffu);
+        for(auto& trail:fresh_f.trails){
+            std::memset(trail,0,sizeof(trail));trail[0x1f0]=1;
+            f.put(trail,0x3a0,2.f);f.put(trail,0x3a4,2.f);f.put(trail,0x3a8,2.f);
+        }
+        const bool complete=left==0x7001u&&right==0x8002u;
+        assert(fresh_run()&&catalog_o.native_handler&&catalog_o.thrust_prepared&&fresh_f.calls==2&&catalog_o.thrust.partial==!complete);
+        assert(f.get<unsigned>(path_actor,0xfe4)==left&&f.get<unsigned>(path_actor,0xfe8)==right);
+        assert(catalog_o.thrust.configured==(complete?2u:0u)&&catalog_o.thrust.writes==(complete?30u:0u));
+        if(complete){
+            assert((fresh_f.order==std::vector<unsigned>{1,2,10,20,30,11,21,31}));
+            assert(f.get<unsigned>(fresh_f.trails[0],0x3d4)==11u&&f.get<unsigned>(fresh_f.trails[1],0x3d4)==12u);
+            assert(fresh_f.trails[0][0x200]&&fresh_f.trails[1][0x200]);
+        }else assert((fresh_f.order==std::vector<unsigned>{1,2}));
+        if(left==0x7001u||right==0x8002u){
+            assert(fresh_run()&&catalog_o.thrust_reused&&fresh_f.calls==2);
+        }
+    }
+    // Already initialized fields, including negative zero, must not dirty.
+    f.put(path_actor,0xfe4,0xffffffffu);f.put(path_actor,0xfe8,0xffffffffu);
+    fresh_f.calls=fresh_f.lifetimes=fresh_f.parents=fresh_f.indices=0;fresh_f.order.clear();
+    for(auto& trail:fresh_f.trails){trail[0x200]=0;f.put(trail,0x3a0,-0.f);}
+    assert(fresh_run()&&catalog_o.thrust.configured==2&&!catalog_o.thrust.writes);
+    assert(!fresh_f.trails[0][0x200]&&!fresh_f.trails[1][0x200]&&f.get<unsigned>(fresh_f.trails[0],0x3a0)==0x80000000u);
+    // Same fresh helper is consumed by the actual Jetpack wake prefix,
+    // with no legacy jet_prepare callback.
+    sin_independent::EntityHandleEntry fresh_wake_slots[4]{};
+    fresh_wake_slots[1]=fresh_slots[1];fresh_wake_slots[2]=fresh_slots[2];
+    fresh_wake_slots[3].serial=9;fresh_wake_slots[3].entity=reinterpret_cast<CBaseEntity*>(wt.member);
+    auto fresh_wake=wtb;fresh_wake.entities.entries=fresh_wake_slots;fresh_wake.entities.count=4;
+    fresh_wake.jet_prepare=nullptr;fresh_wake.fresh_thrust=&fresh_services;
+    fresh_wake.output=nullptr;fresh_wake.squad_next=nullptr;
+    f.put(path_actor,0xfe4,0xffffffffu);f.put(path_actor,0xfe8,0xffffffffu);
+    f.put(path_actor,0x1024,0x9003u);f.put(path_actor,0x218,123u);
+    f.put(path_actor,0x868,2);f.put(path_actor,0x78,0x20u);f.put(path_actor,0xbdc,0u);path_actor[0x870]=0;
+    f.put(wt.member,0,ground_vt);f.put(wt.member,0x868,2);f.put(wt.member,0xbdc,0u);wt.member[0x870]=0;
+    fresh_f.calls=fresh_f.lifetimes=fresh_f.parents=fresh_f.indices=0;fresh_f.order.clear();f.trace.clear();
+    assert(transition_wake->run(path_actor,sizeof(path_actor),vt,true,&fresh_wake,&wto)&&wto.completed&&wto.jet_prepared&&wto.jet_linked&&wto.jet_attachment&&wto.transitions==2);
+    assert(wto.thrust.created==2&&wto.thrust.configured==2&&!wto.thrust.writes&&f.get<int>(path_actor,0x868)==0&&f.get<int>(wt.member,0x868)==0);
+    assert((fresh_f.order==std::vector<unsigned>{1,2,10,20,30,11,21,31}));
+    f.trace.clear();
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
