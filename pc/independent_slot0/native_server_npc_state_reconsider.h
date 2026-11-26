@@ -1300,4 +1300,30 @@ struct ServerNpcGruntReactionSpeechApi {
     int (__cdecl *death)(void*,unsigned,float,const ServerNpcGruntReactionSpeechBindings*,ServerNpcGruntReactionSpeechResult*) noexcept;
 };
 using GetServerNpcGruntReactionSpeechApi=const ServerNpcGruntReactionSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_event_speech_export[]="SiN_GetServerNpcGruntEventSpeechApi";
+struct ServerNpcGruntEventSpeechBindings {
+    ServerNpcGruntReactionSpeechBindings speech;
+    void* context;
+    int (__cdecl *random_int)(void*,int,int,int*) noexcept;
+    int (__cdecl *enemy_target)(void*,void*,void**) noexcept; // current enemy virtual +fc
+    int (__cdecl *position)(void*,void*,float*) noexcept; // +214
+    int (__cdecl *target_accept)(void*,void*,void*,bool*) noexcept; // target +300
+    int (__cdecl *visible)(void*,void*,void*,unsigned,unsigned,bool*) noexcept; // actor +1f0
+    int (__cdecl *flank_metric)(void*,std::uint32_t,float*) noexcept; // +8f8 -> +24 -> 2209d410
+};
+struct ServerNpcGruntEventSpeechResult {
+    ServerNpcGruntSpeechQueueResult admission;
+    ServerNpcGruntSentenceResult sentence;
+    ServerNpcGruntSentenceRequestResult request;
+    const char* cue;
+    double distance_squared;
+    float metric;
+    int roll;
+    unsigned completed,ignored,roll_blocked,target_missing,admission_blocked,distance_blocked,target_blocked,visibility_blocked,metric_blocked;
+};
+struct ServerNpcGruntEventSpeechApi {
+    std::uint32_t version,size;
+    int (__cdecl *event)(void*,unsigned,unsigned,float,const ServerNpcGruntEventSpeechBindings*,ServerNpcGruntEventSpeechResult*) noexcept;
+};
+using GetServerNpcGruntEventSpeechApi=const ServerNpcGruntEventSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
