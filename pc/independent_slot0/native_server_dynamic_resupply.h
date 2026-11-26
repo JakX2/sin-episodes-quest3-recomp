@@ -186,6 +186,32 @@ struct FactoryResult {
     unsigned bytes,allocation_called,allocated,constructed,initialized,released,completed;
     LifecycleResult lifecycle;
 };
+// Constructor-authenticated pickup fields. DUAG actual grant is 1,
+ // independently of the resupply estimate of 5 nearby rounds.
+struct PickupSpec {unsigned vtable,secondary,model_token,ammo_token;int units;};
+inline constexpr PickupSpec ammo_pickups[count]{
+    {0x22468b6c,0x22468b48,0x22468e50,0x2245f474,10},
+    {0x22468ea4,0x22468e7c,0x22469188,0x2245f470,30},
+    {0x224691dc,0x224691b4,0x224694c0,0x2245f468,10},
+    {0x22469b54,0x22469b30,0x22469e38,0x2245f43c,1},
+    {0x22469e8c,0x22469e64,0x2246a170,0x2245f424,1},
+    {0x2246a1bc,0x2246a198,0x2246a4a0,0x2245f42c,1}
+};
+struct AmmoPickupBindings {
+    void* context;
+    int (__cdecl *base_construct)(void*,void*) noexcept;
+    int (__cdecl *index)(void*,const char*,int*) noexcept;
+    int (__cdecl *unknown_ammo)(void*,const char*) noexcept;
+    int (__cdecl *multiplier)(void*,int,float*) noexcept;
+    int (__cdecl *give)(void*,void*,int,int,bool,int*) noexcept;
+    int (__cdecl *respawn_rule)(void*,void*,int*) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+};
+struct AmmoPickupResult {
+    unsigned type,constructed,index_read,unknown,multiplier_read,give_called,rule_called,removed,accepted,completed;
+    int index,units,requested,granted,rule;
+    float multiplier;
+};
 struct Api {
     std::uint32_t version,size;
     // 222f8580: six desired ratios and pre-counted nearby pickup rows.
@@ -214,6 +240,8 @@ struct Api {
     // 222f9520/222f9540 and 222f8720, without executable PE addresses.
     int (__cdecl *factory_create)(const char*,const FactoryBindings*,FactoryResult*) noexcept;
     int (__cdecl *factory_destroy)(void*,unsigned,void*,const FactoryBindings*,FactoryResult*) noexcept;
+    int (__cdecl *ammo_pickup_construct)(void*,unsigned,unsigned,const AmmoPickupBindings*,AmmoPickupResult*) noexcept;
+    int (__cdecl *ammo_pickup_touch)(void*,unsigned,void*,const AmmoPickupBindings*,AmmoPickupResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

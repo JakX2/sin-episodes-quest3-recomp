@@ -1,6 +1,8 @@
 #include "native_server_dynamic_resupply.h"
 #include "original_ammo_definitions.h"
 #include <cstring>
+#include <cmath>
+#include <limits>
 extern "C" int __cdecl SiN_ReadResupplyEngineConvar(void*,sin_port::native_resupply::Convar,void*) noexcept;
 extern "C" __declspec(dllexport) const sin_port::original_ammo::Api* __cdecl
 SiN_GetOriginalAmmoDefinitionApi(std::uint32_t,std::uint32_t) noexcept;
@@ -466,7 +468,47 @@ int __cdecl factory_destroy(void* actor,unsigned bytes,void* networkable,const F
     if(!b->release_networkable(b->context,networkable))return 0;
     o->released=o->completed=1;return 1;
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy};
+int __cdecl ammo_pickup_construct(void* item,unsigned bytes,unsigned type,const AmmoPickupBindings* b,AmmoPickupResult* o) noexcept {
+    if(!o)return 0;*o={};o->index=-1;o->type=type;
+    if(!item||bytes<0x4d8||type>=count||!b||!b->base_construct||!b->base_construct(b->context,item))return 0;
+    const auto& p=ammo_pickups[type];
+    set_field(item,0x4cc,p.model_token);set_field(item,0x4d0,p.ammo_token);set_field(item,0x4d4,p.units);
+    set_field(item,0,p.vtable);set_field(item,0x494,p.secondary);
+    o->units=p.units;o->constructed=o->completed=1;return 1;
+}
+int __cdecl ammo_pickup_touch(void* item,unsigned bytes,void* player,const AmmoPickupBindings* b,AmmoPickupResult* o) noexcept {
+    if(!o)return 0;*o={};o->index=-1;o->type=count;
+    if(!item||bytes<0x4d8||!player||!b)return 0;
+    for(unsigned i=0;i<count;++i)if(field<unsigned>(item,0)==ammo_pickups[i].vtable){o->type=i;break;}
+    if(o->type==count||field<unsigned>(item,0x4d0)!=ammo_pickups[o->type].ammo_token)return 0;
+    const char* name=ammo_types[o->type].name;
+    o->units=field<int>(item,0x4d4);
+    if(b->index){if(!b->index(b->context,name,&o->index))return 0;}
+    else {
+        const auto* ammo=SiN_GetOriginalAmmoDefinitionApi(original_ammo::version,sizeof(original_ammo::Api));
+        if(!ammo)return 0;o->index=ammo->index(name);
+    }
+    o->index_read=1;
+    if(o->index==-1){
+        o->unknown=1;if(b->unknown_ammo&&!b->unknown_ammo(b->context,name))return 0;
+        o->completed=1;return 1;
+    }
+    if(!b->multiplier||!b->multiplier(b->context,o->index,&o->multiplier))return 0;
+    o->multiplier_read=1;
+    // Original FILD/FSTP rounds units to binary32 before 222f4f30.
+    double amount=double(float(o->units))*double(o->multiplier);
+    if(amount<1.)amount=1.;
+    const double truncated=std::trunc(amount);
+    o->requested=(!std::isfinite(truncated)||truncated<double(std::numeric_limits<int>::min())||truncated>double(std::numeric_limits<int>::max()))?std::numeric_limits<int>::min():int(truncated);
+    if(!b->give||!b->give(b->context,player,o->requested,o->index,false,&o->granted))return 0;
+    o->give_called=1;
+    if(!o->granted){o->completed=1;return 1;}
+    if(!b->respawn_rule||!b->respawn_rule(b->context,item,&o->rule))return 0;
+    o->rule_called=1;
+    if(o->rule==6){if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;}
+    o->accepted=o->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

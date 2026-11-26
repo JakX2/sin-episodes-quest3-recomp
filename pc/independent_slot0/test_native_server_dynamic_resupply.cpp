@@ -564,5 +564,39 @@ int main(int argc,char** argv){
     assert(api->factory_destroy(nullptr,0,nullptr,nullptr,&fact)&&fact.completed&&!fact.released);
     assert(!api->factory_destroy(ef.actor,sizeof(ef.actor),ef.actor+0x15c,&fac,&fact)&&!rf.releases);
     assert(api->factory_destroy(ef.actor,sizeof(ef.actor),ef.actor+0x160,&fac,&fact)&&fact.completed&&fact.released&&rf.releases==1&&!EvalFixture::rd(ef.actor,0));
+    // Six real pickup constructors and common MyTouch, with rule scaling.
+    struct PickupFixture {
+        alignas(4) unsigned char item[0x4d8]{};
+        int player=0,index=0,requested=0,granted=1,rule=6;
+        float multiplier=.75f;
+        unsigned ctors=0,scales=0,gives=0,rules=0,removes=0,warnings=0;
+    } pf;
+    AmmoPickupBindings ap{};ap.context=&pf;
+    ap.base_construct=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<PickupFixture*>(p);assert(a==q.item);++q.ctors;return 1;};
+    ap.multiplier=[](void* p,int i,float* v) noexcept ->int{auto& q=*static_cast<PickupFixture*>(p);q.index=i;*v=q.multiplier;++q.scales;return 1;};
+    ap.give=[](void* p,void* player,int n,int i,bool silent,int* granted) noexcept ->int{
+        auto& q=*static_cast<PickupFixture*>(p);assert(player==&q.player&&i==q.index&&!silent);q.requested=n;*granted=q.granted;++q.gives;return 1;
+    };
+    ap.respawn_rule=[](void* p,void* a,int* v) noexcept ->int{auto& q=*static_cast<PickupFixture*>(p);assert(a==q.item);*v=q.rule;++q.rules;return 1;};
+    ap.remove=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<PickupFixture*>(p);assert(a==q.item);++q.removes;return 1;};
+    ap.unknown_ammo=[](void* p,const char* n) noexcept ->int{auto& q=*static_cast<PickupFixture*>(p);assert(!std::strcmp(n,"MAG"));++q.warnings;return 1;};
+    AmmoPickupResult ar{};constexpr int actual[]{10,30,10,1,1,1},scaled[]{7,22,7,1,1,1};
+    for(unsigned i=0;i<count;++i){
+        assert(api->ammo_pickup_construct(pf.item,sizeof(pf.item),i,&ap,&ar)&&ar.completed&&ar.constructed&&ar.units==actual[i]);
+        assert(EvalFixture::rd(pf.item,0)==ammo_pickups[i].vtable&&EvalFixture::rd(pf.item,0x494)==ammo_pickups[i].secondary&&EvalFixture::rd(pf.item,0x4cc)==ammo_pickups[i].model_token&&EvalFixture::rd(pf.item,0x4d0)==ammo_pickups[i].ammo_token&&EvalFixture::rd(pf.item,0x4d4)==unsigned(actual[i]));
+        assert(api->ammo_pickup_touch(pf.item,sizeof(pf.item),&pf.player,&ap,&ar)&&ar.completed&&ar.accepted&&ar.index==ids[i]&&ar.requested==scaled[i]&&ar.granted==1&&ar.rule==6&&ar.removed);
+    }
+    assert(ammo_types[5].units==5&&ammo_pickups[5].units==1&&pf.ctors==6&&pf.gives==6&&pf.removes==6);
+    assert(api->ammo_pickup_construct(pf.item,sizeof(pf.item),0,&ap,&ar));
+    pf.multiplier=-2.f;pf.rule=5;
+    assert(api->ammo_pickup_touch(pf.item,sizeof(pf.item),&pf.player,&ap,&ar)&&ar.requested==1&&ar.accepted&&!ar.removed);
+    pf.granted=0;
+    assert(api->ammo_pickup_touch(pf.item,sizeof(pf.item),&pf.player,&ap,&ar)&&ar.completed&&!ar.accepted&&!ar.rule_called);
+    pf.multiplier=std::numeric_limits<float>::quiet_NaN();
+    assert(api->ammo_pickup_touch(pf.item,sizeof(pf.item),&pf.player,&ap,&ar)&&ar.requested==std::numeric_limits<int>::min());
+    ap.index=[](void*,const char*,int* i) noexcept ->int{*i=-1;return 1;};
+    assert(api->ammo_pickup_touch(pf.item,sizeof(pf.item),&pf.player,&ap,&ar)&&ar.completed&&ar.unknown&&!ar.give_called&&pf.warnings==1);
+    EvalFixture::u(pf.item,0x4d0,0xdeadbeef);
+    assert(!api->ammo_pickup_touch(pf.item,sizeof(pf.item),&pf.player,&ap,&ar)&&!ar.index_read);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
