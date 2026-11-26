@@ -4167,8 +4167,44 @@ int embedded_behavior_identity(void* a,unsigned n,std::uint32_t actor_vtable,std
     return 1;
 }
 
-struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;};
-int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const RappelEventRoute& route) noexcept{
+
+struct RappelScheduleRoute {const ServerNpcGruntRappelScheduleBindings* bindings;ServerNpcGruntRappelScheduleResult* result;};
+int rappel_schedule_reset(void* a,unsigned n,float now,const RappelScheduleRoute& route) noexcept{
+    auto& o=*route.result;const auto& b=*route.bindings;
+    if(n<0x9ed)return 0;o.entered=1;
+    const auto& sb=b.events.events.gate.speech.speech.sentence;
+    o.guard_active=read<std::uint8_t>(a,0x9ec)!=0;
+    if(o.guard_active){
+        if(read<unsigned>(a,0x9e8)!=b.events.events.gate.actor_token)return 0;
+        o.deadline=read<float>(a,0x9a8);
+        o.timer_active=read<std::uint8_t>(a,0x9ac)!=0&&!(o.deadline<=now);
+        if(!o.timer_active){
+            const int lo=read<std::uint16_t>(a,0x9b0),hi=read<std::uint16_t>(a,0x9b2);
+            int count=0;
+            if(!b.random_int||!b.random_int(b.context,lo,hi,&count))return 0;
+            o.count=static_cast<std::uint16_t>(count);write<std::uint16_t>(a,0x9ae,static_cast<std::uint16_t>(count));
+            double sample=0;
+            const float fmin=read<float>(a,0x9b4),fmax=read<float>(a,0x9b8);
+            if(!std::isfinite(fmin)||!std::isfinite(fmax)||!b.random_float||!b.random_float(b.context,fmin,fmax,&sample)||!std::isfinite(sample))return 0;
+            o.deadline=static_cast<float>(sample+static_cast<double>(now));if(!std::isfinite(o.deadline))return 0;
+            write<std::uint8_t>(a,0x9ac,1);write(a,0x9a8,o.deadline);o.rearmed=1;
+        }
+        write<std::uint8_t>(a,0x9ec,0);o.guard_cleared=1;
+        if(const auto group=read<unsigned>(a,0x9c4)){
+            auto bound=b.slots;bound.entries=sb.entries;bound.count=sb.count;
+            const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+            if(!slots_release(group,registry.Resolve(read<unsigned>(a,0x8a0)),read<int>(a,0x9cc),now,&bound,&o.slot))return 0;
+            write(a,0x9cc,-1);o.slot_released=1;
+        }
+    }
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!api)return 0;
+    if(!api->test(a,n,0x21,NpcConditionCurrent,&b.conditions,&o.condition))return 0;
+    o.condition_checked=1;
+    if(!o.condition.value){write(a,0x7a4,4);o.state_written=1;}
+    o.completed=1;return 1;
+}
+struct RappelEventRoute {const ServerNpcGruntRappelEventBindings* bindings;ServerNpcGruntRappelEventResult* result;const RappelScheduleRoute* schedule=nullptr;};
+int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,float now,const RappelEventRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;
     o.entered=1;auto done=[&](){o.completed=1;return 1;};
     if(n<0x90c||extent<0x18)return 0;
@@ -4190,7 +4226,8 @@ int rappel_event_route(void* a,unsigned n,void* p,unsigned extent,int id,const R
             if(!b.velocity(b.context,a,o.velocity))return 0;
             o.velocity_called=1;
         }
-        if(!b.schedule_reset||!b.schedule_reset(b.context,a,false))return 0;
+        if(route.schedule){if(!rappel_schedule_reset(a,n,now,*route.schedule))return 0;}
+        else if(!b.schedule_reset||!b.schedule_reset(b.context,a,false))return 0;
         o.schedule_called=1;return done();
     }
     if(id!=100000)return 0;
@@ -4287,7 +4324,7 @@ int grunt_behavior_event_impl(void* a,unsigned n,const void* ev,unsigned en,floa
         if(entry&&!no_op&&!native_rappel&&!b->special)return 0;
         write<std::uint8_t>(p,8,1);out->marker_set=1;
         if(native_rappel){
-            if(!rappel_event_route(a,n,p,extent,id,*rappel))return 0;
+            if(!rappel_event_route(a,n,p,extent,id,now,*rappel))return 0;
         }else if(entry&&!no_op){
             out->special_called=1;if(!b->special(b->context,a,p,extent,entry,ev,en))return 0;
         }
@@ -4365,6 +4402,14 @@ int __cdecl grunt_rappel_event(void* a,unsigned n,const void* ev,unsigned en,flo
     return grunt_event43_impl(a,n,ev,en,now,&b->events,&out->events,&route);
 }
 const ServerNpcGruntRappelEventApi rappel_event_api{1,sizeof(ServerNpcGruntRappelEventApi),&grunt_rappel_event};
+int __cdecl grunt_rappel_schedule(void* a,unsigned n,const void* ev,unsigned en,float now,const ServerNpcGruntRappelScheduleBindings* b,ServerNpcGruntRappelScheduleResult* out) noexcept{
+    if(!out)return 0;*out={};out->events.rope_handle=0xffffffffu;out->condition.global=out->condition.bit=out->slot.index=out->slot.selected=-1;
+    if(!b)return 0;
+    const RappelScheduleRoute schedule{b,out};
+    const RappelEventRoute route{&b->events,&out->events,&schedule};
+    return grunt_event43_impl(a,n,ev,en,now,&b->events.events,&out->events.events,&route);
+}
+const ServerNpcGruntRappelScheduleApi rappel_schedule_api{1,sizeof(ServerNpcGruntRappelScheduleApi),&grunt_rappel_schedule};
 
 int behavior_damage_route(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings& b,ServerNpcGruntDamageOverrideResult& out,const DamageDetailRoute& route) noexcept{
     const auto& binding=*route.behavior->bindings;
@@ -6176,4 +6221,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRappelEventApi=_SiN_GetServerNpcGruntRappelEventApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRappelEventApi* __cdecl SiN_GetServerNpcGruntRappelEventApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRappelEventApi)?&rappel_event_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRappelScheduleApi=_SiN_GetServerNpcGruntRappelScheduleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRappelScheduleApi* __cdecl SiN_GetServerNpcGruntRappelScheduleApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRappelScheduleApi)?&rappel_schedule_api:nullptr;
 }

@@ -2319,4 +2319,25 @@ struct ServerNpcGruntRappelEventApi {
     int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntRappelEventBindings*,ServerNpcGruntRappelEventResult*) noexcept;
 };
 using GetServerNpcGruntRappelEventApi=const ServerNpcGruntRappelEventApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_rappel_schedule_export[]="SiN_GetServerNpcGruntRappelScheduleApi";
+struct ServerNpcGruntRappelScheduleBindings {
+    ServerNpcGruntRappelEventBindings events;
+    ServerNpcConditionMapBindings conditions;
+    ServerNpcGruntSquadSlotsBindings slots;
+    void* context;
+    int (__cdecl *random_int)(void*,int,int,int*) noexcept;
+    int (__cdecl *random_float)(void*,float,float,double*) noexcept;
+};
+struct ServerNpcGruntRappelScheduleResult {
+    ServerNpcGruntRappelEventResult events;
+    ServerNpcConditionResult condition;
+    ServerNpcGruntSquadSlotsResult slot;
+    float deadline;
+    unsigned entered,completed,guard_active,timer_active,rearmed,count,guard_cleared,slot_released,condition_checked,state_written;
+};
+struct ServerNpcGruntRappelScheduleApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,const void*,unsigned,float,const ServerNpcGruntRappelScheduleBindings*,ServerNpcGruntRappelScheduleResult*) noexcept;
+};
+using GetServerNpcGruntRappelScheduleApi=const ServerNpcGruntRappelScheduleApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
