@@ -1674,6 +1674,30 @@ int main(int argc,char** argv){
         }
         f.put(q.actor[0],0x9c4,91u);
         assert(native->apply(q.actor[0],sizeof(q.actor[0]),1,104,&state,&nb,&nr)&&nr.state.changed&&nr.state.enemy_cleared&&nr.clear_calls==1&&nr.clear.squad_released&&nr.clear_slots.release_calls==1&&!nr.clear_slots.last_release.accesses&&BroadcastFixture::rd(q.actor[0],0x8a0)==0xffffffffu);
+        auto gremove=reinterpret_cast<GetServerNpcGruntRemovalApi>(GetProcAddress(s,server_npc_grunt_removal_export));
+        assert(gremove&&!GetProcAddress(c,server_npc_grunt_removal_export)&&!gremove(0,sizeof(ServerNpcGruntRemovalApi))&&!gremove(1,0));
+        const auto* removal=gremove(1,sizeof(ServerNpcGruntRemovalApi));assert(removal);
+        ServerNpcGruntRemovalBindings rb{};rb.context=&q;rb.leave.sentence.speech.original_vtable=0x2249aaa4;rb.leave.sentence.entries=q.entries;rb.leave.sentence.count=6;
+        rb.leave.sentence.speech.context=&q;rb.leave.sentence.speech.squad_storage=q.storage.storage;
+        rb.reports.perception.slots=bb.slots;rb.memory.mutation.storage=q.storage;
+        rb.state4_link=[](void* p,void* a,void* link) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(a==q.actor[0]&&link==q.targets[0]&&q.actor[0][0xa44]);q.actor[0][0xa45]=1;return 1;};
+        rb.clear_link=[](void* p,void* a,void* link) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(a==q.actor[0]&&link==q.targets[1]&&q.actor[0][0xa45]==1);q.actor[0][0xa45]=2;return 1;};
+        rb.clear_owner=[](void* p,void* a) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(a==q.actor[0]&&q.actor[0][0xa45]==2);q.actor[0][0xa45]=3;return 1;};
+        rb.event=[](void* p,void* a,void* attacker) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(a==q.actor[0]&&attacker==q.targets[1]&&q.actor[0][0xa45]==3);q.actor[0][0xa45]=4;return 1;};
+        rb.finalize=[](void* p,void* a) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(!BroadcastFixture::rd(a,0x9c4)&&!BroadcastFixture::rd(q.group,0x48));return 1;};
+        f.put(q.group,8,0x1001u);f.put(q.group,0x48,1);f.put(q.actor[0],0x850,4);f.put(q.actor[0],0x970,0x4004u);f.put(q.actor[0],0xa18,0x5005u);
+        f.put(q.actor[0],0x8a0,0x4004u);f.put(q.actor[0],0x9cc,7);f.put(q.bitmap,4,1u<<7);
+        ServerNpcGruntRemovalResult rr{};
+        assert(removal->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],true,105,&rb,&rr)&&rr.completed&&rr.latched&&rr.state4_link&&rr.cleared_link&&rr.event&&rr.slot_released&&rr.release.old_cleared&&rr.departure.removed&&rr.owner_cleared&&rr.finalized&&!rr.report_checked&&q.actor[0][0xa45]==4&&!BroadcastFixture::rd(q.bitmap,4));
+        assert(removal->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],true,105,&rb,&rr)&&rr.repeated&&!rr.latched&&!rr.finalized);
+        // A present zero-key record suppresses idle attacker report.
+        q.actor[0][0xa44]=0;f.put(q.actor[0],0x850,1);f.put(q.actor[0],0xa18,0xffffffffu);f.put(q.actor[0],0x984,103u);f.put(q.node,4,0u);
+        f.put(q.actor[0],0x9c4,91u);f.put(q.group,0x48,1);
+        assert(removal->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,106,&rb,&rr)&&rr.completed&&rr.report_checked&&rr.zero_key.record==105&&!rr.report_called&&rr.finalized);
+        // Missing zero key calls report before removal; b6 suppression is native.
+        q.actor[0][0xa44]=0;q.actor[0][0xb6]=1;f.put(q.node,4,1000u);f.put(q.actor[0],0x9c4,91u);f.put(q.group,0x48,1);
+        rb.origin=[](void* p,void* a,float* pos) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(a==q.actor[0]&&BroadcastFixture::rd(a,0x9c4)==91&&BroadcastFixture::rd(q.group,0x48)==1);pos[0]=1;pos[1]=2;pos[2]=3;return 1;};
+        assert(removal->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,107,&rb,&rr)&&rr.completed&&rr.report_checked&&!rr.zero_key.record&&rr.report_called&&rr.report.blocked&&rr.departure.removed&&rr.finalized);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
