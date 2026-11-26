@@ -3041,6 +3041,97 @@ int campaign_filter_entity(void* filter,void* other,const CampaignCustomFilterBi
     if(!evaluate(evaluate,filter,0,accepted))return 0;
     o->accepted=accepted;o->completed=1;return 1;
 }
+// Authenticated primary +f4 = 22044210 (true), +574 = 2203e690.
+bool scripted_npc_marker(unsigned vt) noexcept {
+    switch(vt){
+    case 0x2248df04u:case 0x224954a4u:case 0x2249aaa4u:case 0x224a416cu:
+    case 0x2248c514u:case 0x2248e83cu:case 0x2249964cu:case 0x224a4a4cu:return true;
+    default:return false;
+    }
+}
+// Original 221b0430/221b0500/221af970 input wrappers. Native
+// handle/state/permission leaves; possession/cancel group remain owners.
+int scripted_sequence_control(void* a,unsigned n,ScriptedSequenceInput input,
+    const ScriptedSequenceControlBindings* b,ScriptedSequenceControlResult* o) noexcept {
+    if(!o)return 0;*o={};
+    unsigned marker=0;
+    if(!b||n<scripted_sequence_extent||!SinReadCampaignTouchMarkerInternal(a,&marker)||marker!=scripted_sequence_vtable||
+       !SinCampaignStorageReadableInternal(a,scripted_sequence_extent))return 0;
+    if(input!=ScriptedSequenceInput::MoveToPosition&&input!=ScriptedSequenceInput::BeginSequence&&input!=ScriptedSequenceInput::CancelSequence)return 0;
+    if(read_field<unsigned char>(a,0x3d9)){o->suppressed=o->completed=1;return 1;}
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    auto done=[&](){o->completed=1;return 1;};
+    if(input==ScriptedSequenceInput::CancelSequence){
+        if(!b->cancel_warning||!b->cancel_group||!b->cancel_warning(b->context,read_field<unsigned>(a,0x398)))return 0;
+        if(read_field<unsigned char>(a,0x3d8)){
+            // 2214d6f0 with null context writes only default think pointer.
+            write_field(a,8,0u);write_field(a,0x3d8,static_cast<unsigned char>(0));o->think_cleared=1;
+        }
+        if(!b->cancel_group(b->context,a))return 0;o->cancelled=1;return done();
+    }
+    const bool move=input==ScriptedSequenceInput::MoveToPosition;
+    // BeginSequence clears waiting before lookup, even on denial.
+    if(!move)write_field(a,0x3c0,static_cast<unsigned char>(0));
+    if(b->entry_count>sin_independent::kEntityHandleCapacity||(!b->entries&&b->entry_count))return 0;
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    auto readable=[&](void* p,unsigned need,unsigned& extent){
+        return b->extent&&b->extent(b->context,p,&extent)&&extent>=need&&SinCampaignStorageReadableInternal(p,need);
+    };
+    void* target=registry.Resolve(read_field<unsigned>(a,0x3d0));bool npc=false,known=false;unsigned bytes=0;
+    if(target){
+        o->target_resolved=1;unsigned vt=0;
+        if(!readable(target,4,bytes)||!SinReadCampaignTouchMarkerInternal(target,&vt))return 0;
+        known=scripted_npc_marker(vt);npc=known;
+        if(!known&&campaign_player_marker(vt)==PlayerPredicate::Unknown&&!campaign_filter_class(vt)&&vt!=scripted_sequence_vtable){
+            if(!b->foreign_is_npc||!b->foreign_is_npc(b->context,target,&npc))return 0;
+            o->foreign_npc=1;
+        }
+    }
+    if(npc){
+        o->npc=1;if(!readable(target,0x974,bytes))return 0;
+        const int state=read_field<int>(target,0x96c);
+        if(state!=0&&state!=2){o->state_blocked=1;return done();}
+        const bool force=(read_field<unsigned char>(a,0xb4)&0x40)!=0;
+        if(known){
+            // 2203e690: a live current sequence changes permission 1
+            // to 2 only if its next-script policy allows interruption.
+            int permission=1;
+            if(void* current=registry.Resolve(read_field<unsigned>(target,0x970))){
+                unsigned ext=0,vt=0;
+                if(!readable(current,scripted_sequence_extent,ext)||!SinReadCampaignTouchMarkerInternal(current,&vt)||vt!=scripted_sequence_vtable)return 0;
+                if(void* next=registry.Resolve(read_field<unsigned>(current,0x3d4))){
+                    unsigned ne=0;if(!readable(next,0xb8,ne))return 0;
+                    const unsigned reason=read_field<unsigned>(current,0x3a4)?1u:(read_field<unsigned>(next,0xb4)&0x200u)?2u:0u;
+                    if(reason){
+                        if(!b->linked_warning||!b->linked_warning(b->context,next,reason))return 0;
+                        o->linked_blocked=o->permission_blocked=1;return done();
+                    }
+                }
+                permission=2;
+            }
+            const int activity=read_field<int>(target,0x850);
+            if(read_field<int>(target,0x8c)!=0||(!force&&activity!=0&&activity!=1&&activity!=2&&read_field<int>(target,0x858)!=1))permission=0;
+            o->permission=permission;
+        }else if(!b->foreign_permission||!b->foreign_permission(b->context,target,force,1,&o->permission))return 0;
+        if(!o->permission){o->permission_blocked=1;return done();}
+        if(!b->possess||!b->possess(b->context,a))return 0;o->possessed=1;
+    }else{
+        // Missing/stale/non-NPC -> install acquisition think then
+        // schedule at live curtime, not an arbitrary frame delay.
+        if(!b->now||!b->interval||!b->cadence||!std::isfinite(*b->now)||!std::isfinite(*b->interval)||*b->interval<=0)return 0;
+        const auto* api=SiN_GetServerNpcOuterCadenceApi(1,sizeof(native_weapon_tables::ServerNpcOuterCadenceApi));
+        if(!api)return 0;
+        write_field(a,0x3cd,static_cast<unsigned char>(0));write_field(a,0x3d8,static_cast<unsigned char>(1));write_field(a,8,0x221afc90u);o->think_installed=1;
+        native_weapon_tables::ServerNpcOuterCadenceResult cadence{};
+        if(!api->set_default(a,n,*b->now,*b->interval,scripted_sequence_vtable,b->cadence,&cadence))return 0;
+        o->tick_scheduled=1;o->due_tick=cadence.tick;
+    }
+    // MoveToPosition writes waiting only AFTER successful possession
+    // or scheduling. The denial exits do not write it.
+    if(move)write_field(a,0x3c0,static_cast<unsigned char>(1));
+    return done();
+}
 // 221adec0: index 1..8 only, caller and activator are both self.
 int scripted_sequence_event(void* actor,unsigned bytes,int index,const ScriptedSequenceEventBindings* b,ScriptedSequenceEventResult* o) noexcept {
     if(!o)return 0;*o={};
@@ -3434,4 +3525,10 @@ extern "C" int __cdecl SiN_CreateScriptedSequence(const sin_port::native_map::Re
 extern "C" int __cdecl SiN_FireScriptedSequenceEvent(void* a,unsigned n,int index,const sin_port::native_map::ScriptedSequenceEventBindings* b,
     sin_port::native_map::ScriptedSequenceEventResult* o) noexcept {
     return sin_port::native_map::scripted_sequence_event(a,n,index,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_ControlScriptedSequence=_SiN_ControlScriptedSequence")
+extern "C" int __cdecl SiN_ControlScriptedSequence(void* actor,unsigned bytes,sin_port::native_map::ScriptedSequenceInput input,
+    const sin_port::native_map::ScriptedSequenceControlBindings* b,sin_port::native_map::ScriptedSequenceControlResult* o) noexcept {
+    return sin_port::native_map::scripted_sequence_control(actor,bytes,input,b,o);
 }

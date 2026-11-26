@@ -500,6 +500,30 @@ inline constexpr char custom_filter_export[]="SiN_TestCampaignFilterEntity";
 inline constexpr char custom_filter_callback_export[]="SiN_CampaignFilterEntityCallback";
 using TestCampaignFilterEntity=int (__cdecl *)(void*,void*,const CampaignCustomFilterBindings*,CampaignCustomFilterResult*) noexcept;
 using CampaignFilterEntityCallback=int (__cdecl *)(void*,void*,void*,bool*) noexcept;
+enum class ScriptedSequenceInput:unsigned {MoveToPosition,BeginSequence,CancelSequence};
+struct ScriptedSequenceControlBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    const float* now;const float* interval;
+    const native_weapon_tables::ServerNpcOuterCadenceBindings* cadence;
+    // Unreviewed virtuals retain owner dispatch.
+    int (__cdecl *foreign_is_npc)(void*,void*,bool*) noexcept;
+    int (__cdecl *foreign_permission)(void*,void*,bool,int,int*) noexcept;
+    // Original 221aed80 warning: reason 1 is named next script,
+    // reason 2 is next script's no-interrupt spawnflag.
+    int (__cdecl *linked_warning)(void*,void*,unsigned) noexcept;
+    int (__cdecl *possess)(void*,void*) noexcept; // original 221ae8f0
+    int (__cdecl *cancel_warning)(void*,unsigned) noexcept;
+    int (__cdecl *cancel_group)(void*,void*) noexcept; // original 221af840
+};
+struct ScriptedSequenceControlResult {
+    unsigned completed,suppressed,target_resolved,npc,foreign_npc,state_blocked,permission_blocked,linked_blocked,
+        possessed,think_installed,tick_scheduled,think_cleared,cancelled;
+    int permission,due_tick;
+};
+inline constexpr char scripted_sequence_control_export[]="SiN_ControlScriptedSequence";
+using ControlScriptedSequence=int (__cdecl *)(void*,unsigned,ScriptedSequenceInput,const ScriptedSequenceControlBindings*,ScriptedSequenceControlResult*) noexcept;
 struct ScriptedSequenceEventBindings {
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
     const RelayQueueBindings* native_queue;
