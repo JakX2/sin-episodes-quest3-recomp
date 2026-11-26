@@ -9,15 +9,25 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare,MathRemap,MathColorBlend};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch,LogicCase,LogicCompare,MathCounter,LogicMenuListener,LogicNavigation,LogicAutosave,LogicMultiCompare,MathRemap,MathColorBlend,TriggerDynamic,TriggerSecret};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
-struct FactoryDictionary {const FactorySpec* slots[25]{};unsigned count=0;bool registered=false;};
+struct FactoryDictionary {const FactorySpec* slots[27]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
     void* context;
     // Fresh allocation must supply zeroed derived extension, as expected
     // by the original constructor which writes only three output words.
     int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
     int (__cdecl *base_construct)(void*,void*,int) noexcept;
+    int (__cdecl *initialize)(void*,void*,const char*) noexcept;
+    int (__cdecl *release_networkable)(void*,void*) noexcept;
+};
+inline constexpr unsigned dynamic_trigger_vtable=0x2243b96c,dynamic_trigger_extent=0x47c;
+inline constexpr unsigned secret_trigger_vtable=0x2243bc0c,secret_trigger_extent=0x470;
+// Owner performs CBaseTrigger construction at 221be3c0, not CBaseEntity(1).
+struct TriggerFactoryBindings {
+    void* context;
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *base_construct)(void*,void*) noexcept;
     int (__cdecl *initialize)(void*,void*,const char*) noexcept;
     int (__cdecl *release_networkable)(void*,void*) noexcept;
 };
@@ -41,6 +51,7 @@ struct FactoryBindings {
     const RelayFactoryBindings* logic_multicompare;
     const RelayFactoryBindings* math_remap;
     const RelayFactoryBindings* math_colorblend;
+    const TriggerFactoryBindings* campaign_triggers;
 };
 struct FactoryResult {
     const FactorySpec* spec;
@@ -609,6 +620,8 @@ struct Api {
     int (__cdecl *discard_deferred)(DeferredRemovalQueue*,DeferredRemovalResult*) noexcept;
     int (__cdecl *registry_unlink_logic)(void*,unsigned,unsigned,const RegistryRemovalBindings*,RegistryRemovalResult*) noexcept;
     int (__cdecl *notify_deleting)(unsigned,const DeletionListenerBindings*,DeletionListenerResult*) noexcept;
+    int (__cdecl *register_campaign_triggers)(FactoryDictionary*) noexcept;
+    int (__cdecl *destroy_campaign_trigger)(void*,unsigned,void*,const TriggerFactoryBindings*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

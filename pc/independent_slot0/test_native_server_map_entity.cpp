@@ -2628,5 +2628,6 @@ int main(int argc,char** argv){
 #include "test_native_removal_metadata.inc"
 #include "test_native_removal_hierarchy.inc"
 #include "test_native_relay_remove_chain.inc"
+#include "test_native_campaign_trigger_factory.inc"
     FreeLibrary(server);FreeLibrary(client);
 }
