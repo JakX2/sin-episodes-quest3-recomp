@@ -675,5 +675,39 @@ int main(int argc,char** argv){
     assert(api->timer_input(tff.storage,sizeof(tff.storage),"FireTimer",0,0,&tmb,&tr)&&tr.fired&&tmf.order=="0");
     assert(api->destroy_timer(nullptr,0,nullptr,nullptr)&&!api->destroy_timer(tff.storage,timer_extent,tff.storage+0x164,&tfb)&&!tff.released);
     assert(api->destroy_timer(tff.storage,timer_extent,tff.storage+0x160,&tfb)&&tff.released==1);
+    // Generic AcceptInput must distinguish timer handler and direct-field
+    // descriptors, and use the original variant conversion / dirty path.
+    const auto timer_accept_get=reinterpret_cast<nw::GetServerEntityAcceptInputApi>(GetProcAddress(server,nw::server_entity_accept_input_export));
+    assert(timer_accept_get);const auto* timer_accept=timer_accept_get(1,sizeof(nw::ServerEntityAcceptInputApi));assert(timer_accept);
+    nw::ServerNpcActivePostAnimationBindings tstorage{};
+    nw::ServerEntityAcceptInputBindings tai{};tai.storage=&tstorage;tai.timer=&tb;
+    tai.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+        *text=token==301?"FireTimer":token==302?"-3":nullptr;if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    nw::ServerEntityAcceptInputResult tair{};
+    unsigned tv[5]{};
+    auto timer_ai=[&](unsigned token,unsigned type,unsigned value){
+        tv[0]=value;tv[4]=type;timer[0x1f0]=1;timer[0x200]=0;
+        return timer_accept->accept(timer,sizeof(timer),timer_vtable,token,nullptr,nullptr,tv,sizeof(tv),0,&tai,&tair);
+    };
+    const auto before_inputs=tf.schedules;
+    assert(timer_ai(0x22420030,2,302)&&tair.accepted&&tair.converted&&tair.written==4&&tair.row==8&&word(timer,0x3e8)==0xfffffffdu&&timer[0x200]&&tf.schedules==before_inputs);
+    assert(timer_ai(0x22420004,5,4)&&tair.written==4&&tair.converted&&word(timer,0x3ec)==0x40800000);
+    assert(timer_ai(0x2241ffd8,1,0x40000000)&&tair.written==4&&word(timer,0x3f0)==0x40000000&&tf.schedules==before_inputs);
+    assert(timer_ai(0x223edce8,0,0)&&tair.native_handler&&word(timer,0x3dc)==1&&tf.next==-1.f);
+    assert(timer_ai(0x22420090,5,3)&&tair.converted&&tair.native_handler&&word(timer,0x3e0)==0x40400000&&word(timer,0x3dc)==1);
+    assert(timer_ai(0x223edd00,0,0)&&tair.native_handler&&tf.next==11.5f);
+    assert(timer_ai(301,2,302)&&tair.converted&&tair.native_handler&&tair.row==4&&timer[0x200]);
+    // Actual queue delivery to the timer with a live event-service clock.
+    std::memset(co.root,0,sizeof(co.root));std::memset(co.rows,0,sizeof(co.rows));co.alloc=0;co.released=0;co.now=55.f;co.actor=timer;
+    co.queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept ->int{*yes=true;return 1;};
+    sin_independent::EntityHandleEntry te{};te.entity=reinterpret_cast<CBaseEntity*>(timer);te.serial=3;
+    auto tes=sb;tes.entities.entries=&te;tes.entities.count=1;tes.native_input=&tai;tes.live_now=&co.now;
+    nw::ServerEntitySearchBindings tsearch{};tsearch.context=&co;
+    tsearch.extent=[](void* p,void* a,unsigned* bytes) noexcept ->int{*bytes=a==static_cast<ConnectedOutput*>(p)->actor?timer_extent:0;return *bytes!=0;};
+    tes.native_search=&tsearch;
+    unsigned void_variant[5]{0,0,0,0xffffffffu,0};
+    assert(queue_api->enqueue_direct(co.root,sizeof(co.root),99,co.now,0x3000,0x223edd00,0x3000,0x3000,void_variant,sizeof(void_variant),0.f,0,&co.queue,&cancel_qr));
+    assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&tes,&es)&&es.native_inputs==1&&es.direct==1&&tf.next==56.5f&&co.released==1);
     FreeLibrary(server);FreeLibrary(client);
 }
