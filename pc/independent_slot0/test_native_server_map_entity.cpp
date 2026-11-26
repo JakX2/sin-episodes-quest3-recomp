@@ -1510,5 +1510,71 @@ int main(int argc,char** argv){
         assert(service_api->service(co.root,sizeof(co.root),99,co.now,false,&budget,&delivery,&es)&&es.events==3&&es.native_inputs==2&&es.foreign_inputs==1&&f.fired==2&&f.delivered==1&&pool.released==2);
         assert(word(counter,0x3a0)==0x40a00000u&&word(comparison,0x394)==0x40a00000u&&comparison[0x200]&&co.released==3&&!word(co.root,0x30));
     }
+    {
+        // Seven authenticated derived destructors, all with two pool
+        // records per output and reverse member / forward list order.
+        struct Layout {unsigned vt,extent,first,count;};
+        constexpr Layout layouts[]{
+            {relay_vtable,relay_extent,0x394,1},{auto_vtable,auto_extent,0x394,7},
+            {timer_vtable,timer_extent,0x394,3},{branch_vtable,branch_extent,0x398,2},
+            {case_vtable,case_extent,0x3d4,17},{compare_vtable,compare_extent,0x39c,4},
+            {counter_vtable,counter_extent,0x3a0,3}
+        };
+        struct DestroyFixture {
+            alignas(4) unsigned char actor[case_extent]{},rows[34][0x1c]{};
+            unsigned order[34]{},released=0,base=0,freed=0,count=0;
+            unsigned alias_token=0,fail_token=0;
+        } f;
+        LogicDestroyBindings owner{};owner.context=&f;
+        owner.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<DestroyFixture*>(p);if(!token||token>f.count*2)return 0;
+            *row=token==f.alias_token?f.rows[0]:f.rows[token-1];*bytes=0x1c;return 1;
+        };
+        owner.release_action=[](void* p,unsigned token,void* row) noexcept ->int{
+            auto& f=*static_cast<DestroyFixture*>(p);assert(!f.base&&!f.freed&&f.released<f.count*2&&row==f.rows[token-1]);
+            if(token==f.fail_token)return 0;
+            f.order[f.released++]=token;std::memset(row,0xcc,0x1c);return 1;
+        };
+        owner.base_destroy=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<DestroyFixture*>(p);assert(a==f.actor&&f.released==f.count*2&&!f.base&&!f.freed);++f.base;return 1;
+        };
+        owner.free_actor=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<DestroyFixture*>(p);assert(a==f.actor&&f.base==1&&!f.freed);++f.freed;return 1;
+        };
+        auto setup=[&](const Layout& l){
+            f={};f.count=l.count;put(f.actor,0,l.vt);
+            for(unsigned i=0;i<l.count;++i){
+                put(f.actor,l.first+i*0x18+0x14,i*2+1);
+                put(f.rows[i*2],0x18,i*2+2);
+            }
+        };
+        LogicDestroyResult result{};
+        for(const auto& l:layouts){
+            setup(l);
+            assert(api->destroy_logic(f.actor,l.extent,0,&owner,&result)&&result.validated&&result.completed&&result.outputs==l.count&&result.actions==l.count*2&&result.released==l.count*2&&result.base_called&&!result.freed);
+            for(unsigned i=0;i<l.count;++i){
+                assert(f.order[i*2]==(l.count-i)*2-1&&f.order[i*2+1]==(l.count-i)*2);
+                // Original destructor does not clear the now-dead head.
+                assert(word(f.actor,l.first+i*0x18+0x14)==i*2+1);
+            }
+            setup(l);
+            assert(api->destroy_logic(f.actor,l.extent,3,&owner,&result)&&result.freed&&f.freed==1);
+        }
+        const auto& l=layouts[4];
+        setup(l);assert(!api->destroy_logic(f.actor,l.extent-1,1,&owner,&result)&&!f.released&&!f.base);
+        setup(l);put(f.rows[33],0x18,33); // cycle in last output
+        assert(!api->destroy_logic(f.actor,l.extent,1,&owner,&result)&&!result.validated&&!f.released&&!f.base);
+        setup(l);put(f.actor,l.first+0x18+0x14,1); // shared action token
+        assert(!api->destroy_logic(f.actor,l.extent,1,&owner,&result)&&!result.validated&&!f.released);
+        setup(l);f.alias_token=3; // distinct token resolves same record
+        assert(!api->destroy_logic(f.actor,l.extent,1,&owner,&result)&&!result.validated&&!f.released);
+        setup(l);auto missing=owner;missing.free_actor=nullptr;
+        assert(!api->destroy_logic(f.actor,l.extent,1,&missing,&result)&&!result.validated&&!f.released);
+        setup(l);f.fail_token=34;
+        assert(!api->destroy_logic(f.actor,l.extent,1,&owner,&result)&&result.validated&&result.released==1&&!result.base_called&&!result.freed);
+        setup(l);f.count=0;for(unsigned i=0;i<l.count;++i)put(f.actor,l.first+i*0x18+0x14,0);
+        auto empty=owner;empty.resolve=nullptr;empty.release_action=nullptr;
+        assert(api->destroy_logic(f.actor,l.extent,1,&empty,&result)&&result.outputs==17&&!result.actions&&result.base_called&&result.freed);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }

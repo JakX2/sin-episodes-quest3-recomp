@@ -1385,7 +1385,7 @@ int __cdecl counter_input(void* a,unsigned n,const char* name,void* activator,un
     else if(equal_class(name,"Divide")){
         if(type!=1||arg==0.f){
             if(b->divide_warning&&!b->divide_warning(b->context,a))return 0;
-            o->warned=1;candidate=current;
+            o->warned=1;candidate=read_field<float>(a,0x3a0); // original reload after warning
         }else candidate=static_cast<float>(double(current)/arg);
     }else if(equal_class(name,"SetValue"))candidate=arg;
     else if(equal_class(name,"SetValueNoFire")){
@@ -1399,7 +1399,64 @@ int __cdecl counter_input(void* a,unsigned n,const char* name,void* activator,un
     if(update&&!counter_update(a,n,candidate,activator,*b,*o))return 0;
     counter_snapshot(a,*o);o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter};
+// Original 221544d0 walks +14 head, caches row+18 before releasing
+// the pool record and deliberately leaves the destroyed output unchanged.
+// Derived destructors call this in reverse member order, then base.
+// Independent owner data is preflighted before any destructive callback;
+// a failed callback after release begins is terminal for that storage.
+int __cdecl destroy_logic(void* a,unsigned n,unsigned flags,const LogicDestroyBindings* b,LogicDestroyResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<4||!b||!b->base_destroy||((flags&1u)&&!b->free_actor))return 0;
+    unsigned first=0,count=0,extent=0;
+    switch(entity_vtable(a)){
+        case relay_vtable:first=0x394;count=1;extent=relay_extent;break;
+        case auto_vtable:first=0x394;count=7;extent=auto_extent;break;
+        case timer_vtable:first=0x394;count=3;extent=timer_extent;break;
+        case branch_vtable:first=0x398;count=2;extent=branch_extent;break;
+        case case_vtable:first=0x3d4;count=17;extent=case_extent;break;
+        case compare_vtable:first=0x39c;count=4;extent=compare_extent;break;
+        case counter_vtable:first=0x3a0;count=3;extent=counter_extent;break;
+        default:return 0;
+    }
+    if(n<extent)return 0;
+    constexpr unsigned max_per_output=256,max_actions=17*max_per_output;
+    struct Record {unsigned token;void* row;};
+    Record plan[max_actions]{};
+    auto range=[](const void* p,unsigned bytes,std::uintptr_t& begin,std::uintptr_t& end){
+        begin=reinterpret_cast<std::uintptr_t>(p);
+        if(!p||begin>std::uintptr_t(-1)-bytes)return false;
+        end=begin+bytes;return true;
+    };
+    std::uintptr_t actor_begin=0,actor_end=0;
+    if(!range(a,n,actor_begin,actor_end))return 0;
+    for(unsigned i=count;i>0;--i){
+        const unsigned off=first+(i-1)*0x18;
+        unsigned token=read_field<unsigned>(a,off+0x14),list_count=0;
+        ++o->outputs;
+        while(token){
+            if(list_count++==max_per_output||o->actions==max_actions||!b->resolve||!b->release_action)return 0;
+            void* row=nullptr;unsigned bytes=0;
+            if(!b->resolve(b->context,token,&row,&bytes)||bytes<0x1c)return 0;
+            std::uintptr_t begin=0,end=0;
+            if(!range(row,0x1c,begin,end)||(begin<actor_end&&actor_begin<end))return 0;
+            for(unsigned j=0;j<o->actions;++j){
+                const auto prev=reinterpret_cast<std::uintptr_t>(plan[j].row);
+                if(plan[j].token==token||(begin<prev+0x1c&&prev<end))return 0;
+            }
+            plan[o->actions++]={token,row};
+            token=read_field<unsigned>(row,0x18);
+        }
+    }
+    o->validated=1;
+    for(unsigned i=0;i<o->actions;++i){
+        if(!b->release_action(b->context,plan[i].token,plan[i].row))return 0;
+        ++o->released;
+    }
+    if(!b->base_destroy(b->context,a))return 0;o->base_called=1;
+    if(flags&1u){if(!b->free_actor(b->context,a))return 0;o->freed=1;}
+    o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
