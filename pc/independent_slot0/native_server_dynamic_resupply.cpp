@@ -619,12 +619,69 @@ int __cdecl vial_construct(void* item,unsigned bytes,const VialPickupBindings* b
     set_field(item,0,vial_vtable);set_field(item,0x494,vial_secondary);
     o->constructed=o->completed=1;return 1;
 }
+int __cdecl player_take_health(void* player,float amount,unsigned flags,const PlayerHealthBindings* b,PlayerHealthResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!b||!player||b->player!=player||b->bytes<0x12a2)return 0;
+    const unsigned vt=field<unsigned>(player,0);
+    if(vt!=0x2245222cu&&vt!=0x224aec3cu)return 0;
+    o->before=o->after=field<int>(player,0x9c);
+    o->maximum_before=o->maximum_after=field<int>(player,0x98);
+    auto done=[&](){o->completed=1;return 1;};
+    // Player override: clear matching non-timebased damage bits, even if
+    // the base routine will decline the heal. Both max-health setters'
+    // network notifications (+1b0) and health notifications (+1b4) are RET.
+    if(field<int>(player,0x94)!=0){
+        set_field(player,0x9d0,field<unsigned>(player,0x9d0)&~(flags&0xffc07fffu));
+        o->damage_mask_written=1;
+    }
+    if(!field<unsigned char>(player,0x12a1)&&field<int>(player,0x98)>100){
+        set_field(player,0x98,100);set_field(player,0x12a1,static_cast<unsigned char>(0));
+        o->maximum_reset=1;
+    }
+    o->maximum_after=field<int>(player,0x98);
+    // CBaseCombatCharacter guard followed by CBaseEntity::TakeHealth.
+    if(!field<unsigned>(player,0x16c)||field<int>(player,0x94)<2||o->before>=o->maximum_after)return done();
+    const double truncated=std::trunc(double(amount));
+    o->converted=(!std::isfinite(truncated)||truncated<double(std::numeric_limits<int>::min())||truncated>double(std::numeric_limits<int>::max()))?std::numeric_limits<int>::min():int(truncated);
+    o->raw_health=signed_word(unsigned(o->before)+unsigned(o->converted));
+    if(o->raw_health!=o->before)set_field(player,0x9c,o->raw_health);
+    o->raw_delta=signed_word(unsigned(o->raw_health)-unsigned(o->before));
+    // Health-change category for this routine: positive heal with flags
+    // maps to 4, then >=25/10/positive ->3/2/1; zero ->0. Negative
+    // categories are decoded separately below from 222b5ec0.
+    if(o->raw_delta==0)o->event_type=0;
+    else if(o->raw_delta>0)o->event_type=flags?4:o->raw_delta>=25?3:o->raw_delta>=10?2:1;
+    else if(flags&0x40000002u)o->event_type=8;
+    else if(flags&0x91u)o->event_type=7;
+    else if(flags&4u)o->event_type=13;
+    else if(flags&0x1200008u)o->event_type=9;
+    else if(flags&0x30000u)o->event_type=11;
+    else if(flags&0x100000u)o->event_type=15;
+    else if(flags&0x100u)o->event_type=10;
+    else if(flags&0x20u)o->event_type=16;
+    else if(flags&0x10000040u)o->event_type=18;
+    else if(flags&0x4000u)o->event_type=17;
+    else o->event_type=(flags&0x400000u)?12:6;
+    if(!b->health_event||!b->health_event(b->context,player,o->event_type,o->raw_health,o->raw_delta,flags))return 0;
+    o->event_called=1;
+    const int max=field<int>(player,0x98);
+    if(field<int>(player,0x9c)>max)set_field(player,0x9c,max);
+    o->after=field<int>(player,0x9c);o->maximum_after=max;
+    o->delta=signed_word(unsigned(o->after)-unsigned(o->before));
+    if(!o->delta)return done();
+    constexpr unsigned char rgba[]{0,0,128,64};
+    if(!b->fade||!b->fade(b->context,player,rgba,1.f,.5f,1))return 0;
+    o->fade_called=1;
+    if(field<int>(player,0x9c)>100){set_field(player,0x12a1,static_cast<unsigned char>(0));o->overheal_flag_cleared=1;}
+    o->accepted=1;return done();
+}
 int __cdecl vial_touch(void* item,unsigned bytes,void* player,const VialPickupBindings* b,VialPickupResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!item||bytes<0x4cc||field<unsigned>(item,0)!=vial_vtable||!player||!b)return 0;
     if(!(b->value?b->value(b->context,&o->value):SiN_ReadResupplyEngineConvar(b->engine_cvar,Convar::HealthVial,&o->value)))return 0;
     o->value_read=1;
-    if(!b->heal||!b->heal(b->context,player,o->value,0,&o->healed))return 0;
+    if(b->heal){if(!b->heal(b->context,player,o->value,0,&o->healed))return 0;}
+    else{if(!player_take_health(player,o->value,0,b->native_heal,&o->native_heal))return 0;o->healed=o->native_heal.accepted;}
     o->heal_called=1;
     if(!o->healed){o->completed=1;return 1;}
     if(!b->item_pickup||!b->item_pickup(b->context,player,field<unsigned>(item,0xc)))return 0;
@@ -700,7 +757,7 @@ int __cdecl item_touch(void* item,unsigned bytes,void* other,unsigned other_byte
     }
     if(!b->remove||!b->remove(b->context,item))return 0;o->removed=1;return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo};
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

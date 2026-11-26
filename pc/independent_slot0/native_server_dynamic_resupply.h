@@ -236,6 +236,18 @@ struct AmmoPickupResult {
     PlayerAmmoResult native_grant;
 };
 inline constexpr unsigned vial_vtable=0x2246bc94u,vial_secondary=0x2246bc6cu;
+struct PlayerHealthBindings {
+    void* context;
+    void* player;
+    unsigned bytes;
+    // 222b6260 event observes pre-clamp health and raw delta.
+    int (__cdecl *health_event)(void*,void*,int,int,int,unsigned) noexcept;
+    int (__cdecl *fade)(void*,void*,const unsigned char*,float,float,int) noexcept;
+};
+struct PlayerHealthResult {
+    int before,maximum_before,maximum_after,converted,raw_health,raw_delta,event_type,after,delta,accepted;
+    unsigned damage_mask_written,maximum_reset,overheal_flag_cleared,event_called,fade_called,completed;
+};
 struct VialPickupBindings {
     void* context;
     int (__cdecl *base_construct)(void*,void*) noexcept;
@@ -250,11 +262,13 @@ struct VialPickupBindings {
     int (__cdecl *respawn)(void*,void*) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
     bool native_singleplayer_rules;
+    const PlayerHealthBindings* native_heal;
 };
 struct VialPickupResult {
     unsigned constructed,value_read,heal_called,message,sound,rule_called,respawned,removed,accepted,completed;
     float value;
     int healed,rule;
+    PlayerHealthResult native_heal;
 };
 inline constexpr unsigned item_touch_token=0x22175770u;
 struct ItemTouchBindings {
@@ -318,6 +332,7 @@ struct Api {
     // 22175770: native default CItem touch, on supported pickup classes.
     int (__cdecl *item_touch)(void*,unsigned,void*,unsigned,const ItemTouchBindings*,ItemTouchResult*) noexcept;
     int (__cdecl *player_give_ammo)(void*,int,int,bool,const PlayerAmmoBindings*,PlayerAmmoResult*) noexcept;
+    int (__cdecl *player_take_health)(void*,float,unsigned,const PlayerHealthBindings*,PlayerHealthResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

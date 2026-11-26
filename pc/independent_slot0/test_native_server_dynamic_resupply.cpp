@@ -719,5 +719,54 @@ int main(int argc,char** argv){
     ItemTouchBindings native_tb{};native_tb.context=&tf;native_tb.native_singleplayer_rules=true;native_tb.ammo=&native_ap;native_tb.remove=tb.remove;
     assert(api->item_touch(pf.item,sizeof(pf.item),gf.player,sizeof(gf.player),&native_tb,&tr)&&tr.completed&&tr.accepted&&tr.ammo.requested==5&&tr.ammo.granted==3&&tr.ammo.native_grant.after==80&&tr.ammo.rule==6&&tr.rule==6&&tr.ammo.removed&&tr.removed&&tr.picked_up);
     assert(EvalFixture::rd(gf.player,0x650)==80&&!EvalFixture::rd(pf.item,8)&&!EvalFixture::rd(pf.item,0x7c));
+    // Both authenticated player tables share the original heal override.
+    struct HealFixture {
+        alignas(4) unsigned char player[0x12a4]{};
+        unsigned events=0,fades=0;int type=0,hp=0,delta=0;unsigned flags=0;
+    } hf2;
+    PlayerHealthBindings ph{};ph.context=&hf2;ph.player=hf2.player;ph.bytes=sizeof(hf2.player);
+    ph.health_event=[](void* p,void* a,int type,int hp,int delta,unsigned flags) noexcept ->int{
+        auto& q=*static_cast<HealFixture*>(p);assert(a==q.player&&EvalFixture::rd(a,0x9c)==unsigned(hp));++q.events;q.type=type;q.hp=hp;q.delta=delta;q.flags=flags;return 1;
+    };
+    ph.fade=[](void* p,void* a,const unsigned char* rgba,float duration,float hold,int flags) noexcept ->int{
+        auto& q=*static_cast<HealFixture*>(p);assert(a==q.player&&rgba[0]==0&&rgba[1]==0&&rgba[2]==128&&rgba[3]==64&&duration==1.f&&hold==.5f&&flags==1);++q.fades;return 1;
+    };
+    EvalFixture::u(hf2.player,0,0x224aec3c);EvalFixture::u(hf2.player,0x16c,0x4321);EvalFixture::u(hf2.player,0x94,2);
+    EvalFixture::u(hf2.player,0x98,100);EvalFixture::u(hf2.player,0x9c,95);EvalFixture::u(hf2.player,0x9d0,0xffffffffu);
+    PlayerHealthResult phr{};
+    assert(api->player_take_health(hf2.player,10.75f,0,&ph,&phr)&&phr.completed&&phr.accepted&&phr.converted==10&&phr.raw_health==105&&phr.raw_delta==10&&phr.event_type==2&&phr.after==100&&phr.delta==5&&hf2.events==1&&hf2.fades==1);
+    assert(!phr.maximum_reset&&EvalFixture::rd(hf2.player,0x9c)==100);
+    assert(api->player_take_health(hf2.player,10,0,&ph,&phr)&&phr.completed&&!phr.accepted&&!phr.event_called&&hf2.events==1);
+    EvalFixture::u(hf2.player,0x98,150);EvalFixture::u(hf2.player,0x9c,110);
+    assert(api->player_take_health(hf2.player,10,0x4002,&ph,&phr)&&phr.completed&&phr.maximum_reset&&!phr.accepted&&phr.maximum_after==100&&EvalFixture::rd(hf2.player,0x9d0)==0xffffbffdu);
+    EvalFixture::u(hf2.player,0x98,150);EvalFixture::u(hf2.player,0x12a1,1);
+    assert(api->player_take_health(hf2.player,10,0,&ph,&phr)&&phr.accepted&&phr.after==120&&phr.overheal_flag_cleared&&!phr.maximum_reset);
+    EvalFixture::u(hf2.player,0x98,100);EvalFixture::u(hf2.player,0x9c,50);
+    assert(api->player_take_health(hf2.player,.75f,0,&ph,&phr)&&phr.completed&&!phr.accepted&&phr.event_called&&phr.raw_delta==0&&!phr.fade_called);
+    EvalFixture::u(hf2.player,0x94,1);
+    assert(api->player_take_health(hf2.player,10,0,&ph,&phr)&&phr.completed&&!phr.event_called&&!phr.accepted);
+    EvalFixture::u(hf2.player,0x94,2);EvalFixture::u(hf2.player,0x16c,0);
+    assert(api->player_take_health(hf2.player,10,0,&ph,&phr)&&phr.completed&&!phr.event_called);
+    EvalFixture::u(hf2.player,0x16c,0x4321);EvalFixture::u(hf2.player,0,0x2245222c);
+    assert(api->player_take_health(hf2.player,25,0,&ph,&phr)&&phr.accepted&&phr.after==75&&phr.event_type==3);
+    // Actual health vial, no hosted heal function.
+    struct NativeVialFixture {HealFixture* h;unsigned messages=0,sounds=0,respawns=0,removes=0;} nvf{&hf2};
+    VialPickupBindings nvb{};nvb.context=&nvf;nvb.native_heal=&ph;nvb.engine_cvar=&cv;nvb.native_singleplayer_rules=true;
+    nvb.item_pickup=[](void* p,void* a,unsigned token) noexcept ->int{auto& q=*static_cast<NativeVialFixture*>(p);assert(a==q.h->player&&token==0);++q.messages;return 1;};
+    nvb.sound=[](void* p,void* a,unsigned,const char* n) noexcept ->int{auto& q=*static_cast<NativeVialFixture*>(p);assert(a==q.h->player&&!std::strcmp(n,"HealthVial.Touch"));++q.sounds;return 1;};
+    nvb.respawn=[](void* p,void*) noexcept ->int{++static_cast<NativeVialFixture*>(p)->respawns;return 1;};
+    ItemTouchBindings nvt{};nvt.context=&nvf;nvt.native_singleplayer_rules=true;nvt.vial=&nvb;
+    nvt.remove=[](void* p,void*) noexcept ->int{++static_cast<NativeVialFixture*>(p)->removes;return 1;};
+    cv.roots[3].SetFloat(10.f);cv.calls=0;
+    EvalFixture::u(vf.item,8,123);EvalFixture::u(vf.item,0x7c,item_touch_token);
+    assert(api->item_touch(vf.item,sizeof(vf.item),hf2.player,sizeof(hf2.player),&nvt,&tr)&&tr.completed&&tr.accepted&&tr.vial.native_heal.after==85&&tr.vial.respawned&&tr.removed&&nvf.messages==1&&nvf.sounds==1&&nvf.respawns==1&&nvf.removes==1);
+    // All negative health-event mask precedence, including unusual
+    // negative cvar values, is recovered rather than guessed.
+    constexpr unsigned dmg[]{2,0x91,4,0x1200008,0x30000,0x100000,0x100,0x20,0x10000040,0x4000,0x400000,0,0x102};
+    constexpr int cats[]{8,7,13,9,11,15,10,16,18,17,12,6,8};
+    for(unsigned i=0;i<sizeof(dmg)/sizeof(dmg[0]);++i){
+        EvalFixture::u(hf2.player,0x9c,50);
+        assert(api->player_take_health(hf2.player,-2.75f,dmg[i],&ph,&phr)&&phr.completed&&phr.accepted&&phr.after==48&&phr.raw_delta==-2&&phr.event_type==cats[i]&&phr.fade_called);
+    }
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
