@@ -1502,4 +1502,28 @@ struct ServerNpcGruntStateSignalApi {
     int (__cdecl *run)(void*,unsigned,int,const ServerNpcGruntStateSignalBindings*,ServerNpcGruntStateSignalResult*) noexcept;
 };
 using GetServerNpcGruntStateSignalApi=const ServerNpcGruntStateSignalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_combat_reactions_export[]="SiN_GetServerNpcGruntCombatReactionsApi";
+struct ServerNpcGruntCombatDamageBindings {
+    ServerNpcGruntDamagePainPrefixBindings damage;
+    ServerNpcGruntStateSignalBindings signal;
+};
+struct ServerNpcGruntCombatDamageResult {
+    ServerNpcGruntDamagePainPrefixResult damage;
+    ServerNpcGruntStateSignalResult signal;
+};
+struct ServerNpcGruntCombatDeathBindings {
+    ServerNpcGruntDeathPreparedEventBindings death;
+    ServerNpcGruntStateSignalBindings signal;
+};
+struct ServerNpcGruntCombatDeathResult {
+    ServerNpcGruntDeathPreparedEventResult death;
+    ServerNpcGruntStateSignalResult signal;
+};
+struct ServerNpcGruntCombatReactionsApi {
+    std::uint32_t version,size;
+    int (__cdecl *damage)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntCombatDamageBindings*,ServerNpcGruntCombatDamageResult*) noexcept;
+    int (__cdecl *death)(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntCombatDeathBindings*,ServerNpcGruntCombatDeathResult*) noexcept;
+};
+using GetServerNpcGruntCombatReactionsApi=const ServerNpcGruntCombatReactionsApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

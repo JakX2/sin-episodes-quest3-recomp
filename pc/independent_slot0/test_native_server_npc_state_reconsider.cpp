@@ -1878,6 +1878,20 @@ int main(int argc,char** argv){
         assert(!api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&!o.tail_required&&q.cast==3);
         f.put(q.actor,0x9c4,0u);f.put(q.actor,0xbc,0u);
         assert(api->run(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),10,&b,&o)&&o.tail_required&&o.pain_called&&o.pain.deadline_written&&q.speech==1&&q.cast==3);
+        auto gc=reinterpret_cast<GetServerNpcGruntCombatReactionsApi>(GetProcAddress(s,server_npc_grunt_combat_reactions_export));
+        assert(gc&&!GetProcAddress(c,server_npc_grunt_combat_reactions_export)&&!gc(0,sizeof(ServerNpcGruntCombatReactionsApi))&&!gc(1,0));
+        const auto* combat=gc(1,sizeof(ServerNpcGruntCombatReactionsApi));assert(combat);
+        ServerNpcGruntCombatDamageBindings cb{};cb.damage=b;cb.damage.state_signal=nullptr;cb.signal.context=&q;
+        cb.signal.refresh=[](void* p,void* a) noexcept -> int{
+            auto& q=*static_cast<DamageFixture*>(p);assert(a==q.actor&&!DamageFixture::rd(a,0x868));++q.signal;return 1;};
+        cb.signal.output=[](void* p,void* a,unsigned off) noexcept -> int{
+            auto& q=*static_cast<DamageFixture*>(p);assert(a==q.actor&&q.signal==1&&off==0xbc8);return 1;};
+        q.signal=0;f.put(q.actor,0x868,1u);q.base=0;
+        ServerNpcGruntCombatDamageResult co{};
+        assert(combat->damage(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),11,&cb,&co)&&co.damage.completed&&!co.damage.signal_called&&!co.signal.completed&&DamageFixture::rd(q.actor,0x868)==1);
+        q.base=1;
+        assert(combat->damage(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),12,&cb,&co)&&co.damage.tail_required&&co.damage.signal_called&&co.signal.completed&&co.signal.state_cleared&&co.signal.output_called&&co.damage.pain.deadline_written&&q.speech==2&&q.signal==1);
+
     }
 
     {
@@ -2037,6 +2051,18 @@ int main(int argc,char** argv){
         q.selected=7;q.actor[0x200]=0;q.actor[0x1f0]=0;q.dirty=0x20;
         static ServerNpcGruntDeathPreparedEventResult dr;
         assert(api->run(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),30,&db,&dr)&&dr.event.completed&&dr.prepare.completed&&dr.prepare.external_dirty==2&&dr.life_external_dirty==1&&q.dirty==0x21&&dr.event.prefix.life_changed);
+        auto gc=reinterpret_cast<GetServerNpcGruntCombatReactionsApi>(GetProcAddress(s,server_npc_grunt_combat_reactions_export));
+        assert(gc);const auto* combat=gc(1,sizeof(ServerNpcGruntCombatReactionsApi));assert(combat);
+        static ServerNpcGruntCombatDeathBindings cb;
+        cb.death=db;cb.death.event.prefix.state_signal=nullptr;
+        cb.signal.context=&q;cb.signal.dirty_storage=b.dirty_storage;
+        cb.signal.refresh=[](void* p,void* a) noexcept -> int{
+            auto& q=PrepFixture::self(p);assert(a==q.actor&&!PrepFixture::rd(a,0x868)&&!(PrepFixture::rd(a,0x78)&0x20)&&!PrepFixture::rd(a,0x8c));return 1;};
+        q.actor[0xa44]=0;f.put(q.actor,0x8c,0);f.put(q.actor,0x868,1);f.put(q.actor,0x78,0x20u);
+        f.put(q.actor,0x890,-1);f.put(q.actor,0x894,0u);q.dirty=0x20;
+        static ServerNpcGruntCombatDeathResult co;
+        assert(combat->death(q.actor,sizeof(q.actor),0x1001u,q.damage,sizeof(q.damage),31,&cb,&co)&&co.death.event.completed&&co.death.prepare.completed&&co.signal.completed&&co.signal.state_cleared&&co.signal.flag_cleared&&co.signal.external_dirty==1&&!co.signal.output_called&&co.death.life_external_dirty==1&&q.dirty==0x21);
+
     }
 
     {
