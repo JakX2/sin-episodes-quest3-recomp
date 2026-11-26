@@ -1115,7 +1115,8 @@ int native_break_input(void* a,unsigned n,const ServerEntityInputData& d,const S
     if(!svc.non_solid(svc.context,a,rd<std::uint16_t>(a,0x120)|4u))return 0;
     ++o.break_non_solid;
     ServerNpcBreakEffectRequest req{};
-    req.actor=a;req.activator=d.activator;req.physics=physics;
+    // The input wrapper passes activator, but 220422d0 does not use it.
+    (void)d;req.actor=a;req.physics=physics;
     if(physics){
         if(!svc.physics_snapshot(svc.context,physics,req.velocity,req.angular_velocity,req.origin,req.angles))return 0;
         ++o.break_physics_snapshot;
