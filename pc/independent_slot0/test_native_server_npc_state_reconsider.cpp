@@ -3649,5 +3649,61 @@ int main(int argc,char** argv){
         f.put(q.a,0x8a0,0x2002u);f.put(q.a,0x858,1);assert(run(100000)&&o.release_called&&o.navigation_cleared&&o.ideal_written&&o.changed_called&&o.reset_called&&q.released==1);
         assert(run(100000)&&!o.release_called&&!o.changed_called&&o.reset_called);
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntFollowSearchApi>(GetProcAddress(s,server_npc_grunt_follow_search_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_follow_search_export)&&!g(0,sizeof(ServerNpcGruntFollowSearchApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntFollowSearchApi));assert(api);
+        struct SearchFixture {
+            alignas(4) unsigned char a[0x1088]{},raw[8]{},target[4]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            float sentinel[3]{1,2,3},memory=5,point[3]{4,5,6};
+            bool cast=false,predicate=false,prepare=true,facing=true;
+            int roll=1,count=3,index=2;unsigned emitted=0,turns=0,finishes=0;
+            static SearchFixture& self(void* p){return *static_cast<SearchFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.target);
+        ServerNpcGruntFollowSearchBindings b{};b.context=&q;b.events.context=&q;b.events.default_point=q.sentinel;
+        auto& busy=b.events.events;busy.context=&q;auto& rb=busy.events.events.events.events.events;rb.context=&q;
+        auto& gate=rb.events.events.gate;gate.actor_token=0x10000;auto& sb=gate.speech.speech.sentence;
+        sb.entries=q.entries;sb.count=2;sb.speech.original_vtable=0x2249aaa4;
+        rb.conditions.context=&q;rb.conditions.descriptor=[](void* p,void*,const void** d,unsigned* n) noexcept -> int{auto& q=SearchFixture::self(p);*d=q.desc;*n=sizeof(q.desc);return 1;};
+        rb.random_float=[](void*,float lo,float hi,double* v) noexcept -> int{assert(lo==2&&hi==4);*v=3;return 1;};
+        rb.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{auto& q=SearchFixture::self(p);assert((lo==1&&hi==4)||(lo==0&&hi==q.count));*v=lo==1?q.roll:q.index;return 1;};
+        b.events.origin=[](void* p,void* e,float* v) noexcept -> int{auto& q=SearchFixture::self(p);assert(e==q.target);std::memcpy(v,q.point,12);return 1;};
+        busy.owner_event=[](void* p,void* a,int ev,float v) noexcept -> int{auto& q=SearchFixture::self(p);assert(a==q.a&&ev==57&&!v);q.a[0xec0]=0;++q.emitted;return 1;};
+        b.target_cast=[](void* p,void* e,bool* v) noexcept -> int{auto& q=SearchFixture::self(p);assert(!e||e==q.target);*v=q.cast;return 1;};
+        b.memory_time=[](void* p,void*,float* v) noexcept -> int{*v=SearchFixture::self(p).memory;return 1;};
+        b.memory_point=[](void*,void*,float* v) noexcept -> int{v[0]=9;v[1]=8;v[2]=7;return 1;};
+        b.fallback_point=[](void*,void*,float* v) noexcept -> int{v[0]=11;v[1]=12;v[2]=13;return 1;};
+        b.target_predicate=[](void* p,void*,bool* v) noexcept -> int{*v=SearchFixture::self(p).predicate;return 1;};
+        b.peer_count=[](void* p,void*,int* v) noexcept -> int{*v=SearchFixture::self(p).count;return 1;};
+        b.orientation=[](void*,void*,float* v) noexcept -> int{v[0]=0;v[1]=90;v[2]=0;return 1;};
+        b.direction=[](void*,const float* ang,float* v) noexcept -> int{assert(ang[1]==270);v[0]=0;v[1]=-1;v[2]=0;return 1;};
+        b.prepare_point=[](void* p,void* c,float*,bool* v) noexcept -> int{auto& q=SearchFixture::self(p);assert(c==q.a+0xeb8&&!q.a[0xeb8+0x4c]);*v=q.prepare;return 1;};
+        b.facing=[](void* p,void*,const float*,bool* v) noexcept -> int{*v=SearchFixture::self(p).facing;return 1;};
+        b.turn=[](void* p,void*,const float*,float v) noexcept -> int{assert(v==30);++SearchFixture::self(p).turns;return 1;};
+        b.finish_turn=[](void* p,void*) noexcept -> int{++SearchFixture::self(p).finishes;return 1;};
+        f.put(q.desc,0x34,1000000000);f.put(q.desc,0x38,0);f.put(q.desc,0x3c,100);
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xc18,0x10eb8u);f.put(q.a,0xeb8,0x223f6b7cu);f.put(q.a,0xebc,0x10000u);f.put(q.a,0xec4,0x10c14u);
+        f.put(q.a,0xeb8+0x14,0x1001u);f.put(q.a,0xeb8+0xbc,2.f);f.put(q.a,0xeb8+0xc0,4.f);
+        ServerNpcGruntFollowSearchResult o{};
+        auto run=[&](int id){f.put(q.raw,0,id);return api->run(q.a,sizeof(q.a),q.raw,sizeof(q.raw),10,&b,&o);};
+        f.put(q.a,0x850,3);q.memory=5.01f;
+        assert(run(100001)&&o.entered&&o.memory_selected&&o.point[0]==9&&o.reset_called);
+        q.memory=5;assert(run(100005)&&!o.memory_selected&&o.fallback_called&&o.point[0]==11);
+        q.cast=true;assert(run(100001)&&o.cast_result&&!o.fallback_called&&o.point[0]==1);q.cast=false;
+        f.put(q.a,0x850,1);q.a[0xeb8+0x4c]=1;q.predicate=true;
+        assert(run(100005)&&o.target_called&&o.point[0]==4&&o.reset_called);q.predicate=false;
+        f.put(q.a,0xeb8+0xac,11.f);
+        assert(run(100001)&&o.initial_restart&&o.restarts==1&&o.early_reset&&!o.point_prepared);
+        f.put(q.a,0xeb8+0xac,0.f);f.put(q.a,0xeb8+0xb8,10.f);
+        q.roll=1;assert(run(100001)&&o.restarts==1&&o.fallback_called&&o.reset_called);
+        f.put(q.a,0xeb8+0xb8,10.f);q.roll=2;assert(run(100005)&&o.target_called&&o.point[0]==4);
+        f.put(q.a,0xeb8+0xb8,10.f);q.roll=3;q.facing=false;
+        assert(run(100001)&&o.direction_called&&o.peer_index==2&&o.point[1]==-128&&o.turn_called&&o.finish_called&&!o.reset_called);
+        f.put(q.a,0xeb8+0xb8,10.f);q.prepare=false;
+        assert(run(100005)&&o.synthetic_called&&!o.point_ok&&!o.facing_called&&q.emitted==1&&q.a[0xec0]);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
