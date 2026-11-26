@@ -430,6 +430,7 @@ int main(int argc,char** argv){
         ServerEntitySearchBindings seq_search{};seq_search.context=&sf;seq_search.extent=extent;seq_search.head=sf.entries;seq_search.string_text=strings;
         auto seq_input=input;seq_input.timer=nullptr;seq_input.string_text=strings;
         std::memset(camp.root,0,sizeof(camp.root));std::memset(camp.events,0,sizeof(camp.events));camp.event_alloc=camp.event_releases=0;
+        const auto saved_nonempty=camp.queue.string_nonempty;
         camp.queue.string_nonempty=[](void*,unsigned token,bool* yes) noexcept ->int{*yes=token>=301&&token<=304;return 1;};
         auto seq_events=events;seq_events.entities.entries=sf.entries;seq_events.entities.count=2;seq_events.native_input=&seq_input;
         seq_events.native_search=&seq_search;seq_events.find_named=nullptr;seq_events.accept=nullptr;
@@ -464,6 +465,10 @@ int main(int argc,char** argv){
         ScriptedSequenceFrameBindings seq_frame{&primary,&route,nullptr};
         ScriptedSequenceFrameResult sr{};
         auto frame=b;frame.logic_timer=nullptr;frame.logic_auto=nullptr;frame.queue=&seq_queue;
+        // The shared fixture normally visits slots 2,0,1. Preserve it:
+        // leaving index zero here would visit the later logic_auto twice.
+        const auto saved_index=f.order[0];
+        void* const saved_slot=f.slots[0];
         f.slots[0]=sf.seq;f.order[0]=0;
         frame.active=[](void* p,ActiveList* list) noexcept ->int{
             auto& f=*static_cast<Fixture*>(p);assert(f.depth==1);*list={f.order,1,4,f.slots,3};return 1;
@@ -490,6 +495,8 @@ int main(int argc,char** argv){
         assert(tick()&&sr.last.no_think&&sr.events.cancelled==1&&sf.cancels==1&&word(sf.npc,0x970)==0xffffffffu&&word(sf.seq,0x3d0)==0xffffffffu&&camp.event_releases==2&&out.cleanup_calls==3&&!camp.locked&&!f.depth);
         // Original owner bindings were never modified by scoped rebinding.
         assert(!c.entries&&!pos.entries&&c.now==&sf.stale_now&&c.interval==&sf.stale_interval&&sf.stale_now==-100.f);
+        f.order[0]=saved_index;f.slots[0]=saved_slot;
+        camp.queue.string_nonempty=saved_nonempty;
     }
 #include "test_native_game_frame_deferred.inc"
     FreeLibrary(server);FreeLibrary(client);
