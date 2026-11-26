@@ -3160,6 +3160,37 @@ struct ServerNpcGruntAdaptiveSpreadApi {
     int (__cdecl *threshold)(void*,unsigned,void*,float,const ServerNpcGruntAdaptiveSpreadBindings*,ServerNpcGruntAdaptiveSpreadResult*) noexcept;
 };
 using GetServerNpcGruntAdaptiveSpreadApi=const ServerNpcGruntAdaptiveSpreadApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_schedule_cone_export[]="SiN_GetServerNpcGruntScheduleConeApi";
+struct ServerNpcGruntScheduleConeServices {
+    const ServerNpcGruntScheduleLineServices* line;
+    const ServerNpcGruntAdaptiveSpreadBindings* spread;
+    ServerNpcEnemyMemoryBindings squad_storage;
+    void* context;
+    int (__cdecl *normalize)(void*,float*,float*) noexcept; // original imported VectorNormalize, returns length
+    int (__cdecl *hull_width)(void*,int,float*) noexcept; // 22066270, initialized hull table
+    int (__cdecl *player_count)(void*,int*) noexcept;
+    int (__cdecl *player_at)(void*,int,void**) noexcept; // 22286c70, 1-based
+    int (__cdecl *entity_link)(void*,void*,bool*) noexcept; // +fc subobject +2c
+    int (__cdecl *excluded)(void*,void*,bool*) noexcept; // +694 for unreviewed entity class
+};
+struct ServerNpcGruntScheduleConePredicateResult {
+    float horizontal,target_length,candidate_length,spatial,width;
+    double dot;
+    unsigned completed,range_rejected,length_rejected,dot_accepted,behind,width_called,blocked;
+};
+struct ServerNpcGruntScheduleConeResult {
+    ServerNpcGruntAdaptiveSpreadResult spread;
+    ServerNpcGruntScheduleConePredicateResult predicate;
+    unsigned completed,allowed,player_visited,player_skipped,player_blocked,squad_visited,squad_skipped,squad_blocked;
+};
+struct ServerNpcGruntScheduleConeApi {
+    std::uint32_t version,size;
+    int (__cdecl *predicate)(void*,const float*,const float*,const float*,float,float,const ServerNpcGruntAssaultAdmissionBindings*,const ServerNpcGruntScheduleConeServices*,ServerNpcGruntScheduleConePredicateResult*) noexcept;
+    int (__cdecl *filter)(void*,unsigned,void*,unsigned,const float*,const float*,float,bool,const ServerNpcGruntAssaultAdmissionBindings*,const ServerNpcGruntScheduleConeServices*,ServerNpcGruntScheduleConeResult*) noexcept;
+    int (__cdecl *acquire)(void*,unsigned,int,float,const ServerNpcGruntScheduleAcquireBindings*,const ServerNpcGruntScheduleConeServices*,ServerNpcGruntScheduleAcquireResult*,ServerNpcGruntAssaultArbitrationResult*) noexcept;
+};
+using GetServerNpcGruntScheduleConeApi=const ServerNpcGruntScheduleConeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 int grunt_schedule_line_jet_internal(void*,unsigned,float,const ServerNpcGruntJetSelectorBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*,ServerNpcGruntSelectorTailResult*,ServerNpcGruntCombatSelectorResult*,ServerNpcGruntJetSelectorResult*,ServerNpcGruntJetSelectorResult*) noexcept;
 int grunt_schedule_line_failure_internal(void*,unsigned,float,const ServerNpcGruntScheduleRequestBindings*,const ServerNpcGruntScheduleLineServices*,ServerNpcGruntScheduleRequestResult*) noexcept;
 }
