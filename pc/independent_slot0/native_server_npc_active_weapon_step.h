@@ -246,10 +246,15 @@ struct ServerEntityEventServiceBindings {
     int (__cdecl *missing)(void*,std::uint32_t target,std::uint32_t input,void* caller) noexcept;
     const ServerEntitySearchBindings* native_search;
     const ServerEntityAcceptInputBindings* native_input;
+    // Live engine globals, optional. Owner retains stable storage for this
+    // synchronous call; steps remains the authoritative budget pointer.
+    const float* live_now;
+    const std::uint8_t* live_single_step;
 };
 struct ServerEntityEventServiceResult {
     unsigned completed,events,deliveries,named,direct,classname,missing,removed,locks,step_stopped,future_stopped;
     unsigned native_named_searches,native_class_searches,native_inputs,rejected_inputs,foreign_inputs;
+    unsigned clock_reads,step_reads,steps_consumed;
 };
 struct ServerEntityEventServiceApi {
     std::uint32_t version,size;
