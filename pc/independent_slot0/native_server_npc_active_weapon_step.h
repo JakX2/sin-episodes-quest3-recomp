@@ -132,6 +132,22 @@ using GetServerNpcOuterCadenceApi=const ServerNpcOuterCadenceApi* (__cdecl *)(st
 // Unnamed Jetpack death context only: original addresses are identity
 // tokens in independent actor storage, never executable host pointers.
 inline constexpr char server_npc_jetpack_primary_think_export[]="SiN_GetServerNpcJetpackPrimaryThinkApi";
+// Native parameters of 22366980 and 22365a13/22365b3d; generic
+// engine explosion and temporary-entity submission remain external.
+struct ServerNpcJetDeathEffectBindings {
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *center)(void*,void*,float*) noexcept;
+    int (__cdecl *burst)(void*,const float*,const float*,void*,void*,int,int,unsigned,float,int) noexcept; // 22130df0
+    int (__cdecl *light)(void*,const float*,int,int,int,int,float,float,float) noexcept; // live temporary scope, +48
+};
+struct ServerNpcJetDeathEffectResult {
+    float burst_center[3],angles[3],light_center[3];
+    int magnitude,radius;
+    unsigned flags,refreshed,centers,burst,light,completed;
+    float extra;
+};
 struct ServerNpcJetpackPrimaryThinkBindings {
     ServerNpcOuterCadenceBindings cadence;
     ServerWeaponActivityBindings entities;
@@ -143,6 +159,7 @@ struct ServerNpcJetpackPrimaryThinkBindings {
     int (__cdecl *scope)(void*,void*,bool) noexcept; // 2221a030 engine enter/leave
     int (__cdecl *remove)(void*,void*) noexcept; // deferred 22286bf0; actor bytes remain live
     int (__cdecl *positive_health_warning)(void*,void*) noexcept; // optional diagnostic
+    const ServerNpcJetDeathEffectBindings* effects;
 };
 struct ServerNpcJetpackPrimaryThinkResult {
     ServerNpcOuterCadenceResult clear,reschedule;
@@ -150,6 +167,7 @@ struct ServerNpcJetpackPrimaryThinkResult {
     float recorded_time,last_time;
     std::uint32_t token;
     unsigned completed,no_think,not_due,recorded,entered,closed,death_called,installed,rescheduled,removed,health_zeroed;
+    ServerNpcJetDeathEffectResult effects;
 };
 struct ServerNpcJetpackPrimaryThinkApi {
     std::uint32_t version,size;
@@ -439,6 +457,7 @@ struct ServerNpcInputJetThinkScheduleBindings {
     const ServerNpcGruntSentenceRequestBindings* sentence_request;
     const ServerNpcInputJetDeathIgnitionBindings* ignition;
     const ServerNpcInputJetDeathPickupBindings* pickup;
+    const ServerNpcJetDeathEffectBindings* effects;
 };
 struct ServerNpcInputHealthDispatchBindings {
     void* context;
@@ -514,6 +533,7 @@ struct ServerEntityAcceptInputResult {
     unsigned health_jet_ignition_native,health_jet_ignition_attribution,health_jet_ignition_base;
     unsigned health_jet_pickup_native,health_jet_pickup_refreshed,health_jet_pickup_created,health_jet_pickup_positioned,health_jet_pickup_oriented,health_jet_pickup_owner,health_jet_pickup_spawned;
     float health_jet_pickup_center[3],health_jet_pickup_angles[3];
+    ServerNpcJetDeathEffectResult health_jet_effects;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
