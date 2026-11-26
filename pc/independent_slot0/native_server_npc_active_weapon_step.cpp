@@ -254,7 +254,7 @@ struct OuterWakeRoute {
     const ServerNpcOuterWakeUpdateBindings& bindings;
     ServerNpcOuterWakeUpdateResult& result;
 };
-bool native_outer_wake(void*,unsigned,std::uint32_t,bool,const ServerNpcActiveWeaponStepBindings&,const OuterWakeRoute&) noexcept;
+bool native_outer_wake(void*,unsigned,std::uint32_t,bool,float,const ServerNpcActiveWeaponStepBindings&,const OuterWakeRoute&) noexcept;
 template<class Binding,class Step,class Execute>
 int outer_run(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const Binding* b,const ServerNpcActiveWeaponStepBindings* base,const ServerNpcOuterUpdateBindings* outer,Step* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out,bool jet,Execute execute,const OuterWakeRoute* wake_route=nullptr) noexcept {
     if(!out||!step||!tail)return 0;
@@ -281,7 +281,7 @@ int outer_run(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float inte
     if(rd<int>(a,0x868)>0){
         out->wake_called=1;
         if(wake_route){
-            if(!native_outer_wake(a,n,vt,pvs,*base,*wake_route))return 0;
+            if(!native_outer_wake(a,n,vt,pvs,in->now,*base,*wake_route))return 0;
         }else if(!outer->wake||!outer->wake(outer->context,a,pvs))return 0;
     }
     if(rd<int>(a,0x85c)>=4||rd<int>(a,0x868)!=0)out->sleep_bypassed=1;
@@ -1267,6 +1267,36 @@ bool self_damage_scale(void* a,const ServerNpcActivePostAnimationBindings& stora
     }
     return true;
 }
+// Shared native 22156900 -> 22156680 -> 22155300/22154600 path.
+// Actor identity is revalidated for every emission, including recursive
+// wake events from different squad members.
+bool fire_actor_output_queue(void* actor,unsigned extent,unsigned off,float now,const ServerWeaponActivityBindings& entities,const ServerEntityNativeOutputQueueBindings& queue,ServerEntityVoidOutputResult& result) noexcept {
+    if(!actor||extent<0x37c||off>extent||extent-off<0x18||!queue.actions||!queue.queue||!std::isfinite(now)||
+       entities.count>sin_independent::kEntityHandleCapacity||(entities.count&&!entities.entries))return false;
+    const unsigned handle=rd<unsigned>(actor,0x378);
+    if(rd<unsigned>(actor,off+0x14)&&sin_independent::EntityHandleView(entities.entries,entities.count).Resolve(handle)!=actor)return false;
+    struct Context {void* actor;unsigned handle;float now;const ServerEntityNativeOutputQueueBindings* queue;} ctx{actor,handle,now,&queue};
+    ServerEntityVoidOutputBindings actions{};actions.context=&ctx;
+    actions.resolve=[](void* p,unsigned token,void** data,unsigned* bytes) noexcept -> int{
+        const auto& src=*static_cast<Context*>(p)->queue->actions;
+        return src.resolve&&src.resolve(src.context,token,data,bytes);
+    };
+    actions.release=[](void* p,unsigned token,void* data) noexcept -> int{
+        const auto& src=*static_cast<Context*>(p)->queue->actions;
+        return src.release&&src.release(src.context,token,data);
+    };
+    actions.debug_action=[](void* p,void* caller,const ServerEntityVoidOutputAction* action) noexcept -> int{
+        const auto& src=*static_cast<Context*>(p)->queue->actions;
+        return src.debug_action&&src.debug_action(src.context,caller,action);
+    };
+    actions.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* action) noexcept -> int{
+        const auto& q=*static_cast<Context*>(p);const auto& queue=*q.queue;
+        if(activator!=q.actor||caller!=q.actor)return 0;
+        ServerEntityNamedEventQueueResult result{};
+        return enqueue_named_event(queue.sentinel,queue.sentinel_bytes,queue.sentinel_token,q.now,q.handle,q.handle,action,queue.queue,&result);
+    };
+    return fire_void_output(static_cast<unsigned char*>(actor)+off,extent-off,actor,actor,extent,0.f,&actions,&result);
+}
 bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
     const auto& dispatch=*b.native_health;
     if(n<0xdb2||!b.storage||!std::isfinite(b.now)||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return false;
@@ -1297,12 +1327,12 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
     auto& identity=life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
     identity.entries=b.entities.entries;identity.count=b.entities.count;identity.speech.original_vtable=vt;
     struct OutputRoute {
-        void* actor;unsigned extent,handle;float now;
+        void* actor;unsigned extent;float now;
         const ServerNpcHealthOutputQueueBindings* queue;
         const ServerNpcGruntDamageOutputBindings* original;
         ServerEntityAcceptInputResult* result;
         const ServerWeaponActivityBindings* entities;
-    } route{a,n,rd<unsigned>(a,0x378),b.now,dispatch.outputs,&dispatch.life->combat.alive.chain.detail.damage.base.chain.outputs,&o,&b.entities};
+    } route{a,n,b.now,dispatch.outputs,&dispatch.life->combat.alive.chain.detail.damage.base.chain.outputs,&o,&b.entities};
     if(dispatch.outputs){
         if(!route.queue->actions||!route.queue->queue)return false;
         auto& outputs=life.combat.alive.chain.detail.damage.base.chain.outputs;
@@ -1310,31 +1340,10 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
         outputs.output=[](void* p,void* actor,unsigned off) noexcept -> int{
             auto& q=*static_cast<OutputRoute*>(p);
             if(actor!=q.actor||(off!=0xa48u&&off!=0xa78u&&off!=0xb68u&&off!=0xb80u)||q.extent<off+0x18)return 0;
-            if(sin_independent::EntityHandleView(q.entities->entries,q.entities->count).Resolve(q.handle)!=actor)return 0;
-            // All output services keep their original independent contexts.
-            ServerEntityVoidOutputBindings actions{};actions.context=&q;
-            actions.resolve=[](void* p,unsigned token,void** data,unsigned* bytes) noexcept -> int{
-                const auto& src=*static_cast<OutputRoute*>(p)->queue->actions;
-                return src.resolve&&src.resolve(src.context,token,data,bytes);
-            };
-            actions.release=[](void* p,unsigned token,void* data) noexcept -> int{
-                const auto& src=*static_cast<OutputRoute*>(p)->queue->actions;
-                return src.release&&src.release(src.context,token,data);
-            };
-            actions.debug_action=[](void* p,void* caller,const ServerEntityVoidOutputAction* action) noexcept -> int{
-                const auto& src=*static_cast<OutputRoute*>(p)->queue->actions;
-                return src.debug_action&&src.debug_action(src.context,caller,action);
-            };
-            actions.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* action) noexcept -> int{
-                auto& q=*static_cast<OutputRoute*>(p);const auto& queue=*q.queue;
-                if(activator!=q.actor||caller!=q.actor)return 0;
-                ServerEntityNamedEventQueueResult result{};
-                if(!enqueue_named_event(queue.sentinel,queue.sentinel_bytes,queue.sentinel_token,q.now,q.handle,q.handle,action,queue.queue,&result))return 0;
-                ++q.result->health_output_enqueued;return 1;
-            };
             ServerEntityVoidOutputResult result{};
-            if(!fire_void_output(static_cast<unsigned char*>(actor)+off,q.extent-off,actor,actor,q.extent,0.f,&actions,&result))return 0;
-            ++q.result->health_outputs;q.result->health_output_actions+=result.queued;q.result->health_output_removed+=result.removed;return 1;
+            if(!fire_actor_output_queue(actor,q.extent,off,q.now,*q.entities,*q.queue,result))return 0;
+            ++q.result->health_outputs;q.result->health_output_actions+=result.queued;q.result->health_output_removed+=result.removed;
+            q.result->health_output_enqueued+=result.queued;return 1;
         };
         // The authenticated original Grunt +120 returns false and the
         // CBaseNPC cast of self succeeds. Only local-player lookup is hosted.
@@ -1583,7 +1592,7 @@ int __cdecl accept_input(void* a,unsigned n,std::uint32_t vt,std::uint32_t input
             if(o->handler==0x220320b0u&&b->wake){
                 // InputWake replaces the inputdata stack argument with true,
                 // then tail-jumps to the authenticated +4d8 wake override.
-                auto bound=*b->wake;bound.storage=b->storage;bound.entities=b->entities;
+                auto bound=*b->wake;bound.storage=b->storage;bound.entities=b->entities;bound.output_now=b->now;
                 ServerNpcWakeTransitionResult local{};
                 auto* result=b->wake_result?b->wake_result:&local;
                 if(!wake_transition(a,n,vt,true,&bound,result))return 0;
@@ -1691,7 +1700,11 @@ bool wake_transition_impl(void* a,unsigned n,std::uint32_t vt,bool output,const 
         // 22156900 wraps a void variant and 22156680 returns immediately
         // when the output action-list head (+14) is null.
         if(b.output){if(!b.output(b.context,a,0xbc8u))return false;}
-        else if(rd<unsigned>(a,0xbdc))return false;
+        else if(b.output_queue){
+            ServerEntityVoidOutputResult result{};
+            if(!fire_actor_output_queue(a,n,0xbc8u,b.output_now,b.entities,*b.output_queue,result))return false;
+            ++o.output_queue_calls;o.output_queue_actions+=result.queued;o.output_queue_removed+=result.removed;
+        }else if(rd<unsigned>(a,0xbdc))return false;
         ++o.outputs;
     }
     if(!rd<std::uint8_t>(a,0x870)||!rd<unsigned>(a,0x9c4))return true;
@@ -1717,13 +1730,13 @@ int __cdecl wake_transition(void* a,unsigned n,std::uint32_t vt,bool output,cons
 int __cdecl wake_policy(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNpcWakePolicyBindings* b,ServerNpcWakePolicyResult* out) noexcept {
     return wake_policy_impl(a,n,vt,pvs,b,out,nullptr);
 }
-bool native_outer_wake(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNpcActiveWeaponStepBindings& base,const OuterWakeRoute& route) noexcept {
+bool native_outer_wake(void* a,unsigned n,std::uint32_t vt,bool pvs,float now,const ServerNpcActiveWeaponStepBindings& base,const OuterWakeRoute& route) noexcept {
     auto policy=route.bindings.policy;
     auto transition=route.bindings.transition;
     const auto& selection=base.schedule->scheduler.maintenance.selection;
     policy.conditions=selection.grunt.schedule.conditions;
     transition.entities=selection.state.entities;
-    transition.storage=route.bindings.outer.post;
+    transition.storage=route.bindings.outer.post;transition.output_now=now;
     const WakeTransitionRoute bound{transition,route.result.transition};
     if(!wake_policy_impl(a,n,vt,pvs,&policy,&route.result.policy,&bound))return false;
     route.result.transition.completed=1;
