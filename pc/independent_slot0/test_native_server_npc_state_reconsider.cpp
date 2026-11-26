@@ -75,6 +75,8 @@ int main(int argc,char** argv){
         assert(gn);const auto* native=gn(1,sizeof(ServerNpcGruntNativeStateApi));assert(native);
         ServerNpcGruntNativeStateBindings nb{};nb.original_vtable=0x2249aaa4u;
         ServerNpcGruntNativeStateResult nr{};auto direct=b;direct.state_query=nullptr;direct.state_changed=nullptr;
+        unsigned char saved_actor[sizeof(f.actor)],saved_schedule[sizeof(f.schedule)];
+        std::memcpy(saved_actor,f.actor,sizeof(f.actor));std::memcpy(saved_schedule,f.schedule,sizeof(f.schedule));
         f.put(f.actor,0x9c4,0u);f.put(f.actor,0x798,1u);
         for(int current:{1,2})for(unsigned flags=0;flags<4;++flags){
             std::memset(f.actor+0x7cc,0,32);f.put(f.actor,0x850,current);f.put(f.actor,0x858,current);
@@ -94,7 +96,7 @@ int main(int argc,char** argv){
         std::memset(f.actor+0x7cc,0,32);f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);
         assert(native->choose(f.actor,sizeof(f.actor),30.f,&direct,&nb,&nr)&&nr.state.ideal==4);
         assert(native->apply(f.actor,sizeof(f.actor),3,30.f,&direct,&nb,&nr)&&nr.state.changed&&f.get<int>(0x850)==3);
-        f.put(f.actor,0x850,1);f.put(f.actor,0x858,3);f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0x9c4,1u);f.condition(25);
+        std::memcpy(f.actor,saved_actor,sizeof(f.actor));std::memcpy(f.schedule,saved_schedule,sizeof(f.schedule));
     }
     auto ge=reinterpret_cast<GetServerNpcEnemyStateApi>(GetProcAddress(s,server_npc_enemy_state_export));
     assert(ge&&!GetProcAddress(c,server_npc_enemy_state_export)&&!ge(0,sizeof(ServerNpcEnemyStateApi))&&!ge(1,0));
