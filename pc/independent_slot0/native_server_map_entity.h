@@ -131,10 +131,14 @@ struct AutosaveBindings {
     // Do not infer this gate from the independent fixed-skill toggle.
     int (__cdecl *difficulty_gate)(void*,unsigned char*) noexcept;
     int (__cdecl *server_command)(void*,const char*) noexcept;
+    int (__cdecl *attachment_notice)(void*,void* attachment,void* actor) noexcept;
+    int (__cdecl *clear_attachment)(void*,void* actor) noexcept;
+    int (__cdecl *remove)(void*,void* actor) noexcept;
 };
 struct AutosaveResult {
     unsigned completed,handled,new_level_unit,gate_read,suppressed,command_queued;
     unsigned char gate;
+    unsigned attachment_notified,attachment_cleared,remove_requested;
 };
 inline constexpr unsigned navigation_vtable=0x2241ed04,navigation_listener_vtable=0x2241ecf0,navigation_extent=0x3a0;
 struct NavigationBindings {
@@ -401,6 +405,7 @@ struct Api {
     int (__cdecl *register_autosave)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_autosave)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
     int (__cdecl *autosave_input)(void*,unsigned,const char*,const AutosaveBindings*,AutosaveResult*) noexcept;
+    int (__cdecl *autosave_kill)(void*,unsigned,const sin_independent::EntityHandleEntry*,unsigned,const AutosaveBindings*,AutosaveResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
