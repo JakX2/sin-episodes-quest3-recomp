@@ -415,6 +415,18 @@ struct ServerNpcInputJetDeathIgnitionBindings {
     // 220f2210 base service, not the original NPC virtual wrapper.
     int (__cdecl *base)(void*,void*,float,int,void*,void*,float,int) noexcept;
 };
+// Original 223667bb..223667f1 health-vial rule branch, including
+// 22146c40's creation/finalization sequence. Engine owns actual entities.
+struct ServerNpcInputJetDeathPickupBindings {
+    void* context;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *center)(void*,void*,float*) noexcept;
+    int (__cdecl *create)(void*,const char*,int,void**) noexcept;
+    int (__cdecl *position)(void*,void*,const float*) noexcept;
+    int (__cdecl *orientation)(void*,void*,const float*) noexcept;
+    int (__cdecl *owner)(void*,void*,void*) noexcept;
+    int (__cdecl *spawn)(void*,void*) noexcept; // original 22287d80 accepts null
+};
 struct ServerNpcInputJetThinkScheduleBindings {
     const ServerNpcOuterCadenceBindings* cadence;
     float interval;
@@ -426,6 +438,7 @@ struct ServerNpcInputJetThinkScheduleBindings {
     const ServerNpcGruntSentenceBindings* sentence;
     const ServerNpcGruntSentenceRequestBindings* sentence_request;
     const ServerNpcInputJetDeathIgnitionBindings* ignition;
+    const ServerNpcInputJetDeathPickupBindings* pickup;
 };
 struct ServerNpcInputHealthDispatchBindings {
     void* context;
@@ -499,6 +512,8 @@ struct ServerEntityAcceptInputResult {
     ServerNpcGruntSentenceResult health_jet_sentence;
     ServerNpcGruntSentenceRequestResult health_jet_request;
     unsigned health_jet_ignition_native,health_jet_ignition_attribution,health_jet_ignition_base;
+    unsigned health_jet_pickup_native,health_jet_pickup_refreshed,health_jet_pickup_created,health_jet_pickup_positioned,health_jet_pickup_oriented,health_jet_pickup_owner,health_jet_pickup_spawned;
+    float health_jet_pickup_center[3],health_jet_pickup_angles[3];
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
