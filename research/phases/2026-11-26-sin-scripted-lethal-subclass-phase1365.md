@@ -1,0 +1,3 @@
+# Phase 1365: Lethal scripted subclass regression
+
+Extends the loaded AcceptInput/SetHealth fixture to lethal Elite and all four Jetpack primary vtables using independently reset actor snapshots. Elite checks grenade clear, ordered wrapper effects, shared native death, rule gate and close; classification remains an explicit fixture service. Jetpack sample 30 selects original mode 4, stores the damage record, enters dying state, calls hosted ignition/ragdoll, installs original think identity 22365760 and schedules using a second live time read. Verifies no shared terminal death yet. All engine effect services are still hosted; this is an integration regression, not campaign playability or fresh binary research. CI pending.

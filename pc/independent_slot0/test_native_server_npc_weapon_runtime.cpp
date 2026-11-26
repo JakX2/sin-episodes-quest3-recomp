@@ -2017,6 +2017,7 @@ int main(int argc,char** argv){
         float direction[3]{};std::vector<unsigned> outputs;
         alignas(4) unsigned char death_descriptor[0x48]{};
         std::vector<unsigned> death_order;
+        unsigned jet_ticks{};
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -2244,6 +2245,7 @@ int main(int argc,char** argv){
     f.put(f.actor,0xa18,0xffffffffu);f.put(f.actor,0x970,0xffffffffu);f.put(f.actor,0x9c4,0u);
     f.put(f.actor,0xc18,0u);f.put(f.actor,0xc28,0);f.put(f.actor,0x7cc,0u);
     f.actor[0xa44]=0;f.actor[0xcb1]=0;f.actor[0x200]=0;
+    alignas(4) unsigned char live_death_seed[sizeof(f.actor)];std::memcpy(live_death_seed,f.actor,sizeof(f.actor));
     assert(hd_run(0)&&catalog_o.health_ground_route&&catalog_o.health_ground_death&&catalog_o.health_life_called&&hd_ground_result.ground_called&&hd_ground_result.ground.completed);
     auto& death_event=hd_ground_result.ground.base.combat.death.event;
     assert(hd_ground_result.ground.attacker_class==11&&death_event.completed&&death_event.prefix.life_changed&&death_event.prefix.removal.removal.finalized&&death_event.state_written&&death_event.ideal_written);
@@ -2274,6 +2276,81 @@ int main(int argc,char** argv){
     hd_services.life_result=&sub_life; // nested result alias is supported
     assert(hd_run(80,0x2248c514u)&&sub_life.mode_blocked&&catalog_o.health_jet_route);
     hd_services.life_result=&hd_life_result;
+    // Lethal Elite input uses the already reconstructed effect wrapper,
+    // then shared death and the gated post helper. Classification is a
+    // test service, not a claim about the original Elite +d0 value.
+    auto reset_subclass=[&](unsigned vt){
+        std::memcpy(f.actor,live_death_seed,sizeof(f.actor));f.put(f.actor,0,vt);
+        f.put(f.actor,0xfdc,0xffffffffu);f.put(f.actor,0xfe4,0xffffffffu);f.put(f.actor,0xfe8,0xffffffffu);
+        f.put(f.actor,0x1028,0xffffffffu);f.actor[0xc44]=1;
+        hd.death_order.clear();hd.jet_ticks=0;
+    };
+    auto& sub_ground=hd_subclass.combat.combat.ground;
+    sub_ground.classification=[](void* p,void* e,int* cls) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(e==q.f->actor);*cls=11;return 1;
+    };
+    auto& elite=hd_subclass.elite;elite.context=&hd;
+    elite.effect_begin=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0xc38)==0&&q.f->get<int>(a,0x8c)==0);
+        q.death_order.push_back(10);return 1;
+    };
+    elite.effects=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);q.death_order.push_back(11);return 1;
+    };
+    elite.rule=[](void* p,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(q.f->get<int>(q.f->actor,0x850)==7);q.death_order.push_back(12);*yes=false;return 1;
+    };
+    elite.effect_end=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);q.death_order.push_back(13);return 1;
+    };
+    reset_subclass(0x2248df04u);f.put(f.actor,0xc38,4);
+    assert(hd_run(0,0x2248df04u)&&catalog_o.health_elite_route&&catalog_o.health_subclass_death&&sub_life.death_called);
+    const auto& elite_result=hd_subclass_result.elite;
+    assert(elite_result.completed&&elite_result.prior_grenades==4&&elite_result.grenades_cleared&&elite_result.effect_opened&&elite_result.effects_called&&elite_result.base_called&&elite_result.rule_checked&&!elite_result.rule_allowed&&elite_result.effect_closed);
+    assert((hd.death_order==std::vector<unsigned>{10,11,1,2,3,4,5,6,12,13}));
+    assert(f.get<int>(f.actor,0x9c)==-200&&f.get<int>(f.actor,0x8c)==1&&f.get<int>(f.actor,0x850)==7&&hd.deaths==1);
+    // Lethal Jetpack mode 4 enters the delayed route without calling
+    // shared terminal death; the original damage copy is retained at +102c.
+    auto& jet_mode=hd_subclass.combat.combat.jet;jet_mode.context=&hd;
+    jet_mode.random_int=[](void* p,int lo,int hi,int* v) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(lo==0&&hi==100);q.death_order.push_back(20);*v=30;return 1;
+    };
+    jet_mode.effect_rule=[](void* p,void* a,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x1004)==4);q.death_order.push_back(21);*yes=false;return 1;
+    };
+    jet_mode.force_mode3=[](void* p,bool* yes) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);q.death_order.push_back(22);*yes=false;return 1;
+    };
+    auto& jet_branch=hd_subclass.combat.branch;jet_branch.context=&hd;
+    jet_branch.powerdown=[](void* p,void* a,const char* cue) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&!std::strcmp(cue,"NPC_Jetpack.Powerdown"));q.death_order.push_back(23);return 1;
+    };
+    jet_branch.ignite=[](void* p,void* a,float time,int flags,void* x,void* y,float radius,int last) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&time==1.f&&flags==1&&!x&&!y&&radius==25.f&&last==1);q.death_order.push_back(24);return 1;
+    };
+    jet_branch.ragdoll=[](void* p,void* a,void* damage,const float* force) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&q.f->get<int>(a,0x8c)==1&&q.f->get<float>(damage,0x2c)==300.f&&!force[0]&&!force[1]&&!force[2]);q.death_order.push_back(25);return 1;
+    };
+    jet_branch.time=[](void* p,float* now) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);q.death_order.push_back(26);*now=90.f+float(q.jet_ticks++)*.125f;return 1;
+    };
+    jet_branch.install_think=[](void* p,void* a,unsigned token) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&token==0x22365760u&&q.f->get<float>(a,0xffc)==90.f);q.death_order.push_back(27);return 1;
+    };
+    jet_branch.schedule=[](void* p,void* a,float now) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor&&now==90.125f);q.death_order.push_back(28);return 1;
+    };
+    for(unsigned vt:{0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+        reset_subclass(vt);f.actor[0xbf]&=static_cast<unsigned char>(~8u);
+        assert(hd_run(0,vt)&&catalog_o.health_jet_route&&catalog_o.health_subclass_death&&sub_life.death_called);
+        const auto& mode=hd_subclass_result.combat.combat.jet;const auto& branch=hd_subclass_result.combat.branch;
+        assert(mode.completed&&mode.copied&&mode.sample==30&&mode.final_mode==4&&mode.tail_called);
+        assert(branch.completed&&branch.mode==4&&branch.cleanup&&branch.life_changed&&branch.ragdoll&&branch.installed&&branch.scheduled_called&&!branch.base_called);
+        assert(!hd_subclass_result.combat.combat.ground_called&&f.get<int>(f.actor,0x9c)==-200&&f.get<int>(f.actor,0x8c)==1&&!f.actor[0xa44]);
+        assert(f.get<float>(f.actor,0x1058)==300.f&&f.get<float>(f.actor,0x105c)==100.f&&f.get<unsigned>(f.actor,0x1054)==0x8002u);
+        assert((hd.death_order==std::vector<unsigned>{20,21,22,23,24,25,26,27,26,28})&&hd.jet_ticks==2);
+    }
+    std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
     assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);
     assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
     f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xd0,0xffffffffu);
