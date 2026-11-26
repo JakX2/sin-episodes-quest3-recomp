@@ -468,12 +468,23 @@ struct RemovalMetadataBindings {
     // this existing engine/physics boundary, not the native metadata leaf.
     int (__cdecl *cleanup_224)(void*,void*) noexcept;
 };
+// Original descendant snapshot and auxiliary handle vector removal.
+struct RemovalHierarchyBindings {
+    void* context;
+    // 22143610(0,0) and 221743f0: existing move/parent owner boundary.
+    int (__cdecl *before_collect)(void*,void*) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *warning)(void*,void*,unsigned) noexcept;
+    int (__cdecl *foreign_remove)(void*,void*) noexcept;
+    unsigned* handles;unsigned* count;unsigned capacity;
+};
 struct NativeRemovalUpdateBindings {
     const DeletionListenerBindings* listeners;
     void* context;
-    // Remainder starting at 2214471f, or 22144787 with metadata.
+    // Remainder at 2214471f, 22144787 with metadata, or 2214484f with hierarchy.
     int (__cdecl *tail)(void*,void*) noexcept;
     const RemovalMetadataBindings* metadata;
+    const RemovalHierarchyBindings* hierarchy;
 };
 struct DeferredRemovalBindings {
     void* context;
@@ -493,6 +504,7 @@ struct DeferredRemovalResult {
         entered,pre_called,released,closed,remaining,discarded;
     unsigned native_update,notified,unregistered,stale_notification;
     unsigned metadata,edict_flag_added,global_checked,global_dead,global_noop,cleanup_224,flags_cleared,dirty_marked;
+    unsigned hierarchy,children_collected,children_requested,children_native,children_foreign,handle_vector_removed,handle_vector_index;
 };
 // Original CBaseEntityList active and non-networked free chains.
 struct RegistryChain {sin_independent::EntityHandleEntry* head;sin_independent::EntityHandleEntry* tail;};
