@@ -2425,7 +2425,7 @@ struct ServerNpcGruntStandoffEventBindings {
     int (__cdecl *eye_point)(void*,void*,float*) noexcept; // +1c4
     // Original search entries; these perform engine navigation, not policy.
     int (__cdecl *arc)(void*,std::uint32_t,const float*,const float*,const float*,float,float,float*) noexcept;
-    int (__cdecl *near)(void*,std::uint32_t,const float*,const float*,float,float*,bool*) noexcept;
+    int (__cdecl *near_search)(void*,std::uint32_t,const float*,const float*,float,float*,bool*) noexcept;
     int (__cdecl *lateral)(void*,std::uint32_t,const float*,float*,bool*) noexcept;
     int (__cdecl *goal)(void*,void*,const float*,bool*) noexcept; // original 2202eb00, +14 mode0
     int max_clients;

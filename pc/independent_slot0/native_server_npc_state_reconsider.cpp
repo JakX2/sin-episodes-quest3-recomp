@@ -4416,9 +4416,9 @@ int standoff_event_route(void* a,unsigned n,void* p,unsigned extent,const void* 
             ++o.arc_calls;
         }
     }
-    auto near=[&](bool& yes){
+    auto near_search=[&](bool& yes){
         const auto token=read<unsigned>(a,0x9d8);
-        if(!b.near||!b.near(b.context,token,o.reference,o.eye,1024.f,o.point,&yes))return false;
+        if(!b.near_search||!b.near_search(b.context,token,o.reference,o.eye,1024.f,o.point,&yes))return false;
         ++o.near_calls;return true;
     };
     auto lateral=[&](bool& yes){
@@ -4428,12 +4428,12 @@ int standoff_event_route(void* a,unsigned n,void* p,unsigned extent,const void* 
     };
     if(zero()){
         bool yes=false;
-        if(!near(yes))return 0;
+        if(!near_search(yes))return 0;
         if(!yes){
             if(!lateral(yes))return 0;
             if(!yes){
                 write<std::uint8_t>(p,0xcc,1);o.guard_set=1;
-                const bool ok=near(yes)&&(yes||lateral(yes));
+                const bool ok=near_search(yes)&&(yes||lateral(yes));
                 write<std::uint8_t>(p,0xcc,0);o.guard_cleared=1;
                 if(!ok)return 0;
             }
