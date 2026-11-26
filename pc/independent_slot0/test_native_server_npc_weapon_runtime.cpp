@@ -2189,10 +2189,15 @@ int main(int argc,char** argv){
     f.put(f.actor,0,ground_vt);f.put(wt.member,0,ground_vt);
     hq_queue.string_nonempty=[](void*,unsigned,bool* yes) noexcept -> int{*yes=true;return 1;};
     hq.input.diagnostic=nullptr;
+    // Unknown input must walk the inherited map, not unrelated dirty storage.
+    hq.input.storage=&catalog_storage;
+    const unsigned rejected_parent_reads=catalog_f.fallback;
     ServerEntityVoidOutputAction rejected_action{503u,0xfeedu,0u,0u,66u,0.f};
     ServerEntityNamedEventQueueResult rejected_queue{};
     assert(outf.queue_api->enqueue(hq.root,sizeof(hq.root),0x7000u,93.f,0x8002u,0x8002u,&rejected_action,&hq_queue,&rejected_queue));
     assert(service->service(hq.root,sizeof(hq.root),0x7000u,93.f,false,&steps,&hq_service,&sr)&&sr.events==1&&sr.classname==2&&sr.native_inputs==2&&sr.rejected_inputs==2&&sr.native_named_searches==1&&sr.native_class_searches==3&&!sr.missing&&hq.released_events==1);
+    assert(catalog_f.fallback==rejected_parent_reads+2);
+    hq.input.storage=leaves.storage;
     // Direct target uses the same native route without any name lookup.
     ServerEntityVoidOutputAction direct_action{0u,0x223db318u,0u,0u,67u,0.f};
     assert(outf.queue_api->enqueue(hq.root,sizeof(hq.root),0x7000u,94.f,0x8002u,0x8002u,&direct_action,&hq_queue,&rejected_queue));
