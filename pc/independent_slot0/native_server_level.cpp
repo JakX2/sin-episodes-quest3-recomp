@@ -10,6 +10,7 @@ int __cdecl SinParseMapWithEventsInternal(const char*,unsigned,bool,const sin_po
     sin_port::native_map::PipelineResult*,void*) noexcept;
 int __cdecl SinPublishMapEventInternal(void*,int,const char*,const char*) noexcept;
 int __cdecl SinPublishActivationHealthInternal(void*,const void*,unsigned,int) noexcept;
+int __cdecl SinResolveLocalPlayerInternal(void*,void*,void**) noexcept;
 namespace sin_port::native_level {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -180,7 +181,10 @@ int server_activate_impl(State* s,const Bindings* b,Result* o,void* event_manage
     }
     if(!b->set_activation_flag||!b->set_activation_flag(b->context,0))return finish(false);o->activation_flag=1;
     if(*s->load_kind!=3){if(!map_event(*b,event_manager,7,*s->current_map?*s->current_map:"",""))return finish(false);o->map_event=1;}
-    void* player=nullptr;if(!b->local_player||!b->local_player(b->context,&player))return finish(false);
+    void* player=nullptr;
+    if(event_manager){
+        if(!SinResolveLocalPlayerInternal(s->startup->post.globals,s->startup->engine_server,&player))return finish(false);
+    }else if(!b->local_player||!b->local_player(b->context,&player))return finish(false);
     if(player){
         unsigned n=0;if(!b->extent||!b->extent(b->context,player,&n)||n<0xa0)return finish(false);
         const int health=read<int>(player,0x9c);
