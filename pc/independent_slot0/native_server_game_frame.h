@@ -3,6 +3,7 @@
 namespace sin_port::native_game_frame {
 using namespace native_weapon_tables;
 inline constexpr char export_name[]="SiN_GetServerGameFrameApi";
+inline constexpr char boundary_export[]="SiN_InvokeServerGameFrameBoundary";
 inline constexpr unsigned original_vtable=0x22442efc,original_slot=4,original_entry=0x221e9080;
 // Live CGlobalVars prefix from the original frame and tick routines.
 struct Globals {
@@ -76,4 +77,7 @@ struct Api {
     int (__cdecl *run)(bool,const State*,const Bindings*,Result*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// One synchronous call through actual ServerGameDLL003 slot4. No
+// persistent binding or admission to retail initialization.
+using InvokeBoundary=int (__cdecl *)(bool,const State*,const Bindings*,Result*) noexcept;
 }
