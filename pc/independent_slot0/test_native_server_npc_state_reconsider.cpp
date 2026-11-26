@@ -3898,6 +3898,9 @@ int main(int argc,char** argv){
         q.target=true;assert(admit(10)&&!o.admitted&&o.stamp_written&&o.stamp==10.f&&o.hold_set);
         q.target=false;q.primary[0x3b9]=0;assert(admit(20)&&!o.admitted&&!o.hold_checked&&p[0x26]);
         p[0x26]=0;assert(admit(20)&&o.admitted&&!o.hold_checked);
+        b.owner_target=nullptr;f.put(q.a,0x8a0,0x1001u);
+        assert(admit(21)&&o.target_present&&o.stamp_written&&o.stamp==21.f);
+        f.put(q.a,0x8a0,0x9001u);assert(admit(22)&&!o.target_present&&!o.stamp_written&&o.stamp==21.f);
     }
 
     {
@@ -3943,6 +3946,8 @@ int main(int argc,char** argv){
         select(100006);q.target=true;f.put(q.a,0x7cc,1u<<10);select(1234);assert(o.parent_called&&q.parents==1);
         f.put(q.a,0x7cc,0u);q.raise4=true;select(48);assert(o.signal==1004);q.raise4=false;f.put(q.a,0x7cc,0u);
         p[0x25]=0;q.raise4=true;select(49);q.raise4=false;f.put(q.a,0x7cc,0u);
+        ab.owner_target=nullptr;f.put(q.a,0x8a0,0x1001u);select(11);assert(o.target_present);
+        f.put(q.a,0x8a0,0x9001u);select(100004);assert(!o.target_present);
         p[0x24]=p[0x25]=p[0x26]=1;f.put(q.secondary,0x3bc,0x3003u);
         assert(api->deactivate(q.a,sizeof(q.a),&b,&o)&&o.reservation_released&&!p[0x24]&&!p[0x25]&&p[0x26]);
         f.put(q.secondary,0x3bc,0x1001u);assert(api->deactivate(q.a,sizeof(q.a),&b,&o)&&o.reservation_checked&&!o.reservation_released);
@@ -3986,6 +3991,8 @@ int main(int argc,char** argv){
         f.put(q.a,0x9c4,91u);f.put(q.group,0x5c,200u);f.put(q.group,0x60,200u);f.put(q.group,0x64,1);f.put(q.group,0x6c,1);f.put(q.group,0x74,99.f);
         f.put(q.rows,0,0x1001u);f.put(q.rows,4,3u);translate(41,11);assert(o.slot_released&&o.target_called&&o.slot.old_cleared&&PolicyFixture::rd(q.a,0x9cc)==0xffffffffu&&PolicyFixture::rd(q.rows,4)==1);
         f.put(q.a,0x9cc,0);f.put(q.a,0x9a8,std::numeric_limits<float>::quiet_NaN());translate(41,11);assert(o.slot_released&&PolicyFixture::rd(q.rows,4)==0&&q.targets==2);
+        b.owner_target=nullptr;f.put(q.a,0x8a0,0x1001u);f.put(q.a,0x9cc,1);f.put(q.rows,4,2u);
+        translate(41,11);assert(o.slot_released&&o.target_called&&PolicyFixture::rd(q.rows,4)==0&&q.targets==2);
         unsigned before=q.descriptors;f.put(q.a,0x7cc,8u);translate(100004,49);assert(o.condition_tests==2&&q.descriptors==before+2);
         f.put(q.a,0x7cc,16u);translate(100004,49);f.put(q.a,0x7cc,0u);translate(100004,100204);translate(77,277);
         auto interrupts=[&](){assert(api->interrupts(q.a,sizeof(q.a),&b,&o)&&o.completed);};
@@ -4093,6 +4100,9 @@ int main(int argc,char** argv){
         f.put(p,0x18,0x2002u);f.put(p,0x1c,0);f.put(p,0x20,0);assert(run(100006)&&!o.mode_ready&&!o.reset_calls&&o.target_called);
         f.put(p,0x1c,3);q.target=true;assert(run(100006)&&o.mode_ready&&o.mode_written&&o.reset_calls==1&&o.synthetic_called&&o.marker_restored&&p[8]&&q.synthetic==1);
         f.put(q.secondary,0x398,88u);assert(run(100006)&&o.reset_calls==1&&!o.synthetic_called);
+        b.owner_target=nullptr;f.put(q.secondary,0x398,0u);f.put(q.a,0x8a0,0x1001u);
+        assert(run(100006)&&o.target_present&&o.synthetic_called&&q.synthetic==2);
+        f.put(q.a,0x8a0,0x9001u);assert(run(100006)&&!o.target_present&&!o.synthetic_called&&q.synthetic==2);
         f.put(q.a,0x9dc,10.f);assert(run(100007)&&o.deadline_elapsed&&o.reset_calls==1);
         f.put(q.a,0x9dc,10.01f);assert(run(100009)&&!o.deadline_elapsed&&!o.reset_calls);
         q.primary[0x3b8]=1;f.put(q.a,0x7cc,1u<<10);assert(run(100007)&&o.node_flag&&o.reset_calls==1);
@@ -4154,6 +4164,38 @@ int main(int argc,char** argv){
         f.put(q.rally[0],0x3a0,2);q.bad_handle=true;assert(named()&&o.claimed&&o.handle_written&&o.mode_cleared&&o.schedule_cleared&&q.warning==0x223f3ca0u&&q.arg==77);
         q.bad_handle=false;q.monk=true;f.put(q.a,0x850,4);f.put(q.a,0x798,91u);
         assert(direct(nullptr)&&o.monk_exception&&!o.schedule_cleared&&RallyFixture::rd(q.a,0x798)==91u);
+    }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntAssaultPointApi>(GetProcAddress(s,server_npc_grunt_assault_point_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_assault_point_export)&&!g(0,sizeof(ServerNpcGruntAssaultPointApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntAssaultPointApi));assert(api);
+        struct PointFixture {
+            alignas(4) unsigned char a[0xde8]{},primary[4]{},secondary[4]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float point[3]{0,0,0};unsigned parents=0;bool parent_result=true;
+            static PointFixture& self(void* p){return *static_cast<PointFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.primary);
+        q.entries[2].serial=2;q.entries[2].entity=reinterpret_cast<CBaseEntity*>(q.secondary);
+        ServerNpcGruntAssaultPointBindings b{};auto& ab=b.admission;
+        ab.entries=q.entries;ab.count=3;ab.actor_vtable=0x2249aaa4;ab.actor_token=0x10000;b.context=&q;
+        b.origin=[](void* p,void* e,float* v) noexcept -> int{auto& q=PointFixture::self(p);assert(e==q.primary||e==q.secondary);v[0]=e==q.primary?100.f:0.f;v[1]=v[2]=0;return 1;};
+        b.parent=[](void* p,void* a,const float* point,std::uint32_t x,std::uint32_t y,bool* yes) noexcept -> int{auto& q=PointFixture::self(p);assert(a==q.a&&point==q.point&&x==0x1234&&y==0x5678);++q.parents;*yes=q.parent_result;return 1;};
+        f.put(q.a,0xc14,0x2249aa40u);f.put(q.a,0xdb8,0x223f5544u);f.put(q.a,0xdbc,0x10000u);f.put(q.a,0xdc4,0x10c14u);
+        auto* p=q.a+0xdb8;f.put(p,0x14,0x1001u);f.put(p,0x18,0x2002u);f.put(p,0x1c,3);f.put(p,0x20,2);
+        ServerNpcGruntAssaultPointResult o{};
+        auto query=[&](){assert(api->query(q.a,sizeof(q.a),q.point,0x1234,0x5678,&b,&o)&&o.completed);};
+        assert(!api->private_id(-1)&&!api->private_id(99999)&&api->private_id(100000)&&api->private_id(109999)&&!api->private_id(110000));
+        query();assert(o.parent_called&&o.accepted&&!o.selected_offset);
+        p[0x24]=1;q.point[0]=35.89f;q.point[2]=9000;query();assert(o.selected_offset==0x18&&o.origin_called&&o.parent_called&&o.accepted);
+        q.point[0]=35.91f;query();assert(o.range_rejected&&!o.accepted&&!o.parent_called);
+        q.point[0]=std::numeric_limits<float>::quiet_NaN();query();assert(o.parent_called&&o.accepted&&!o.range_rejected);
+        f.put(p,0x20,3);query();assert(!o.selected_offset&&o.parent_called);
+        p[0x25]=1;q.point[0]=100.f;query();assert(o.selected_offset==0x14&&o.parent_called&&o.accepted);
+        q.point[0]=0;query();assert(o.range_rejected&&o.selected_offset==0x14);
+        f.put(p,0x14,0x9001u);q.parent_result=false;query();assert(!o.link_valid&&!o.origin_called&&o.parent_called&&!o.accepted);
+        assert(!api->query(q.a,sizeof(q.a)-1,q.point,0,0,&b,&o));
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

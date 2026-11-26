@@ -4890,6 +4890,10 @@ int __cdecl assault_set_submode(void* a,unsigned n,int value,const ServerNpcGrun
     if(!assault_set_condition24(a,n,*b,*o))return 0;
     o->completed=1;return 1;
 }
+// All eight admitted Grunt vtables share +154 = 22044840.
+void* assault_owner_target(void* a,const sin_independent::EntityHandleView& registry) noexcept{
+    return registry.Resolve(read<unsigned>(a,0x8a0));
+}
 int __cdecl assault_admit(void* a,unsigned n,float now,const ServerNpcGruntAssaultAdmissionBindings* b,ServerNpcGruntAssaultAdmissionResult* o) noexcept{
     void* p=nullptr;if(!assault_admission_init(a,n,b,o,p)||!std::isfinite(now))return 0;
     auto done=[&](bool yes){o->admitted=yes;o->completed=1;return 1;};
@@ -4904,12 +4908,13 @@ int __cdecl assault_admit(void* a,unsigned n,float now,const ServerNpcGruntAssau
     if(o->deadline>now){o->deadline_blocked=1;return done(false);}
     o->mode=read<int>(p,0x1c);if(!o->mode)return done(false);
     if(!assault_admission_links(p,*b,*o))return done(false);
+    const sin_independent::EntityHandleView registry(b->entries,b->count);
     bool target=false;
-    if(!b->owner_target||!b->owner_target(b->context,a,&target))return 0;
+    if(b->owner_target){if(!b->owner_target(b->context,a,&target))return 0;}
+    else target=assault_owner_target(a,registry)!=nullptr;
     o->target_called=1;o->target_present=target;
     if(target){write(p,0x28,now);o->stamp_written=1;}
     o->stamp=read<float>(p,0x28);
-    const sin_independent::EntityHandleView registry(b->entries,b->count);
     void* primary=registry.Resolve(read<unsigned>(p,0x14));
     if(primary){
         unsigned bytes=0;
@@ -4978,7 +4983,8 @@ int __cdecl assault_select_schedule(void* a,unsigned n,const ServerNpcGruntAssau
     };
     auto signal=[&](int id){o->signal=id;o->signal_ignored=1;}; // all 8 admitted +5a8 targets ignore 1002..1005
     auto target=[&](bool& yes){
-        if(!ab.owner_target||!ab.owner_target(ab.context,a,&yes))return false;
+        if(ab.owner_target){if(!ab.owner_target(ab.context,a,&yes))return false;}
+        else yes=assault_owner_target(a,registry)!=nullptr;
         o->target_called=1;o->target_present=yes;return true;
     };
     bool yes=false;
@@ -5041,7 +5047,9 @@ int __cdecl assault_translate_schedule(void* a,unsigned n,int incoming,float now
             if(slot>=0&&slot<=1){
                 if(const auto group=read<unsigned>(a,0x9c4)){
                     void* target=nullptr;
-                    if(!b->owner_target||!b->owner_target(b->context,a,&target))return 0;o->target_called=1;
+                    if(b->owner_target){if(!b->owner_target(b->context,a,&target))return 0;}
+                    else target=assault_owner_target(a,sin_independent::EntityHandleView(ab.entries,ab.count));
+                    o->target_called=1;
                     auto slots=b->slots;slots.entries=ab.entries;slots.count=ab.count;
                     if(!slots_release(group,target,slot,now,&slots,&o->slot))return 0;
                     write(a,0x9cc,-1);o->slot_released=1;
@@ -5281,6 +5289,36 @@ int __cdecl assault_rally_named(void* a,unsigned n,std::uint32_t name,int mode,c
 }
 const ServerNpcGruntAssaultRallyApi assault_rally_api{1,sizeof(ServerNpcGruntAssaultRallyApi),&assault_rally_direct,&assault_rally_named};
 
+
+int __cdecl assault_private_id(int id) noexcept{return id>=100000&&id<110000;}
+int __cdecl assault_point_query(void* a,unsigned n,const float* point,std::uint32_t arg1,std::uint32_t arg2,const ServerNpcGruntAssaultPointBindings* b,ServerNpcGruntAssaultPointResult* o) noexcept{
+    if(!o)return 0;*o={};o->handle=0xffffffffu;
+    void* p=nullptr;if(!point||!b||!assault_admission_init(a,n,&b->admission,&o->admission,p))return 0;
+    const auto& ab=b->admission;
+    const sin_independent::EntityHandleView registry(ab.entries,ab.count);
+    auto done=[&](bool yes){o->accepted=yes;o->completed=1;return 1;};
+    if(read<std::uint8_t>(p,0x24)&&!read<std::uint8_t>(p,0x25)&&read<int>(p,0x20)!=read<int>(p,0x1c))o->selected_offset=0x18;
+    else if(read<std::uint8_t>(p,0x25))o->selected_offset=0x14;
+    if(o->selected_offset){
+        o->handle=read<unsigned>(p,o->selected_offset);
+        void* q=registry.Resolve(o->handle);o->link_valid=q!=nullptr;
+        if(q){
+            float pos[3]{};
+            if(!b->origin||!b->origin(b->context,q,pos))return 0;o->origin_called=1;
+            const float dx=static_cast<float>(static_cast<double>(point[0])-pos[0]);
+            const float dy=static_cast<float>(static_cast<double>(point[1])-pos[1]);
+            // Original 220ce869 compares horizontal squared distance to double 1288.81.
+            // Unordered comparison does not reject; Z has no effect on this gate.
+            o->distance_squared=static_cast<double>(dy)*dy+static_cast<double>(dx)*dx;
+            if(o->distance_squared>1288.81){o->range_rejected=1;return done(false);}
+        }
+    }
+    bool accepted=false;
+    if(!b->parent||!b->parent(b->context,a,point,arg1,arg2,&accepted))return 0;o->parent_called=1;
+    return done(accepted);
+}
+const ServerNpcGruntAssaultPointApi assault_point_api{1,sizeof(ServerNpcGruntAssaultPointApi),&assault_point_query,&assault_private_id};
+
 struct AssaultNodeRoute {const ServerNpcGruntAssaultNodeBindings* bindings;ServerNpcGruntAssaultNodeResult* result;};
 int assault_node_advance(void* a,unsigned n,void* p,unsigned extent,const AssaultNodeRoute& route) noexcept{
     auto& o=*route.result;const auto& b=*route.bindings;const auto& ab=b.events;
@@ -5399,7 +5437,8 @@ int __cdecl assault_task_run(void* a,unsigned n,const void* task,unsigned tn,flo
         }
         if(!assault_mode_decide(p,o->mode,o->submode,o->mode_written,yes,[&](bool& value){return condition(0x33,value);}))return 0;
         o->mode_ready=yes;if(yes&&!reset())return 0;
-        if(!b->owner_target||!b->owner_target(b->context,a,&yes))return 0;
+        if(b->owner_target){if(!b->owner_target(b->context,a,&yes))return 0;}
+        else yes=assault_owner_target(a,registry)!=nullptr;
         o->target_called=1;o->target_present=yes;
         if(yes){
             void* q=resolve(0x18);if(!span(q,0x39c))return 0;
@@ -7877,4 +7916,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultRallyApi=_SiN_GetServerNpcGruntAssaultRallyApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultRallyApi* __cdecl SiN_GetServerNpcGruntAssaultRallyApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultRallyApi)?&assault_rally_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntAssaultPointApi=_SiN_GetServerNpcGruntAssaultPointApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntAssaultPointApi* __cdecl SiN_GetServerNpcGruntAssaultPointApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntAssaultPointApi)?&assault_point_api:nullptr;
 }
