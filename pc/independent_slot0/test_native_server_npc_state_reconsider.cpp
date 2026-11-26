@@ -1125,5 +1125,42 @@ int main(int argc,char** argv){
         f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0xcb4,0xffffffffu);
         assert(native_gather->gather(f.actor,sizeof(f.actor),661,&all_bindings,&native_result)&&native_result.gather.search_no_enemy&&native_result.object.no_enemy&&!native_result.gather.point_called);
     }
+    {
+        auto getter=reinterpret_cast<GetServerNpcGruntPrescheduleApi>(GetProcAddress(s,server_npc_grunt_preschedule_export));
+        assert(getter&&!GetProcAddress(c,server_npc_grunt_preschedule_export)&&!getter(0,sizeof(ServerNpcGruntPrescheduleApi))&&!getter(1,0));
+        const auto* pre=getter(1,sizeof(ServerNpcGruntPrescheduleApi));assert(pre);
+        ServerNpcGruntPrescheduleBindings pb{};pb.entries=f.entries;pb.count=3;pb.original_vtable=0x2249aaa4;pb.conditions=b.schedule.conditions;pb.context=&f;pb.pending_range=100;
+        pb.origin=[](void*,void* e,float* out) noexcept -> int{std::memcpy(out,static_cast<unsigned char*>(e)+0x2bc,12);return 1;};
+        pb.center=pb.origin;
+        pb.trace_fraction=[](void* p,void* a,const float*,const float*,unsigned mask,float* out) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&mask==0x202400b);*out=f.combat_trace?1.f:.5f;return 1;};
+        pb.as_pending_prop=[](void* p,void* o,const void** out,unsigned* n) noexcept -> int{auto& f=F::self(p);assert(o==f.replacement);*out=f.rel_special?nullptr:o;*n=sizeof(f.replacement);return 1;};
+        pb.entity_handle=eb.entity_handle;
+        pb.component_tick=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);F::self(p).actor[0x101]=1;return 1;};
+        pb.speech_queue_tick=[](void* p,void* a,float) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&f.actor[0x101]);f.actor[0x102]=1;return 1;};
+        pb.rule_query=[](void* p,bool* yes) noexcept -> int{*yes=F::self(p).rel_player;return 1;};
+        pb.death=[](void* p,void* a) noexcept -> int{auto& f=F::self(p);assert(a==f.actor&&f.get<int>(0x9c)==35);f.actor[0x103]=1;return 1;};
+        std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x8a0,0x7001u);f.put(f.actor,0xcb8,0x8002u);
+        f.put(f.actor,0xc18,711u);f.put(f.actor,0xc70,5.f);
+        f.put(f.enemy,0x2bc,100.f);f.put(f.enemy,0x2c0,0.f);f.put(f.enemy,0x2c4,5.f);
+        f.put(f.replacement,0x2bc,30.f);f.put(f.replacement,0x2c0,0.f);f.put(f.replacement,0x2c4,0.f);
+        f.put(f.replacement,0x8c,0);f.put(f.replacement,0x79c,701.f);f.combat_trace=true;f.rel_special=false;
+        ServerNpcGruntPrescheduleResult result{};
+        assert(pre->pending(f.actor,sizeof(f.actor),700,&pb,&result)&&result.completed&&result.accepted&&result.distance==30&&f.get<unsigned>(0xcb8)==0x8002u);
+        f.put(f.replacement,0x2c4,13.f);assert(pre->pending(f.actor,sizeof(f.actor),700,&pb,&result)&&result.height_rejected&&!result.accepted);
+        f.put(f.replacement,0x2c4,0.f);f.put(f.replacement,0x2bc,50.f);assert(pre->pending(f.actor,sizeof(f.actor),700,&pb,&result)&&result.range_rejected);
+        f.put(f.replacement,0x2bc,-30.f);assert(pre->pending(f.actor,sizeof(f.actor),700,&pb,&result)&&result.direction_rejected);
+        f.put(f.replacement,0x2bc,30.f);f.combat_trace=false;assert(pre->pending(f.actor,sizeof(f.actor),700,&pb,&result)&&result.trace_rejected);
+        f.combat_trace=true;f.rel_special=true;assert(pre->pending(f.actor,sizeof(f.actor),700,&pb,&result)&&result.cast_rejected);
+        f.rel_special=false;f.put(f.replacement,0x8c,1);assert(pre->pending(f.actor,sizeof(f.actor),700,&pb,&result)&&result.state_rejected);
+        f.put(f.replacement,0x8c,0);assert(pre->pending(f.actor,sizeof(f.actor),700.5f,&pb,&result)&&result.deadline_rejected);
+        f.actor[0xbf]=8;f.rel_player=false;
+        assert(pre->run(f.actor,sizeof(f.actor),700,&pb,&result)&&result.completed&&result.height_written&&f.actor[0xc6c]&&result.component_called&&result.speech_called&&result.rule_called&&result.accepted&&result.target_handle==0x8002u);
+        assert(f.get<unsigned>(0x8a8)==0x8002u&&f.get<unsigned>(0xcb4)==0x8002u&&f.get<unsigned>(0xcb8)==0xffffffffu&&(f.get<unsigned>(0x7d4)&(1u<<6))&&(f.get<unsigned>(0x7d4)&(1u<<12)));
+        f.rel_player=true;f.put(f.actor,0x9c,35);f.put(f.enemy,0x2c4,4.f);
+        assert(pre->run(f.actor,sizeof(f.actor),701,&pb,&result)&&result.death_called&&f.actor[0x103]&&f.get<int>(0x9c)==0&&!f.actor[0xc6c]&&!result.accepted&&!(f.get<unsigned>(0x7d4)&(1u<<12)));
+        f.actor[0xbf]=0;
+        assert(pre->run(f.actor,sizeof(f.actor),702,&pb,&result)&&!result.rule_called&&!(f.get<unsigned>(0x7d4)&(1u<<6)));
+        assert(!pre->run(f.actor,0xdb1,702,&pb,&result));
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

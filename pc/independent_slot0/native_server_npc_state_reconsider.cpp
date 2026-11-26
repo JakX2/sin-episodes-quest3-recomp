@@ -2226,6 +2226,79 @@ int __cdecl grunt_gather_native(void* a,unsigned n,float now,const ServerNpcGrun
     if(!b)return 0;
     return grunt_gather_conditions_impl(a,n,now,&b->gather,&out->gather,&b->point,&out->point,&b->object,&out->object);
 }
+bool preschedule_init(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out) noexcept{
+    if(!out)return false;*out={};out->target_handle=0xffffffffu;
+    return a&&bytes>=0xdb2&&b&&std::isfinite(now)&&relation_grunt_class(b->original_vtable)&&
+        b->count<=sin_independent::kEntityHandleCapacity&&(!b->count||b->entries);
+}
+bool pending_policy(void* a,float now,const ServerNpcGruntPrescheduleBindings& b,ServerNpcGruntPrescheduleResult& out) noexcept{
+    const auto registry=sin_independent::EntityHandleView(b.entries,b.count);
+    void* object=registry.Resolve(read<unsigned>(a,0xcb8));out.pending_live=object!=nullptr;
+    if(!object)return true;
+    void* enemy=registry.Resolve(read<unsigned>(a,0x8a0));out.enemy_live=enemy!=nullptr;
+    if(!enemy)return true;
+    auto pos=[&](auto fn,void* e,float* p){return fn&&fn(b.context,e,p)&&finite_vec(p);};
+    float origin[3],object_origin[3],enemy_origin[3],center[3],od[3],ed[3],len=0;
+    if(!pos(b.origin,a,origin)||!pos(b.origin,object,object_origin))return false;
+    out.height_delta=static_cast<float>(std::abs(static_cast<double>(origin[2])-object_origin[2]));
+    if(out.height_delta>12.f){out.height_rejected=1;return true;}
+    if(!goal_vector_distance(origin,object_origin,out.distance)||!std::isfinite(b.pending_range))return false;
+    if(static_cast<double>(out.distance)>=static_cast<double>(b.pending_range)*.5){out.range_rejected=1;return true;}
+    if(!pos(b.center,object,center)||!pos(b.origin,enemy,enemy_origin)||
+       !normalized_object_direction(origin,center,od,len)||!normalized_object_direction(origin,enemy_origin,ed,len))return false;
+    const double dot=static_cast<double>(od[0])*ed[0]+static_cast<double>(od[1])*ed[1];
+    out.dot=static_cast<float>(dot);
+    if(dot<static_cast<double>(.8f)){out.direction_rejected=1;return true;}
+    if(!b.trace_fraction||!b.trace_fraction(b.context,a,origin,center,0x202400bu,&out.trace_fraction)||!std::isfinite(out.trace_fraction))return false;
+    if(out.trace_fraction!=1.f){out.trace_rejected=1;return true;}
+    const void* prop=nullptr;unsigned n=0;
+    if(!b.as_pending_prop||!b.as_pending_prop(b.context,object,&prop,&n))return false;
+    if(!prop){out.cast_rejected=1;return true;}
+    if(n<0x7a0)return false;
+    if(read<int>(prop,0x8c)!=0){out.state_rejected=1;return true;}
+    const float deadline=read<float>(prop,0x79c);
+    if(!std::isfinite(deadline))return false;
+    if(static_cast<double>(deadline)-now<=.5){out.deadline_rejected=1;return true;}
+    out.accepted=1;return true;
+}
+int __cdecl pending_object(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out) noexcept{
+    if(!preschedule_init(a,bytes,now,b,out)||!pending_policy(a,now,*b,*out))return 0;
+    out->completed=1;return 1;
+}
+int __cdecl grunt_preschedule(void* a,unsigned bytes,float now,const ServerNpcGruntPrescheduleBindings* b,ServerNpcGruntPrescheduleResult* out) noexcept{
+    if(!preschedule_init(a,bytes,now,b,out))return 0;
+    const auto registry=sin_independent::EntityHandleView(b->entries,b->count);
+    const float threshold=read<float>(a,0xc70);
+    if(!std::isfinite(threshold))return 0;
+    if(threshold>1.f){
+        void* enemy=registry.Resolve(read<unsigned>(a,0x8a0));
+        if(enemy){
+            float p[3],e[3];
+            if(!b->origin||!b->origin(b->context,a,p)||!b->origin(b->context,enemy,e)||!finite_vec(p)||!finite_vec(e))return 0;
+            write<std::uint8_t>(a,0xc6c,std::abs(static_cast<double>(p[2])-e[2])>=threshold?1:0);out->height_written=1;
+        }
+    }
+    const auto component=read<unsigned>(a,0xc18);
+    if(component){out->component_called=1;if(!b->component_tick||!b->component_tick(b->context,component))return 0;}
+    out->speech_called=1;if(!b->speech_queue_tick||!b->speech_queue_tick(b->context,a,now))return 0;
+    const auto* cond=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));if(!cond)return 0;
+    auto store=[&](int id,bool value,unsigned& flag){ServerNpcConditionResult cr{};if(!cond->store(a,bytes,id,NpcConditionCurrent,value,&b->conditions,&cr))return false;flag=cr.mapped;return true;};
+    if(read<std::uint8_t>(a,0xbf)&8u){
+        bool yes=false;out->rule_called=1;if(!b->rule_query||!b->rule_query(b->context,&yes))return 0;
+        if(yes){
+            if(read<int>(a,0x9c)){out->death_called=1;if(!b->death||!b->death(b->context,a))return 0;write(a,0x9c,0);}
+        }else if(!store(0x46,true,out->condition46_written))return 0;
+    }else if(!store(0x46,false,out->condition46_written))return 0;
+    if(!pending_policy(a,now,*b,*out))return 0;
+    if(out->accepted){
+        const auto handle=read<unsigned>(a,0xcb8);void* object=registry.Resolve(handle);
+        if(!object||!b->entity_handle||!b->entity_handle(b->context,object,&out->target_handle)||registry.Resolve(out->target_handle)!=object)return 0;
+        write(a,0x8a8,out->target_handle);write(a,0xcb4,handle);write(a,0xcb8,0xffffffffu);
+    }
+    if(!store(0x4c,out->accepted!=0,out->condition4c_written))return 0;
+    out->completed=1;return 1;
+}
+const ServerNpcGruntPrescheduleApi preschedule_api{1,sizeof(ServerNpcGruntPrescheduleApi),&grunt_preschedule,&pending_object};
 const ServerNpcGruntGatherNativeApi gather_native_api{1,sizeof(ServerNpcGruntGatherNativeApi),&grunt_gather_native};
 const ServerNpcGruntObjectSearchApi object_search_api{1,sizeof(ServerNpcGruntObjectSearchApi),&grunt_object_search};
 const ServerNpcGruntGatherPointApi gather_point_api{1,sizeof(ServerNpcGruntGatherPointApi),&grunt_gather_point};
@@ -2521,4 +2594,9 @@ SiN_GetServerNpcGruntObjectSearchApi(std::uint32_t version,std::uint32_t size) n
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGatherNativeApi* __cdecl
 SiN_GetServerNpcGruntGatherNativeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGatherNativeApi)?&gather_native_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntPrescheduleApi=_SiN_GetServerNpcGruntPrescheduleApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntPrescheduleApi* __cdecl SiN_GetServerNpcGruntPrescheduleApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntPrescheduleApi)?&preschedule_api:nullptr;
 }
