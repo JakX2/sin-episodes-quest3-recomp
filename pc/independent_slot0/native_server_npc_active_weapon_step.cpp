@@ -19,6 +19,7 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEliteLifeApi* __cdecl SiN_GetServerNpcGruntEliteLifeApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathThinkApi* __cdecl SiN_GetServerNpcJetpackDeathThinkApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRagdollRouteApi* __cdecl SiN_GetServerNpcGruntRagdollRouteApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSentenceRequestApi* __cdecl SiN_GetServerNpcGruntSentenceRequestApi(std::uint32_t,std::uint32_t) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -1489,7 +1490,20 @@ void bind_jet_initial_think(ServerNpcJetpackDeathBranchBindings& bound,JetInitia
         const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.powerdown&&s.powerdown(s.context,a,cue);
     };
     bound.sentence=[](void* p,void* a,const char* cue) noexcept -> int{
-        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.sentence&&s.sentence(s.context,a,cue);
+        auto& q=*static_cast<JetInitialThinkRoute*>(p);const auto& s=*q.source;
+        if(a!=q.actor)return 0;
+        if(!q.initial->sentence)return s.sentence&&s.sentence(s.context,a,cue);
+        if(!cue||std::strcmp(cue,"SINTEK_JETPACK_DEATH"))return 0;
+        float now=0;if(!s.time||!s.time(s.context,&now)||!std::isfinite(now))return 0;
+        auto sentence=*q.initial->sentence;
+        sentence.entries=q.entities->entries;sentence.count=q.entities->count;
+        sentence.speech.original_vtable=q.vt;
+        const auto* api=SiN_GetServerNpcGruntSentenceRequestApi(1,sizeof(ServerNpcGruntSentenceRequestApi));
+        // Original pushes mode 0, priority 1, group token 22498818.
+        // The caller ignores the signed sentence result, not adapter failure.
+        if(!api||!api->dispatch(a,q.extent,now,cue,1,0,&sentence,q.initial->sentence_request,
+            &q.out->health_jet_sentence,&q.out->health_jet_request))return 0;
+        ++q.out->health_jet_sentence_native;return 1;
     };
     bound.ignite=[](void* p,void* a,float time,int flags,void* x,void* y,float radius,int last) noexcept -> int{
         const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.ignite&&s.ignite(s.context,a,time,flags,x,y,radius,last);
@@ -1563,7 +1577,8 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
     if((elite&&n<0xfe0u)||(jet&&n<0x1074u))return false;
     const auto* initial=jet?dispatch.jet_think:nullptr;
     if(initial&&(!initial->cadence||!std::isfinite(initial->interval)||initial->interval<=0||rd<unsigned>(a,0)!=vt||
-        (initial->ragdoll&&!initial->ragdoll_result)))return false;
+        (initial->ragdoll&&!initial->ragdoll_result)||
+        (bool(initial->sentence)!=bool(initial->sentence_request))))return false;
     if(!self_damage_scale(a,*b.storage,false,o.health_outgoing_scale,o.health_multiplier_rows))return false;
     wr<float>(info,0x2c,static_cast<float>(double(rd<float>(info,0x2c))*o.health_outgoing_scale));
     if(!self_damage_scale(a,*b.storage,true,o.health_incoming_scale,o.health_multiplier_rows))return false;

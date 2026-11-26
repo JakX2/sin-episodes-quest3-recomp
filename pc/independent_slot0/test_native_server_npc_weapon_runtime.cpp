@@ -2504,6 +2504,36 @@ int main(int argc,char** argv){
         q.death_order.push_back(50);return 1;
     };
     initial_think.ragdoll=&native_rag_b;initial_think.ragdoll_result=&native_rag_o;
+    ServerNpcGruntSentenceBindings death_sentence_b{};
+    ServerNpcGruntSentenceRequestBindings death_request_b{};
+    death_sentence_b.speech.context=&hd;death_sentence_b.speech.volume=1.f;death_sentence_b.speech.level=75;
+    death_sentence_b.speech.random_float=[](void* p,float lo,float hi,float* sample) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(lo==1.5f&&hi==2.f);
+        *sample=1.75f;q.death_order.push_back(55);return 1;
+    };
+    death_request_b.context=&hd;death_request_b.manager_ready=true;
+    death_request_b.group_index=[](void* p,const char* group,int* id) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(!std::strcmp(group,"SINTEK_JETPACK_DEATH"));
+        *id=17;q.death_order.push_back(51);return 1;
+    };
+    death_request_b.pick_name=[](void* p,int id,char* name,unsigned cap,int* result) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(id==17&&cap>=14);
+        std::memcpy(name,"!JETPACK_TEST",14);*result=0;q.death_order.push_back(52);return 1;
+    };
+    death_request_b.name_index=[](void* p,const char* name,int* id) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(!std::strcmp(name,"JETPACK_TEST"));
+        *id=23;q.death_order.push_back(53);return 1;
+    };
+    death_request_b.submit=[](void* p,unsigned owner,int id,float volume,int level,int flag,unsigned channel) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(!owner&&id==23&&volume==1.f&&level==75&&!flag&&channel==77);
+        q.death_order.push_back(54);return 1;
+    };
+    initial_think.sentence=&death_sentence_b;initial_think.sentence_request=&death_request_b;
+    jet_branch.sentence=nullptr;
+    jet_branch.time=[](void* p,float* now) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);q.death_order.push_back(26);
+        *now=90.f+float(q.jet_ticks>1?q.jet_ticks-1:0)*.125f;++q.jet_ticks;return 1;
+    };
     hd_services.jet_think=&initial_think;
     jet_branch.install_think=nullptr;jet_branch.schedule=nullptr;jet_branch.ragdoll=nullptr;
     // Distinct attachment and ragdoll serial identities. The attachment
@@ -2512,17 +2542,26 @@ int main(int argc,char** argv){
     reset_subclass(primary_vt);f.actor[0xbf]&=static_cast<unsigned char>(~8u);
     f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x1028,0x7001u);f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0x400000u);
     f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);f.put(f.actor,8,0u);
+    f.actor[0xc44]=0;f.put(f.actor,0x8e8,0u);f.put(f.actor,0xcc8,77u);
+    f.put(f.actor,0xc04,0.f);f.put(f.actor,0xc08,0);f.put(f.actor,0xccc,88);
+    f.put(f.actor,0xb4,f.get<unsigned>(f.actor,0xb4)&~2u);
     initial_think.interval=0.f;
     assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty()&&!f.get<unsigned>(f.actor,8));
     initial_think.interval=.125f;initial_think.ragdoll_result=nullptr;
     assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty());
-    initial_think.ragdoll_result=&native_rag_o;
+    initial_think.ragdoll_result=&native_rag_o;initial_think.sentence_request=nullptr;
+    assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty());
+    initial_think.sentence_request=&death_request_b;
     assert(hd_run(0,primary_vt)&&catalog_o.health_jet_route&&catalog_o.health_jet_think_installed==1&&catalog_o.health_jet_think_scheduled==1&&catalog_o.health_jet_ragdoll_native==1);
     assert(native_rag_o.completed&&native_rag_o.native_result&&native_rag_o.jet_special&&native_rag_o.source_handle==0x8002u&&native_rag_o.handle_written&&native_rag_o.ragdoll_handle==0x9000u&&native_rag_o.attachment_called&&native_rag_o.finished&&!native_rag_o.ignite_called&&!native_rag_o.aux_reparented);
     assert(f.get<unsigned>(f.actor,0x1000)==0x9000u&&!native_rag_b.entities.entries&&!native_rag_b.entities.speech.original_vtable);
     assert(catalog_o.health_jet_cadence.completed&&catalog_o.health_jet_cadence.tick==721&&catalog_o.health_jet_cadence.flags_changed);
     assert(f.get<unsigned>(f.actor,8)==0x22365760u&&f.get<int>(f.actor,0x74)==721&&!(f.get<unsigned>(f.actor,0xb8)&0x400000u));
-    assert((hd.death_order==std::vector<unsigned>{20,21,22,23,24,25,48,49,50,26,26,42})&&hd.jet_ticks==2);
+    assert(catalog_o.health_jet_sentence_native==1&&catalog_o.health_jet_sentence.completed&&catalog_o.health_jet_sentence.mode_allowed&&catalog_o.health_jet_sentence.queued&&catalog_o.health_jet_sentence.cooldown.owner_written);
+    assert(catalog_o.health_jet_request.completed&&catalog_o.health_jet_request.submitted&&catalog_o.health_jet_request.request_result==23);
+    assert(f.get<int>(f.actor,0xccc)==-1&&f.get<int>(f.actor,0xc08)==1&&f.get<float>(f.actor,0xc04)==93.75f);
+    assert(!death_sentence_b.entries&&!death_sentence_b.speech.original_vtable);
+    assert((hd.death_order==std::vector<unsigned>{20,21,22,23,26,51,52,53,54,55,24,25,48,49,50,26,26,42})&&hd.jet_ticks==3);
     hd_services.jet_think=nullptr;
     hd.death_order.clear();hd.think_clock=90.f;
     auto primary_run=[&](int tick,unsigned handle=0x8002u){return primary->run(f.actor,sizeof(f.actor),primary_vt,handle,tick,.125f,&primary_b,&primary_o);};
