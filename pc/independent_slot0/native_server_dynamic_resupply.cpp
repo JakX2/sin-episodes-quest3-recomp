@@ -992,7 +992,57 @@ int __cdecl antigen_eject(void* a,unsigned n,const AntigenExchangeBindings* b,An
     if(!antigen_clock(b->control,o->control,o->reject_time))return 0;set_field(a,0x4a8,o->reject_time);
     return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject};
+int __cdecl antigen_use_event(void* a,unsigned n,void* activator,unsigned bytes,int use,const AntigenInteractionBindings* b,AntigenInteractionResult* o) noexcept {
+    if(!o)return 0;*o={};if(!b||!antigen_ready(a,n,&b->control))return 0;
+    if(use!=0&&use!=1){o->completed=1;return 1;}
+    o->event_descriptor=use==1?2:3;
+    if(!b->use_event||!b->use_event(b->context,o->event_descriptor,activator,a,0))return 0;o->event_called=1;
+    if(use==1){
+        o->press=1;if(!antigen_use(a,n,activator,bytes,&b->control,&o->control))return 0;
+    }else{
+        // Release invalidates the user only; the next think stops steam.
+        o->release=1;set_field(a,0x4ac,0xffffffffu);o->user_invalidated=1;
+    }
+    o->completed=1;return 1;
+}
+bool antigen_animation_schedule(void* a,const AntigenInteractionBindings& b,AntigenInteractionResult& o) noexcept {
+    float now=0;if(!antigen_clock(b.control,o.control,now))return false;
+    o.control.next_time=float(double(now)+double(.1f));
+    if(!b.control.schedule||!b.control.schedule(b.control.context,a,o.control.next_time))return false;
+    o.control.scheduled=1;return true;
+}
+int __cdecl antigen_spawn(void* a,unsigned n,const AntigenInteractionBindings* b,AntigenInteractionResult* o) noexcept {
+    if(!o)return 0;*o={};if(!b||!antigen_ready(a,n,&b->control))return 0;
+    if(!b->spawn_setup||!b->spawn_setup(b->context,a))return 0;o->setup=1;
+    const float amount=field<float>(a,0x49c);if(!std::isfinite(amount))return 0;
+    const float clamped=amount>100.f?100.f:amount<=0.f?0.f:amount;
+    set_field(a,0x49c,clamped);set_field(a,0x498,static_cast<unsigned char>(clamped>0.f));
+    o->control.remaining=clamped;o->control.loaded=clamped>0.f;
+    if(!b->bodygroup||!b->bodygroup(b->context,a,1,o->control.loaded?1:0))return 0;o->bodygroup=1;
+    set_field(a,0x7c,antigen_touch_token);o->touch_installed=1;
+    set_field(a,8,antigen_animation_token);o->animation_installed=1;
+    if(!antigen_animation_schedule(a,*b,*o))return 0;
+    if(!b->button_listener||!b->button_listener(b->context,static_cast<unsigned char*>(a)+0x494,"button_press"))return 0;o->listener=1;
+    o->completed=1;return 1;
+}
+int __cdecl antigen_animation_think(void* a,unsigned n,const AntigenInteractionBindings* b,AntigenInteractionResult* o) noexcept {
+    if(!o)return 0;*o={};if(!b||!antigen_ready(a,n,&b->control))return 0;
+    const sin_independent::EntityHandleView registry(b->control.entries,b->control.entry_count);
+    if(registry.Resolve(field<unsigned>(a,0x4b4)))o->screen_reused=1;
+    else{
+        unsigned screen=0xffffffffu;
+        if(!b->create_screen||!b->create_screen(b->context,a,&screen))return 0;
+        set_field(a,0x4b4,screen);o->screen_created=screen!=0xffffffffu;
+        if(screen!=0xffffffffu){
+            void* object=registry.Resolve(screen);
+            if(!object||!b->configure_screen||!b->configure_screen(b->context,a,object))return 0;
+            o->screen_configured=1;
+        }
+    }
+    if(!antigen_pose(a,b->control,o->control)||!antigen_animation_schedule(a,*b,*o))return 0;
+    o->completed=1;return 1;
+}
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")
