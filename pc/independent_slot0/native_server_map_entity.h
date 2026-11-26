@@ -9,9 +9,9 @@ enum class Kind:unsigned {End,Word,Malformed};
 struct Token {Kind kind;unsigned begin,next;char text[token_capacity];};
 struct EntitySlice {unsigned begin,body,end;}; // end exclusive, includes closing brace
 struct Pair {char key[token_capacity],value[token_capacity];};
-enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer};
+enum class Family:unsigned {Foreign,Resupply,Pickup,Antigen,Relay,LogicAuto,LogicTimer,LogicBranch};
 struct FactorySpec {const char* name;Family family;unsigned original_object,original_vtable,extent;};
-struct FactoryDictionary {const FactorySpec* slots[15]{};unsigned count=0;bool registered=false;};
+struct FactoryDictionary {const FactorySpec* slots[16]{};unsigned count=0;bool registered=false;};
 struct RelayFactoryBindings {
     void* context;
     // Fresh allocation must supply zeroed derived extension, as expected
@@ -31,6 +31,7 @@ struct FactoryBindings {
     const RelayFactoryBindings* relay;
     const RelayFactoryBindings* logic_auto; // same allocation/base/init/networkable boundary
     const RelayFactoryBindings* logic_timer;
+    const RelayFactoryBindings* logic_branch;
 };
 struct FactoryResult {
     const FactorySpec* spec;
@@ -272,6 +273,8 @@ struct Api {
     int (__cdecl *destroy_timer)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
     int (__cdecl *timer_primary_run)(void*,unsigned,int,const TimerPrimaryBindings*,TimerPrimaryResult*) noexcept;
     int (__cdecl *branch_input)(void*,unsigned,const char*,void*,unsigned,unsigned char,const BranchBindings*,BranchResult*) noexcept;
+    int (__cdecl *register_branch)(FactoryDictionary*) noexcept;
+    int (__cdecl *destroy_branch)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
