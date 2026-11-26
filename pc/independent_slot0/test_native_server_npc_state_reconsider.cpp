@@ -2986,5 +2986,43 @@ int main(int argc,char** argv){
         assert(!api->run(q.a,0x1000,q.damage,sizeof(q.damage),q.force,&b,&o));
         b.entities.speech.original_vtable=0;assert(!run());
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntLinkedActivityApi>(GetProcAddress(s,server_npc_grunt_linked_activity_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_linked_activity_export)&&!g(0,sizeof(ServerNpcGruntLinkedActivityApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntLinkedActivityApi));assert(api);
+        struct LinkedActivityFixture{
+            alignas(4) unsigned char a[0x1088]{},linked[0x3a6]{},subject1[4]{},subject2[4]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            unsigned step=0;bool first=true,second=true;int lookup=5;float fraction=1;
+            static LinkedActivityFixture& self(void* p){return *static_cast<LinkedActivityFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.linked);
+        ServerNpcGruntActivityFullBindings b{};auto& t=b.translation;auto& l=b.linked;
+        t.context=&q;t.entities.entries=q.entries;t.entities.count=2;t.entities.speech.original_vtable=0x2249aaa4;
+        t.entities.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0x3a6;return 1;};
+        t.special_identity=[](void*,void*,bool* yes) noexcept -> int{*yes=false;return 1;};
+        l.context=&q;
+        l.query=[](void* p,void* a,void** e) noexcept -> int{auto& q=LinkedActivityFixture::self(p);assert(a==q.a&&(q.step==0||q.step==3));if(q.step==0){*e=q.first?q.subject1:nullptr;}else{*e=q.second?q.subject2:nullptr;}++q.step;return 1;};
+        l.lookup=[](void* p,void* a,int id,int* v) noexcept -> int{auto& q=LinkedActivityFixture::self(p);assert(a==q.a&&id==0x43&&q.step==1);++q.step;*v=q.lookup;return 1;};
+        l.prepare=[](void* p,void* a,int id,float* v) noexcept -> int{auto& q=LinkedActivityFixture::self(p);assert(a==q.a&&id==0x43&&q.step==2);++q.step;v[0]=1;v[1]=2;v[2]=3;return 1;};
+        l.trace=[](void* p,void* a,void* e,const float* v,float* fraction) noexcept -> int{auto& q=LinkedActivityFixture::self(p);assert(a==q.a&&e==q.subject2&&q.step==4&&v[0]==1&&v[1]==2&&v[2]==3);++q.step;*fraction=q.fraction;return 1;};
+        q.a[0xc64]=1;f.put(q.a,0x8ec,0x8000000u);f.put(q.a,0xa18,0x1001u);
+        f.put(q.linked,0x3a4,static_cast<std::int16_t>(100));
+        ServerNpcGruntActivityFullResult o{};
+        auto run=[&](){q.step=0;return api->run(q.a,sizeof(q.a),0x42,&b,&o);};
+        for(float fraction:{0.f,0.5f,1.f,1.5f,std::numeric_limits<float>::quiet_NaN()}){
+            q.fraction=fraction;assert(run()&&o.translation.completed&&o.translation.linked_called&&o.linked.completed&&o.linked.queries==2&&o.linked.traced&&q.step==5);
+            assert(o.translation.native_result==(fraction==1.f?0x42:0x43));
+        }
+        f.put(q.linked,0x3a4,static_cast<std::int16_t>(101));assert(run()&&o.linked.subtype_admitted);
+        for(int kind:{-1,99,102}){f.put(q.linked,0x3a4,static_cast<std::int16_t>(kind));assert(run()&&o.translation.native_result==0x42&&o.linked.queries==1&&!o.linked.lookup_called);}
+        f.put(q.linked,0x3a4,static_cast<std::int16_t>(100));
+        q.lookup=-1;assert(run()&&o.linked.lookup_called&&!o.linked.prepared&&q.step==2);
+        q.lookup=5;q.first=false;assert(run()&&o.linked.queries==1&&!o.linked.query_admitted);
+        q.first=true;q.second=false;assert(!run()&&!o.linked.completed&&o.linked.prepared&&o.linked.queries==2&&!o.linked.traced);
+        q.second=true;f.put(q.a,0xa18,0x9001u);assert(run()&&o.translation.native_result==0x42&&!o.linked.link_valid&&q.step==0);
+        f.put(q.a,0x8ec,0u);assert(run()&&!o.translation.linked_called&&!o.linked.completed);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
