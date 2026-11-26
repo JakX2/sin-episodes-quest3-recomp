@@ -1506,7 +1506,20 @@ void bind_jet_initial_think(ServerNpcJetpackDeathBranchBindings& bound,JetInitia
         ++q.out->health_jet_sentence_native;return 1;
     };
     bound.ignite=[](void* p,void* a,float time,int flags,void* x,void* y,float radius,int last) noexcept -> int{
-        const auto& s=*static_cast<JetInitialThinkRoute*>(p)->source;return s.ignite&&s.ignite(s.context,a,time,flags,x,y,radius,last);
+        auto& q=*static_cast<JetInitialThinkRoute*>(p);const auto& s=*q.source;
+        if(a!=q.actor)return 0;
+        const auto* ignition=q.initial->ignition;
+        if(!ignition)return s.ignite&&s.ignite(s.context,a,time,flags,x,y,radius,last);
+        // Only the exact delayed-death +2d4 call is admitted here.
+        // 2248c514's 22353da0 wrapper admits its nonzero final byte;
+        // the other three enter 223595a0 directly. Null attacker and
+        // inflictor write invalid handle and empty name before base.
+        if(time!=1.f||flags!=1||x||y||radius!=25.f||last!=1||q.extent<0xc44u||!ignition->base)return 0;
+        ++q.out->health_jet_ignition_native;
+        wr<unsigned>(a,0xc3c,0xffffffffu);wr<unsigned>(a,0xc40,0u);
+        ++q.out->health_jet_ignition_attribution;
+        if(!ignition->base(ignition->context,a,time,flags,x,y,radius,last))return 0;
+        ++q.out->health_jet_ignition_base;return 1;
     };
     bound.ragdoll=[](void* p,void* a,void* damage,const float* force) noexcept -> int{
         auto& q=*static_cast<JetInitialThinkRoute*>(p);
@@ -1578,7 +1591,8 @@ bool native_self_damage(void* a,unsigned n,unsigned vt,void* info,const ServerEn
     const auto* initial=jet?dispatch.jet_think:nullptr;
     if(initial&&(!initial->cadence||!std::isfinite(initial->interval)||initial->interval<=0||rd<unsigned>(a,0)!=vt||
         (initial->ragdoll&&!initial->ragdoll_result)||
-        (bool(initial->sentence)!=bool(initial->sentence_request))))return false;
+        (bool(initial->sentence)!=bool(initial->sentence_request))||
+        (initial->ignition&&!initial->ignition->base)))return false;
     if(!self_damage_scale(a,*b.storage,false,o.health_outgoing_scale,o.health_multiplier_rows))return false;
     wr<float>(info,0x2c,static_cast<float>(double(rd<float>(info,0x2c))*o.health_outgoing_scale));
     if(!self_damage_scale(a,*b.storage,true,o.health_incoming_scale,o.health_multiplier_rows))return false;

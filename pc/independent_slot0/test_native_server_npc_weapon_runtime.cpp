@@ -2529,6 +2529,15 @@ int main(int argc,char** argv){
         q.death_order.push_back(54);return 1;
     };
     initial_think.sentence=&death_sentence_b;initial_think.sentence_request=&death_request_b;
+    ServerNpcInputJetDeathIgnitionBindings native_ignition{};
+    native_ignition.context=&hd;
+    native_ignition.base=[](void* p,void* a,float time,int flags,void* x,void* y,float radius,int last) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        assert(a==q.f->actor&&time==1.f&&flags==1&&!x&&!y&&radius==25.f&&last==1);
+        assert(q.f->get<unsigned>(a,0xc3c)==0xffffffffu&&!q.f->get<unsigned>(a,0xc40)&&q.f->get<int>(a,0x8c)==0);
+        q.death_order.push_back(24);return 1;
+    };
+    initial_think.ignition=&native_ignition;jet_branch.ignite=nullptr;
     jet_branch.sentence=nullptr;
     jet_branch.time=[](void* p,float* now) noexcept -> int{
         auto& q=*static_cast<SelfDamageFixture*>(p);q.death_order.push_back(26);
@@ -2544,6 +2553,7 @@ int main(int argc,char** argv){
     f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);f.put(f.actor,8,0u);
     f.actor[0xc44]=0;f.put(f.actor,0x8e8,0u);f.put(f.actor,0xcc8,77u);
     f.put(f.actor,0xc04,0.f);f.put(f.actor,0xc08,0);f.put(f.actor,0xccc,88);
+    f.put(f.actor,0xc3c,0x7001u);f.put(f.actor,0xc40,0x1234u);
     f.put(f.actor,0xb4,f.get<unsigned>(f.actor,0xb4)&~2u);
     initial_think.interval=0.f;
     assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty()&&!f.get<unsigned>(f.actor,8));
@@ -2552,6 +2562,9 @@ int main(int argc,char** argv){
     initial_think.ragdoll_result=&native_rag_o;initial_think.sentence_request=nullptr;
     assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty());
     initial_think.sentence_request=&death_request_b;
+    const auto ignition_base=native_ignition.base;native_ignition.base=nullptr;
+    assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty()&&f.get<unsigned>(f.actor,0xc3c)==0x7001u&&f.get<unsigned>(f.actor,0xc40)==0x1234u);
+    native_ignition.base=ignition_base;
     assert(hd_run(0,primary_vt)&&catalog_o.health_jet_route&&catalog_o.health_jet_think_installed==1&&catalog_o.health_jet_think_scheduled==1&&catalog_o.health_jet_ragdoll_native==1);
     assert(native_rag_o.completed&&native_rag_o.native_result&&native_rag_o.jet_special&&native_rag_o.source_handle==0x8002u&&native_rag_o.handle_written&&native_rag_o.ragdoll_handle==0x9000u&&native_rag_o.attachment_called&&native_rag_o.finished&&!native_rag_o.ignite_called&&!native_rag_o.aux_reparented);
     assert(f.get<unsigned>(f.actor,0x1000)==0x9000u&&!native_rag_b.entities.entries&&!native_rag_b.entities.speech.original_vtable);
@@ -2559,6 +2572,7 @@ int main(int argc,char** argv){
     assert(f.get<unsigned>(f.actor,8)==0x22365760u&&f.get<int>(f.actor,0x74)==721&&!(f.get<unsigned>(f.actor,0xb8)&0x400000u));
     assert(catalog_o.health_jet_sentence_native==1&&catalog_o.health_jet_sentence.completed&&catalog_o.health_jet_sentence.mode_allowed&&catalog_o.health_jet_sentence.queued&&catalog_o.health_jet_sentence.cooldown.owner_written);
     assert(catalog_o.health_jet_request.completed&&catalog_o.health_jet_request.submitted&&catalog_o.health_jet_request.request_result==23);
+    assert(catalog_o.health_jet_ignition_native==1&&catalog_o.health_jet_ignition_attribution==1&&catalog_o.health_jet_ignition_base==1&&f.get<unsigned>(f.actor,0xc3c)==0xffffffffu&&!f.get<unsigned>(f.actor,0xc40));
     assert(f.get<int>(f.actor,0xccc)==-1&&f.get<int>(f.actor,0xc08)==1&&f.get<float>(f.actor,0xc04)==93.75f);
     assert(!death_sentence_b.entries&&!death_sentence_b.speech.original_vtable);
     assert((hd.death_order==std::vector<unsigned>{20,21,22,23,26,51,52,53,54,55,24,25,48,49,50,26,26,42})&&hd.jet_ticks==3);

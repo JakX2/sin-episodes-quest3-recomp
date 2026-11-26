@@ -410,6 +410,11 @@ struct ServerEntityNativeOutputQueueBindings {
 };
 using ServerNpcHealthOutputQueueBindings=ServerEntityNativeOutputQueueBindings;
 // Optional initial unnamed death-think installation from scripted damage.
+struct ServerNpcInputJetDeathIgnitionBindings {
+    void* context;
+    // 220f2210 base service, not the original NPC virtual wrapper.
+    int (__cdecl *base)(void*,void*,float,int,void*,void*,float,int) noexcept;
+};
 struct ServerNpcInputJetThinkScheduleBindings {
     const ServerNpcOuterCadenceBindings* cadence;
     float interval;
@@ -420,6 +425,7 @@ struct ServerNpcInputJetThinkScheduleBindings {
     // Optional native 220a35c0 death sentence and request path.
     const ServerNpcGruntSentenceBindings* sentence;
     const ServerNpcGruntSentenceRequestBindings* sentence_request;
+    const ServerNpcInputJetDeathIgnitionBindings* ignition;
 };
 struct ServerNpcInputHealthDispatchBindings {
     void* context;
@@ -492,6 +498,7 @@ struct ServerEntityAcceptInputResult {
     unsigned health_jet_sentence_native;
     ServerNpcGruntSentenceResult health_jet_sentence;
     ServerNpcGruntSentenceRequestResult health_jet_request;
+    unsigned health_jet_ignition_native,health_jet_ignition_attribution,health_jet_ignition_base;
 };
 enum ServerEntityInputReason : unsigned {EntityInputNone,EntityInputUnknown,EntityInputBadConversion};
 struct ServerEntityAcceptInputApi {
