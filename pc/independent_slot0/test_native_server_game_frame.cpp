@@ -333,5 +333,6 @@ int main(int argc,char** argv){
     assert(boundary(true,&state,&b,&out)&&out.logic_timer.no_think&&out.events.native_inputs==1&&word(camp.automatic,0x74)==173);
     f.g.curtime=21.625f;f.g.tick=173;
     assert(boundary(true,&state,&b,&out)&&out.logic_timer.invoked&&out.logic_timer.next_tick==177&&out.events.foreign_inputs==1&&camp.delivered==2&&camp.records==2&&camp.event_alloc==5&&camp.event_releases==5&&!word(camp.root,0x30));
+#include "test_native_game_frame_deferred.inc"
     FreeLibrary(server);FreeLibrary(client);
 }

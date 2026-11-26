@@ -62,6 +62,8 @@ struct Bindings {
     int (__cdecl *edict_scope)(void*,bool) noexcept;
     const native_map::AutoPrimaryBindings* logic_auto;
     const native_map::TimerPrimaryBindings* logic_timer;
+    // Optional native replacement for all three 22162aa0 calls.
+    const native_map::DeferredRemovalBindings* deferred;
 };
 struct Result {
     unsigned completed,transition,skip_consumed,double_step,profile_written,cleanup_calls,
@@ -78,6 +80,8 @@ struct Result {
     native_map::AutoPrimaryResult logic_auto;
     unsigned native_timer;
     native_map::TimerPrimaryResult logic_timer;
+    unsigned native_cleanup_calls,native_released;
+    native_map::DeferredRemovalResult removal;
 };
 struct Api {
     std::uint32_t version,size;
