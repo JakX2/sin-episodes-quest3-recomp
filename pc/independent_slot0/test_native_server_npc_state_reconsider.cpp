@@ -1488,6 +1488,29 @@ int main(int argc,char** argv){
         assert(api->attach(q.actor,sizeof(q.actor),0x1001u,51,&head,"Bravo",&rb,&jb,&rr)&&rr.linked&&rr.join.detached&&rr.join.appended&&head==13&&RegistryFixture::rd(q.actor,0x9c4)==13&&RegistryFixture::rd(q.groups[0],0x48)==0);
         f.put(q.groups[0],0,10u);assert(!api->lookup(head,"absent",&rb,&rr)&&!rr.completed);f.put(q.groups[0],0,0u);
         assert(q.allocated==4&&q.interned==2&&!q.released);
+        auto gd=reinterpret_cast<GetServerNpcGruntSquadDestroyApi>(GetProcAddress(s,server_npc_grunt_squad_destroy_export));
+        assert(gd&&!GetProcAddress(c,server_npc_grunt_squad_destroy_export)&&!gd(0,sizeof(ServerNpcGruntSquadDestroyApi))&&!gd(1,0));
+        const auto* destroy=gd(1,sizeof(ServerNpcGruntSquadDestroyApi));assert(destroy);
+        ServerNpcGruntSquadDestroyBindings db{};db.registry=rb;db.context=&q;
+        db.release_records=[](void* p,std::uint32_t token) noexcept -> int{
+            auto& q=RegistryFixture::self(p);assert(token==90&&RegistryFixture::rd(q.groups[0],0x6c)==0&&RegistryFixture::rd(q.groups[2],0)==0);++q.interned;return 1;
+        };
+        db.registry.release=[](void* p,std::uint32_t token) noexcept -> int{
+            auto& q=RegistryFixture::self(p);assert(token>=10&&token<=13&&RegistryFixture::rd(q.groups[token-10],0x48)==0);++q.released;return 1;
+        };
+        ServerNpcGruntSquadDestroyResult dr{};
+        assert(destroy->destroy(&head,13,&db,&dr)&&dr.empty_required&&!dr.group_released&&head==13);
+        f.put(q.groups[0],0x60,90u);f.put(q.groups[0],0x64,16u);f.put(q.groups[0],0x6c,3u);f.put(q.groups[0],0x70,90u);
+        assert(destroy->destroy(&head,10,&db,&dr)&&dr.completed&&dr.unlinked&&dr.predecessor==12&&!dr.successor&&dr.record_release_calls==1&&dr.inline_reset&&dr.group_released&&head==13&&q.released==1&&q.interned==3);
+        assert(RegistryFixture::rd(q.groups[0],0x60)==0&&RegistryFixture::rd(q.groups[0],0x64)==0&&RegistryFixture::rd(q.groups[0],0x70)==0);
+        f.put(q.groups[1],0x60,91u);f.put(q.groups[1],0x64,12u);f.put(q.groups[1],0x68,-1);f.put(q.groups[1],0x6c,2u);
+        assert(destroy->destroy(&head,11,&db,&dr)&&dr.completed&&!dr.unlinked&&dr.external_records&&!dr.record_release_calls&&dr.group_released&&q.released==2);
+        assert(RegistryFixture::rd(q.groups[1],0x60)==91&&RegistryFixture::rd(q.groups[1],0x64)==12&&RegistryFixture::rd(q.groups[1],0x70)==91&&RegistryFixture::rd(q.groups[1],0x6c)==0);
+        auto gj=reinterpret_cast<GetServerNpcGruntSquadJoinApi>(GetProcAddress(s,server_npc_grunt_squad_join_export));assert(gj);
+        ServerNpcGruntSquadLeaveResult lr{};assert(gj(1,sizeof(ServerNpcGruntSquadJoinApi))->detach(q.actor,sizeof(q.actor),0x1001u,52,&jb.group,&lr)&&lr.removed);
+        assert(destroy->destroy(&head,13,&db,&dr)&&dr.completed&&dr.unlinked&&dr.successor==12&&!dr.predecessor&&head==12&&q.released==3);
+        assert(destroy->destroy(&head,12,&db,&dr)&&dr.completed&&dr.unlinked&&!head&&q.released==4);
+        assert(destroy->destroy(&head,0,&db,&dr)&&dr.completed&&!dr.group_released);
     }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }
