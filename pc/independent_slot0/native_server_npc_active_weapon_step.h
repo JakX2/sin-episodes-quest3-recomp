@@ -357,13 +357,14 @@ struct ServerNpcInputBreakBindings {
 // Parent admission and deferred physics-callback queue are engine boundaries.
 // Bind native void-output actions directly to a named event queue.
 // The queue owner supplies persistent storage and allocators, not delivery.
-struct ServerNpcHealthOutputQueueBindings {
+struct ServerEntityNativeOutputQueueBindings {
     const ServerEntityVoidOutputBindings* actions;
     const ServerEntityNamedEventQueueBindings* queue;
     void* sentinel;
     unsigned sentinel_bytes;
     std::uint32_t sentinel_token;
 };
+using ServerNpcHealthOutputQueueBindings=ServerEntityNativeOutputQueueBindings;
 struct ServerNpcInputHealthDispatchBindings {
     void* context;
     bool defer_damage;
@@ -468,10 +469,13 @@ struct ServerNpcWakeTransitionBindings {
     int (__cdecl *jet_prepare)(void*,void*) noexcept; // optional 22366a20 override; required for fresh attachments
     int (__cdecl *jet_attachment)(void*,std::uint32_t) noexcept; // +218 virtual +8
     const ServerNpcJetThrustBindings* fresh_thrust;
+    const ServerEntityNativeOutputQueueBindings* output_queue;
+    float output_now; // direct transition clock; input/outer routes override
 };
 struct ServerNpcWakeTransitionResult {
     unsigned completed,transitions,flags_changed,refreshed,outputs,squad_visited,squad_woken,external_woken,jet_prepared,jet_linked,jet_attachment;
     ServerNpcJetThrustResult thrust;
+    unsigned output_queue_calls,output_queue_actions,output_queue_removed;
 };
 struct ServerNpcWakeTransitionApi {
     std::uint32_t version,size;
