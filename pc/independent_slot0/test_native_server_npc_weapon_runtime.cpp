@@ -23,7 +23,7 @@ struct F {
     sin_independent::EntityHandleEntry slots[3]{};
     std::vector<int> trace;
     template<class T> void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
-    template<class T> T get(void* p,unsigned off){T v{};std::memcpy(&v,static_cast<unsigned char*>(p)+off,sizeof(v));return v;}
+    template<class T> T get(const void* p,unsigned off){T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
     static F& self(void* p){return *static_cast<F*>(p);}
 };
 int main(int argc,char** argv){
@@ -2020,6 +2020,7 @@ int main(int argc,char** argv){
         unsigned jet_ticks{};
         int expected_class=11;
         float think_clock{},think_scheduled{};
+        alignas(4) unsigned char native_rag[4]{};
     } hd{&f,wt.member};
     ServerNpcActivePostAnimationBindings hd_storage{};hd_storage.context=&hd;
     hd_storage.resolve=[](void* p,unsigned token,void** out,unsigned* bytes) noexcept -> int{
@@ -2479,19 +2480,49 @@ int main(int argc,char** argv){
     // Initial scheduling is now owned by the same native tick fields.
     // Old branch callbacks are deliberately absent; no manual install or
     // set_default call bridges SetHealth to the primary dispatcher.
-    ServerNpcInputJetThinkScheduleBindings initial_think{&primary_b.cadence,.125f};
+    ServerNpcInputJetThinkScheduleBindings initial_think{};
+    initial_think.cadence=&primary_b.cadence;initial_think.interval=.125f;
+    ServerNpcGruntRagdollRouteBindings native_rag_b{};
+    ServerNpcGruntRagdollRouteResult native_rag_o{};
+    native_rag_b.context=&hd;
+    native_rag_b.jet_setup=[](void* p,void* a,const void* damage,unsigned* handle) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        assert(a==q.f->actor&&q.f->get<int>(a,0x8c)==1&&q.f->get<int>(a,0x1004)==4&&q.f->get<float>(damage,0x2c)==300.f);
+        *handle=0x9000u;q.death_order.push_back(25);return 1;
+    };
+    native_rag_b.random_int=[](void* p,int lo,int hi,int* sample) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);
+        assert(lo==0&&hi==100&&q.f->get<unsigned>(q.f->actor,0x1000)==0x9000u);
+        *sample=30;q.death_order.push_back(48);return 1;
+    };
+    native_rag_b.attach=[](void* p,void* rag,void* attachment) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(rag==q.native_rag&&attachment==q.parent);
+        q.death_order.push_back(49);return 1;
+    };
+    native_rag_b.finish=[](void* p,void* a) noexcept -> int{
+        auto& q=*static_cast<SelfDamageFixture*>(p);assert(a==q.f->actor);
+        q.death_order.push_back(50);return 1;
+    };
+    initial_think.ragdoll=&native_rag_b;initial_think.ragdoll_result=&native_rag_o;
     hd_services.jet_think=&initial_think;
-    jet_branch.install_think=nullptr;jet_branch.schedule=nullptr;
+    jet_branch.install_think=nullptr;jet_branch.schedule=nullptr;jet_branch.ragdoll=nullptr;
+    // Distinct attachment and ragdoll serial identities. The attachment
+    // exists before death; only the ragdoll is created by the engine service.
+    script_slots[0].serial=9;script_slots[0].entity=reinterpret_cast<CBaseEntity*>(hd.native_rag);
     reset_subclass(primary_vt);f.actor[0xbf]&=static_cast<unsigned char>(~8u);
-    f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0x400000u);
+    f.put(f.actor,0x1000,0xffffffffu);f.put(f.actor,0x1028,0x7001u);f.put(f.actor,0x50,0);f.put(f.actor,0xb8,0x400000u);
     f.put(f.actor,0x74,-1);f.put(f.actor,0x34,-1);f.put(f.actor,8,0u);
     initial_think.interval=0.f;
     assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty()&&!f.get<unsigned>(f.actor,8));
-    initial_think.interval=.125f;
-    assert(hd_run(0,primary_vt)&&catalog_o.health_jet_route&&catalog_o.health_jet_think_installed==1&&catalog_o.health_jet_think_scheduled==1);
+    initial_think.interval=.125f;initial_think.ragdoll_result=nullptr;
+    assert(!hd_run(0,primary_vt)&&f.get<int>(f.actor,0x9c)==100&&hd.death_order.empty());
+    initial_think.ragdoll_result=&native_rag_o;
+    assert(hd_run(0,primary_vt)&&catalog_o.health_jet_route&&catalog_o.health_jet_think_installed==1&&catalog_o.health_jet_think_scheduled==1&&catalog_o.health_jet_ragdoll_native==1);
+    assert(native_rag_o.completed&&native_rag_o.native_result&&native_rag_o.jet_special&&native_rag_o.source_handle==0x8002u&&native_rag_o.handle_written&&native_rag_o.ragdoll_handle==0x9000u&&native_rag_o.attachment_called&&native_rag_o.finished&&!native_rag_o.ignite_called&&!native_rag_o.aux_reparented);
+    assert(f.get<unsigned>(f.actor,0x1000)==0x9000u&&!native_rag_b.entities.entries&&!native_rag_b.entities.speech.original_vtable);
     assert(catalog_o.health_jet_cadence.completed&&catalog_o.health_jet_cadence.tick==721&&catalog_o.health_jet_cadence.flags_changed);
     assert(f.get<unsigned>(f.actor,8)==0x22365760u&&f.get<int>(f.actor,0x74)==721&&!(f.get<unsigned>(f.actor,0xb8)&0x400000u));
-    assert((hd.death_order==std::vector<unsigned>{20,21,22,23,24,25,26,26,42})&&hd.jet_ticks==2);
+    assert((hd.death_order==std::vector<unsigned>{20,21,22,23,24,25,48,49,50,26,26,42})&&hd.jet_ticks==2);
     hd_services.jet_think=nullptr;
     hd.death_order.clear();hd.think_clock=90.f;
     auto primary_run=[&](int tick,unsigned handle=0x8002u){return primary->run(f.actor,sizeof(f.actor),primary_vt,handle,tick,.125f,&primary_b,&primary_o);};
@@ -2517,6 +2548,7 @@ int main(int argc,char** argv){
     hd.death_order.clear();hd.think_clock=92.375f;
     assert(primary_run(739)&&primary_o.removed&&primary_o.health_zeroed&&!primary_o.native_result);
     assert((hd.death_order==std::vector<unsigned>{43,41,44,47,46,45}));
+    script_slots[0].serial=0;script_slots[0].entity=nullptr;
     std::memcpy(f.actor,live_death_seed,sizeof(f.actor));
     assert(!hd_subclass.combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence.entries);
     assert(!hd_identity.entries&&!hd_identity.speech.original_vtable);
