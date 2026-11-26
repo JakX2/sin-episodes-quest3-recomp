@@ -128,6 +128,7 @@ struct LifecycleBindings {
     const sin_independent::EntityHandleEntry* entries;
     unsigned entry_count;
     std::uint32_t* master_handle;
+    void* schedule_context; // optional native scheduler adapter
 };
 struct LifecycleResult {
     unsigned base_called,flag_added,deferred_dirty,edict_marked,defaults_written,
@@ -146,6 +147,7 @@ struct DispatchBindings {
     int (__cdecl *now)(void*,float*) noexcept;
     int (__cdecl *schedule)(void*,void*,float) noexcept;
     const EvaluateBindings* evaluation;
+    void* schedule_context; // optional native scheduler adapter
 };
 struct DispatchResult {
     unsigned pvs_called,local_called,slot_checked,edict_found,edict_free,unknown_called,

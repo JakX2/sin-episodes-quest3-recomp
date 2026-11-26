@@ -180,6 +180,34 @@ struct ServerNpcJetpackPrimaryThinkApi {
 };
 using GetServerNpcJetpackPrimaryThinkApi=const ServerNpcJetpackPrimaryThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Authenticated CItem_DynamicResupply unnamed primary context only.
+inline constexpr char server_resupply_primary_think_export[]="SiN_GetServerResupplyPrimaryThinkApi";
+struct ServerResupplyPrimaryThinkBindings {
+    ServerNpcOuterCadenceBindings cadence;
+    ServerWeaponActivityBindings entities;
+    const sin_port::native_resupply::LifecycleBindings* lifecycle;
+    const sin_port::native_resupply::DispatchBindings* dispatch;
+    void* context;
+    int (__cdecl *clock)(void*,float*) noexcept;
+    int (__cdecl *record)(void*,void*,int,float,int) noexcept;
+    int (__cdecl *scope)(void*,void*,bool) noexcept;
+    int debug;
+};
+struct ServerResupplyPrimaryThinkResult {
+    ServerNpcOuterCadenceResult clear,reschedule;
+    sin_port::native_resupply::LifecycleResult spawn;
+    sin_port::native_resupply::DispatchResult dispatch;
+    int due_tick,last_tick,native_result;
+    float recorded_time,last_time;
+    unsigned token,completed,no_think,not_due,recorded,entered,closed,invoked,rescheduled,null_token;
+};
+struct ServerResupplyPrimaryThinkApi {
+    std::uint32_t version,size;
+    int (__cdecl *spawn)(void*,unsigned,unsigned,float,const ServerResupplyPrimaryThinkBindings*,ServerResupplyPrimaryThinkResult*) noexcept;
+    int (__cdecl *run)(void*,unsigned,unsigned,int,float,const ServerResupplyPrimaryThinkBindings*,ServerResupplyPrimaryThinkResult*) noexcept;
+};
+using GetServerResupplyPrimaryThinkApi=const ServerResupplyPrimaryThinkApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_outer_update_export[]="SiN_GetServerNpcOuterUpdateApi";
 struct ServerNpcOuterUpdateBindings {
     const ServerNpcActivePostAnimationBindings* post;

@@ -1507,6 +1507,72 @@ int __cdecl jet_primary_run(void* a,unsigned n,unsigned vt,unsigned handle,int t
     o->native_result=(rd<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
 }
 const ServerNpcJetpackPrimaryThinkApi jet_primary_api{1,sizeof(ServerNpcJetpackPrimaryThinkApi),&jet_primary_install,&jet_primary_run};
+// Original resupply +c0 is 22001740 RET and +bc is 22002ca0,
+ // the same primary-context plumbing as the recovered Jetpack path.
+struct ResupplyPrimaryRoute {
+    const ServerResupplyPrimaryThinkBindings& b;
+    ServerResupplyPrimaryThinkResult& out;
+    void* actor;
+    float interval;
+};
+int __cdecl resupply_schedule(void* p,void* a,float time) noexcept {
+    auto& q=*static_cast<ResupplyPrimaryRoute*>(p);
+    if(a!=q.actor||!set_tick(a,time,q.interval,q.b.cadence,q.out.reschedule))return 0;
+    q.out.reschedule.completed=q.out.rescheduled=1;return 1;
+}
+bool resupply_primary_start(void* a,unsigned n,unsigned handle,float interval,const ServerResupplyPrimaryThinkBindings* b,ServerResupplyPrimaryThinkResult* o) noexcept {
+    if(!o)return false;*o={};o->due_tick=o->last_tick=-1;
+    return a&&n>=0x3b0&&rd<unsigned>(a,0)==sin_port::native_resupply::resupply_vtable&&b&&
+        std::isfinite(interval)&&interval>0&&b->entities.count<=sin_independent::kEntityHandleCapacity&&
+        (!b->entities.count||b->entities.entries)&&
+        sin_independent::EntityHandleView(b->entities.entries,b->entities.count).Resolve(handle)==a;
+}
+int __cdecl resupply_primary_spawn(void* a,unsigned n,unsigned handle,float interval,const ServerResupplyPrimaryThinkBindings* b,ServerResupplyPrimaryThinkResult* o) noexcept {
+    if(!resupply_primary_start(a,n,handle,interval,b,o)||!b->lifecycle)return 0;
+    const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(sin_port::native_resupply::Api));if(!api)return 0;
+    ResupplyPrimaryRoute route{*b,*o,a,interval};
+    auto bound=*b->lifecycle;bound.schedule=&resupply_schedule;bound.schedule_context=&route;
+    bound.entries=b->entities.entries;bound.entry_count=b->entities.count;
+    if(!api->spawn(a,n,&bound,&o->spawn))return 0;
+    o->completed=o->native_result=1;return 1;
+}
+int __cdecl resupply_primary_run(void* a,unsigned n,unsigned handle,int tick,float interval,const ServerResupplyPrimaryThinkBindings* b,ServerResupplyPrimaryThinkResult* o) noexcept {
+    if(!resupply_primary_start(a,n,handle,interval,b,o))return 0;
+    auto idle=[&](){o->native_result=o->completed=1;return 1;};
+    if(rd<unsigned>(a,0xb8)&0x400000u){o->no_think=1;return idle();}
+    o->due_tick=rd<int>(a,0x74);
+    if(o->due_tick<=0||o->due_tick>tick){o->not_due=1;return idle();}
+    const auto supported=[](unsigned token){return token==0||token==sin_port::native_resupply::check_pvs_think;};
+    if(!supported(rd<unsigned>(a,8))||!b->clock||!b->record||!b->scope)return 0;
+    float now=0;if(!b->clock(b->context,&now)||!std::isfinite(now))return 0;
+    const double scheduled=double(o->due_tick)*double(interval);
+    o->recorded_time=scheduled>double(now)?now:float(scheduled);
+    if(!std::isfinite(o->recorded_time)||!b->record(b->context,a,tick,o->recorded_time,rd<int>(a,0x74)))return 0;
+    o->recorded=1;
+    if(!set_tick(a,-1.f,interval,b->cadence,o->clear)||!think_flags(a,false,b->cadence,o->clear))return 0;
+    o->clear.completed=1;
+    if(!b->scope(b->context,a,true))return 0;o->entered=1;
+    o->token=rd<unsigned>(a,8);bool ok=supported(o->token);
+    if(ok&&!o->token)o->null_token=1;
+    else if(ok){
+        const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(sin_port::native_resupply::Api));
+        if(!api||!b->dispatch||!b->dispatch->evaluation)ok=false;
+        else{
+            ResupplyPrimaryRoute route{*b,*o,a,interval};
+            auto bound=*b->dispatch;auto eval=*bound.evaluation;
+            eval.entries=b->entities.entries;eval.entry_count=b->entities.count;
+            if(b->lifecycle&&b->lifecycle->master_handle)eval.master_handle=b->lifecycle->master_handle;
+            bound.evaluation=&eval;bound.schedule=&resupply_schedule;bound.schedule_context=&route;
+            o->invoked=1;ok=api->check_pvs(a,n,b->debug,&bound,&o->dispatch)!=0;
+        }
+    }
+    const bool closed=b->scope(b->context,a,false)!=0;o->closed=closed;
+    if(!ok||!closed)return 0;
+    if(!b->clock(b->context,&o->last_time)||!think_tick(o->last_time,interval,o->last_tick))return 0;
+    wr<int>(a,0x34,o->last_tick);
+    o->native_result=(rd<unsigned>(a,0xb8)&1u)==0;o->completed=1;return 1;
+}
+const ServerResupplyPrimaryThinkApi resupply_primary_api{1,sizeof(ServerResupplyPrimaryThinkApi),&resupply_primary_spawn,&resupply_primary_run};
 struct JetInitialThinkRoute {
     const ServerNpcJetpackDeathBranchBindings* source;
     const ServerNpcJetpackDeathModeBindings* mode_source;
@@ -2253,4 +2319,10 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerEnt
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcJetpackPrimaryThinkApi=_SiN_GetServerNpcJetpackPrimaryThinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackPrimaryThinkApi* __cdecl SiN_GetServerNpcJetpackPrimaryThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcJetpackPrimaryThinkApi)?&jet_primary_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerResupplyPrimaryThinkApi=_SiN_GetServerResupplyPrimaryThinkApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerResupplyPrimaryThinkApi* __cdecl SiN_GetServerResupplyPrimaryThinkApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerResupplyPrimaryThinkApi)?&resupply_primary_api:nullptr;
 }
