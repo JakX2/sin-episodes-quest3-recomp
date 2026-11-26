@@ -1,0 +1,3 @@
+# Phase 1366: Scripted Jetpack damage through delayed terminal death
+
+Extends Phase 1365's live scripted damage fixture into the existing original 22365760 delayed death-think entry. The hosted ragdoll adapter supplies a serial-valid effect subject. Test uses the same actor and retained damage record, asserts exactly two seconds is nonterminal, rejects a stale actor handle before callbacks, and crosses the threshold at 2.125 seconds. Checks terminal effect/cleanup ordering, think identity 221c0d40, mode 3, native removal and dead state and reschedule. Host invokes DeathThink explicitly; automatic engine scheduling and effect implementation remain outstanding. CI pending.
