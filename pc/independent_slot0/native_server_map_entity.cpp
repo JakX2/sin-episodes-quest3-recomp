@@ -106,11 +106,12 @@ constexpr FactorySpec timer_spec{"logic_timer",Family::LogicTimer,0x224fb604,0x2
 constexpr FactorySpec branch_spec{"logic_branch",Family::LogicBranch,0x224fb628,0x2241f5fc,branch_extent};
 constexpr FactorySpec case_spec{"logic_case",Family::LogicCase,0x224fb620,0x2241f5e4,case_extent};
 constexpr FactorySpec compare_spec{"logic_compare",Family::LogicCompare,0x224fb624,0x2241f5f0,compare_extent};
+constexpr FactorySpec counter_spec{"math_counter",Family::MathCounter,0x224fb61c,0x2241f5d8,counter_extent};
 bool valid_dictionary(const FactoryDictionary* d) noexcept {
-    if(!d||!d->registered||d->count<12||d->count>18)return false;
+    if(!d||!d->registered||d->count<12||d->count>19)return false;
     for(unsigned i=0;i<12;++i)if(d->slots[i]!=&native_specs[i])return false;
-    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false;
-    for(unsigned i=12;i<18;++i){
+    bool relay=false,logic_auto=false,logic_timer=false,logic_branch=false,logic_case=false,logic_compare=false,math_counter=false;
+    for(unsigned i=12;i<19;++i){
         if(i>=d->count){if(d->slots[i])return false;continue;}
         if(d->slots[i]==&relay_spec&&!relay)relay=true;
         else if(d->slots[i]==&auto_spec&&!logic_auto)logic_auto=true;
@@ -118,12 +119,13 @@ bool valid_dictionary(const FactoryDictionary* d) noexcept {
         else if(d->slots[i]==&branch_spec&&!logic_branch)logic_branch=true;
         else if(d->slots[i]==&case_spec&&!logic_case)logic_case=true;
         else if(d->slots[i]==&compare_spec&&!logic_compare)logic_compare=true;
+        else if(d->slots[i]==&counter_spec&&!math_counter)math_counter=true;
         else return false;
     }
     return true;
 }
 int register_optional(FactoryDictionary* d,const FactorySpec* spec) noexcept {
-    if(!valid_dictionary(d)||d->count==18)return 0;
+    if(!valid_dictionary(d)||d->count==19)return 0;
     for(unsigned i=12;i<d->count;++i)if(d->slots[i]==spec)return 0;
     d->slots[d->count++]=spec;return 1;
 }
@@ -133,6 +135,7 @@ int __cdecl register_timer(FactoryDictionary* d) noexcept {return register_optio
 int __cdecl register_branch(FactoryDictionary* d) noexcept {return register_optional(d,&branch_spec);}
 int __cdecl register_case(FactoryDictionary* d) noexcept {return register_optional(d,&case_spec);}
 int __cdecl register_compare(FactoryDictionary* d) noexcept {return register_optional(d,&compare_spec);}
+int __cdecl register_counter(FactoryDictionary* d) noexcept {return register_optional(d,&counter_spec);}
 bool equal_class(const char* a,const char* b) noexcept {
     if(!a||!b)return false;
     auto fold=[](unsigned char v){return v>='A'&&v<='Z'?v+32:v;};
@@ -170,6 +173,26 @@ int __cdecl create_factory(const char* name,const FactoryBindings* b,FactoryResu
         const unsigned zero=0,invalid=0xffffffffu,vt=relay_vtable;
         std::memcpy(a,&vt,4);std::memcpy(a+0x394,&zero,4);
         std::memcpy(a+0x3a0,&invalid,4);std::memcpy(a+0x3a4,&zero,4);
+        if(!r->initialize(r->context,a,name))return 0;
+        o->networkable=a+0x160;o->completed=1;return 1;
+    }
+    if(o->spec->family==Family::MathCounter){
+        const auto* r=b->math_counter;
+        if(!r||!r->allocate||!r->base_construct||!r->initialize||
+           !r->allocate(r->context,counter_extent,&o->actor,&o->bytes)||!o->actor||o->bytes<counter_extent)return 0;
+        auto* a=static_cast<unsigned char*>(o->actor);
+        // Original 2217d810 base(1), three output triplets.
+        if(!r->base_construct(r->context,a,1))return 0;
+        unsigned values[2]{};std::memcpy(values,a+0x394,8);
+        if(values[0]||values[1]||a[0x39c]||a[0x39d])return 0;
+        for(unsigned off=0x3a0;off<=0x3d0;off+=0x18){
+            unsigned head=0;std::memcpy(&head,a+off+0x14,4);if(head)return 0;
+        }
+        const unsigned zero=0,invalid=0xffffffffu,vt=counter_vtable;
+        std::memcpy(a,&vt,4);
+        for(unsigned off=0x3a0;off<=0x3d0;off+=0x18){
+            std::memcpy(a+off,&zero,4);std::memcpy(a+off+0xc,&invalid,4);std::memcpy(a+off+0x10,&zero,4);
+        }
         if(!r->initialize(r->context,a,name))return 0;
         o->networkable=a+0x160;o->completed=1;return 1;
     }
@@ -323,6 +346,12 @@ int __cdecl destroy_case(void* actor,unsigned bytes,void* networkable,const Rela
 int __cdecl destroy_compare(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
     if(!networkable)return 1;
     if(!actor||bytes<compare_extent||entity_vtable(actor)!=compare_vtable||
+       networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
+    return b->release_networkable(b->context,networkable);
+}
+int __cdecl destroy_counter(void* actor,unsigned bytes,void* networkable,const RelayFactoryBindings* b) noexcept {
+    if(!networkable)return 1;
+    if(!actor||bytes<counter_extent||entity_vtable(actor)!=counter_vtable||
        networkable!=static_cast<unsigned char*>(actor)+0x160||!b||!b->release_networkable)return 0;
     return b->release_networkable(b->context,networkable);
 }
@@ -552,9 +581,11 @@ bool find_parent(const SpawnBindings& b,SpawnResult& o,void* a,void** parent) no
     ++o.parent_reads;return b.find_parent&&b.find_parent(b.context,name,parent);
 }
 int __cdecl timer_spawn(void*,unsigned,const TimerBindings*,TimerResult*) noexcept;
+int __cdecl counter_spawn(void*,unsigned,CounterResult*) noexcept;
 bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) noexcept {
     const auto vt=read_field<unsigned>(a,0);
     if(vt==timer_vtable&&b.logic_timer){native=true;TimerResult r{};return timer_spawn(a,n,b.logic_timer,&r)!=0;}
+    if(vt==counter_vtable&&b.native_math_counter){native=true;CounterResult r{};return counter_spawn(a,n,&r)!=0;}
     native=(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
     if(!native)return b.virtual_spawn&&b.virtual_spawn(b.context,a);
     const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return false;
@@ -622,12 +653,13 @@ bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexce
     }
     unsigned n=0;if(!extent_ok(b,a,4,n))return false;
     const auto vt=read_field<unsigned>(a,0);
-    const bool native=(vt==timer_vtable&&b.logic_timer)||(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
+    const bool native=(vt==counter_vtable&&b.native_math_counter)||(vt==timer_vtable&&b.logic_timer)||(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
     if(!native)return b.spawn&&b.spawn(b.context,a,&code);
     if(!b.native_spawn_begin||!b.native_spawn_end)return false;
     bool proceed=false;if(!b.native_spawn_begin(b.context,a,&proceed))return false;
     if(proceed){
-        if(vt==timer_vtable){TimerResult r{};if(!timer_spawn(a,n,b.logic_timer,&r))return false;}
+        if(vt==counter_vtable){CounterResult r{};if(!counter_spawn(a,n,&r))return false;}
+        else if(vt==timer_vtable){TimerResult r{};if(!timer_spawn(a,n,b.logic_timer,&r))return false;}
         else {
             const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return false;
             if(vt==resupply_vtable){LifecycleResult r{};if(!api->spawn(a,n,b.resupply,&r))return false;}
@@ -1367,7 +1399,7 @@ int __cdecl counter_input(void* a,unsigned n,const char* name,void* activator,un
     if(update&&!counter_update(a,n,candidate,activator,*b,*o))return 0;
     counter_snapshot(a,*o);o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")

@@ -1377,5 +1377,61 @@ int main(int argc,char** argv){
         assert(ci("Unknown",0)&&!result.handled);
         assert(!api->counter_spawn(actor,counter_extent-1,&result));
     }
+    {
+        FactoryDictionary dict{};
+        assert(api->register_factories(&dict)&&api->register_counter(&dict)&&api->register_compare(&dict)&&api->register_case(&dict)&&api->register_branch(&dict)&&api->register_auto(&dict)&&api->register_timer(&dict)&&api->register_relay(&dict)&&dict.count==19);
+        assert(!api->register_counter(&dict));
+        const auto* spec=api->find_factory(&dict,"MATH_COUNTER");
+        assert(spec&&spec->family==Family::MathCounter&&spec->original_object==0x224fb61c&&spec->original_vtable==0x2241f5d8&&spec->extent==counter_extent);
+        struct CounterFactoryFixture {alignas(4) unsigned char storage[counter_extent]{};unsigned alloc=0,base=0,init=0,released=0,cleared=0,begin=0,end=0;bool short_alloc=false;} f;
+        RelayFactoryBindings owner{};owner.context=&f;
+        owner.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<CounterFactoryFixture*>(p);assert(n==counter_extent);++f.alloc;*a=f.storage;*bytes=f.short_alloc?n-1:n;return 1;
+        };
+        owner.base_construct=[](void* p,void* a,int arg) noexcept ->int{
+            auto& f=*static_cast<CounterFactoryFixture*>(p);assert(a==f.storage&&arg==1);++f.base;
+            unsigned marker=0x12345678;std::memcpy(f.storage+0x3a4,&marker,4);return 1;
+        };
+        owner.initialize=[](void* p,void* a,const char* cls) noexcept ->int{
+            auto& f=*static_cast<CounterFactoryFixture*>(p);assert(a==f.storage&&f.base==1&&!std::strcmp(cls,"math_counter"));++f.init;return 1;
+        };
+        owner.release_networkable=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<CounterFactoryFixture*>(p);assert(a==f.storage+0x160);++f.released;return 1;
+        };
+        FactoryBindings factories{};factories.dictionary=&dict;FactoryResult result{};
+        assert(!api->create_factory("math_counter",&factories,&result)&&result.matched&&!result.actor);
+        factories.math_counter=&owner;f.short_alloc=true;
+        assert(!api->create_factory("math_counter",&factories,&result)&&result.matched&&!result.networkable&&!f.base);f.short_alloc=false;
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=counter_extent;return 1;};
+        keys.intern=[](void*,const char* text,unsigned* token) noexcept ->int{
+            const char* values[]{"math_counter","relay","Trigger"};
+            for(unsigned i=0;i<3;++i)if(!std::strcmp(text,values[i])){*token=201+i;return 1;}return 0;
+        };
+        Bindings parse{};parse.context=&f;parse.native_factory=&factories;parse.native_keys=&keys;
+        parse.clear_factory_global=[](void* p) noexcept ->int{++static_cast<CounterFactoryFixture*>(p)->cleared;return 1;};
+        SpawnBindings spawn{};spawn.context=&f;spawn.native_math_counter=true;
+        spawn.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=counter_extent;return 1;};
+        spawn.classname=[](void*,void*,const char** cls) noexcept ->int{*cls="math_counter";return 1;};
+        spawn.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        spawn.debug_enabled=[](void*,bool* enabled) noexcept ->int{*enabled=false;return 1;};
+        spawn.native_spawn_begin=[](void* p,void* a,bool* proceed) noexcept ->int{auto& f=*static_cast<CounterFactoryFixture*>(p);assert(a==f.storage);++f.begin;*proceed=true;return 1;};
+        spawn.native_spawn_end=[](void* p,void* a,int* code) noexcept ->int{auto& f=*static_cast<CounterFactoryFixture*>(p);assert(a==f.storage);++f.end;*code=0;return 1;};
+        PipelineBindings pipe{};pipe.context=&f;pipe.parse=&parse;pipe.spawn=&spawn;
+        pipe.scope=[](void*,const char*,bool) noexcept ->int{return 1;};
+        pipe.classify=[](void*,void*,Category* cat) noexcept ->int{*cat=Category::Ordinary;return 1;};
+        const char map[]="{ classname math_counter startvalue 12.5 min 10 max 2 OutValue \"relay,Trigger,,0,-1\" OnHitMin \"relay,Trigger,,0,-1\" OnHitMax \"relay,Trigger,,0,-1\" }";
+        PipelineResult parsed{};
+        assert(api->parse_all(map,sizeof(map),false,&pipe,&parsed)&&parsed.parse.native_creates==1&&parsed.spawn.native_spawns==1&&parsed.spawn.spawned==1);
+        assert(f.alloc==2&&f.base==1&&f.init==1&&f.cleared==1&&f.begin==1&&f.end==1&&word(f.storage,0)==counter_vtable);
+        assert(word(f.storage,0x394)==0x40000000u&&word(f.storage,0x398)==0x41200000u&&word(f.storage,0x3a0)==0x41200000u&&word(f.storage,0x3b0)==1&&word(f.storage,0x3a4)==0x12345678u&&!f.storage[0x39c]&&!f.storage[0x39d]);
+        for(unsigned i=0;i<3;++i){
+            const unsigned off=0x3a0+i*0x18;
+            assert(word(f.storage,off+0xc)==0xffffffffu&&word(f.storage,off+0x14)==ptrword(pool.rows[i]));
+            if(i)assert(!word(f.storage,off)&&!word(f.storage,off+0x10));
+        }
+        assert(api->destroy_counter(nullptr,0,nullptr,nullptr)&&!api->destroy_counter(f.storage,counter_extent,f.storage+0x164,&owner)&&!f.released);
+        assert(api->destroy_counter(f.storage,counter_extent,f.storage+0x160,&owner)&&f.released==1);
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
