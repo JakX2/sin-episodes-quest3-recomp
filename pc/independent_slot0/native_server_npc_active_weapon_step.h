@@ -184,6 +184,30 @@ struct ServerNpcWakePolicyApi {
 };
 using GetServerNpcWakePolicyApi=const ServerNpcWakePolicyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Original void output wrapper 22156900 and action traversal 22156680.
+// Queue construction, string-token interpretation and allocator remain host
+// boundaries. The native action path owns countdown and linked-list mutation.
+inline constexpr char server_entity_void_output_export[]="SiN_GetServerEntityVoidOutputApi";
+struct ServerEntityVoidOutputAction {
+    std::uint32_t target,input,parameter,variant_type,action_id;
+    float delay;
+};
+struct ServerEntityVoidOutputBindings {
+    void* context;
+    int (__cdecl *resolve)(void*,std::uint32_t,void**,unsigned*) noexcept;
+    int (__cdecl *enqueue)(void*,void* activator,void* caller,const ServerEntityVoidOutputAction*) noexcept;
+    int (__cdecl *release)(void*,std::uint32_t,void*) noexcept;
+    int (__cdecl *debug_action)(void*,void* caller,const ServerEntityVoidOutputAction*) noexcept;
+};
+struct ServerEntityVoidOutputResult {
+    unsigned completed,visited,queued,parameter_overrides,countdowns,removed,debugged;
+};
+struct ServerEntityVoidOutputApi {
+    std::uint32_t version,size;
+    int (__cdecl *fire)(void* output,unsigned output_bytes,void* activator,void* caller,unsigned caller_bytes,float extra_delay,const ServerEntityVoidOutputBindings*,ServerEntityVoidOutputResult*) noexcept;
+};
+using GetServerEntityVoidOutputApi=const ServerEntityVoidOutputApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
 inline constexpr char server_npc_wake_transition_export[]="SiN_GetServerNpcWakeTransitionApi";
 struct ServerNpcWakeTransitionBindings {
     const ServerNpcActivePostAnimationBindings* storage;
