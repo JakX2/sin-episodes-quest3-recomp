@@ -23,7 +23,7 @@ struct F {
     sin_independent::EntityHandleEntry slots[3]{};
     std::vector<int> trace;
     template<class T> void put(void* p,unsigned off,T v){std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
-    template<class T> T get(void* p,unsigned off){T v{};std::memcpy(&v,static_cast<unsigned char*>(p)+off,sizeof(v));return v;}
+    template<class T> T get(const void* p,unsigned off){T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
     static F& self(void* p){return *static_cast<F*>(p);}
 };
 int main(int argc,char** argv){
