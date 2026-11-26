@@ -21,17 +21,30 @@ struct Events {
             const int health_values[]{21,0x5002,-1,-1,43,0};
             if(kind==0){assert(fields==0&&!std::strcmp(key,"descriptor")&&value==descriptor);}
             else if(kind==1){assert(fields<3&&!std::strcmp(key,game_keys[fields])&&value==(fields?-1:descriptor));}
-            else{assert(kind==2&&fields<6&&!std::strcmp(key,health_keys[fields])&&value==health_values[fields]);}
+            else if(kind==2){assert(fields<6&&!std::strcmp(key,health_keys[fields])&&value==health_values[fields]);}
+            else{
+                assert(kind==3);
+                if(fields==0){
+                    assert(!std::strcmp(key,"descriptor")&&value==0&&lookups&&*lookups==expected_lookups);
+                    if(mutation){const unsigned changed=0x6002;std::memcpy(mutation,&changed,4);}
+                }else if(fields==1)assert(!std::strcmp(key,"owner")&&value==expected_owner);
+                else if(fields==2)assert(!std::strcmp(key,"subject")&&value==-1);
+                else assert(fields==4&&!std::strcmp(key,"decision")&&value==7);
+            }
             ++fields;
         }
-        virtual void real(const char*,float){assert(false);}
+        virtual void real(const char* key,float value){
+            const char* keys[]{"value","x","y","z"};const float values[]{12.5f,1.f,2.f,3.f};
+            assert(kind==3&&fields>=5&&fields<9&&!std::strcmp(key,keys[fields-5])&&value==values[fields-5]);++fields;
+        }
         virtual void string(const char* key,const char* value){
             if(kind==0)assert((fields==1&&!std::strcmp(key,"mapname")&&!std::strcmp(value,"SE1_intro01"))||
                 (fields==2&&!std::strcmp(key,"filename")&&!*value));
-            else assert(kind==1&&fields==3&&!std::strcmp(key,"name")&&!std::strcmp(value,"secret"));
+            else assert((kind==1||kind==3)&&fields==3&&!std::strcmp(key,"name")&&!std::strcmp(value,"secret"));
             ++fields;
         }
-        unsigned fields=0,kind=0;int descriptor=11;
+        unsigned fields=0,kind=0;int descriptor=11,expected_owner=0;
+        unsigned* lookups=nullptr;unsigned expected_lookups=0;unsigned char* mutation=nullptr;
     } event;
     unsigned calls=0,creates=0,fires=0,frees=0;bool live=false,fire_ok=true,unavailable=false;
     virtual void unused() noexcept {assert(false);}
@@ -44,15 +57,15 @@ struct Events {
         assert(calls==2&&!live&&!force);
         // LevelInit map(1), secret Spawn(11), secret Touch(12),
         // ServerActivate map(7), then health(21).
-        constexpr const char* names[]{"map","game","game","map","health"};
-        constexpr int descriptors[]{1,11,12,7,21};
-        assert(creates<5&&!std::strcmp(name,names[creates]));
-        event.descriptor=descriptors[creates++];event.kind=!std::strcmp(name,"map")?0:!std::strcmp(name,"game")?1:2;
+        constexpr const char* names[]{"map","game","game","map","health","dynamic_difficulty","dynamic_difficulty","dynamic_difficulty"};
+        constexpr int descriptors[]{1,11,12,7,21,0,0,0};
+        assert(creates<8&&!std::strcmp(name,names[creates]));
+        event.descriptor=descriptors[creates++];event.kind=!std::strcmp(name,"map")?0:!std::strcmp(name,"game")?1:!std::strcmp(name,"health")?2:3;
         if(unavailable)return nullptr;
         live=true;event.fields=0;return &event;
     }
     virtual bool fire(void* object,bool no_broadcast){
-        const unsigned expected=event.kind==0?3:event.kind==1?4:6;
+        const unsigned expected=event.kind==0?3:event.kind==1?4:event.kind==2?6:9;
         assert(live&&object==&event&&!no_broadcast&&event.fields==expected);++fires;live=false;return fire_ok;
     }
     virtual void s8(){} virtual void s9(){}
@@ -209,7 +222,7 @@ int main(int argc,char** argv){
     assert(init_events(&started.state,&b,&bo,&session)&&session.startup==&started.state&&session.manager==&started.events&&session.thread==GetCurrentThreadId());
     assert(!reject.events.calls&&started.events.calls==2);
     struct Map {
-        alignas(4) unsigned char actor[nm::secret_trigger_extent]{};
+        alignas(4) unsigned char actor[nm::dynamic_trigger_extent]{};
         alignas(4) unsigned char player[0x37c]{};
         unsigned removed=0;
     } m;
@@ -296,7 +309,19 @@ int main(int argc,char** argv){
     assert(activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&lr.completed&&lr.map_event&&lr.health_event&&started.events.creates==5&&started.events.fires==5&&!started.events.frees);
     assert(network.calls==3&&edict_queries==8);
     assert(!activate_events(&ls,nullptr,0,1,&lb,&lr,&session)&&started.events.creates==5&&edict_queries==8);
-    session={};assert(!resolve_player(&session,&player)&&!player&&edict_queries==8);
-    assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&m.removed==1);
+    // Dynamic owner resolution occurs only after successful creation;
+    // descriptor setter mutates the owner's full handle before it is read.
+    put(0,nm::dynamic_trigger_vtable);put(0x470,0x41480000u);put(0x474,7);
+    put(0x2bc,0x3f800000u);put(0x2c0,0x40000000u);put(0x2c4,0x40400000u);
+    started.events.fire_ok=true;started.events.event.lookups=&edict_queries;
+    started.events.event.expected_lookups=9;started.events.event.expected_owner=0x6002;
+    started.events.event.mutation=m.player+0x378;
+    assert(!tr.owner_word&&touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&m.removed==2&&edict_queries==9&&network.calls==4);
+    set_clients(2);started.events.event.expected_owner=-1;started.events.event.mutation=nullptr;
+    assert(touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&m.removed==3&&edict_queries==9);
+    set_clients(1);started.events.unavailable=true;
+    assert(touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventUnavailable&&cr.event_unavailable&&m.removed==4&&edict_queries==9&&started.events.creates==8&&started.events.fires==7&&!started.events.frees);
+    session={};assert(!resolve_player(&session,&player)&&!player&&edict_queries==9);
+    assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&m.removed==4);
     FreeLibrary(server);FreeLibrary(client);
 }
