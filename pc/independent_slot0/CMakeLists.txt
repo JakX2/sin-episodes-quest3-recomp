@@ -1162,6 +1162,7 @@ add_test(NAME independent_server_npc_weapon_ammo_matrix COMMAND sin_server_npc_w
 
 add_executable(sin_server_npc_weapon_melee_audit test_original_npc_weapon_melee.cpp)
 target_compile_features(sin_server_npc_weapon_melee_audit PRIVATE cxx_std_17)
+set_target_properties(sin_server_npc_weapon_ammo_audit sin_server_npc_weapon_melee_audit PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 add_test(NAME independent_server_npc_weapon_melee_matrix COMMAND sin_server_npc_weapon_melee_audit --self-test "$<TARGET_FILE:sin_slot0_server>")
 
 add_executable(sin_server_npc_schedule_resolution_test test_native_server_npc_schedule_resolution.cpp)

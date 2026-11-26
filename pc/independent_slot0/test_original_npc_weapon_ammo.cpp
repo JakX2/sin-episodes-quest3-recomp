@@ -187,7 +187,8 @@ bool range_matrix(const ServerNpcWeaponAmmoApi& api,Fixture& f,const Original* o
             comparisons+=9;
         }
     }
-    std::printf("range matrix %u leaf cases (%s)\n",comparisons,original?"native + original PE32":"native boundary witnesses");
+    if(original)std::printf("range matrix %u original leaf comparisons passed\n",comparisons);
+    else std::printf("range boundary witnesses passed; %u input tuples prepared for optional original replay\n",comparisons/9);
     return true;
 }
 }
