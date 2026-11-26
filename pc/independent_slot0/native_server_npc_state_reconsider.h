@@ -1971,4 +1971,39 @@ struct ServerNpcGruntSpecialImpactApi {
     int (__cdecl *run)(void*,unsigned,void*,unsigned,float,const ServerNpcGruntSpecialDamageBindings*,ServerNpcGruntSpecialDamageResult*) noexcept;
 };
 using GetServerNpcGruntSpecialImpactApi=const ServerNpcGruntSpecialImpactApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_jetpack_death_branches_export[]="SiN_GetServerNpcJetpackDeathBranchesApi";
+struct ServerNpcJetpackDeathBranchBindings {
+    void* context;
+    ServerNpcEnemyMemoryBindings dirty_storage;
+    int (__cdecl *remove)(void*,void*) noexcept; // 22286bf0 accepts null
+    int (__cdecl *powerdown)(void*,void*,const char*) noexcept;
+    int (__cdecl *sentence)(void*,void*,const char*) noexcept;
+    int (__cdecl *ignite)(void*,void*,float,int,void*,void*,float,int) noexcept; // +2d4
+    int (__cdecl *ragdoll)(void*,void*,void*,const float*) noexcept; // Jetpack +3ac
+    int (__cdecl *time)(void*,float*) noexcept;
+    int (__cdecl *install_think)(void*,void*,std::uint32_t) noexcept; // identity token, not executable VA
+    int (__cdecl *schedule)(void*,void*,float) noexcept;
+    int (__cdecl *effect_begin)(void*,void*) noexcept; // original temporary recipient scope
+    int (__cdecl *refresh_origin)(void*,void*) noexcept;
+    int (__cdecl *immediate_effect)(void*,void*) noexcept; // 22366980..223669ea
+    int (__cdecl *effect_end)(void*,void*) noexcept;
+};
+struct ServerNpcJetpackDeathBranchResult {
+    float force[3],stamp,scheduled;
+    unsigned completed,mode,cleanup,removed,cleared,aux_removed,powerdown,sentence,ignited,life_changed,local_dirty,external_dirty,ragdoll,installed,scheduled_called,effect_scope,refreshed,effect_called,base_called,effect_ended;
+};
+struct ServerNpcJetpackDeathBranchesBindings {
+    ServerNpcGruntGroundLifeBindings combat;
+    ServerNpcJetpackDeathBranchBindings branch;
+};
+struct ServerNpcJetpackDeathBranchesResult {
+    ServerNpcGruntGroundLifeResult combat;
+    ServerNpcJetpackDeathBranchResult branch;
+};
+struct ServerNpcJetpackDeathBranchesApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcJetpackDeathBranchesBindings*,ServerNpcJetpackDeathBranchesResult*) noexcept;
+};
+using GetServerNpcJetpackDeathBranchesApi=const ServerNpcJetpackDeathBranchesApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
