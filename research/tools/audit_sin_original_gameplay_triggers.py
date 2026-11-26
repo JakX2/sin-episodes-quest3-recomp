@@ -26,7 +26,35 @@ ORIGINAL_METHODS={
   "dynamic_event_writer":(0x222B64D0,218,"ced0637d1c68f71408cb3836f6d6f4757fead802a02b6cef6cd36350d815db65"),
   "secret_game_event_writer":(0x222B63B0,103,"e2945d32f935b69d714477daece0bb9c7043213be53afc9e87c39ed8b58a4941"),
   "mark_difficulty_manager":(0x222B93E0,5,"de588dcd40cb4837e51bcf7c3a550256faafcae88cb9ab44e6df9c9ac3ac57bf"),
+  "dynamic_allocate":(0x221D54C0,67,"efd9b71bcd9c99d36598aa0d5b231bedf58ad3bc22da45e39e4bfc10d1a35ef2"),
+  "secret_allocate":(0x221D5550,67,"94afb40d951eb20fab91a93f27513fdb043c1112b83415b4f5303fe848709692"),
+  "dynamic_factory_create":(0x221D54A0,23,"6eecf5ca8aa241b73c4f1557c98667941ac865d58014926bdfdd055381792de9"),
+  "secret_factory_create":(0x221D5530,23,"6eecf5ca8aa241b73c4f1557c98667941ac865d58014926bdfdd055381792de9"),
+  "dynamic_destructor":(0x221D5510,30,"7a42d4784b57899101d20b1dd175b08969c9e3c932f66cf3c346de5a4626533c"),
+  "secret_destructor":(0x221D55A0,30,"a85becf758e4065d8797d78a96326e353d719bdbdb4b071c332582c9a4a0dbc7"),
+  "base_trigger_destructor":(0x221BE440,55,"8dd1922c7422c4bff012df312cd510ff40dffb76f42aa69c772deb493a7935d1"),
+  "trigger_vector_purge":(0x22044C90,83,"21ca9b861643d42fa04c71a15bed163bb01899d87923126d98e3eeb6f8ca203e"),
+  "base_trigger_datamap_init":(0x221D0C50,415,"4b241f1aec6b3ec76084d1d299c1a0513551685cfd9fb919ea296e42bda25ae8"),
+  "trigger_enable":(0x221CFC70,58,"0ac157475a35f2d1891cd71722fbf3f92aba7e681b4ac0385b364b952de01237"),
+  "trigger_disable":(0x221CFCB0,58,"5596e04afc248ff7fc90db294757a4440dac20fc5bbb3d396def3ed8ac027f05"),
+  "trigger_toggle":(0x221CE660,80,"9066c5bdb0190a5ead275af0ca04a6277a81c710f13cf54ca044be8e3b474baf"),
+  "trigger_input_thunks":(0x22060810,40,"f3e2e0d7e9570fbc90c89c244af37b938bc49d983465e998d6ca5ddb6a1cfaf6"),
+  "base_toggle_datamap_tail":(0x221C0EFF,36,"9ff28959f19ab7d5aecdfb87a5717b4bfe8fda81f8152f7ed7110b375358c533"),
+  "base_kill":(0x2213CDC0,80,"f46fec6fac87b05f1e8f2485b7ccf8b7e5748a8d4147ba27d01e46d4a0ff25e6"),
+  "find_by_name":(0x221619E0,190,"4d2372f524268ab2ce2a8df08cbf48f0adaa3dae121c4c8963108759d4099bdd"),
+  "get_handle":(0x22001B00,7,"0e8c31f2e49bf659ab4d49f07c04d6b715991eba3737f43ca492e011d3d9b8e7"),
 }
+BASE_TOGGLE_ROWS=(0x22508C74,780,"e2ac6ab967effdb36eae1c1a1af07c5b2cb753716a9616a8c0dc514cca019f0b")
+CONTROL_ROWS=(
+    (0x2250BAA0,0x223EDD00,0x22060810,"Enable"),
+    (0x2250BAD4,0x223EDCE8,0x22060820,"Disable"),
+    (0x2250BB08,0x223D4914,0x22060830,"Toggle"),
+)
+CONTROL_SLOTS=((8,0x22001B00),(0x50,0x221435B0),(0x28C,0x221CFC70),
+               (0x290,0x221CFCB0),(0x294,0x221CE660))
+CONTROL_CLASSES=((0x2243B96C,0x221CCB60),(0x2243BC0C,0x221CCC00))
+SUBJECT_SITES=(0x222B63EC,0x222B6529)
+
 CLASSES={
   "trigger_dynamic_difficulty":(0x223BE4A0,0x2243CAF4,0x2250B404,
      0x2243B96C,0x224C3F84,0x2250D3FC,
@@ -138,6 +166,30 @@ def verify_dynamic_spawn_control(at,read_text):
         raise EvidenceRefused("original dynamic Spawn warning string changed")
     return len(edges)
 
+def verify_trigger_control(read_u32,read_text):
+    for base,external,handler,label in CONTROL_ROWS:
+        if tuple(read_u32(base+offset) for offset in (0,8,16,20,28)) != (
+                0,0,0x80001,external,handler):
+            raise EvidenceRefused("inherited trigger input row changed "+label)
+        if not read_text(external,label):
+            raise EvidenceRefused("inherited trigger input name changed "+label)
+    for table,getter in CONTROL_CLASSES:
+        for slot,target in CONTROL_SLOTS+((0x34,getter),):
+            if read_u32(table+slot)!=target:
+                raise EvidenceRefused("trigger control virtual slot changed")
+    return len(CONTROL_ROWS),len(CONTROL_CLASSES)*(len(CONTROL_SLOTS)+1)
+
+def verify_subject_operands(at,read_text):
+    # The other original event helper at 222b6420 uses advisor.
+    # These two helpers instead push the actual subject literal.
+    for site in SUBJECT_SITES:
+        operand=at(site,5)
+        if operand!=b"\x68"+struct.pack("<I",0x223EC29C):
+            raise EvidenceRefused("trigger event subject operand changed")
+    if not read_text(0x223EC29C,"subject"):
+        raise EvidenceRefused("trigger event subject literal changed")
+    return len(SUBJECT_SITES)
+
 def verify_raw(client:bytes,server:bytes)->dict:
     if hashlib.sha256(client).hexdigest()!=CLIENT_SHA:
         raise EvidenceRefused("original client SHA-256 mismatch")
@@ -168,12 +220,19 @@ def verify_raw(client:bytes,server:bytes)->dict:
     spawn_edges=verify_secret_spawn_control(pe.at)
     dynamic_spawn_edges=verify_dynamic_spawn_control(pe.at,pe.text)
     count=verify_datadesc(pe.u32,pe.text)
+    control_rows,control_slots=verify_trigger_control(pe.u32,pe.text)
+    subject_sites=verify_subject_operands(pe.at,pe.text)
+    va,length,digest=BASE_TOGGLE_ROWS
+    if hashlib.sha256(pe.at(va,length)).hexdigest()!=digest:
+        raise EvidenceRefused("changed inherited CBaseToggle datamap")
+    if any((pe.u32(va+i*0x34+16)>>16)&8 for i in range(15)):
+        raise EvidenceRefused("unexpected CBaseToggle input shadow")
     # Cross-check the exact event names/types/field labels the two
     # complete original event helpers use.
     names={
         0x2245C82C:"dynamic_difficulty",0x2245C824:"game",
         0x2245C84C:"descriptor",0x2245C858:"owner",
-        0x2245C884:"advisor",0x2245C878:"decision",
+        0x223EC29C:"subject",0x2245C878:"decision",
         0x2240B13C:"name",0x223E0BBC:"value",
         0x22444D70:"x",0x22444D5C:"y",0x2245C88C:"z",
     }
@@ -194,6 +253,10 @@ def verify_raw(client:bytes,server:bytes)->dict:
         "dynamic_spawn_ordered_direct_calls":dynamic_spawn_edges,
         "dynamic_spawn_warning_flag_mask":1024,
         "original_event_names":["dynamic_difficulty","game"],
+        "trigger_control_input_rows":control_rows,
+        "trigger_control_virtual_slots":control_slots,
+        "subject_operand_sites":subject_sites,
+        "base_toggle_rows_without_inputs":15,
         "original_source_hashes":{"client":CLIENT_SHA,"server":SERVER_SHA},
         "limitations":"No real game entity creation, map load, AI or playable DLL Init."
     }
@@ -267,10 +330,46 @@ def self_test()->None:
     try:verify_dynamic_spawn_control(read_dynamic,lambda va,value:False)
     except EvidenceRefused:pass
     else:raise AssertionError("forged original dynamic warning text accepted")
+    control_words={}
+    control_text={}
+    for base,external,handler,label in CONTROL_ROWS:
+        control_words.update({base:0,base+8:0,base+16:0x80001,
+                              base+20:external,base+28:handler})
+        control_text[external]=label
+    for table,getter in CONTROL_CLASSES:
+        for slot,target in CONTROL_SLOTS+((0x34,getter),):
+            control_words[table+slot]=target
+    assert verify_trigger_control(control_words.get,
+                                  lambda va,s:control_text.get(va)==s)==(3,12)
+    for key in control_words:
+        bad=dict(control_words);bad[key]^=1
+        try:verify_trigger_control(bad.get,lambda va,s:control_text.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated trigger input row or slot accepted")
+    for key in control_text:
+        bad=dict(control_text);bad[key]="invented"
+        try:verify_trigger_control(control_words.get,lambda va,s:bad.get(va)==s)
+        except EvidenceRefused:pass
+        else:raise AssertionError("mutated trigger input name accepted")
+    subject_chunks={site:b"\x68"+struct.pack("<I",0x223EC29C)
+                    for site in SUBJECT_SITES}
+    assert verify_subject_operands(lambda va,n:subject_chunks[va][:n],
+                                  lambda va,s:va==0x223EC29C and s=="subject")==2
+    for site in SUBJECT_SITES:
+        bad=dict(subject_chunks)
+        bad[site]=b"\x68"+struct.pack("<I",0x2245C884)
+        try:verify_subject_operands(lambda va,n:bad[va][:n],
+                                   lambda va,s:True)
+        except EvidenceRefused:pass
+        else:raise AssertionError("advisor operand accepted for subject")
+    try:verify_subject_operands(lambda va,n:subject_chunks[va][:n],
+                               lambda va,s:False)
+    except EvidenceRefused:pass
+    else:raise AssertionError("changed subject literal accepted")
     try:verify_raw(b"synthetic",b"synthetic")
     except EvidenceRefused:pass
     else:raise AssertionError("synthetic DLL accepted as original")
-    print("PASS original-free 3 DATADESC fields, 3 original secret Spawn CALL rel32 edges, source bit3/descriptor11 witnesses, dynamic bit10 original warning and SHA refusal")
+    print("PASS original-free 3 DATADESC fields, 3 original secret Spawn CALL rel32 edges, source bit3/descriptor11 witnesses, dynamic bit10 warning, 3 inherited input rows, 12 virtual slots, 2 subject operands and SHA refusal")
 
 def main()->int:
     ap=argparse.ArgumentParser(description=__doc__)
