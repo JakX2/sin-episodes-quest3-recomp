@@ -1480,6 +1480,7 @@ int __cdecl remap_spawn(void* a,unsigned n,RemapResult* o) noexcept {
     }
     o->handled=o->completed=1;return 1;
 }
+bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
 // CMathRemap::InputValue 2217a610. Clamp high before low,
 // suppress changed/unordered input only with original spawnflag bit 0.
 // Store intermediate result to float BEFORE the ordered output clamp.
@@ -1503,12 +1504,18 @@ int __cdecl remap_input(void* a,unsigned n,const char* name,void* activator,unsi
     // 2212dc30/22154e40 changes the scalar/type words only.
     using namespace sin_port::native_weapon_tables;
     const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
-    if(!fire||!b->output||!b->output->enqueue_variant)return 0;
+    if(!fire||!b->output||(!b->native_queue&&!b->output->enqueue_variant))return 0;
     auto* out=static_cast<unsigned char*>(a)+0x3a4;
     write_field(out,0,result);write_field(out,0x10,1u);o->stored=1;
-    ServerEntityVoidOutputResult r{};
-    if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b->output,&r))return 0;
-    o->queued=r.queued;o->completed=1;return 1;
+    if(b->native_queue){
+        if(!native_named_output(a,n,activator,0x3a4,true,b->output,b->native_queue,o->queued))return 0;
+        o->native_output_queued=o->queued;
+    }else{
+        ServerEntityVoidOutputResult r{};
+        if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,b->output,&r))return 0;
+        o->queued=r.queued;
+    }
+    o->completed=1;return 1;
 }
 bool counter_valid(void* a,unsigned n,CounterResult* o) noexcept {
     if(!o)return false;*o={};
@@ -1921,17 +1928,12 @@ bool schedule_multicompare(void* a,void* activator,unsigned id,const RelayQueueB
 // Route original COutputEvent (22156900 -> 22156680) to the live
 // named event queue without an owner enqueue callback. The owner still
 // resolves action records, handles, and supplies release/debug effects.
-bool multicompare_fire(void* a,unsigned n,void* activator,unsigned off,const MultiCompareBindings& b,MultiCompareResult& o) noexcept {
+bool native_named_output(void* a,unsigned n,void* activator,unsigned off,bool typed,const native_weapon_tables::ServerEntityVoidOutputBindings* owner,const RelayQueueBindings* q,unsigned& queued) noexcept {
     using namespace sin_port::native_weapon_tables;
     const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
-    if(!fire||!b.output)return false;
+    if(!fire||!owner)return false;
     auto* out=static_cast<unsigned char*>(a)+off;
     ServerEntityVoidOutputResult r{};
-    if(!b.native_outputs){
-        if(!fire->fire(out,0x18,activator,a,n,0.f,b.output,&r))return false;
-        o.queued=r.queued;return true;
-    }
-    const auto* q=b.native_queue;
     if(!q||!valid_relay_queue(*q)||!q->now||!q->handle||!std::isfinite(*q->now))return false;
     const sin_independent::EntityHandleView registry(q->entries,q->entry_count);
     struct Route {
@@ -1940,7 +1942,7 @@ bool multicompare_fire(void* a,unsigned n,void* activator,unsigned off,const Mul
         void* actor;
         void* activator;
         unsigned self=0xffffffffu,source=0xffffffffu;
-    } ctx{b.output,q,a,activator};
+    } ctx{owner,q,a,activator};
     if(!q->handle(q->context,a,&ctx.self)||registry.Resolve(ctx.self)!=a)return false;
     if(activator&&(!q->handle(q->context,activator,&ctx.source)||registry.Resolve(ctx.source)!=activator))return false;
     ServerEntityVoidOutputBindings bound{};
@@ -1961,8 +1963,28 @@ bool multicompare_fire(void* a,unsigned n,void* activator,unsigned off,const Mul
         ServerEntityNamedEventQueueResult r{};
         return api&&api->enqueue(q.root,q.root_bytes,q.root_token,*q.now,s.source,s.self,action,q.queue,&r);
     };
-    if(!fire->fire(out,0x18,activator,a,n,0.f,&bound,&r))return false;
-    o.queued=o.native_output_queued=r.queued;return true;
+    bound.enqueue_variant=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
+        const auto& s=*static_cast<Route*>(p);const auto& q=*s.queue;
+        if(activator!=s.activator||caller!=s.actor)return 0;
+        const auto* api=SiN_GetServerEntityNamedEventQueueApi(1,sizeof(ServerEntityNamedEventQueueApi));
+        ServerEntityNamedEventQueueResult r{};
+        return api&&api->enqueue_variant(q.root,q.root_bytes,q.root_token,*q.now,s.source,s.self,action,variant,bytes,q.queue,&r);
+    };
+    if(typed){
+        if(!fire->fire_variant(out,0x18,activator,a,n,0.f,out,0x14,&bound,&r))return false;
+    }else if(!fire->fire(out,0x18,activator,a,n,0.f,&bound,&r))return false;
+    queued=r.queued;return true;
+}
+bool multicompare_fire(void* a,unsigned n,void* activator,unsigned off,const MultiCompareBindings& b,MultiCompareResult& o) noexcept {
+    if(b.native_outputs){
+        if(!native_named_output(a,n,activator,off,false,b.output,b.native_queue,o.queued))return false;
+        o.native_output_queued=o.queued;return true;
+    }
+    using namespace sin_port::native_weapon_tables;
+    const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+    ServerEntityVoidOutputResult r{};
+    if(!fire||!b.output||!fire->fire(static_cast<unsigned char*>(a)+off,0x18,activator,a,n,0.f,b.output,&r))return false;
+    o.queued=r.queued;return true;
 }
 int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activator,const void* variant,unsigned vn,unsigned id,const MultiCompareBindings* b,MultiCompareResult* o) noexcept {
     if(!o)return 0;*o={};
