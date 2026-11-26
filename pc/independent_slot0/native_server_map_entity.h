@@ -223,6 +223,7 @@ struct LogicDestroyBindings {
 struct LogicDestroyResult {
     unsigned completed,outputs,actions,validated,released,base_called,freed,unregistered,comparisons,comparisons_released;
     unsigned base_prefix,registry_unlinked,base_suffix;
+    unsigned base_outputs,base_actions,base_released;
 };
 struct CounterBindings {
     void* context;
@@ -505,7 +506,8 @@ struct RegistryDestroyBindings {
     const RegistryRemovalBindings* registry;
     void* context;
     int (__cdecl *prefix)(void*,void*) noexcept; // 2214427b..221442af
-    int (__cdecl *suffix)(void*,void*) noexcept; // 221442c3..22144357
+    int (__cdecl *suffix)(void*,void*) noexcept; // 221442c3..22144357, or 221442fa.. when native_outputs
+    bool native_outputs;
 };
 struct Api {
     std::uint32_t version,size;
