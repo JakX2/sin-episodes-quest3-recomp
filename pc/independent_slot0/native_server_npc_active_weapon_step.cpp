@@ -1017,6 +1017,87 @@ int native_forget(void* a,unsigned n,unsigned vt,const ServerEntityInputData& d,
     if(!mutation||!mutation->remove(owner,bytes,key,&mem,&result))return 0;
     o.forget_removed=result.removed;return 1;
 }
+// 22357e50 -> 220cfc00, 220ce430, 220ce960. Selection uses
+// priority first, distance second, and stops on the first non-rally cast.
+int native_assault(void* a,unsigned n,const ServerEntityInputData& d,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    if(!b.assault||!b.search)return -1;
+    if(n<0xde4||rd<unsigned>(a,0xdb8)!=0x223f5544u||rd<unsigned>(a,0xdbc)!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(a))||
+       b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
+    const auto& svc=*b.assault;
+    const unsigned type=rd<unsigned>(d.variant,0x10);
+    if(type!=0&&type!=2)return -1;
+    const unsigned name=type==2?rd<unsigned>(d.variant,0):0u;
+    auto search=*b.search;search.entities=b.entities;
+    const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+    auto warn=[&](unsigned token){return !svc.warning||svc.warning(svc.context,a,token);};
+    auto extent=[&](void* entity,unsigned need){
+        unsigned bytes=0;return search.extent&&search.extent(search.context,entity,&bytes)&&bytes>=need;
+    };
+    auto position=[&](void* entity,float* p){
+        if(!extent(entity,0x2c8))return false;
+        if(rd<unsigned>(entity,0xb8)&0x800u){if(!svc.detach||!svc.detach(svc.context,entity))return false;}
+        std::memcpy(p,static_cast<unsigned char*>(entity)+0x2bc,12);
+        return std::isfinite(p[0])&&std::isfinite(p[1])&&std::isfinite(p[2]);
+    };
+    auto dist=[](const float* a,const float* b){
+        const float x=a[0]-b[0],y=a[1]-b[1],z=a[2]-b[2];
+        return double(x)*x+double(y)*y+double(z)*z;
+    };
+    auto reset=[&](){
+        // Grunt never has the npc_monk exception in 220ce960.
+        for(unsigned off:{0x7a8u,0x7acu,0x7a4u,0x79cu,0x798u,0x7a0u,0x7b4u})wr<unsigned>(a,off,0u);
+        wr<std::uint8_t>(a,0x7b8,0);wr<std::uint8_t>(a,0x7b9,0);
+        for(unsigned i=0;i<8;++i)wr<unsigned>(a,0x82c+4*i,0xffffffffu);
+        ++o.assault_reset;
+    };
+    void* best=nullptr;void* prev=nullptr;int priority=-1;
+    for(unsigned i=0;;++i){
+        ServerEntitySearchResult found{};
+        if(!search_named(prev,name,nullptr,nullptr,&search,&found))return 0;
+        if(!found.entity)break;
+        if(i==4096||found.entity==prev||!svc.point_type)return 0;
+        bool rally=false;if(!svc.point_type(svc.context,found.entity,true,&rally))return 0;
+        if(!rally)break;
+        prev=found.entity;
+        if(!extent(prev,0x3c0))return 0;
+        ++o.assault_candidates;
+        if(registry.Resolve(rd<unsigned>(prev,0x3bc)))continue;
+        const int p=rd<int>(prev,0x3a0);
+        if(p>priority){best=prev;priority=p;}
+        else if(p==priority){
+            if(!best)return 0; // original assumes a valid prior best
+            float owner[3],candidate[3],old[3];
+            if(!position(a,owner)||!position(prev,candidate)||!position(best,old))return 0;
+            const float candidate_distance=static_cast<float>(dist(candidate,owner));
+            if(dist(old,owner)>candidate_distance)best=prev;
+        }
+    }
+    if(!best){++o.assault_missing;return warn(0x223f3cd0u);}
+    const unsigned self=rd<unsigned>(a,0x378);unsigned selected=0;
+    if(registry.Resolve(self)!=a||!search_handle(best,search,selected))return 0;
+    // 220ce430 returns false if ownership became live; retail caller
+    // ignores that return and still stores the selected handle.
+    if(!registry.Resolve(rd<unsigned>(best,0x3bc))){wr<unsigned>(best,0x3bc,self);++o.assault_reserved;}
+    wr<unsigned>(a,0xdd0,selected);++o.assault_selected;
+    if(!registry.Resolve(selected)){
+        if(!warn(0x223f3ca0u))return 0;wr<unsigned>(a,0xdd4,0u);++o.assault_missing;reset();return 1;
+    }
+    wr<unsigned>(a,0xdd4,3u);
+    // 220ce960 resets behavior-local fields before resolving assault point.
+    wr<std::uint8_t>(a,0xddc,0);wr<std::uint8_t>(a,0xddd,0);
+    wr<unsigned>(a,0xdcc,0xffffffffu);wr<std::uint8_t>(a,0xdde,0);
+    wr<unsigned>(a,0xde0,0u);wr<unsigned>(a,0xdd8,0u);
+    ServerEntitySearchResult linked{};
+    if(!search_named(nullptr,rd<unsigned>(best,0x394),nullptr,nullptr,&search,&linked))return 0;
+    bool assault=false;if(linked.entity&&(!svc.point_type||!svc.point_type(svc.context,linked.entity,false,&assault)))return 0;
+    if(assault){
+        unsigned handle=0;if(!search_handle(linked.entity,search,handle))return 0;
+        wr<unsigned>(a,0xdcc,handle);++o.assault_linked;
+    }else{
+        if(!warn(0x223f3bc0u))return 0;wr<unsigned>(a,0xdd4,0u);++o.assault_missing;
+    }
+    reset();return 1;
+}
 // Original concrete handlers, independent from the descriptor projection.
 // Return -1 for a handler not implemented here, 0 for malformed storage,
 // and 1 for a successfully executed native leaf.
@@ -1036,6 +1117,7 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
         return 1;
     };
     switch(handler){
+    case 0x22357e50u:return native_assault(a,n,d,b,o);
     case 0x22031f90u:return native_relationship(a,n,d,b,o);
     case 0x2203f1f0u:return native_forget(a,n,vt,d,b,o);
     case 0x22037a30u:{ // SetHealth: heal through 222a57a0/22140be0,
