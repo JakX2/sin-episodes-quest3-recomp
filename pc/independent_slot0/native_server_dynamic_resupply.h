@@ -460,6 +460,44 @@ struct AntigenInteractionResult {
 // The engine owns physical impulses, cloud/fragment creation and deferred deletion.
 inline constexpr unsigned antigen_gas_vtable=0x2246e81cu,antigen_gas_extent=0x3bcu,
     antigen_gas_think_token=0x222fe510u;
+// Gas caller supplies zero ignore class/entity and no distance falloff.
+// Preserve original CTakeDamageInfo, not an invented TakeHealth pulse.
+struct AntigenRadiusTrace {
+    float start[3],end[3],fraction;
+    void* hit;
+    bool startsolid;
+};
+struct AntigenRadiusBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned entry_count;
+    int (__cdecl *contents)(void*,const float*,unsigned*) noexcept;
+    int (__cdecl *enumerate)(void*,const float*,float,void**,unsigned,unsigned*) noexcept;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    int (__cdecl *body_target)(void*,void*,const float*,float*) noexcept;
+    int (__cdecl *trace)(void*,const float*,const float*,unsigned,void*,void*,AntigenRadiusTrace*) noexcept;
+    int (__cdecl *strict_trace)(void*,bool*) noexcept;
+    int (__cdecl *world)(void*,void**) noexcept;
+    int (__cdecl *door_class)(void*,void*,bool*) noexcept;
+    int (__cdecl *allow_corner)(void*,void*,bool*) noexcept;
+    // Original 221f3354..221f3441 geometric retry, using existing trace service.
+    int (__cdecl *corner_trace)(void*,void*,void*,const float*,const float*,AntigenRadiusTrace*) noexcept;
+    int (__cdecl *mass)(void*,void*,float*) noexcept;
+    int (__cdecl *damage_scale)(void*,void*,void*,float*) noexcept;
+    int (__cdecl *prepare_force)(void*,void*,void*,const float*,const float*,float) noexcept;
+    int (__cdecl *clear_multi)(void*) noexcept;
+    int (__cdecl *trace_attack)(void*,void*,const void*,const float*,const AntigenRadiusTrace*) noexcept;
+    int (__cdecl *apply_multi)(void*) noexcept;
+    int (__cdecl *take_damage)(void*,void*,const void*) noexcept;
+    int (__cdecl *after_effect)(void*,void*,const void*,const float*,const AntigenRadiusTrace*,const float*) noexcept;
+};
+struct AntigenRadiusResult {
+    unsigned completed,contents_reads,enumerated,visited,ignored,water_rejected,body_targets,traces,
+        strict_rejected,corner_calls,corner_rejected,obstruction_traces,obstruction_rejected,
+        mass_reads,amount_rejected,force_calls,trace_attacks,direct_attacks,after_effects;
+    bool wet;
+    float source[3],last_amount,last_block,half_radius_squared;
+};
 struct AntigenGasBindings {
     void* context;
     int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
@@ -479,6 +517,7 @@ struct AntigenGasBindings {
     // Original rules radius effect, including target admission and traces.
     int (__cdecl *radius_effect)(void*,void*,const float*,float,float,unsigned) noexcept;
     int (__cdecl *remove)(void*,void*) noexcept;
+    const AntigenRadiusBindings* native_radius;
 };
 struct AntigenGasResult {
     void* actor;
@@ -486,6 +525,7 @@ struct AntigenGasResult {
         particle_removed,spawn_sound,loop_sound,loop_stopped,clock_reads,random_reads,schedules,
         rate_reset,radius_called,elapsed_admitted,expired,removed,completed;
     float remaining,rate,radius,particle_life,elapsed,amount,next_time;
+    AntigenRadiusResult radius_result;
 };
 struct AntigenDamageBindings {
     void* context;
@@ -578,6 +618,7 @@ struct Api {
     int (__cdecl *antigen_gas_stop)(void*,unsigned,const AntigenGasBindings*,AntigenGasResult*) noexcept;
     int (__cdecl *mega_construct)(void*,unsigned,const VialPickupBindings*,VialPickupResult*) noexcept;
     int (__cdecl *mega_touch)(void*,unsigned,void*,const VialPickupBindings*,VialPickupResult*) noexcept;
+    int (__cdecl *antigen_radius)(void*,unsigned,const float*,float,float,const AntigenRadiusBindings*,AntigenRadiusResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

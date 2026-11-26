@@ -1251,6 +1251,104 @@ int __cdecl antigen_gas_stop(void* a,unsigned n,const AntigenGasBindings* b,Anti
     if(!o)return 0;*o={};if(!gas_ready(a,n,b)||!gas_stop_impl(a,*b,*o))return 0;
     gas_snapshot(a,*o);o->completed=1;return 1;
 }
+int __cdecl antigen_radius(void* gas,unsigned bytes,const float* pos,float amount,float radius,const AntigenRadiusBindings* b,AntigenRadiusResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!gas||bytes<antigen_gas_extent||field<unsigned>(gas,0)!=antigen_gas_vtable||
+       field<int>(gas,0x398)!=1||!pos||!std::isfinite(amount)||!std::isfinite(radius)||radius<0.f||
+       !b||b->entry_count>sin_independent::kEntityHandleCapacity||(!b->entries&&b->entry_count))return 0;
+    for(unsigned i=0;i<3;++i){if(!std::isfinite(pos[i]))return 0;o->source[i]=pos[i];}
+    const sin_independent::EntityHandleView registry(b->entries,b->entry_count);
+    // Gas's CBaseEntity handle getter is the direct +378 leaf.
+    const unsigned handle=field<unsigned>(gas,0x378);
+    if(registry.Resolve(handle)!=gas)return 0;
+    unsigned contents=0;
+    auto contents_at=[&](const float* p){if(!b->contents||!b->contents(b->context,p,&contents))return false;++o->contents_reads;return true;};
+    if(!contents_at(pos))return 0;
+    o->wet=(contents&0x4030u)!=0;
+    if(o->wet){float above[]{pos[0],pos[1],float(double(pos[2])+24.)};if(!contents_at(above))return 0;o->wet=(contents&0x4030u)!=0;}
+    o->source[2]=float(double(pos[2])+1.);
+    o->half_radius_squared=float((double(radius)*.5)*(double(radius)*.5));
+    void* targets[512]{};unsigned total=0;
+    if(!b->enumerate||!b->enumerate(b->context,o->source,radius,targets,512,&total)||total>512)return 0;
+    o->enumerated=total;
+    auto trace=[&](const float* from,const float* to,unsigned mask,void* target,AntigenRadiusTrace& tr){
+        if(!b->trace||!b->trace(b->context,from,to,mask,gas,target,&tr)||!std::isfinite(tr.fraction))return false;
+        ++o->traces;return true;
+    };
+    for(unsigned i=0;i<total;++i){
+        void* target=targets[i];if(!target)break;++o->visited;
+        unsigned n=0;if(!b->extent||!b->extent(b->context,target,&n)||n<0x29c)return 0;
+        if(!field<int>(target,0x94)){++o->ignored;continue;}
+        const int water=field<int>(target,0x298);
+        if((o->wet&&water==0)||(!o->wet&&water==3)){++o->water_rejected;continue;}
+        float body[3]{};
+        if(!b->body_target||!b->body_target(b->context,target,o->source,body))return 0;++o->body_targets;
+        for(float v:body)if(!std::isfinite(v))return 0;
+        AntigenRadiusTrace tr{};if(!trace(o->source,body,0x46004003u,target,tr))return 0;
+        bool strict=false;if(!b->strict_trace||!b->strict_trace(b->context,&strict))return 0;
+        float block=0.f;
+        if(tr.fraction!=1.f){
+            if(strict){if(tr.hit!=target){++o->strict_rejected;continue;}}
+            else{
+                void* world=nullptr;if(!b->world||!b->world(b->context,&world))return 0;
+                bool corner=tr.hit==world;
+                if(!corner&&tr.hit){
+                    unsigned hit_bytes=0;if(!b->extent(b->context,tr.hit,&hit_bytes)||hit_bytes<0x20c)return 0;
+                    if(field<int>(tr.hit,0x204)==7){if(!b->door_class||!b->door_class(b->context,tr.hit,&corner))return 0;}
+                }
+                if(corner){
+                    bool allowed=false;if(!b->allow_corner||!b->allow_corner(b->context,target,&allowed))return 0;
+                    const double x=double(body[0])-o->source[0],y=double(body[1])-o->source[1],z=double(body[2])-o->source[2];
+                    if(!allowed||(z*z+y*y)+x*x>o->half_radius_squared){++o->corner_rejected;continue;}
+                    if(!b->corner_trace||!b->corner_trace(b->context,gas,target,o->source,body,&tr)||!std::isfinite(tr.fraction))return 0;
+                    ++o->corner_calls;
+                    if(tr.fraction!=1.f&&tr.hit==world){++o->corner_rejected;continue;}
+                }
+                if(tr.hit&&tr.hit!=target){
+                    unsigned hit_bytes=0;if(!b->extent(b->context,tr.hit,&hit_bytes)||hit_bytes<0x21c)return 0;
+                    if(registry.Resolve(field<unsigned>(tr.hit,0x20c))!=target){
+                        AntigenRadiusTrace solid{};if(!trace(o->source,body,1u,nullptr,solid))return 0;
+                        ++o->obstruction_traces;
+                        if(solid.fraction!=1.f){++o->obstruction_rejected;continue;}
+                        // The second trace overwrites the original trace but mass
+                        // is read from the original obstruction.
+                        void* blocker=tr.hit;tr=solid;
+                        if(field<unsigned>(blocker,0x218)){
+                            float mass=0;if(!b->mass||!b->mass(b->context,blocker,&mass)||!std::isfinite(mass))return 0;++o->mass_reads;
+                            const double m=double(mass)*double(.0028571428265422583f);
+                            if(m>=1.){++o->obstruction_rejected;continue;}block=float(m);
+                        }else block=.25f;
+                    }
+                }
+            }
+        }
+        if(amount<=0.f){++o->amount_rejected;continue;}
+        if(tr.startsolid){for(unsigned j=0;j<3;++j)tr.end[j]=o->source[j];tr.fraction=0.f;}
+        // 221f89c0/221f8550 CTakeDamageInfo: zero force/position,
+        // gas both inflictor and attacker; preserve original base damage.
+        alignas(4) unsigned char info[0x48]{};
+        set_field(info,0x24,handle);set_field(info,0x28,handle);
+        set_field(info,0x2c,float(double(amount)-double(amount)*double(block)));
+        set_field(info,0x30,amount);set_field(info,0x34,0x7f7fffffu);set_field(info,0x38,0x400000u);set_field(info,0x40,0xffffffffu);
+        o->last_amount=field<float>(info,0x2c);o->last_block=block;
+        // Source is gas (not a player), so the attacker-player/NPC skill
+        // scaling branch at 221f3623 does not apply.
+        float direction[3];for(unsigned j=0;j<3;++j)direction[j]=float(double(body[j])-o->source[j]);
+        const float length=std::sqrt(float((double(direction[2])*direction[2]+double(direction[1])*direction[1])+double(direction[0])*direction[0]));
+        // VectorNormalizeFast leaf stays in engine force preparation.
+        if(!std::isfinite(length))return 0;
+        if(!b->prepare_force||!b->prepare_force(b->context,gas,info,o->source,direction,1.f))return 0;++o->force_calls;
+        if(tr.fraction!=1.f&&tr.hit==target){
+            if(!b->clear_multi||!b->clear_multi(b->context)||!b->trace_attack||
+               !b->trace_attack(b->context,target,info,direction,&tr)||!b->apply_multi||!b->apply_multi(b->context))return 0;
+            ++o->trace_attacks;
+        }else{
+            if(!b->take_damage||!b->take_damage(b->context,target,info))return 0;++o->direct_attacks;
+        }
+        if(!b->after_effect||!b->after_effect(b->context,target,info,o->source,&tr,direction))return 0;++o->after_effects;
+    }
+    o->completed=1;return 1;
+}
 int __cdecl antigen_gas_think(void* a,unsigned n,const AntigenGasBindings* b,AntigenGasResult* o) noexcept {
     if(!o)return 0;*o={};if(!gas_ready(a,n,b))return 0;
     float now=0;if(!gas_clock(*b,*o,now))return 0;
@@ -1266,7 +1364,9 @@ int __cdecl antigen_gas_think(void* a,unsigned n,const AntigenGasBindings* b,Ant
             if(!b->refresh_origin||!b->refresh_origin(b->context,a))return 0;
         }
         float pos[3];copy_vec(a,0x2bc,pos);
-        if(!b->radius_effect||!b->radius_effect(b->context,a,pos,o->amount,field<float>(a,0x3a0),0x400000u))return 0;o->radius_called=1;
+        if(b->radius_effect){if(!b->radius_effect(b->context,a,pos,o->amount,field<float>(a,0x3a0),0x400000u))return 0;}
+        else if(!antigen_radius(a,n,pos,o->amount,field<float>(a,0x3a0),b->native_radius,&o->radius_result))return 0;
+        o->radius_called=1;
         const float duration=field<float>(a,0x3a4);
         if(!std::isfinite(duration))return 0;
         if(duration>0.f){
@@ -1403,7 +1503,7 @@ int __cdecl antigen_canister_damage(void* c,unsigned n,const void* info,unsigned
     }
     return done();
 }
-const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak,&antigen_gas_create,&antigen_gas_think,&antigen_gas_stop,&mega_construct,&mega_touch};
+const Api api{1,sizeof(Api),&ratios,&health,&greatest,&fallback,&nearby,&evaluate,&owns,&construct,&spawn,&activate,&become_master,&kill,&check_pvs,&calculate_type,&factory_create,&factory_destroy,&ammo_pickup_construct,&ammo_pickup_touch,&vial_construct,&vial_touch,&item_touch,&player_give_ammo,&player_take_health,&pickup_factory_create,&pickup_factory_destroy,&antigen_construct,&antigen_use,&antigen_think,&antigen_insert,&antigen_eject,&antigen_use_event,&antigen_spawn,&antigen_animation_think,&antigen_button_event,&canister_construct,&canister_set_amount,&canister_spawn,&canister_idle,&antigen_factory_create,&antigen_factory_destroy,&antigen_canister_damage,&antigen_canister_break,&antigen_canister_stop_leak,&antigen_gas_create,&antigen_gas_think,&antigen_gas_stop,&mega_construct,&mega_touch,&antigen_radius};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerDynamicResupplyApi=_SiN_GetServerDynamicResupplyApi")

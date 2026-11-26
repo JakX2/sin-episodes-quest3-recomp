@@ -1248,5 +1248,69 @@ int main(int argc,char** argv){
     EvalFixture::u(hf2.player,0x94,2);cv.calls=0;cv.roots[4].SetFloat(250.f);
     assert(api->mega_touch(mgf.item,sizeof(mgf.item),hf2.player,&mgb,&mhr)&&mhr.completed&&mhr.mega_max_before==120&&mhr.mega_max_after==200&&mhr.native_heal.raw_health==340&&mhr.native_heal.after==200);
     assert(api->pickup_factory_destroy(mgf.item,sizeof(mgf.item),mgf.item+0x160,&mgfactory,&pfr)&&pfr.released&&pfr.type==count+1&&mgf.releases==1);
+    // Gas radius dispatch: original water gate, fixed damage (no falloff),
+    // strict trace target hit, nonstrict obstruction attenuation.
+    struct RadiusFixture {
+        GasFixture* gas;void* player;
+        alignas(4) unsigned char blocker[0x29c]{},world[0x29c]{};
+        unsigned mode=0,contents=0,direct=0,attacks=0,after=0,force=0,clear=0,apply=0;
+        float damage=0,mass=100.f;
+        bool wet=false,strict=true;
+    } arf{&agf,hf2.player};
+    sin_independent::EntityHandleEntry radius_entries[2]{};
+    radius_entries[0].serial=15;radius_entries[0].entity=reinterpret_cast<CBaseEntity*>(agf.gas);
+    radius_entries[1].serial=10;radius_entries[1].entity=reinterpret_cast<CBaseEntity*>(hf2.player);
+    AntigenRadiusBindings arb{};arb.context=&arf;arb.entries=radius_entries;arb.entry_count=2;
+    arb.contents=[](void* p,const float* pos,unsigned* v) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);++q.contents;assert(pos[2]==0||pos[2]==24);*v=q.wet?0x20:0;return 1;};
+    arb.enumerate=[](void* p,const float* source,float radius,void** items,unsigned cap,unsigned* n) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(source[2]==1&&radius==150&&cap==512);items[0]=q.gas->gas;items[1]=q.player;*n=2;return 1;};
+    arb.extent=[](void* p,void* e,unsigned* n) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);*n=e==q.gas->gas?antigen_gas_extent:e==q.player?0x12a4:0x29c;return 1;};
+    arb.body_target=[](void*,void*,const float*,float* body) noexcept ->int{body[0]=25;body[1]=0;body[2]=1;return 1;};
+    arb.strict_trace=[](void* p,bool* yes) noexcept ->int{*yes=static_cast<RadiusFixture*>(p)->strict;return 1;};
+    arb.world=[](void* p,void** e) noexcept ->int{*e=static_cast<RadiusFixture*>(p)->world;return 1;};
+    arb.trace=[](void* p,const float* source,const float* body,unsigned mask,void* gas,void* target,AntigenRadiusTrace* out) noexcept ->int{
+        auto& q=*static_cast<RadiusFixture*>(p);assert(gas==q.gas->gas&&source[2]==1&&body[0]==25);
+        for(unsigned i=0;i<3;++i){out->start[i]=source[i];out->end[i]=body[i];}
+        if(mask==1){assert(!target);out->fraction=1;return 1;}
+        assert(mask==0x46004003u&&target==q.player);
+        out->fraction=q.mode? .5f:1.f;out->hit=q.mode==1?q.player:q.mode==2?q.blocker:q.mode==3?q.world:nullptr;return 1;
+    };
+    arb.allow_corner=[](void*,void*,bool* yes) noexcept ->int{*yes=true;return 1;};
+    arb.corner_trace=[](void*,void*,void*,const float*,const float*,AntigenRadiusTrace* tr) noexcept ->int{tr->fraction=1;tr->hit=nullptr;return 1;};
+    arb.mass=[](void* p,void* e,float* mass) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(e==q.blocker);*mass=q.mass;return 1;};
+    arb.prepare_force=[](void* p,void* gas,void* info,const float*,const float* direction,float scale) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(gas==q.gas->gas&&scale==1&&direction[0]==25&&EvalFixture::rd(info,0x24)==0xf000&&EvalFixture::rd(info,0x28)==0xf000&&EvalFixture::rd(info,0x38)==0x400000);++q.force;return 1;};
+    arb.take_damage=[](void* p,void* e,const void* info) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(e==q.player);std::memcpy(&q.damage,static_cast<const unsigned char*>(info)+0x2c,4);++q.direct;return 1;};
+    arb.clear_multi=[](void* p) noexcept ->int{++static_cast<RadiusFixture*>(p)->clear;return 1;};
+    arb.apply_multi=[](void* p) noexcept ->int{++static_cast<RadiusFixture*>(p)->apply;return 1;};
+    arb.trace_attack=[](void* p,void* e,const void*,const float*,const AntigenRadiusTrace* tr) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(e==q.player&&tr->hit==e);++q.attacks;return 1;};
+    arb.after_effect=[](void* p,void* e,const void*,const float*,const AntigenRadiusTrace*,const float*) noexcept ->int{auto& q=*static_cast<RadiusFixture*>(p);assert(e==q.player);++q.after;return 1;};
+    AntigenRadiusResult arr{};
+    EvalFixture::u(agf.gas,0x378,0xf000);EvalFixture::u(agf.gas,0x94,0);
+    EvalFixture::u(hf2.player,0x94,2);EvalFixture::u(hf2.player,0x298,0);
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5.f,150.f,&arb,&arr)&&arr.completed&&arr.visited==2&&arr.ignored==1&&arr.direct_attacks==1&&arr.last_amount==5&&arf.damage==5);
+    arf.mode=1;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5.f,150.f,&arb,&arr)&&arr.trace_attacks==1&&arf.attacks==1&&arf.clear==1&&arf.apply==1);
+    arf.mode=2;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5.f,150.f,&arb,&arr)&&arr.strict_rejected==1&&!arr.direct_attacks);
+    arf.strict=false;EvalFixture::u(arf.blocker,0x20c,0xffffffffu);
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5.f,150.f,&arb,&arr)&&arr.obstruction_traces==1&&arr.direct_attacks==1&&arr.last_amount==3.75f);
+    EvalFixture::u(arf.blocker,0x218,1);arf.mass=350.f;
+    // 350 * stored float(1/350) is slightly below 1. Use 351 for reject.
+    arf.mass=351.f;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5.f,150.f,&arb,&arr)&&arr.mass_reads==1&&arr.obstruction_rejected==1);
+    arf.mode=3;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5.f,150.f,&arb,&arr)&&arr.corner_calls==1&&arr.direct_attacks==1);
+    arf.wet=true;
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5.f,150.f,&arb,&arr)&&arr.wet&&arr.contents_reads==2&&arr.water_rejected==1&&!arr.traces);
+    arf.wet=false;EvalFixture::u(hf2.player,0x298,3);
+    assert(api->antigen_radius(agf.gas,sizeof(agf.gas),gas_origin,5.f,150.f,&arb,&arr)&&arr.water_rejected==1);
+    // Native gas think drives this same dispatcher instead of hosted radius.
+    auto native_gas=agb;native_gas.radius_effect=nullptr;native_gas.native_radius=&arb;
+    af.now=90.f;agf.now=90.f;
+    assert(api->antigen_gas_create(gas_origin,2,150,-1,-1,&native_gas,&agras));
+    EvalFixture::u(agf.gas,0x378,0xf000);EvalFixture::u(hf2.player,0x298,0);
+    arf.mode=0;arf.strict=true;agf.now=90.125f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&!agras.radius_called);
+    agf.now=90.625f;
+    assert(api->antigen_gas_think(agf.gas,sizeof(agf.gas),&native_gas,&agras)&&agras.radius_result.completed&&agras.radius_result.direct_attacks==1&&agras.radius_result.last_amount==2.5f);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
