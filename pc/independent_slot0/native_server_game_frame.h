@@ -91,4 +91,7 @@ using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 // One synchronous call through actual ServerGameDLL003 slot4. No
 // persistent binding or admission to retail initialization.
 using InvokeBoundary=int (__cdecl *)(bool,const State*,const Bindings*,Result*) noexcept;
+inline constexpr char filter_boundary_export[]="SiN_InvokeServerGameFrameWithCampaignFilters";
+using InvokeFilterBoundary=int (__cdecl *)(bool,const State*,const Bindings*,Result*,
+    const native_map::CampaignFilterInputBindings*,CampaignFilterServiceSummary*) noexcept;
 }

@@ -5,6 +5,9 @@ extern "C" const sin_port::native_weapon_tables::ServerResupplyPrimaryThinkApi* 
 extern "C" const sin_port::native_weapon_tables::ServerAntigenPrimaryThinkApi* __cdecl SiN_GetServerAntigenPrimaryThinkApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityEventServiceApi* __cdecl SiN_GetServerEntityEventServiceApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" int __cdecl SiN_ServiceCampaignFilterEvents(void*,unsigned,unsigned,float,bool,int*,
+    const sin_port::native_weapon_tables::ServerEntityEventServiceBindings*,sin_port::native_weapon_tables::ServerEntityEventServiceResult*,
+    const sin_port::native_map::CampaignFilterInputBindings*,sin_port::native_weapon_tables::CampaignFilterServiceSummary*) noexcept;
 namespace sin_port::native_game_frame {
 namespace {
 template<class T>T read(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
@@ -162,7 +165,8 @@ bool actors(bool simulating,const State& s,const Bindings& b,Result& o) noexcept
     g.curtime=saved;o.curtime_restored=1;
     const bool closed=scope(b,o,name,false);return ok&&closed;
 }
-bool events(const State& s,const Bindings& b,Result& o) noexcept {
+bool events(const State& s,const Bindings& b,Result& o,const native_map::CampaignFilterInputBindings* filters,
+    CampaignFilterServiceSummary* summary) noexcept {
     constexpr char name[]="ServiceEventQueue()";
     if(!scope(b,o,name,true))return false;
     bool ok=false;
@@ -199,14 +203,17 @@ bool events(const State& s,const Bindings& b,Result& o) noexcept {
                 }
                 bindings.native_input=&input;
             }
-            ok=api&&api->service(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events);
+            if(filters)ok=SiN_ServiceCampaignFilterEvents(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events,filters,summary)!=0;
+            else ok=api&&api->service(q.sentinel,q.bytes,q.token,s.globals->curtime,*q.single_step!=0,q.steps,&bindings,&o.events);
             if(ok)o.native_events=1;
         }
     }else ok=b.event_service&&b.event_service(b.context);
     if(ok)o.event_called=1;
     const bool closed=scope(b,o,name,false);return ok&&closed;
 }
-int __cdecl run(bool simulating,const State* s,const Bindings* b,Result* o) noexcept {
+int run_impl(bool simulating,const State* s,const Bindings* b,Result* o,
+    const native_map::CampaignFilterInputBindings* filters=nullptr,CampaignFilterServiceSummary* summary=nullptr) noexcept {
+    if(summary)*summary={};
     if(!o)return 0;*o={};
     if(!s||!b||!s->globals||!s->level_transition||!s->skip_next||!s->double_step||
        !s->think_profile||!s->profile_enabled||!s->iteration_depth)return 0;
@@ -218,13 +225,16 @@ int __cdecl run(bool simulating,const State* s,const Bindings* b,Result* o) noex
     if(*s->level_transition){o->transition=1;return finish(true);}
     if(*s->skip_next){*s->skip_next=false;o->skip_consumed=1;return finish(true);}
     if(!coherent_removal(*b))return finish(false);
+    if(filters&&(!summary||!filters->predicate||!filters->output||!filters->native_queue||!b->queue||
+        !b->queue->bindings||!b->queue->bindings->native_input||!b->queue->bindings->native_search||
+        filters->native_queue->root!=b->queue->sentinel||filters->native_queue->root_token!=b->queue->token))return finish(false);
     o->original_frametime=g.frametime;
     if(g.max_clients==1&&*s->double_step){*s->skip_next=true;g.frametime=float(double(g.frametime)*2.);o->double_step=1;}
     o->simulation_frametime=g.frametime;
     bool ok=std::isfinite(g.frametime)&&cleanup_stage(*b,*o)&&
         stage(*b,b->pre_systems,o->pre_systems)&&stage(*b,b->pre_actors,o->pre_actors)&&
         stage(*b,b->manager,o->manager)&&stage(*b,b->engine_begin,o->engine_begin)&&
-        actors(simulating,*s,*b,*o)&&stage(*b,b->post_systems,o->post_systems)&&events(*s,*b,*o)&&
+        actors(simulating,*s,*b,*o)&&stage(*b,b->post_systems,o->post_systems)&&events(*s,*b,*o,filters,summary)&&
         cleanup_stage(*b,*o)&&stage(*b,b->post_cleanup,o->post_cleanup);
     if(ok&&b->rules_frame)ok=stage(*b,b->rules_frame,o->rules_called);
     if(ok&&b->trace_report)ok=stage(*b,b->trace_report,o->trace_report);
@@ -234,10 +244,19 @@ int __cdecl run(bool simulating,const State* s,const Bindings* b,Result* o) noex
     g.frametime=o->original_frametime;o->frametime_restored=1;
     return finish(ok);
 }
+int __cdecl run(bool simulating,const State* s,const Bindings* b,Result* o) noexcept {
+    return run_impl(simulating,s,b,o);
+}
 const Api api{1,sizeof(Api),&run};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerGameFrameApi=_SiN_GetServerGameFrameApi")
 extern "C" __declspec(dllexport) const sin_port::native_game_frame::Api* __cdecl SiN_GetServerGameFrameApi(std::uint32_t v,std::uint32_t n) noexcept {
     using namespace sin_port::native_game_frame;return v==1&&n==sizeof(Api)?&api:nullptr;
+}
+
+int __cdecl SinGameFrameWithFiltersInternal(bool simulating,const sin_port::native_game_frame::State* s,const sin_port::native_game_frame::Bindings* b,
+    sin_port::native_game_frame::Result* o,const sin_port::native_map::CampaignFilterInputBindings* filters,
+    sin_port::native_weapon_tables::CampaignFilterServiceSummary* summary) noexcept {
+    return filters&&summary&&sin_port::native_game_frame::run_impl(simulating,s,b,o,filters,summary);
 }

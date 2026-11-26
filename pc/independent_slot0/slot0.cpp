@@ -70,6 +70,8 @@ int __cdecl SinTouchCampaignTriggerFromStartupInternal(void*,unsigned,void*,cons
     void*,sin_port::native_map::CampaignTriggerResult*,int*,void*,void*) noexcept;
 extern "C" const sin_port::native_server_startup::Api* __cdecl SiN_GetServerStartupApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_game_frame::Api* __cdecl SiN_GetServerGameFrameApi(std::uint32_t,std::uint32_t) noexcept;
+int __cdecl SinGameFrameWithFiltersInternal(bool,const sin_port::native_game_frame::State*,const sin_port::native_game_frame::Bindings*,
+    sin_port::native_game_frame::Result*,const sin_port::native_map::CampaignFilterInputBindings*,sin_port::native_weapon_tables::CampaignFilterServiceSummary*) noexcept;
 #endif
 #include <new>
 #endif
@@ -1222,6 +1224,8 @@ struct FrameInvocation {
     sin_port::native_game_frame::Result* result;
     bool entered=false;
     int success=0;
+    const sin_port::native_map::CampaignFilterInputBindings* filters=nullptr;
+    sin_port::native_weapon_tables::CampaignFilterServiceSummary* filter_summary=nullptr;
 };
 static thread_local FrameInvocation* g_frame_invocation=nullptr;
 struct StartupInvocation {
@@ -1376,7 +1380,9 @@ public:
         if(invocation&&!invocation->entered){
             invocation->entered=true;
             const auto* api=SiN_GetServerGameFrameApi(1,sizeof(sin_port::native_game_frame::Api));
-            if(api)invocation->success=api->run(simulating,invocation->state,invocation->bindings,invocation->result);
+            if(invocation->filters)
+                invocation->success=SinGameFrameWithFiltersInternal(simulating,invocation->state,invocation->bindings,invocation->result,invocation->filters,invocation->filter_summary);
+            else if(api)invocation->success=api->run(simulating,invocation->state,invocation->bindings,invocation->result);
             return;
         }
 #endif
@@ -1751,6 +1757,18 @@ extern "C" __declspec(dllexport) int __cdecl SiN_InvokeServerGameFrameBoundary(b
     reinterpret_cast<Slot>(table[sin_port::native_game_frame::original_slot])(&instance,simulating);
     g_frame_invocation=nullptr;
     return invocation.entered&&invocation.success;
+}
+#pragma comment(linker,"/EXPORT:SiN_InvokeServerGameFrameWithCampaignFilters=_SiN_InvokeServerGameFrameWithCampaignFilters")
+extern "C" int __cdecl SiN_InvokeServerGameFrameWithCampaignFilters(bool simulating,const sin_port::native_game_frame::State* state,
+    const sin_port::native_game_frame::Bindings* bindings,sin_port::native_game_frame::Result* result,
+    const sin_port::native_map::CampaignFilterInputBindings* filters,sin_port::native_weapon_tables::CampaignFilterServiceSummary* summary) noexcept {
+    if(result)*result={};if(summary)*summary={};
+    if(!state||!bindings||!result||!filters||!summary||g_frame_invocation||g_startup_invocation||g_gameinit_invocation||g_level_invocation)return 0;
+    FrameInvocation invocation{state,bindings,result};invocation.filters=filters;invocation.filter_summary=summary;g_frame_invocation=&invocation;
+    using Slot=void (__thiscall *)(void*,bool) noexcept;
+    auto** table=*reinterpret_cast<void***>(&instance);
+    reinterpret_cast<Slot>(table[sin_port::native_game_frame::original_slot])(&instance,simulating);
+    g_frame_invocation=nullptr;return invocation.entered&&invocation.success;
 }
 #endif
 
