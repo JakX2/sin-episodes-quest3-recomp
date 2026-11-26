@@ -512,5 +512,57 @@ int main(int argc,char** argv){
     // No cvar lookup or player access if the actor is the current master.
     cv.calls=0;handle=0x3000;eb.master_handle=&handle;eb.entries=&entry;eb.entry_count=1;
     assert(api->evaluate(ef.actor,sizeof(ef.actor),nullptr,0,0,&eb,&er)&&er.master_skipped&&!cv.calls);
+    // Original factory allocation -> native constructor -> base initialize.
+    struct ResupplyFactoryFixture {
+        EvalFixture* e;
+        unsigned allocs=0,ctors=0,inits=0,releases=0,bytes=resupply_extent;
+        bool null_alloc=false,fail_init=false;
+        static unsigned word(void* p,unsigned off){return EvalFixture::rd(p,off);}
+    } rf{&ef};
+    LifecycleBindings factory_life{};factory_life.context=&rf;
+    factory_life.base_construct=[](void* p,void* a,int n) noexcept ->int{
+        auto& q=*static_cast<ResupplyFactoryFixture*>(p);assert(a==q.e->actor&&n==0&&q.allocs>q.ctors);
+        ++q.ctors;std::memset(a,0,resupply_extent);EvalFixture::u(a,0x74,0xffffffffu);
+        EvalFixture::u(a,0xb8,0x400000u);return 1;
+    };
+    FactoryBindings fac{};fac.context=&rf;fac.lifecycle=&factory_life;
+    fac.allocate=[](void* p,unsigned n,void** a,unsigned* bytes) noexcept ->int{
+        auto& q=*static_cast<ResupplyFactoryFixture*>(p);assert(n==resupply_extent);++q.allocs;
+        *a=q.null_alloc?nullptr:q.e->actor;*bytes=q.bytes;return 1;
+    };
+    fac.initialize=[](void* p,void* a,const char* name) noexcept ->int{
+        auto& q=*static_cast<ResupplyFactoryFixture*>(p);
+        assert(a==q.e->actor&&!std::strcmp(name,resupply_classname)&&q.ctors>q.inits);
+        assert(ResupplyFactoryFixture::word(a,0)==resupply_vtable&&ResupplyFactoryFixture::word(a,0xb4)==1);
+        for(unsigned i=0;i<7;++i)assert(ResupplyFactoryFixture::word(a,0x394+4*i)==0x3f800000u);
+        ++q.inits;EvalFixture::u(a,0x378,0x3000);EvalFixture::u(a,0x16c,0x4321);return !q.fail_init;
+    };
+    fac.release_networkable=[](void* p,void* a) noexcept ->int{
+        auto& q=*static_cast<ResupplyFactoryFixture*>(p);assert(a==q.e->actor+resupply_networkable_offset);
+        ++q.releases;std::memset(q.e->actor,0,resupply_extent);return 1;
+    };
+    FactoryResult fact{};
+    assert(!api->factory_create("item_healthvial",&fac,&fact)&&!fact.allocation_called);
+    rf.null_alloc=true;assert(!api->factory_create(resupply_classname,&fac,&fact)&&fact.allocation_called&&!fact.allocated&&!fact.actor&&!fact.networkable);
+    rf.null_alloc=false;rf.bytes=resupply_extent-1;
+    assert(!api->factory_create(resupply_classname,&fac,&fact)&&fact.allocated&&!fact.constructed&&!fact.networkable&&fact.actor==ef.actor);
+    rf.bytes=resupply_extent;rf.fail_init=true;
+    assert(!api->factory_create(resupply_classname,&fac,&fact)&&fact.constructed&&!fact.initialized&&!fact.networkable&&fact.actor==ef.actor);
+    rf.fail_init=false;
+    assert(api->factory_create(resupply_classname,&fac,&fact)&&fact.completed&&fact.constructed&&fact.initialized&&fact.actor==ef.actor&&fact.networkable==ef.actor+0x160);
+    assert(rf.allocs==4&&rf.ctors==2&&rf.inits==2);
+    // Factory-created entity enters the existing tick scheduler, not
+    // an isolated test of allocation. Manual map spawnflags then activate.
+    entry.entity=reinterpret_cast<CBaseEntity*>(ef.actor);
+    handle=0xffffffffu;fl.master_handle=&handle;fl.entries=&entry;fl.entry_count=1;
+    fl.base_activate=[](void*,void*) noexcept ->int{return 1;};
+    EvalFixture::u(ef.actor,0xb4,3);
+    assert(frame->spawn(ef.actor,sizeof(ef.actor),0x3000,.125f,&pb,&pr)&&pr.spawn.manual&&!pr.rescheduled);
+    assert(api->activate(ef.actor,sizeof(ef.actor),&fl,&lr)&&lr.master_assigned&&lr.native_handle&&handle==0x3000u);
+    EvalFixture::u(ef.actor,8,check_pvs_think);
+    assert(api->become_master(ef.actor,sizeof(ef.actor),&fl,&lr)&&lr.native_handle&&lr.think_cleared&&handle==0x3000u);
+    assert(api->factory_destroy(nullptr,0,nullptr,nullptr,&fact)&&fact.completed&&!fact.released);
+    assert(!api->factory_destroy(ef.actor,sizeof(ef.actor),ef.actor+0x15c,&fac,&fact)&&!rf.releases);
+    assert(api->factory_destroy(ef.actor,sizeof(ef.actor),ef.actor+0x160,&fac,&fact)&&fact.completed&&fact.released&&rf.releases==1&&!EvalFixture::rd(ef.actor,0));
     FreeLibrary(s);FreeLibrary(c);return 0;
 }

@@ -124,6 +124,9 @@ struct EvaluateResult {
     FallbackResult fallback;
 };
 inline constexpr unsigned resupply_vtable=0x2246b4bcu,check_pvs_think=0x222f90d0u;
+inline constexpr char resupply_classname[]="item_dynamic_resupply";
+inline constexpr unsigned resupply_extent=0x3b0u,resupply_networkable_offset=0x160u;
+inline constexpr unsigned resupply_factory_object=0x22528b70u,resupply_factory_vtable=0x2246b2c8u;
 struct LifecycleBindings {
     void* context;
     // Base entity constructor and activation remain engine services.
@@ -145,7 +148,7 @@ struct LifecycleBindings {
 struct LifecycleResult {
     unsigned base_called,flag_added,deferred_dirty,edict_marked,defaults_written,
         precached,manual,random_called,clock_read,scheduled,think_installed,
-        master_assigned,master_retained,warning_called,think_cleared,removed,completed;
+        master_assigned,master_retained,warning_called,think_cleared,removed,completed,native_handle;
     float delay,next_time;
 };
 struct DispatchBindings {
@@ -167,6 +170,21 @@ struct DispatchResult {
     int max_clients;
     float next_time;
     EvaluateResult evaluation;
+};
+// Engine allocation and base registration are hosted. Networkable is a
+// view into owner storage, NOT a callable retail virtual object.
+struct FactoryBindings {
+    void* context;
+    int (__cdecl *allocate)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *initialize)(void*,void*,const char*) noexcept;
+    int (__cdecl *release_networkable)(void*,void*) noexcept;
+    const LifecycleBindings* lifecycle;
+};
+struct FactoryResult {
+    void* actor;
+    void* networkable;
+    unsigned bytes,allocation_called,allocated,constructed,initialized,released,completed;
+    LifecycleResult lifecycle;
 };
 struct Api {
     std::uint32_t version,size;
@@ -193,6 +211,9 @@ struct Api {
     // 222f90d0 and 222f9120; the latter ignores inputdata_t.
     int (__cdecl *check_pvs)(void*,unsigned,int,const DispatchBindings*,DispatchResult*) noexcept;
     int (__cdecl *calculate_type)(void*,unsigned,int,const DispatchBindings*,DispatchResult*) noexcept;
+    // 222f9520/222f9540 and 222f8720, without executable PE addresses.
+    int (__cdecl *factory_create)(const char*,const FactoryBindings*,FactoryResult*) noexcept;
+    int (__cdecl *factory_destroy)(void*,unsigned,void*,const FactoryBindings*,FactoryResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
