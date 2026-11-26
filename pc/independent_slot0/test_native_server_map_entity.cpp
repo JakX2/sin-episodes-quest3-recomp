@@ -1170,5 +1170,50 @@ int main(int argc,char** argv){
         nw::ServerEntityAcceptInputResult accepted{};
         assert(timer_accept->run(actor,sizeof(actor),case_vtable,0x2242014c,nullptr,nullptr,v,sizeof(v),0,&input,&accepted)&&accepted.native_handler&&accepted.actual_type==13);
     }
+    {
+        alignas(4) unsigned char actor[compare_extent]{};
+        put(actor,0,compare_vtable);
+        ActionPool pool{};OutputActionBindings actions=output;actions.context=&pool;actions.next_id=&pool.id;
+        auto keys=kb;keys.native_output=&actions;keys.extent=[](void*,void*,unsigned* bytes) noexcept ->int{*bytes=compare_extent;return 1;};
+        assert(api->key_value(actor,"InitialValue","1.5",&keys,&kr)&&kr.offset==0x394&&word(actor,0x394)==0x3fc00000);
+        assert(api->key_value(actor,"CompareValue","2",&keys,&kr)&&kr.offset==0x398&&word(actor,0x398)==0x40000000);
+        const char* names[]{"OnLessThan","OnEqualTo","OnNotEqualTo","OnGreaterThan"};
+        for(unsigned i=0;i<4;++i){
+            assert(api->key_value(actor,names[i],"relay,Trigger,,0,-1",&keys,&kr)&&kr.offset==0x39c+i*0x18);
+            put(actor,0x39c+i*0x18+4,0x11223344u);put(actor,0x39c+i*0x18+0xc,0x55667788u);
+        }
+        struct CompareFixture {void* actor;void* activator;ActionPool* pool;std::string order;unsigned value=0;bool mutate=false;} f{actor,timer,&pool};
+        nw::ServerEntityVoidOutputBindings fire{};fire.context=&f;
+        fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<CompareFixture*>(p);
+            for(unsigned i=0;i<4;++i)if(token==static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.pool->rows[i]))){*row=f.pool->rows[i];*bytes=0x1c;return 1;}return 0;
+        };
+        fire.enqueue_variant=[](void* p,void* a,void* c,const nw::ServerEntityVoidOutputAction* action,const void* variant,unsigned bytes) noexcept ->int{
+            auto& f=*static_cast<CompareFixture*>(p);assert(a==f.activator&&c==f.actor&&bytes==0x14&&action->variant_type==1&&!action->parameter&&action->action_id>=41&&action->action_id<=44);
+            unsigned payload[5]{};std::memcpy(payload,variant,0x14);
+            assert(payload[0]==f.value&&payload[1]==0x11223344u&&payload[3]==0x55667788u&&payload[4]==1);
+            f.order+=char('0'+action->action_id-41);
+            if(f.mutate&&action->action_id==43){const unsigned threshold=0x40800000u;std::memcpy(static_cast<unsigned char*>(f.actor)+0x398,&threshold,4);}
+            return 1;
+        };
+        CompareBindings behavior{&fire};CompareResult result{};
+        auto ci=[&](const char* name,unsigned type=0,float value=0.f){return api->compare_input(actor,sizeof(actor),name,timer,type,value,&behavior,&result);};
+        f.value=0x3fc00000u;
+        assert(ci("Compare")&&result.compared&&result.outputs==2&&result.queued==2&&result.first_offset==0x3cc&&result.last_offset==0x39c&&f.order=="20");
+        assert(ci("SetValue",1,2.f)&&result.stored&&!result.compared&&f.order=="20");
+        f.value=0x40000000u;
+        assert(ci("Compare")&&result.outputs==1&&result.last_offset==0x3b4&&f.order=="201");
+        f.value=0x40400000u;
+        assert(ci("SetValueCompare",1,3.f)&&result.stored&&result.outputs==2&&result.last_offset==0x3e4&&f.order=="20123");
+        f.mutate=true;
+        assert(ci("Compare")&&result.last_offset==0x39c&&result.threshold==4.f&&f.order=="2012320");f.mutate=false;
+        assert(ci("SetCompareValue",5,9.f)&&result.stored&&!word(actor,0x398)&&!result.outputs);
+        f.value=0x80000000u;assert(ci("SetValueCompare",1,-0.f)&&result.outputs==1&&result.last_offset==0x3b4);
+        f.value=0x7fc00000u;float nan=0;std::memcpy(&nan,&f.value,4);
+        assert(ci("SetValueCompare",1,nan)&&result.outputs==2&&result.first_offset==0x3cc&&result.last_offset==0x39c);
+        f.value=0;assert(ci("SetValueCompare",2,123.f)&&result.outputs==1&&!word(actor,0x394));
+        assert(ci("Unknown")&&!result.handled);
+        assert(!api->compare_input(actor,compare_extent-1,"Compare",timer,0,0,&behavior,&result));
+    }
     FreeLibrary(server);FreeLibrary(client);
 }
