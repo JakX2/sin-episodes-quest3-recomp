@@ -256,7 +256,7 @@ int main(int argc,char** argv){
     auto gp=reinterpret_cast<GetServerNpcActivePostAnimationApi>(GetProcAddress(server,server_npc_active_post_animation_export));
     assert(gp&&!GetProcAddress(client,server_npc_active_post_animation_export)&&!gp(0,sizeof(ServerNpcActivePostAnimationApi)));
     const auto* post=gp(1,sizeof(ServerNpcActivePostAnimationApi));assert(post);
-    struct PostFixture {F* f;alignas(4) unsigned char nav[0x28]{},path[0x48]{};unsigned dirty{};} pf{&f};
+    struct PostFixture {F* f;alignas(4) unsigned char nav[0x28]{},path[0x48]{},group[0x4c]{};unsigned dirty{};} pf{&f};
     f.put(pf.nav,0x24,0x2222u);f.put(pf.path,0x44,2u);
     ServerNpcActivePostAnimationBindings pb{};pb.context=&pf;
     pb.resolve=[](void* p,std::uint32_t token,void** data,unsigned* n) noexcept -> int {
@@ -264,6 +264,7 @@ int main(int argc,char** argv){
         if(token==0x1111u){*data=q.nav;*n=sizeof(q.nav);return 1;}
         if(token==0x2222u){*data=q.path;*n=sizeof(q.path);return 1;}
         if(token==0x3333u){*data=&q.dirty;*n=4;return 1;}
+        if(token==444u){*data=q.group;*n=sizeof(q.group);return 1;}
         if(token==0x1000u){*data=q.f->component;*n=sizeof(q.f->component);return 1;}
         if(token==0x2000u){*data=q.f->path;*n=sizeof(q.f->path);return 1;}return 0;
     };
@@ -439,12 +440,12 @@ int main(int argc,char** argv){
     auto gtWake=reinterpret_cast<GetServerNpcWakeTransitionApi>(GetProcAddress(server,server_npc_wake_transition_export));
     assert(gtWake&&!GetProcAddress(client,server_npc_wake_transition_export)&&!gtWake(1,0));
     const auto* transition_wake=gtWake(1,sizeof(ServerNpcWakeTransitionApi));assert(transition_wake);
-    struct WakeTransitionFixture {F* f;alignas(4) unsigned char member[0xfd8]{},dead[0xfd8]{};} wt{&f};
+    struct WakeTransitionFixture {F* f;alignas(4) unsigned char member[0xfd8]{},dead[0xfd8]{},filtered[0xfd8]{};} wt{&f};
     sin_independent::EntityHandleEntry wake_slots[2]{};
     wake_slots[1].serial=7;wake_slots[1].entity=reinterpret_cast<CBaseEntity*>(wt.member);
     ServerNpcWakeTransitionBindings wtb{};wtb.storage=&pb;wtb.context=&wt;wtb.entities.entries=wake_slots;wtb.entities.count=2;
     wtb.extent=[](void* p,void* e,unsigned* n) noexcept -> int{
-        auto& q=*static_cast<WakeTransitionFixture*>(p);if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.member||e==q.dead)*n=sizeof(q.member);else return 0;return 1;
+        auto& q=*static_cast<WakeTransitionFixture*>(p);if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.member||e==q.dead||e==q.filtered)*n=sizeof(q.member);else return 0;return 1;
     };
     wtb.refresh_entity=[](void* p,void* e) noexcept -> int{
         auto& q=*static_cast<WakeTransitionFixture*>(p);assert(!q.f->get<int>(e,0x868));q.f->trace.push_back(e==q.f->actor?220:221);return 1;
@@ -584,6 +585,32 @@ int main(int argc,char** argv){
         }
         assert(f.get<unsigned>(f.actor,0xfe4)==left&&f.get<unsigned>(f.actor,0xfe8)==right);
     }
+    // Native squad scan: stale and invalid handles, dead and self rows,
+    // the embedded component fallback, and one live eligible recipient.
+    sin_independent::EntityHandleEntry squad_slots[4]{};
+    squad_slots[0].serial=1;squad_slots[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
+    squad_slots[1].serial=2;squad_slots[1].entity=reinterpret_cast<CBaseEntity*>(wt.dead);
+    squad_slots[2].serial=3;squad_slots[2].entity=reinterpret_cast<CBaseEntity*>(wt.filtered);
+    squad_slots[3].serial=4;squad_slots[3].entity=reinterpret_cast<CBaseEntity*>(wt.member);
+    auto native_squad=wtb;native_squad.entities.entries=squad_slots;native_squad.entities.count=4;native_squad.squad_next=nullptr;
+    const unsigned squad_rows[]{0xffffffffu,0x9003u,0x2001u,0x1000u,0x3002u,0x4003u};
+    for(unsigned i=0;i<6;++i)f.put(pf.group,8+4*i,squad_rows[i]);
+    f.put(pf.group,0x48,6);
+    f.put(f.actor,0,ground_vt);f.put(f.actor,0x204,1u);f.put(f.actor,0x8c,0);
+    f.put(f.actor,0x868,2);f.put(f.actor,0x9c4,444u);f.actor[0x870]=1;
+    f.put(wt.dead,0x204,1u);f.put(wt.dead,0x8c,1);f.put(wt.dead,0x868,2);
+    f.put(wt.filtered,0,ground_vt);f.put(wt.filtered,0xfc,0x22446954u);f.put(wt.filtered,0x868,2);
+    f.put(wt.member,0xfc,0x22446954u);f.put(wt.member,0x11c,9u);f.put(wt.member,0x204,0u);
+    f.put(wt.member,0x868,2);f.put(wt.member,0x8c,0);wt.member[0x870]=1;
+    f.trace.clear();
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&native_squad,&wto)&&wto.completed&&wto.squad_visited==3&&wto.squad_woken==1&&wto.transitions==2&&wto.outputs==1);
+    assert(f.get<int>(wt.dead,0x868)==2&&f.get<int>(wt.filtered,0x868)==2&&f.get<int>(wt.member,0x868)==0&&!wt.member[0x870]&&(f.trace==std::vector<int>{223}));
+    // A foreign eligible row must not be treated as a known rejection leaf.
+    f.put(f.actor,0x868,2);f.put(wt.filtered,0,0x1234u);f.put(wt.filtered,0x11c,9u);
+    f.trace.clear();assert(!transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&native_squad,&wto)&&!wto.completed&&wto.transitions==1&&wto.squad_visited==2&&f.trace.empty());
+    f.put(f.actor,0x868,2);f.put(pf.group,0x48,17);
+    assert(!transition_wake->run(f.actor,sizeof(f.actor),ground_vt,false,&native_squad,&wto)&&!wto.completed&&!wto.squad_visited);
+    f.actor[0x870]=0;
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
