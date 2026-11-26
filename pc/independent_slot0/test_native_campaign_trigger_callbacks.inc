@@ -969,7 +969,7 @@
             auto& f=*static_cast<PossessFixture*>(p);*n=a==f.npc?sizeof(f.npc):a==f.seq||a==f.old||a==f.next?sizeof(f.seq):0;return *n!=0;
         };
         b.add_flags=[](void* p,void* npc,unsigned flags) noexcept ->int{
-            auto& f=*static_cast<PossessFixture*>(p);assert(npc==f.npc);unsigned old=0;std::memcpy(&old,f.npc+0x78,4);put(f.npc,0x78,old|flags);++f.flag_calls;put(f.npc,0xbc,0xabcdu);return 1;
+            auto& f=*static_cast<PossessFixture*>(p);assert(npc==f.npc);unsigned old=0;std::memcpy(&old,f.npc+0x78,4);old|=flags;std::memcpy(f.npc+0x78,&old,4);++f.flag_calls;const unsigned effects=0xabcdu;std::memcpy(f.npc+0xbc,&effects,4);return 1;
         };
         b.move4_prepare=[](void* p,void* npc,const void* pos,unsigned yaw) noexcept ->int{
             auto& f=*static_cast<PossessFixture*>(p);assert(npc==f.npc&&pos==f.seq+0x360&&yaw==0x42b40000u);++f.prep;return 1;
@@ -981,7 +981,7 @@
         for(unsigned mode=0;mode<=6;++mode){
             put(f.npc,0x970,0xffffffffu);put(f.npc,0x78,1u);put(f.npc,0x96c,9u);put(f.npc,0x858,2u);
             put(f.npc,0x864,5u);put(f.npc,0x85c,6u);put(f.seq,0x3d4,0x6003u);put(f.seq,0x3ac,mode);
-            put(f.npc,0x36c,1.f);put(f.npc,0x370,2.f);put(f.npc,0x374,3.f);put(f.seq,0x370,90.f);
+            put(f.npc,0x36c,0x3f800000u);put(f.npc,0x370,0x40000000u);put(f.npc,0x374,0x40400000u);put(f.seq,0x370,0x42b40000u);
             assert(possess(f.seq,sizeof(f.seq),&b,&o)&&o.claimed&&!o.queued&&o.flags_calls==(mode==4?2u:1u)&&o.group_updates==1);
             assert(word(f.npc,0x970)==0x3000&&word(f.npc,0x90c)==0x3000&&word(f.npc,0x8a8)==0x3000&&!word(f.npc,0x864)&&!word(f.npc,0x85c));
             assert(word(f.seq,0x3c4)==1&&word(f.seq,0x3c8)==0xabcd&&word(f.seq,0x3d4)==0xffffffffu&&word(f.npc,0x858)==4);
@@ -1018,7 +1018,7 @@
         put(f.seq,0x3a8,21u);put(f.seq,0x3dc,0xffffffffu);put(f.old,0x3d4,0xffffffffu);
         for(unsigned i=0;i<3;++i){
             put(f.npc[i],0,0x224954a4u);put(f.npc[i],0xc,22u);put(f.npc[i],0xc0,21u);
-            put(f.npc[i],0x970,0x6003u);put(f.npc[i],0x16c,1u);put(f.npc[i],0x2bc,float(i+1));
+            put(f.npc[i],0x970,0x6003u);put(f.npc[i],0x16c,1u);const float position=float(i+1);std::memcpy(f.npc[i]+0x2bc,&position,4);
         }
         put(f.npc[2],0x970,0xffffffffu);
         auto extent=[](void* p,void* actor,unsigned* bytes) noexcept ->int{
@@ -1040,13 +1040,13 @@
         assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&!o.preferred&&o.denied==1&&o.actor==f.npc[1]&&f.warnings==1);
         // Radius exactly 2 excludes the second at distance 2, and
         // skips non-edict first before considering any class fallback.
-        put(f.seq,0x3b0,2.f);put(f.seq,0xb8,0x800u);put(f.npc[0],0xb8,0x800u);
+        put(f.seq,0x3b0,0x40000000u);put(f.seq,0xb8,0x800u);put(f.npc[0],0xb8,0x800u);
         assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&o.actor==f.npc[0]&&o.radius_skips==2&&f.refresh>=2);
         put(f.npc[0],0x16c,0u);
         assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&o.class_path&&!o.found&&word(f.seq,0x3d0)==0xffffffffu);
         // Targetname miss -> classname; activity 2 allowed only by
         // mode >=1 (named route), unless force is set.
-        put(f.seq,0xb8,0u);put(f.seq,0x3b0,0.f);put(f.seq,0x3a8,22u);
+        put(f.seq,0xb8,0u);put(f.seq,0x3b0,0u);put(f.seq,0x3a8,22u);
         put(f.npc[0],0x850,2);put(f.npc[1],0x850,2);put(f.npc[2],0x8c,0);put(f.npc[2],0x850,2);
         assert(acquire(f.seq,sizeof(f.seq),&b,&o)&&o.class_path&&o.denied==3&&!o.found);
         put(f.seq,0xb4,0x440u);
@@ -1093,7 +1093,7 @@
         ScriptedSequencePossessionBindings pos{};pos.context=&f;pos.entries=f.entries;pos.entry_count=3;pos.extent=extent;pos.now=&f.now;pos.search=&search;
         pos.add_flags=[](void* p,void*,unsigned) noexcept ->int{++static_cast<ThinkFixture*>(p)->flags;return 1;};
         ScriptedSequenceCancelBindings cb{&c,&search,&f};
-        cb.restore_flags=[](void* p,void* npc,unsigned flags) noexcept ->int{auto& f=*static_cast<ThinkFixture*>(p);assert(npc==f.npc);put(npc,0x78,flags);++f.restores;return 1;};
+        cb.restore_flags=[](void* p,void* npc,unsigned flags) noexcept ->int{auto& f=*static_cast<ThinkFixture*>(p);assert(npc==f.npc);std::memcpy(f.npc+0x78,&flags,4);++f.restores;return 1;};
         cb.cleanup_script_state=[](void* p,void* npc) noexcept ->int{auto& f=*static_cast<ThinkFixture*>(p);assert(npc==f.npc&&f.npc[0x96c]==3);++f.cleanup;return 1;};
         cb.cancel_schedule=[](void* p,void* seq,void* npc,unsigned flags) noexcept ->int{auto& f=*static_cast<ThinkFixture*>(p);assert(seq==f.seq&&npc==f.npc&&flags==0x1234&&f.cleanup==1);++f.schedule;return 1;};
         ScriptedSequenceThinkBindings b{&ac,&pos,&cb,&f.rules,&f};
