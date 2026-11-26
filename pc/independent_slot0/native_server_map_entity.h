@@ -35,6 +35,24 @@ struct Bindings {
     const FactoryBindings* native_factory;
 };
 struct SpawnRow {void* actor;int depth;int priority;};
+struct DispatchBindings {
+    void* context;
+    const sin_independent::EntityHandleEntry* entries;unsigned entry_count;
+    const char* const* current_map;
+    int (__cdecl *resolve_string)(void*,unsigned,const char**) noexcept;
+    int (__cdecl *scope)(void*,bool) noexcept;
+    int (__cdecl *remove)(void*,void*) noexcept;
+    int (__cdecl *dormant)(void*,void*) noexcept;
+    // Live list, original 22162cd0 takes a starting count then reads
+    // each listener slot in reverse. Owner retains valid slot storage.
+    void* const* listeners;const unsigned* listener_count;unsigned listener_capacity;
+    int (__cdecl *notify)(void*,void*,void*) noexcept;
+};
+struct DispatchResult {
+    unsigned completed,entered,closed,captured_handle,spawn_called,native_spawn,stale,marked,
+        global_lookup,global_added,global_dead,removed,dormant,notified;
+    int native_result,global_index,global_state;
+};
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
@@ -55,10 +73,13 @@ struct SpawnBindings {
     const native_resupply::CanisterBindings* canister;
     int (__cdecl *native_spawn_begin)(void*,void*,bool*) noexcept;
     int (__cdecl *native_spawn_end)(void*,void*,int*) noexcept;
+    const DispatchBindings* native_dispatch;
+    int (__cdecl *virtual_spawn)(void*,void*) noexcept; // original +64, no wrapper
 };
 struct SpawnResult {
     unsigned completed,ranked,parent_reads,parents,debugged,spawned,failed,pruned,cleanups,activated,
         scopes,closes,engine_scopes,engine_closes,native_spawns,native_activations;
+    unsigned native_dispatches;DispatchResult dispatch;
 };
 struct Api {
     std::uint32_t version,size;
@@ -70,6 +91,7 @@ struct Api {
     const FactorySpec* (__cdecl *find_factory)(const FactoryDictionary*,const char*) noexcept;
     int (__cdecl *create_factory)(const char*,const FactoryBindings*,FactoryResult*) noexcept;
     int (__cdecl *spawn_ordinary)(SpawnRow*,unsigned,bool,const SpawnBindings*,SpawnResult*) noexcept;
+    int (__cdecl *dispatch_spawn)(void*,const SpawnBindings*,DispatchResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

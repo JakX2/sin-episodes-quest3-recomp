@@ -1,4 +1,6 @@
 #include "native_server_map_entity.h"
+#include "server_fixed_difficulty_service.h"
+extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalStateApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cstring>
 #include <cstdlib>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
@@ -199,7 +201,73 @@ bool find_parent(const SpawnBindings& b,SpawnResult& o,void* a,void** parent) no
     if(!name)return true;
     ++o.parent_reads;return b.find_parent&&b.find_parent(b.context,name,parent);
 }
+bool native_spawn_leaf(const SpawnBindings& b,void* a,unsigned n,bool& native) noexcept {
+    const auto vt=read_field<unsigned>(a,0);
+    native=(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
+    if(!native)return b.virtual_spawn&&b.virtual_spawn(b.context,a);
+    const auto* api=SiN_GetServerDynamicResupplyApi(1,sizeof(native_resupply::Api));if(!api)return false;
+    if(vt==resupply_vtable){LifecycleResult r{};return api->spawn(a,n,b.resupply,&r)!=0;}
+    if(vt==antigen_vtable){AntigenInteractionResult r{};return api->antigen_spawn(a,n,b.dispenser,&r)!=0;}
+    CanisterResult r{};return api->canister_spawn(a,n,b.canister,&r)!=0;
+}
+int __cdecl dispatch_spawn(void* a,const SpawnBindings* b,DispatchResult* o) noexcept {
+    if(!o)return 0;*o={};o->global_index=-1;
+    if(!a){o->completed=1;return 1;}
+    if(!b||!b->native_dispatch)return 0;
+    const auto& d=*b->native_dispatch;
+    unsigned n=0;if(!extent_ok(*b,a,0x37c,n)||!d.scope||!d.current_map||
+        d.entry_count>sin_independent::kEntityHandleCapacity||(!d.entries&&d.entry_count))return 0;
+    if(!d.scope(d.context,true))return 0;o->entered=1;
+    auto finish=[&](bool ok){const bool closed=d.scope(d.context,false)!=0;o->closed=closed;o->completed=ok&&closed;return int(o->completed);};
+    o->captured_handle=read_field<unsigned>(a,0x378);
+    bool native=false;if(!native_spawn_leaf(*b,a,n,native))return finish(false);
+    o->spawn_called=1;o->native_spawn=native;
+    // Original checks captured serial after Spawn. Independent storage
+    // additionally requires the resolved pointer to remain the same.
+    if(sin_independent::EntityHandleView(d.entries,d.entry_count).Resolve(o->captured_handle)!=a){
+        o->stale=1;o->native_result=-1;return finish(true);
+    }
+    if(!extent_ok(*b,a,0x37c,n))return finish(false);
+    if(read_field<unsigned>(a,0xb8)&1u){o->marked=1;o->native_result=-1;return finish(true);}
+    const unsigned name_token=read_field<unsigned>(a,0x10);
+    if(name_token){
+        const char* name=nullptr;if(!d.resolve_string||!d.resolve_string(d.context,name_token,&name)||!name)return finish(false);
+        using namespace sin_port::fixed_service;
+        const auto* api=SiN_GetGlobalStateApi(global_state_version,sizeof(GlobalStateApi));if(!api)return finish(false);
+        o->global_index=api->find(name);o->global_lookup=1;
+        if(o->global_index<0){
+            o->global_index=api->add(name,*d.current_map?*d.current_map:"",1);
+            if(o->global_index<0)return finish(false);o->global_added=1;o->global_state=1;
+        }else{
+            char saved_name[2048]{},level[2048]{};
+            if(!api->read(o->global_index,saved_name,sizeof(saved_name),level,sizeof(level),&o->global_state))return finish(false);
+            if(o->global_state==2){
+                o->global_dead=1;if(!d.remove||!d.remove(d.context,a))return finish(false);
+                o->removed=1;o->native_result=-1;return finish(true);
+            }
+            if(!equal_class(*d.current_map?*d.current_map:"",level)){
+                // 22144d40 sets dormancy, clears touch/think and collision
+                // state. Owner implements this complete base-entity leaf.
+                if(!d.dormant||!d.dormant(d.context,a))return finish(false);o->dormant=1;
+            }
+        }
+    }
+    if(!d.listener_count)return finish(false);
+    unsigned count=*d.listener_count;
+    if(count>d.listener_capacity||count>4096||(count&&!d.listeners))return finish(false);
+    while(count){
+        --count;
+        if(count>=*d.listener_count||!d.listeners[count]||!d.notify||!d.notify(d.context,d.listeners[count],a))return finish(false);
+        ++o->notified;
+    }
+    return finish(true);
+}
 bool spawn_actor(const SpawnBindings& b,SpawnResult& o,void* a,int& code) noexcept {
+    if(b.native_dispatch){
+        ++o.native_dispatches;
+        if(!dispatch_spawn(a,&b,&o.dispatch))return false;
+        code=o.dispatch.native_result;o.native_spawns+=o.dispatch.native_spawn;return true;
+    }
     unsigned n=0;if(!extent_ok(b,a,4,n))return false;
     const auto vt=read_field<unsigned>(a,0);
     const bool native=(vt==resupply_vtable&&b.resupply)||(vt==antigen_vtable&&b.dispenser)||(vt==antigen_canister_vtable&&b.canister);
@@ -292,7 +360,7 @@ int __cdecl spawn_ordinary(SpawnRow* rows,unsigned count,bool activate,const Spa
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
