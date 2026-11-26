@@ -114,4 +114,22 @@ using InvokeActivateWithEvents=int (__cdecl *)(State*,void*,int,int,const Bindin
 using InvokeLevelWithEvents=int (__cdecl *)(State*,const LevelArgs*,const Bindings*,Result*,const native_server_startup::EngineEventSession*) noexcept;
 using TouchStartedTrigger=int (__cdecl *)(const native_server_startup::EngineEventSession*,void*,unsigned,void*,
     const native_map::CampaignTriggerBindings*,native_map::CampaignTriggerResult*,int*) noexcept;
+// The engine/owner supplies an already-established contact. These are
+// the gameplay notification leaves, not contact generation or geometry.
+enum class CampaignContactKind : unsigned {Continuing,Starting};
+struct CampaignContactBindings {
+    void* context;
+    const native_map::CampaignTriggerBindings* campaign;
+    // Inherited StartTouch (+160) remains a synchronous owner boundary.
+    // The actor and other must remain live until the dispatch returns.
+    int (__cdecl *start_touch)(void*,void*,void*) noexcept;
+};
+struct CampaignContactResult {
+    unsigned completed,missing_other,marked_actor,marked_other,start_called,touch_called;
+    int publication;
+    native_map::CampaignTriggerResult trigger;
+};
+inline constexpr char campaign_contact_export[]="SiN_DispatchStartedCampaignContact";
+using DispatchCampaignContact=int (__cdecl *)(const native_server_startup::EngineEventSession*,
+    void*,unsigned,void*,unsigned,CampaignContactKind,const CampaignContactBindings*,CampaignContactResult*) noexcept;
 }

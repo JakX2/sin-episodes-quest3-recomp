@@ -2468,6 +2468,12 @@ bool __cdecl SinReadCampaignTouchMarkerInternal(const void* actor,unsigned* mark
     if(!marker||!memory::Readable(actor,4))return false;
     std::memcpy(marker,actor,4);return true;
 }
+bool __cdecl SinReadCampaignContactFieldsInternal(const void* actor,unsigned bytes,unsigned* marker,unsigned char* flags) noexcept {
+    if(!marker||!flags||bytes<0xb9||!memory::Readable(actor,0xb9))return false;
+    std::memcpy(marker,actor,4);
+    std::memcpy(flags,static_cast<const unsigned char*>(actor)+0xb8,1);
+    return true;
+}
 int __cdecl SinResolveLocalPlayerInternal(void* globals,void* engine,void** out) noexcept {
     if(!out)return 0;*out=nullptr;
     if(!memory::Readable(globals,0x18))return 0;
