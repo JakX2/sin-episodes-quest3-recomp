@@ -59,6 +59,7 @@ struct KeyBindings {
     int (__cdecl *foreign)(void*,void*,const char*,const char*,bool*) noexcept;
     int (__cdecl *resupply_bounds_warning)(void*,void*) noexcept;
     const OutputActionBindings* native_output;
+    int (__cdecl *navigation_warning)(void*,void*,const char*) noexcept;
 };
 struct KeyResult {
     unsigned completed,handled,known_class,base_field,scalar,interned,output,foreign,ignored_bounds;
@@ -120,6 +121,22 @@ inline constexpr unsigned compare_vtable=0x22422004,compare_extent=0x3fc;
 inline constexpr unsigned counter_vtable=0x22421ae4,counter_extent=0x3e8;
 // Derived scalar-deleting destructor boundary, distinct from the
 // factory's owner networkable-release boundary.
+inline constexpr unsigned navigation_vtable=0x2241ed04,navigation_listener_vtable=0x2241ecf0,navigation_extent=0x3a0;
+struct NavigationBindings {
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+    // Original named search, previous pointer and raw target token;
+    // zero token denotes empty string. Return null to finish.
+    int (__cdecl *find)(void*,void*,unsigned,void**) noexcept;
+    int (__cdecl *listen)(void*,void*,bool) noexcept;
+    int (__cdecl *match)(void*,void*,unsigned,bool*) noexcept;
+    int (__cdecl *base_activate)(void*,void*) noexcept;
+    int (__cdecl *base_remove)(void*,void*) noexcept;
+    int (__cdecl *mark_edict)(void*,unsigned) noexcept;
+};
+struct NavigationResult {
+    unsigned completed,handled,changed,on,registered,unregistered,base_called,visited,written,matched,dirty;
+};
 inline constexpr unsigned menu_vtable=0x22422534,menu_listener_vtable=0x22422524,menu_extent=0x518;
 struct MenuBindings {
     void* context;
@@ -358,6 +375,10 @@ struct Api {
     int (__cdecl *menu_event)(void*,unsigned,void*,const MenuBindings*,MenuResult*) noexcept;
     int (__cdecl *register_menu)(FactoryDictionary*) noexcept;
     int (__cdecl *destroy_menu)(void*,unsigned,void*,const RelayFactoryBindings*) noexcept;
+    int (__cdecl *navigation_input)(void*,unsigned,const char*,const NavigationBindings*,NavigationResult*) noexcept;
+    int (__cdecl *navigation_activate)(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
+    int (__cdecl *navigation_created)(void*,unsigned,void*,const NavigationBindings*,NavigationResult*) noexcept;
+    int (__cdecl *navigation_remove)(void*,unsigned,const NavigationBindings*,NavigationResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

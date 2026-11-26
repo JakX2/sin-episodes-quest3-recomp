@@ -7,6 +7,7 @@ extern "C" const sin_port::fixed_service::GlobalStateApi* __cdecl SiN_GetGlobalS
 #include <cstdlib>
 #include <cerrno>
 #include <climits>
+#include <limits>
 #include <charconv>
 extern "C" const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerEntityVoidOutputApi* __cdecl SiN_GetServerEntityVoidOutputApi(std::uint32_t,std::uint32_t) noexcept;
@@ -383,7 +384,7 @@ int __cdecl destroy_menu(void* actor,unsigned bytes,void* networkable,const Rela
     return b->release_networkable(b->context,networkable);
 }
 bool known_map_vtable(unsigned vt) noexcept {
-    if(vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
+    if(vt==navigation_vtable||vt==menu_vtable||vt==counter_vtable||vt==compare_vtable||vt==case_vtable||vt==branch_vtable||vt==timer_vtable||vt==auto_vtable||vt==relay_vtable||vt==resupply_vtable||vt==antigen_vtable||vt==antigen_canister_vtable||vt==vial_vtable||vt==megahealth_vtable)return true;
     for(const auto& item:ammo_pickups)if(vt==item.vtable)return true;return false;
 }
 // Original 22154830: five comma-delimited fields, no escaping or trim.
@@ -438,6 +439,15 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     if(vt==resupply_vtable&&(equal_class(key,"mins")||equal_class(key,"maxs"))){
         if(!b->resupply_bounds_warning||!b->resupply_bounds_warning(b->context,actor))return 0;
         o->ignored_bounds=o->handled=1;return done();
+    }
+    // CLogicNavigation::KeyValue 22177f90 handles exact navprop
+    // before base normalization. Unknown values warn but are handled.
+    if(vt==navigation_vtable&&equal_class(key,"navprop")){
+        if(bytes<navigation_extent)return 0;
+        if(equal_class(value,"Ignore")){
+            write_field(actor,0x39c,1u);o->scalar=1;o->offset=0x39c;o->field_type=5;
+        }else if(!b->navigation_warning||!b->navigation_warning(b->context,actor,value))return 0;
+        o->handled=1;return done();
     }
     // CMathCounter::KeyValue 22179950 handles the exact startvalue
     // name before base # suffix normalization; original atoi wraps.
@@ -494,6 +504,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
         {"OnLessThan",0x39c,11},{"OnEqualTo",0x3b4,11},
         {"OnNotEqualTo",0x3cc,11},{"OnGreaterThan",0x3e4,11}
     };
+    constexpr Spec navigation_keys[]{{"target",0x90,2}};
     constexpr Spec menu_keys[]{
         {"resumeGamePressed",0x398,11},{"newGamePressed",0x3b0,11},{"optionsPressed",0x3c8,11},
         {"loadGamePressed",0x3e0,11},{"saveGamePressed",0x3f8,11},{"statsPressed",0x410,11},
@@ -505,7 +516,7 @@ int __cdecl key_value(void* actor,const char* key,const char* value,const KeyBin
     Spec numbered{};
     const Spec* spec=nullptr;
     auto match=[&](const auto& table){for(const auto& s:table)if(equal_class(name,s.key)){spec=&s;break;}};
-    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);
+    if(vt==antigen_vtable)match(dispenser);else if(vt==antigen_canister_vtable)match(canister);else if(vt==relay_vtable)match(relay);else if(vt==auto_vtable)match(auto_keys);else if(vt==timer_vtable)match(timer_keys);else if(vt==branch_vtable)match(branch_keys);else if(vt==compare_vtable)match(compare_keys);else if(vt==counter_vtable)match(counter_keys);else if(vt==menu_vtable)match(menu_keys);else if(vt==navigation_vtable)match(navigation_keys);
     else if(vt==case_vtable){
         if(equal_class(name,"OnDefault")){numbered={nullptr,0x554,11};spec=&numbered;}
         else for(unsigned i=1;i<=16;++i){
@@ -1557,7 +1568,100 @@ int __cdecl menu_event(void* a,unsigned n,void* event,const MenuBindings* b,Menu
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu};
+bool navigation_valid(void* a,unsigned n,const NavigationBindings* b,NavigationResult* o) noexcept {
+    if(!o)return false;*o={};
+    if(!a||n<navigation_extent||entity_vtable(a)!=navigation_vtable||read_field<unsigned>(a,0x394)!=navigation_listener_vtable||!b)return false;
+    o->on=read_field<unsigned char>(a,0x398)!=0;return true;
+}
+bool navigation_target(const NavigationBindings& b,void* entity,unsigned required) noexcept {
+    unsigned bytes=0;return entity&&b.extent&&b.extent(b.context,entity,&bytes)&&bytes>=required;
+}
+bool navigation_update(void* a,const NavigationBindings& b,NavigationResult& o) noexcept {
+    if(!b.find)return false;
+    void* seen[4096]{};void* prev=nullptr;
+    // Original 22178050 rereads target token, on byte and property
+    // for every result. Only the Ignore bit changes the target field.
+    for(;;){
+        void* entity=nullptr;
+        if(!b.find(b.context,prev,read_field<unsigned>(a,0x90),&entity))return false;
+        if(!entity)return true;
+        if(o.visited==4096)return false;
+        for(unsigned i=0;i<o.visited;++i)if(seen[i]==entity)return false;
+        seen[o.visited++]=entity;prev=entity;
+        if(!(read_field<unsigned>(a,0x39c)&1u))continue;
+        if(!navigation_target(b,entity,0x238))return false;
+        if(read_field<unsigned char>(a,0x398)){
+            if(std::numeric_limits<float>::max()>read_field<float>(entity,0x234)){
+                write_field(entity,0x234,std::numeric_limits<float>::max());++o.written;
+            }
+        }else {write_field(entity,0x234,0.f);++o.written;}
+    }
+}
+bool navigation_set(void* a,bool on,const NavigationBindings& b,NavigationResult& o) noexcept {
+    if((read_field<unsigned char>(a,0x398)!=0)==on)return true;
+    if(!b.listen||!b.find)return false;
+    write_field(a,0x398,static_cast<unsigned char>(on));o.changed=1;o.on=on;
+    if(!b.listen(b.context,static_cast<unsigned char*>(a)+0x394,on))return false;
+    if(on)++o.registered;else ++o.unregistered;
+    return navigation_update(a,b,o);
+}
+int __cdecl navigation_input(void* a,unsigned n,const char* name,const NavigationBindings* b,NavigationResult* o) noexcept {
+    if(!navigation_valid(a,n,b,o)||!name)return 0;
+    o->handled=1;
+    if(equal_class(name,"TurnOn")){if(!navigation_set(a,true,*b,*o))return 0;}
+    else if(equal_class(name,"TurnOff")){if(!navigation_set(a,false,*b,*o))return 0;}
+    else if(equal_class(name,"Toggle")){if(!navigation_set(a,!o->on,*b,*o))return 0;}
+    else o->handled=0;
+    o->completed=1;return 1;
+}
+int __cdecl navigation_activate(void* a,unsigned n,const NavigationBindings* b,NavigationResult* o) noexcept {
+    if(!navigation_valid(a,n,b,o)||!b->base_activate||!b->base_activate(b->context,a))return 0;
+    o->base_called=1;
+    if(read_field<unsigned>(a,0xb4)&1u){
+        if(!navigation_set(a,true,*b,*o))return 0;
+        const auto flags=read_field<unsigned>(a,0xb4);
+        if(flags&1u){
+            if(read_field<unsigned char>(a,0x1f0)){write_field(a,0x200,static_cast<unsigned char>(1));o->dirty=1;}
+            else if(const auto edict=read_field<unsigned>(a,0x16c)){
+                if(!b->mark_edict||!b->mark_edict(b->context,edict))return 0;o->dirty=1;
+            }
+            write_field(a,0xb4,flags&~1u);
+        }
+    }else if(read_field<unsigned char>(a,0x398)){
+        // Restored enabled entity re-registers, without rescanning.
+        if(!b->listen||!b->listen(b->context,static_cast<unsigned char*>(a)+0x394,true))return 0;
+        ++o->registered;
+    }
+    o->on=read_field<unsigned char>(a,0x398)!=0;o->handled=o->completed=1;return 1;
+}
+int __cdecl navigation_created(void* a,unsigned n,void* entity,const NavigationBindings* b,NavigationResult* o) noexcept {
+    if(!navigation_valid(a,n,b,o))return 0;o->handled=1;
+    if(o->on&&(read_field<unsigned>(a,0x39c)&1u)){
+        if(!navigation_target(*b,entity,0xc4))return 0;
+        const auto name=read_field<unsigned>(a,0x90);
+        bool match=read_field<unsigned>(entity,0xc0)==name;
+        if(!match&&(!b->match||!b->match(b->context,entity,name,&match)))return 0;
+        if(match){
+            o->matched=1;
+            if(!navigation_target(*b,entity,0x238))return 0;
+            if(std::numeric_limits<float>::max()>read_field<float>(entity,0x234)){
+                write_field(entity,0x234,std::numeric_limits<float>::max());++o->written;
+            }
+        }
+    }
+    o->completed=1;return 1;
+}
+int __cdecl navigation_remove(void* a,unsigned n,const NavigationBindings* b,NavigationResult* o) noexcept {
+    if(!navigation_valid(a,n,b,o)||!b->base_remove)return 0;
+    if(o->on){
+        if(!b->listen||!b->listen(b->context,static_cast<unsigned char*>(a)+0x394,false))return 0;
+        ++o->unregistered;
+    }
+    // Original UpdateOnRemove leaves on byte and existing target deadlines.
+    if(!b->base_remove(b->context,a))return 0;
+    o->base_called=o->handled=o->completed=1;return 1;
+}
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
