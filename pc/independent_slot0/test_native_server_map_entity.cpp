@@ -2623,5 +2623,6 @@ int main(int argc,char** argv){
 #include "test_native_logic_shared_kill.inc"
 #include "test_native_deferred_removal.inc"
 #include "test_native_registry_unlink.inc"
+#include "test_native_delete_listeners.inc"
     FreeLibrary(server);FreeLibrary(client);
 }

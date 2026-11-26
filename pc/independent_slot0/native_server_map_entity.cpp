@@ -2038,6 +2038,51 @@ bool deferred_valid(const DeferredRemovalQueue* q) noexcept {
     return q&&q->capacity<=sin_independent::kEntityHandleCapacity&&q->count<=q->capacity&&
         q->reserved<=q->capacity-q->count&&(!q->capacity||q->slots);
 }
+bool listener_storage(const DeletionListenerBindings* b) noexcept {
+    return b&&b->count&&b->capacity<=4096&&*b->count<=b->capacity&&
+        (!b->capacity||b->slots)&&b->entry_count<=sin_independent::kEntityHandleCapacity&&(!b->entry_count||b->entries);
+}
+// 22162d10: resolve the original handle before reading listener count,
+// then read each live pointer slot in reverse. All known logic primary
+// +14 return self (22001ae0). Nonlogic types remain outside this leaf.
+int __cdecl notify_deleting(unsigned handle,const DeletionListenerBindings* b,DeletionListenerResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!listener_storage(b))return 0;
+    auto* a=sin_independent::EntityHandleView(b->entries,b->entry_count).Resolve(handle);
+    if(!a){o->stale=o->completed=1;return 1;}
+    const unsigned count=*b->count;
+    if(count&&!b->deleted)return 0;
+    for(unsigned i=count;i>0;){
+        --i;
+        // The original takes the starting count and reads live slots,
+        // not a copied list. The owner guarantees those slots remain valid.
+        void* listener=b->slots[i];if(!listener||!b->deleted(b->context,listener,a))return 0;
+        ++o->notified;
+    }
+    o->completed=1;return 1;
+}
+bool removal_update_native(void* a,unsigned n,unsigned vt,const NativeRemovalUpdateBindings& b,DeferredRemovalQueue& q,DeferredRemovalResult& o) noexcept {
+    if(!listener_storage(b.listeners)||!b.tail)return false;
+    const auto& l=*b.listeners;
+    // CLogicNavigation::UpdateOnRemove unregisters its listener first,
+    // preserving the on byte. Remove first matching pointer (22163160).
+    if(vt==navigation_vtable){
+        if(n<navigation_extent||read_field<unsigned>(a,0x394)!=navigation_listener_vtable)return false;
+        if(read_field<unsigned char>(a,0x398)){
+            void* listener=static_cast<unsigned char*>(a)+0x394;
+            for(unsigned i=0;i<*l.count;++i)if(l.slots[i]==listener){
+                std::memmove(l.slots+i,l.slots+i+1,(*l.count-i-1)*sizeof(void*));
+                --*l.count;o.unregistered=1;break;
+            }
+        }
+    }
+    q.chained_update=true; // base +180 is a RET for all 13 known classes
+    DeletionListenerResult notified{};
+    const bool ok=notify_deleting(read_field<unsigned>(a,0x378),&l,&notified)!=0;
+    o.notified=notified.notified;o.stale_notification=notified.stale;
+    if(!ok||!b.tail(b.context,a))return false;
+    o.native_update=1;return true;
+}
 // 22286bf0 -> 22286b90 -> 221636d0. The embedded networkable's
 // authenticated flags and base-entity getters use its +8 backpointer.
 int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings* b,DeferredRemovalResult* o) noexcept {
@@ -2049,7 +2094,8 @@ int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings*
        read_field<unsigned>(a,0x168)!=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(a)))return 0;
     const auto flags=read_field<unsigned>(a,0xb8);
     if(flags&1u){o->already_marked=o->completed=1;return 1;}
-    if(!b||!deferred_valid(b->queue)||!b->update)return 0;
+    if(!b||!deferred_valid(b->queue)||(!b->update&&!b->native_update))return 0;
+    if(b->native_update&&(!listener_storage(b->native_update->listeners)||!b->native_update->tail))return 0;
     auto& q=*b->queue;
     // Independent capacity reservation: a reentrant update can append
     // other entities without consuming this request's slot. The original
@@ -2057,7 +2103,8 @@ int __cdecl defer_logic_remove(void* a,unsigned n,const DeferredRemovalBindings*
     if(q.count+q.reserved==q.capacity)return 0;
     ++q.reserved;
     write_field(a,0xb8,flags|1u);o->marked=1;q.chained_update=false;
-    const bool updated=b->update(b->context,a,vt==navigation_vtable?0x22177f50u:0x221446f0u)!=0;
+    const bool updated=b->native_update?removal_update_native(a,n,vt,*b->native_update,q,*o):
+        b->update(b->context,a,vt==navigation_vtable?0x22177f50u:0x221446f0u)!=0;
     --q.reserved;
     if(!updated)return 0; // original virtual is void; do not roll back side effects
     o->updated=1;write_field(a,0xc0,0u);o->name_cleared=1;
@@ -2327,7 +2374,7 @@ int __cdecl multicompare_input(void* a,unsigned n,const char* name,void* activat
     }
     o->completed=1;return 1;
 }
-const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic};
+const sin_port::native_map::Api api{1,sizeof(sin_port::native_map::Api),&token,&slice,&lookup,&parse,&register_factories,&find_factory,&create_factory,&spawn_ordinary,&dispatch_spawn,&key_value,&parse_all,&relay_input,&register_relay,&destroy_relay,&auto_activate,&auto_think,&register_auto,&destroy_auto,&auto_primary_activate,&auto_primary_run,&timer_spawn,&timer_input,&register_timer,&destroy_timer,&timer_primary_run,&branch_input,&register_branch,&destroy_branch,&case_input,&register_case,&destroy_case,&compare_input,&register_compare,&destroy_compare,&counter_spawn,&counter_input,&register_counter,&destroy_counter,&destroy_logic,&menu_listen,&menu_event,&register_menu,&destroy_menu,&navigation_input,&navigation_activate,&navigation_created,&navigation_remove,&register_navigation,&destroy_navigation,&register_autosave,&destroy_autosave,&autosave_input,&autosave_kill,&multicompare_input,&register_multicompare,&destroy_multicompare,&multicompare_kill,&remap_spawn,&remap_input,&register_remap,&destroy_remap,&colorblend_spawn,&colorblend_input,&register_colorblend,&destroy_colorblend,&logic_kill,&defer_logic_remove,&cleanup_deferred,&discard_deferred,&registry_unlink_logic,&notify_deleting};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerMapEntityApi=_SiN_GetServerMapEntityApi")
