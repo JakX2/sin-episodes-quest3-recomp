@@ -1100,4 +1100,20 @@ struct ServerNpcGruntSquadRegistryApi {
     int (__cdecl *attach)(void*,unsigned,std::uint32_t,float,std::uint32_t*,const char*,const ServerNpcGruntSquadRegistryBindings*,const ServerNpcGruntSquadJoinBindings*,ServerNpcGruntSquadRegistryResult*) noexcept;
 };
 using GetServerNpcGruntSquadRegistryApi=const ServerNpcGruntSquadRegistryApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_squad_destroy_export[]="SiN_GetServerNpcGruntSquadDestroyApi";
+struct ServerNpcGruntSquadDestroyBindings {
+    ServerNpcGruntSquadRegistryBindings registry;
+    void* context;
+    int (__cdecl *release_records)(void*,std::uint32_t) noexcept;
+};
+struct ServerNpcGruntSquadDestroyResult {
+    unsigned completed,visited,unlinked,empty_required,record_release_calls,external_records,inline_reset,group_released;
+    std::uint32_t token,predecessor,successor;
+};
+struct ServerNpcGruntSquadDestroyApi {
+    std::uint32_t version,size;
+    // 220aa850: caller owns registry; safe native adapter requires no members.
+    int (__cdecl *destroy)(std::uint32_t*,std::uint32_t,const ServerNpcGruntSquadDestroyBindings*,ServerNpcGruntSquadDestroyResult*) noexcept;
+};
+using GetServerNpcGruntSquadDestroyApi=const ServerNpcGruntSquadDestroyApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

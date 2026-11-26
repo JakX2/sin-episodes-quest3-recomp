@@ -2736,6 +2736,54 @@ int __cdecl squad_attach(void* a,unsigned n,std::uint32_t handle,float now,std::
     if(!grunt_squad_join(a,n,out->token,out->array_token,handle,now,join,&out->join))return 0;
     out->completed=1;return 1;
 }
+int __cdecl squad_destroy(std::uint32_t* head,std::uint32_t token,const ServerNpcGruntSquadDestroyBindings* b,ServerNpcGruntSquadDestroyResult* out) noexcept{
+    if(!out)return 0;*out={};out->token=token;
+    if(!head||!b)return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    if(!token)return done();
+    void* target=nullptr;unsigned n=0;
+    if(!memory_storage(&b->registry.storage,token,0x78,target,n)||!b->registry.release)return 0;
+    // Host ownership guard: original raw destructor assumes no surviving references.
+    if(read<int>(target,0x48)!=0){out->empty_required=1;return done();}
+    void* predecessor=nullptr;
+    for(auto current=*head;current;){
+        if(++out->visited>4096)return 0;
+        void* group=nullptr;if(!memory_storage(&b->registry.storage,current,0x78,group,n))return 0;
+        if(current==token){
+            if(group!=target)return 0;
+            const auto successor=read<unsigned>(group,0);out->successor=successor;
+            if(successor==token)return 0;
+            if(predecessor)write(predecessor,0,successor);else *head=successor;
+            out->unlinked=1;break;
+        }
+        predecessor=group;out->predecessor=current;current=read<unsigned>(group,0);
+    }
+    // 220a98b0 on group+60. Grow-size -1 denotes externally owned storage.
+    write(target,0x6c,0u);
+    if(read<int>(target,0x68)!=-1){
+        if(const auto records=read<unsigned>(target,0x60)){
+            if(!b->release_records)return 0;++out->record_release_calls;
+            if(!b->release_records(b->context,records))return 0;
+            write(target,0x60,0u);
+        }
+        write(target,0x64,0u);
+    }else out->external_records=1;
+    write(target,0x70,read<unsigned>(target,0x60));
+    // Second original storage cleanup sees zero on the stable owned-storage path.
+    if(read<int>(target,0x68)!=-1){
+        if(const auto records=read<unsigned>(target,0x60)){
+            if(!b->release_records)return 0;++out->record_release_calls;
+            if(!b->release_records(b->context,records))return 0;
+            write(target,0x60,0u);
+        }
+        write(target,0x64,0u);
+    }
+    write(target,0x48,0u); // inline marker already canonical in the bounded representation
+    out->inline_reset=1;
+    if(!b->registry.release(b->registry.context,token))return 0;
+    out->group_released=1;return done();
+}
+const ServerNpcGruntSquadDestroyApi squad_destroy_api{1,sizeof(ServerNpcGruntSquadDestroyApi),&squad_destroy};
 const ServerNpcGruntSquadRegistryApi squad_registry_api{1,sizeof(ServerNpcGruntSquadRegistryApi),&squad_lookup,&squad_create,&squad_attach};
 const ServerNpcGruntSquadJoinApi squad_join_api{1,sizeof(ServerNpcGruntSquadJoinApi),&grunt_squad_join,&grunt_squad_detach};
 const ServerNpcGruntSquadLeaveApi squad_leave_api{1,sizeof(ServerNpcGruntSquadLeaveApi),&grunt_squad_leave};
@@ -3133,4 +3181,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadRegistryApi=_SiN_GetServerNpcGruntSquadRegistryApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadRegistryApi* __cdecl SiN_GetServerNpcGruntSquadRegistryApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadRegistryApi)?&squad_registry_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSquadDestroyApi=_SiN_GetServerNpcGruntSquadDestroyApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSquadDestroyApi* __cdecl SiN_GetServerNpcGruntSquadDestroyApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSquadDestroyApi)?&squad_destroy_api:nullptr;
 }
