@@ -327,7 +327,7 @@ int __cdecl spawn(void* actor,unsigned bytes,const LifecycleBindings* b,Lifecycl
     if(!b->random_float||!b->random_float(b->context,.2f,.4f,&o->delay))return 0;o->random_called=1;
     float now=0;if(!b->now||!b->now(b->context,&now))return 0;o->clock_read=1;
     o->next_time=float(double(now)+double(o->delay));
-    if(!b->schedule||!b->schedule(b->context,actor,o->next_time))return 0;o->scheduled=1;
+    if(!b->schedule||!b->schedule(b->schedule_context?b->schedule_context:b->context,actor,o->next_time))return 0;o->scheduled=1;
     set_field(actor,8,check_pvs_think);o->think_installed=o->completed=1;return 1;
 }
 bool registry_ok(const LifecycleBindings& b) noexcept {
@@ -400,7 +400,7 @@ int __cdecl check_pvs(void* a,unsigned n,int debug,const DispatchBindings* b,Dis
     if(player)return dispatch_evaluate(a,n,player,debug,*b,*o);
     float now=0;if(!b->now||!b->now(b->context,&now))return 0;
     o->next_time=float(double(now)+1.);
-    if(!b->schedule||!b->schedule(b->context,a,o->next_time))return 0;
+    if(!b->schedule||!b->schedule(b->schedule_context?b->schedule_context:b->context,a,o->next_time))return 0;
     o->retry=o->completed=1;return 1;
 }
 int __cdecl calculate_type(void* a,unsigned n,int debug,const DispatchBindings* b,DispatchResult* o) noexcept {

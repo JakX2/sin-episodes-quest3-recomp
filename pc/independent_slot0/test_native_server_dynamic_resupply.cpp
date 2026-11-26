@@ -407,5 +407,58 @@ int main(int argc,char** argv){
     assert(input_api->run(ef.actor,sizeof(ef.actor),resupply_vtable,601,nullptr,nullptr,variant,sizeof(variant),0,&ib,&input_result)&&input_result.accepted&&input_result.row==2&&dr.evaluation.master_skipped&&!dr.player_found);
     assert(input_api->run(ef.actor,sizeof(ef.actor),resupply_vtable,603,nullptr,nullptr,variant,sizeof(variant),0,&ib,&input_result)&&input_result.accepted&&input_result.row==1&&lr.removed&&ef.removes==1);
     assert(input_api->run(ef.actor,sizeof(ef.actor),resupply_vtable,604,nullptr,nullptr,variant,sizeof(variant),0,&ib,&input_result)&&input_result.completed&&!input_result.accepted&&input_result.reason==EntityInputUnknown&&input_result.maps==2);
+    // Frame scheduling without the old high-level time scheduling callback.
+    const auto get_frame=reinterpret_cast<GetServerResupplyPrimaryThinkApi>(GetProcAddress(s,server_resupply_primary_think_export));
+    assert(get_frame&&!GetProcAddress(c,server_resupply_primary_think_export)&&!get_frame(0,sizeof(ServerResupplyPrimaryThinkApi)));
+    const auto* frame=get_frame(1,sizeof(ServerResupplyPrimaryThinkApi));assert(frame);
+    struct FrameFixture {
+        EvalFixture* e;
+        float now=10.f,delay=.25f;
+        unsigned precached=0,random=0,record=0,enters=0,leaves=0,notices=0;
+        bool clear_on_enter=false,unknown_on_enter=false,fail_enter=false;
+        int observed_tick=0,observed_due=0;
+        float observed_time=0;
+    } frf{&ef};
+    LifecycleBindings fl{};fl.context=&frf;
+    fl.precache=[](void* p,const char*,int flag) noexcept ->int{auto& q=*static_cast<FrameFixture*>(p);assert(flag==0);++q.precached;return 1;};
+    fl.now=[](void* p,float* v) noexcept ->int{*v=static_cast<FrameFixture*>(p)->now;return 1;};
+    fl.random_float=[](void* p,float lo,float hi,float* v) noexcept ->int{auto& q=*static_cast<FrameFixture*>(p);assert(lo==.2f&&hi==.4f);*v=q.delay;++q.random;return 1;};
+    ServerResupplyPrimaryThinkBindings pb{};pb.context=&frf;pb.entities=es.entities;pb.lifecycle=&fl;pb.dispatch=&db;
+    pb.cadence.context=&frf;
+    pb.cadence.notify_think_flags=[](void* p,void* a) noexcept ->int{auto& q=*static_cast<FrameFixture*>(p);assert(a==q.e->actor);++q.notices;return 1;};
+    pb.clock=fl.now;
+    pb.record=[](void* p,void* a,int tick,float time,int due) noexcept ->int{auto& q=*static_cast<FrameFixture*>(p);assert(a==q.e->actor);++q.record;q.observed_tick=tick;q.observed_due=due;q.observed_time=time;return 1;};
+    pb.scope=[](void* p,void* a,bool enter) noexcept ->int{
+        auto& q=*static_cast<FrameFixture*>(p);assert(a==q.e->actor);
+        if(enter){++q.enters;assert(EvalFixture::rd(a,0x74)==0xffffffffu);
+            if(q.clear_on_enter)EvalFixture::u(a,8,0);
+            if(q.unknown_on_enter)EvalFixture::u(a,8,0xdeadbeefu);
+            return !q.fail_enter;
+        }++q.leaves;return 1;
+    };
+    ServerResupplyPrimaryThinkResult pr{};
+    auto frame_seed=[&](){dispatch_seed();EvalFixture::u(ef.actor,8,0);EvalFixture::u(ef.actor,0x74,0xffffffffu);EvalFixture::u(ef.actor,0xb8,0x400000u);};
+    frame_seed();df.present=false;frf.now=10.f;df.now=10.f;
+    assert(frame->spawn(ef.actor,sizeof(ef.actor),0x3000,.125f,&pb,&pr)&&pr.completed&&pr.spawn.precached==7&&pr.rescheduled&&pr.reschedule.tick==82&&pr.reschedule.flags_changed&&EvalFixture::rd(ef.actor,8)==check_pvs_think);
+    assert(!(EvalFixture::rd(ef.actor,0xb8)&0x400000u)&&frf.notices==1);
+    assert(frame->run(ef.actor,sizeof(ef.actor),0x3000,81,.125f,&pb,&pr)&&pr.not_due&&!pr.invoked);
+    // At deadline, clear the tick before callback and retry via native ticks.
+    frf.now=df.now=10.25f;
+    assert(frame->run(ef.actor,sizeof(ef.actor),0x3000,82,.125f,&pb,&pr)&&pr.completed&&pr.invoked&&pr.dispatch.retry&&pr.rescheduled&&pr.reschedule.tick==90&&pr.last_tick==82&&pr.clear.flags_changed&&pr.closed);
+    assert(frf.record==1&&frf.observed_due==82&&frf.observed_tick==82&&frf.observed_time==10.25f&&frf.notices==3&&frf.enters==1&&frf.leaves==1);
+    // Once visible, use the same evaluator and leave no pending tick.
+    df.present=true;df.base_present=true;frf.now=df.now=11.25f;
+    assert(frame->run(ef.actor,sizeof(ef.actor),0x3000,90,.125f,&pb,&pr)&&pr.completed&&pr.dispatch.evaluation.normal_spawns==2&&pr.dispatch.evaluation.removed&&!pr.rescheduled&&pr.last_tick==90&&pr.closed);
+    assert(EvalFixture::rd(ef.actor,8)==0&&EvalFixture::rd(ef.actor,0x74)==0xffffffffu&&EvalFixture::rd(ef.actor,0x34)==90&&frf.notices==4);
+    assert(frame->run(ef.actor,sizeof(ef.actor),0x3000,91,.125f,&pb,&pr)&&pr.no_think&&!pr.invoked);
+    assert(!frame->run(ef.actor,sizeof(ef.actor),0x4000,91,.125f,&pb,&pr)&&!pr.completed);
+    frame_seed();EvalFixture::u(ef.actor,0xb4,2);
+    assert(frame->spawn(ef.actor,sizeof(ef.actor),0x3000,.125f,&pb,&pr)&&pr.spawn.manual&&!pr.rescheduled);
+    // A cleared think pointer with a due tick is a retail no-op.
+    EvalFixture::u(ef.actor,0xb8,0);EvalFixture::u(ef.actor,0x74,90);
+    assert(frame->run(ef.actor,sizeof(ef.actor),0x3000,90,.125f,&pb,&pr)&&pr.completed&&pr.null_token&&!pr.invoked&&pr.closed);
+    // Reload identity after engine scope entry, never execute unknown PE VA.
+    frame_seed();EvalFixture::u(ef.actor,0xb8,0);EvalFixture::u(ef.actor,0x74,90);EvalFixture::u(ef.actor,8,check_pvs_think);frf.unknown_on_enter=true;
+    assert(!frame->run(ef.actor,sizeof(ef.actor),0x3000,90,.125f,&pb,&pr)&&pr.entered&&pr.closed&&!pr.invoked&&pr.token==0xdeadbeefu);
     FreeLibrary(s);FreeLibrary(c);return 0;
 }
