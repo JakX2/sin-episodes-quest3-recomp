@@ -66,4 +66,32 @@
         // Original discard helper clears count without invoking Release.
         f.slots[0]=f.storage[3]+0x160;f.queue.count=1;
         assert(api->discard_deferred(&f.queue,&r)&&r.discarded==1&&!f.queue.count&&f.released==3&&f.slots[0]==f.storage[3]+0x160);
+        // Recreate a synthetic owned actor after the earlier release.
+        auto* a=f.storage[0];std::memset(a,0,case_extent);
+        put(a,0,case_vtable);put(a,0x160,0x22454f00u);put(a,0x168,ptrword(a));put(a,0x378,0x2000u);
+        put(a,0x20c,0xffffffffu);put(a,0xb8,0x80u);put(a,0xc0,7u);a[0x1f0]=1;
+        f.order.clear();f.append=false;
+        EntityKillBindings kill{};kill.deferred=&b;
+        nw::ServerEntityAcceptInputBindings input{};input.storage=&tstorage;input.logic_kill=&kill;
+        input.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            if(token!=0x2240b624u)return 0;*text="Kill";*bytes=5;return 1;
+        };
+        nw::ServerEntityAcceptInputResult accepted{};
+        unsigned empty[5]{0,0,0,0xffffffffu,0};
+        for(unsigned i=0;i<2;++i){
+            assert(timer_accept->run(a,case_extent,case_vtable,0x2240b624u,nullptr,nullptr,empty,sizeof(empty),i,&input,&accepted)&&accepted.native_handler&&accepted.dirty);
+            assert(f.queue.count==1&&f.slots[0]==a+0x160&&f.order=="a"&&word(a,0xb8)==0x81u&&!word(a,0xc0)&&a[0x200]);
+        }
+        assert(api->cleanup_deferred(&b,&r)&&r.released==1&&f.order=="a[PA]"&&f.released==4);
+        // One-shot logic_auto can also remove through the queue with no
+        // remove callback, after invoking its original outputs.
+        std::memset(a,0,case_extent);put(a,0,auto_vtable);put(a,0x160,0x22454f00u);
+        put(a,0x168,ptrword(a));put(a,0x378,0x3000u);put(a,0xb8,0x80u);put(a,0xb4,1u);put(a,0xc0,7u);
+        AutoBindings startup{};int load=0;startup.load_type=&load;startup.deferred=&b;
+        nw::ServerEntityVoidOutputBindings fire{};
+        fire.enqueue=[](void*,void*,void*,const nw::ServerEntityVoidOutputAction*) noexcept ->int{assert(false);return 0;};
+        startup.output=&fire;startup.low_violence=[](void*,bool* low) noexcept ->int{*low=false;return 1;};
+        AutoResult ar{};f.order.clear();
+        assert(api->auto_think(a,auto_extent,&startup,&ar)&&ar.outputs==3&&!ar.queued&&ar.removed&&f.order=="a"&&f.queue.count==1&&!word(a,0xc0));
+        assert(api->cleanup_deferred(&b,&r)&&r.released==1&&f.order=="a[PA]"&&f.released==5);
     }

@@ -865,6 +865,7 @@ int __cdecl auto_activate(void* actor,unsigned bytes,const AutoBindings* b,AutoR
 }
 // CLogicAuto Think original 22178460, virtual +bc.
 bool native_named_output(void*,unsigned,void*,unsigned,bool,const native_weapon_tables::ServerEntityVoidOutputBindings*,const RelayQueueBindings*,unsigned&) noexcept;
+int __cdecl defer_logic_remove(void*,unsigned,const DeferredRemovalBindings*,DeferredRemovalResult*) noexcept;
 int __cdecl auto_think(void* actor,unsigned bytes,const AutoBindings* b,AutoResult* o) noexcept {
     if(!o)return 0;*o={};
     if(!actor||bytes<auto_extent||entity_vtable(actor)!=auto_vtable||!b)return 0;
@@ -910,7 +911,11 @@ int __cdecl auto_think(void* actor,unsigned bytes,const AutoBindings* b,AutoResu
     o->violence_output=low?0x3ac:0x3c4;
     if(!emit(o->violence_output))return 0;
     if(read_field<unsigned>(actor,0xb4)&1u){
-        if(!b->remove||!b->remove(b->context,actor))return 0;o->removed=1;
+        if(b->deferred){
+            DeferredRemovalResult removed{};
+            if(!defer_logic_remove(actor,bytes,b->deferred,&removed))return 0;
+        }else if(!b->remove||!b->remove(b->context,actor))return 0;
+        o->removed=1;
     }
     o->completed=1;return 1;
 }
@@ -2000,9 +2005,9 @@ int __cdecl autosave_input(void* a,unsigned n,const char* name,const AutosaveBin
 // Inherited CBaseEntity::InputKill 2213cdc0. The virtual attachment
 // effects and deferred removal owner are explicit; no immediate free.
 template<class BindingsT,class ResultT>
-int base_entity_kill(void* a,unsigned n,unsigned extent,unsigned vt,const sin_independent::EntityHandleEntry* entries,unsigned count,const BindingsT* b,ResultT* o) noexcept {
+int base_entity_kill(void* a,unsigned n,unsigned extent,unsigned vt,const sin_independent::EntityHandleEntry* entries,unsigned count,const BindingsT* b,ResultT* o,const DeferredRemovalBindings* deferred=nullptr) noexcept {
     if(!o)return 0;*o={};
-    if(!a||n<extent||entity_vtable(a)!=vt||!b||!b->remove||
+    if(!a||n<extent||entity_vtable(a)!=vt||!b||(!b->remove&&!deferred)||
        count>sin_independent::kEntityHandleCapacity||(!entries&&count))return 0;
     o->handled=1;
     auto* attached=sin_independent::EntityHandleView(entries,count).Resolve(read_field<unsigned>(a,0x20c));
@@ -2011,20 +2016,23 @@ int base_entity_kill(void* a,unsigned n,unsigned extent,unsigned vt,const sin_in
         o->attachment_notified=1;
         if(!b->clear_attachment(b->context,a))return 0;o->attachment_cleared=1;
     }
-    if(!b->remove(b->context,a))return 0;
+    if(deferred){
+        DeferredRemovalResult result{};
+        if(!defer_logic_remove(a,n,deferred,&result))return 0;
+    }else if(!b->remove(b->context,a))return 0;
     o->remove_requested=o->completed=1;return 1;
 }
 int __cdecl autosave_kill(void* a,unsigned n,const sin_independent::EntityHandleEntry* entries,unsigned count,const AutosaveBindings* b,AutosaveResult* o) noexcept {
     return base_entity_kill(a,n,autosave_extent,autosave_vtable,entries,count,b,o);
 }
 int __cdecl multicompare_kill(void* a,unsigned n,const sin_independent::EntityHandleEntry* entries,unsigned count,const EntityKillBindings* b,EntityKillResult* o) noexcept {
-    return base_entity_kill(a,n,multicompare_extent,multicompare_vtable,entries,count,b,o);
+    return base_entity_kill(a,n,multicompare_extent,multicompare_vtable,entries,count,b,o,b?b->deferred:nullptr);
 }
 int __cdecl logic_kill(void* a,unsigned n,unsigned vt,const sin_independent::EntityHandleEntry* entries,unsigned count,const EntityKillBindings* b,EntityKillResult* o) noexcept {
     if(!o)return 0;*o={};
     const auto extent=logic_kill_extent(vt);
     if(!extent)return 0;
-    return base_entity_kill(a,n,extent,vt,entries,count,b,o);
+    return base_entity_kill(a,n,extent,vt,entries,count,b,o,b?b->deferred:nullptr);
 }
 bool deferred_valid(const DeferredRemovalQueue* q) noexcept {
     return q&&q->capacity<=sin_independent::kEntityHandleCapacity&&q->count<=q->capacity&&

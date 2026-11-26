@@ -102,6 +102,7 @@ struct DispatchResult {
 };
 inline constexpr unsigned auto_vtable=0x2241f0d4,auto_extent=0x440;
 struct RelayQueueBindings;
+struct DeferredRemovalBindings;
 struct AutoBindings {
     void* context;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
@@ -114,6 +115,7 @@ struct AutoBindings {
     int (__cdecl *remove)(void*,void*) noexcept;
     void* schedule_context; // optional native tick scheduler
     const RelayQueueBindings* native_queue;
+    const DeferredRemovalBindings* deferred;
 };
 struct AutoResult {
     unsigned completed,base_called,scheduled,global_checked,blocked,outputs,queued,removed;
@@ -136,7 +138,9 @@ struct EntityKillBindings {
     int (__cdecl *attachment_notice)(void*,void* attachment,void* actor) noexcept;
     int (__cdecl *clear_attachment)(void*,void* actor) noexcept;
     int (__cdecl *remove)(void*,void* actor) noexcept;
+    const DeferredRemovalBindings* deferred;
 };
+inline bool kill_available(const EntityKillBindings* b) noexcept {return b&&(b->remove||b->deferred);}
 struct EntityKillResult {
     unsigned completed,handled,attachment_notified,attachment_cleared,remove_requested;
 };
