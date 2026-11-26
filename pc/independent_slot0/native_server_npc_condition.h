@@ -11,6 +11,8 @@ struct ServerNpcConditionMapBindings {
     int (__cdecl *storage)(void*,std::uint32_t,const void**,unsigned*) noexcept;
 };
 struct ServerNpcConditionResult {int global,bit;unsigned mapped,visited,changed,value;};
+// Internal original 22073700 range resolution; no condition-bank bounds applied here.
+int resolve_npc_condition_range(void*,int,const ServerNpcConditionMapBindings*,ServerNpcConditionResult*) noexcept;
 struct ServerNpcConditionApi {
     std::uint32_t version,size;
     // 22073700 / 220397c0 namespace resolution; -1 unmapped is a successful no-op.

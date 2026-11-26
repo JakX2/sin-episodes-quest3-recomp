@@ -2213,4 +2213,21 @@ struct ServerNpcGruntBehaviorLifeApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntBehaviorLifeBindings*,ServerNpcGruntBehaviorLifeResult*) noexcept;
 };
 using GetServerNpcGruntBehaviorLifeApi=const ServerNpcGruntBehaviorLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+
+inline constexpr char server_npc_grunt_behavior_condition_life_export[]="SiN_GetServerNpcGruntBehaviorConditionLifeApi";
+struct ServerNpcGruntBehaviorConditionLifeBindings {
+    ServerNpcGruntBehaviorLifeBindings life;
+    // Original FuncTank descriptor 2259de50 and live range rows, not the owner descriptor.
+    ServerNpcConditionMapBindings tank_descriptor;
+};
+struct ServerNpcGruntBehaviorConditionLifeResult {
+    ServerNpcGruntBehaviorLifeResult life;
+    ServerNpcConditionResult tank_mapping,owner_condition;
+    unsigned tank_mapping_called,owner_condition_called;
+};
+struct ServerNpcGruntBehaviorConditionLifeApi {
+    std::uint32_t version,size;
+    int (__cdecl *run)(void*,unsigned,std::uint32_t,const void*,unsigned,float,const ServerNpcGruntBehaviorConditionLifeBindings*,ServerNpcGruntBehaviorConditionLifeResult*) noexcept;
+};
+using GetServerNpcGruntBehaviorConditionLifeApi=const ServerNpcGruntBehaviorConditionLifeApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

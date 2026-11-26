@@ -6,36 +6,43 @@ namespace {
 template<class T>T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
 template<class T>void write(void* p,unsigned off,T v) noexcept {std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
 constexpr unsigned offsets[]{0x7cc,0x7ec,0x80c,0x82c};
+}
+int resolve_npc_condition_range(void* actor,int input,const ServerNpcConditionMapBindings* b,ServerNpcConditionResult* out) noexcept {
+    if(!out)return 0;*out={};out->global=out->bit=-1;
+    if(!actor||!b||!b->descriptor)return 0;
+    const void* desc=nullptr;unsigned bytes=0;
+    if(!b->descriptor(b->context,actor,&desc,&bytes)||!desc||bytes<0x48)return 0;
+    if(input==-1)return 1;
+    const void* row=static_cast<const unsigned char*>(desc)+0x34;
+    std::uint32_t seen[256]{};
+    while(row){
+        if(out->visited>=256)return 0;
+        const unsigned i=out->visited++;
+        const int first=read<int>(row,4),last=read<int>(row,8);
+        if(first!=9999&&input>=first&&input<=last){
+            const auto value=static_cast<std::int64_t>(read<int>(row,0))-first+input;
+            if(value<std::numeric_limits<int>::min()||value>std::numeric_limits<int>::max())return 0;
+            out->global=static_cast<int>(value);out->mapped=1;return 1;
+        }
+        const auto next=read<std::uint32_t>(row,0x10);
+        if(!next)break;
+        for(unsigned j=0;j<i;++j)if(seen[j]==next)return 0;
+        seen[i]=next;
+        unsigned extent=0;
+        if(!b->storage||!b->storage(b->context,next,&row,&extent)||!row||extent<0x14)return 0;
+    }
+    return 1;
+}
+
+namespace {
 int __cdecl map(void* actor,int input,const ServerNpcConditionMapBindings* b,ServerNpcConditionResult* out) noexcept {
     if(!out)return 0;*out={};out->global=out->bit=-1;
     if(!actor)return 0;
     int global=input;
     if(input<npc_global_condition_base){
-        if(!b||!b->descriptor)return 0;
-        const void* desc=nullptr;unsigned bytes=0;
-        if(!b->descriptor(b->context,actor,&desc,&bytes)||!desc||bytes<0x48)return 0;
-        const void* row=static_cast<const unsigned char*>(desc)+0x34;
-        global=-1;
-        // Retail resolves -1 after class descriptor lookup, before scanning.
-        if(input!=-1){
-            std::uint32_t seen[256]{};
-            while(row){
-                if(out->visited>=256)return 0;
-                const unsigned i=out->visited++;
-                const int first=read<int>(row,4),last=read<int>(row,8);
-                if(first!=9999&&input>=first&&input<=last){
-                    const auto value=static_cast<std::int64_t>(read<int>(row,0))-first+input;
-                    if(value<std::numeric_limits<int>::min()||value>std::numeric_limits<int>::max())return 0;
-                    global=static_cast<int>(value);break;
-                }
-                const auto next=read<std::uint32_t>(row,0x10);
-                if(!next)break;
-                for(unsigned j=0;j<i;++j)if(seen[j]==next)return 0;
-                seen[i]=next;
-                unsigned extent=0;
-                if(!b->storage||!b->storage(b->context,next,&row,&extent)||!row||extent<0x14)return 0;
-            }
-        }
+        if(!resolve_npc_condition_range(actor,input,b,out))return 0;
+        global=out->global;
+        out->mapped=0;
     }
     out->global=global;
     if(global==-1||global==npc_global_condition_base-1)return 1;
