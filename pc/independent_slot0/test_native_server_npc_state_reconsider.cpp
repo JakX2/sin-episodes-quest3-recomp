@@ -2710,5 +2710,39 @@ int main(int argc,char** argv){
         q.weapon_name="weapon_scattergun";
         assert(api->prepare(q.actor,sizeof(q.actor),q.damage,sizeof(q.damage),&b,&o)&&o.matches==2&&o.ammo_dropped&&!std::strcmp(o.ammo,"item_ammo_flak"));
     }
+
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntSpecialImpactApi>(GetProcAddress(s,server_npc_grunt_special_impact_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_special_impact_export)&&!g(0,sizeof(ServerNpcGruntSpecialImpactApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntSpecialImpactApi));assert(api);
+        struct SpecialFixture{
+            alignas(4) unsigned char a[0xdb2]{},other[0xdb2]{},damage[0x48]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            unsigned dirty=0x20,refreshes=0,normalized=0,scales=0;
+            float bound=250;
+            static SpecialFixture& self(void* p){return *static_cast<SpecialFixture*>(p);}
+        } q;
+        q.entries[1].serial=1;q.entries[1].entity=reinterpret_cast<CBaseEntity*>(q.other);
+        ServerNpcGruntSpecialImpactBindings b{};b.context=&q;b.entities.entries=q.entries;b.entities.count=2;b.entities.speech.original_vtable=0x2249aaa4;
+        b.entities.extent=[](void*,void*,unsigned* n) noexcept -> int{*n=0xdb2;return 1;};
+        b.dirty_storage.context=&q;b.dirty_storage.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept -> int{assert(token==77);*out=&SpecialFixture::self(p).dirty;*n=4;return 1;};
+        b.refresh_origin=[](void* p,void* a) noexcept -> int{auto& q=SpecialFixture::self(p);assert(a==q.other||a==q.a);++q.refreshes;return 1;};
+        b.normalize=[](void* p,float* v) noexcept -> int{auto& q=SpecialFixture::self(p);assert(v[0]==3&&v[1]==4&&v[2]==0);++q.normalized;v[0]=0.6f;v[1]=0.8f;return 1;};
+        b.scale=[](void* p,float lo,float hi,float* v) noexcept -> int{auto& q=SpecialFixture::self(p);assert(lo==150&&hi==q.bound);++q.scales;*v=200;return 1;};
+        b.schedules.context=&q;b.schedules.descriptor=[](void* p,void*,const void** v,unsigned* n) noexcept -> int{*v=SpecialFixture::self(p).desc;*n=0x48;return 1;};
+        f.put(q.desc,4,1000);f.put(q.desc,8,100);f.put(q.desc,12,110);
+        f.put(q.a,0x16c,77u);f.put(q.a,0x2c4,10.f);f.put(q.other,0x2bc,1.f);f.put(q.other,0x2c0,2.f);
+        f.put(q.damage,0x28,0x1001u);f.put(q.damage,0xc,4.f);f.put(q.damage,0x10,6.f);f.put(q.damage,0x2c,100.f);
+        unsigned changed=0,l=0,e=0;float zero[3]={0,-0.f,0};
+        assert(api->set_vector(q.a,sizeof(q.a),zero,&b.dirty_storage,&changed,&l,&e)&&!changed&&!l&&!e&&q.dirty==0x20);
+        ServerNpcGruntSpecialImpactResult o{};
+        assert(api->prefix(q.a,sizeof(q.a),q.damage,sizeof(q.damage),&b,&o)&&o.completed&&o.latch_written&&o.vector_writes==2&&o.external_dirty==3&&o.tail_required&&o.scaled[0]==120&&o.scaled[1]==160&&o.origin[2]==50&&q.dirty==0x21);
+        q.a[0x1f0]=1;q.a[0xc64]=1;f.put(q.a,0x798,1u);f.put(q.a,0x79c,1007);f.put(q.a,0xb8,0x800u);f.put(q.other,0xb8,0x800u);f.put(q.damage,0x2c,300.f);q.bound=300;
+        assert(api->prefix(q.a,sizeof(q.a),q.damage,sizeof(q.damage),&b,&o)&&!o.latch_written&&o.local_dirty==2&&q.a[0x200]&&o.schedule_adjusted&&o.origin[2]==41&&q.refreshes==2&&o.scale_bound==300);
+        b.entities.speech.original_vtable=0x2248df04;
+        assert(api->prefix(q.a,sizeof(q.a),q.damage,sizeof(q.damage),&b,&o)&&o.elite_noop&&!o.tail_required&&q.normalized==2);
+        b.entities.speech.original_vtable=0x2249aaa4;f.put(q.damage,0x28,0x9001u);
+        assert(!api->prefix(q.a,sizeof(q.a),q.damage,sizeof(q.damage),&b,&o)&&!o.completed);
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

@@ -4000,7 +4000,72 @@ int __cdecl grunt_bone_hit(void* a,const char* name,const float* pos,float range
     out->distance=std::sqrt(static_cast<double>(out->squared));
     out->hit=out->distance<range;out->completed=1;return 1;
 }
-int __cdecl grunt_impact(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntImpactBindings* b,ServerNpcGruntImpactResult* out) noexcept{
+
+int __cdecl special_vector(void* a,unsigned n,const float* v,const ServerNpcEnemyMemoryBindings* storage,unsigned* changed,unsigned* local,unsigned* external) noexcept{
+    if(!a||n<0xc54||!v||!storage||!changed||!local||!external||!finite_vec(v))return 0;
+    *changed=*local=*external=0;
+    bool differs=false;
+    for(unsigned i=0;i<3;++i){
+        const float old=read<float>(a,0xc48+4*i);
+        if(!std::isfinite(old))return 0;
+        differs=differs||old!=v[i];
+    }
+    if(!differs)return 1;
+    if(!death_dirty(a,*storage,*local,*external))return 0;
+    std::memmove(static_cast<unsigned char*>(a)+0xc48,v,12);*changed=1;return 1;
+}
+int __cdecl grunt_special_impact(void* a,unsigned n,void* damage,unsigned dn,const ServerNpcGruntSpecialImpactBindings* b,ServerNpcGruntSpecialImpactResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!a||n<0xdb2||!damage||dn<0x3c||!b)return 0;
+    const auto& sb=b->entities;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries))return 0;
+    if(sb.speech.original_vtable==0x2248df04){out->elite_noop=out->completed=1;return 1;}
+    if(read<std::uint8_t>(a,0xc44)!=1){
+        if(!death_dirty(a,b->dirty_storage,out->local_dirty,out->external_dirty))return 0;
+        write<std::uint8_t>(a,0xc44,1);out->latch_written=1;
+    }
+    const auto registry=sin_independent::EntityHandleView(sb.entries,sb.count);
+    void* attacker=registry.Resolve(read<unsigned>(damage,0x28));
+    unsigned extent=0;
+    if(!attacker||!sb.extent||!sb.extent(sb.speech.context,attacker,&extent)||extent<0x2c8)return 0;
+    if(read<unsigned>(attacker,0xb8)&0x800u){
+        if(!b->refresh_origin||!b->refresh_origin(b->context,attacker))return 0;
+        out->attacker_refreshed=1;
+    }
+    for(unsigned i=0;i<3;++i)out->initial[i]=static_cast<float>(static_cast<double>(read<float>(damage,0xc+4*i))-read<float>(attacker,0x2bc+4*i));
+    auto set=[&](const float* v){
+        unsigned changed=0,l=0,e=0;
+        if(!special_vector(a,n,v,&b->dirty_storage,&changed,&l,&e))return false;
+        out->vector_writes+=changed;out->local_dirty+=l;out->external_dirty+=e;return true;
+    };
+    if(!set(out->initial)||!b->normalize)return 0;
+    // Original normalize mutates the stored vector directly, without a second dirty call.
+    std::memcpy(out->normalized,static_cast<unsigned char*>(a)+0xc48,12);
+    if(!b->normalize(b->context,out->normalized)||!finite_vec(out->normalized))return 0;
+    std::memcpy(static_cast<unsigned char*>(a)+0xc48,out->normalized,12);out->normalized_called=1;
+    const float amount=read<float>(damage,0x2c);if(!std::isfinite(amount))return 0;
+    out->scale_bound=amount>250.f?amount:250.f;
+    if(!b->scale||!b->scale(b->context,150.f,out->scale_bound,&out->scale)||!std::isfinite(out->scale))return 0;
+    for(unsigned i=0;i<3;++i)out->scaled[i]=static_cast<float>(static_cast<double>(read<float>(a,0xc48+4*i))*out->scale);
+    if(!set(out->scaled))return 0;
+    // Shared +1c4=22358a60, select height before optional origin refresh.
+    const float height=read<std::uint8_t>(a,0xc64)?66.f:40.f;
+    if(read<unsigned>(a,0xb8)&0x800u){
+        if(!b->refresh_origin||!b->refresh_origin(b->context,a))return 0;
+        out->actor_refreshed=1;
+    }
+    for(unsigned i=0;i<3;++i)out->origin[i]=read<float>(a,0x2bc+4*i);
+    out->origin[2]=static_cast<float>(static_cast<double>(out->origin[2])+height);
+    if(read<unsigned>(a,0x798)){
+        int global=-1;if(!schedule_local_id(a,0x6b,b->schedules,global))return 0;
+        if(global==read<int>(a,0x79c)){out->origin[2]=static_cast<float>(static_cast<double>(out->origin[2])-35.0);out->schedule_adjusted=1;}
+    }
+    if(!finite_vec(out->origin))return 0;
+    out->tail_required=out->completed=1;return 1;
+}
+struct SpecialImpactRoute {const ServerNpcGruntSpecialImpactBindings* bindings;ServerNpcGruntSpecialImpactResult* result;};
+
+int grunt_impact_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntImpactBindings* b,ServerNpcGruntImpactResult* out,const SpecialImpactRoute* special) noexcept{
     if(!out)return 0;*out={};
     if(!a||n<0xdb2||!damage||dn<0x3c||!b||!std::isfinite(now))return 0;
     const auto& sb=b->reaction.sentence;
@@ -4026,7 +4091,15 @@ int __cdecl grunt_impact(void* a,unsigned n,void* damage,unsigned dn,float now,c
         out->random_called=1;
         const float live=read<float>(damage,0x2c);if(!std::isfinite(live))return 0;
         if(out->sample<out->threshold&&static_cast<double>(read<int>(a,0x9c))<live){
-            if(!b->lethal||!b->lethal(b->context,a,damage))return 0;
+            if(special){
+                auto bound=*special->bindings;
+                bound.entities.entries=sb.entries;bound.entities.count=sb.count;bound.entities.speech.original_vtable=sb.speech.original_vtable;
+                if(!grunt_special_impact(a,n,damage,dn,&bound,special->result))return 0;
+                if(special->result->tail_required){
+                    if(!bound.effect_tail||!bound.effect_tail(bound.context,a,special->result->origin))return 0;
+                    special->result->tail_called=1;
+                }
+            }else if(!b->lethal||!b->lethal(b->context,a,damage))return 0;
             out->lethal_called=1;if(!emit(8))return 0;
             out->completed=1;return 1;
         }
@@ -4036,7 +4109,10 @@ int __cdecl grunt_impact(void* a,unsigned n,void* damage,unsigned dn,float now,c
     if(!sentence_dispatch_request(a,n,now,"GRUNT_HEAD",2,0,&sb,&b->reaction.request,&out->speech,&out->request))return 0;
     out->speech_called=1;out->completed=1;return 1;
 }
-struct DamageDetailRoute {const ServerNpcGruntDamageDetailBindings* bindings;ServerNpcGruntDamageDetailResult* result;const DamageNotifyRoute* notify=nullptr;};
+int __cdecl grunt_impact(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntImpactBindings* b,ServerNpcGruntImpactResult* out) noexcept{
+    return grunt_impact_impl(a,n,damage,dn,now,b,out,nullptr);
+}
+struct DamageDetailRoute {const ServerNpcGruntDamageDetailBindings* bindings;ServerNpcGruntDamageDetailResult* result;const DamageNotifyRoute* notify=nullptr;const SpecialImpactRoute* special=nullptr;};
 
 int grunt_damage_override_impl(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageOverrideBindings* b,ServerNpcGruntDamageOverrideResult* out,const DamageDetailRoute* route) noexcept{
     if(!out)return 0;
@@ -4068,7 +4144,7 @@ int grunt_damage_override_impl(void* a,unsigned n,void* damage,unsigned dn,float
     if(read<int>(damage,0x44)==1){
         if(route){
             auto bound=route->bindings->impact;bound.reaction=reaction;
-            if(!grunt_impact(a,n,damage,dn,now,&bound,&route->result->impact))return 0;
+            if(!grunt_impact_impl(a,n,damage,dn,now,&bound,&route->result->impact,route->special))return 0;
         }else if(!b->impact||!b->impact(b->context,a,damage))return 0;
         out->impact_called=1;
     }
@@ -4156,6 +4232,15 @@ int __cdecl grunt_damage_detail(void* a,unsigned n,void* damage,unsigned dn,floa
     return grunt_damage_override_impl(a,n,damage,dn,now,&b->damage,&out->damage,&route);
 }
 const ServerNpcGruntDamageDetailApi damage_detail_api{1,sizeof(ServerNpcGruntDamageDetailApi),&grunt_bone_hit,&grunt_impact,&grunt_damage_detail};
+int __cdecl grunt_special_damage(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntSpecialDamageBindings* b,ServerNpcGruntSpecialDamageResult* out) noexcept{
+    if(!out)return 0;out->special={};out->detail.impact={};out->detail.right={};out->detail.left={};
+    if(!b)return 0;
+    const SpecialImpactRoute special{&b->special,&out->special};
+    const DamageDetailRoute route{&b->detail,&out->detail,nullptr,&special};
+    return grunt_damage_override_impl(a,n,damage,dn,now,&b->detail.damage,&out->detail.damage,&route);
+}
+const ServerNpcGruntSpecialImpactApi special_impact_api{1,sizeof(ServerNpcGruntSpecialImpactApi),&special_vector,&grunt_special_impact,&grunt_special_damage};
+
 int __cdecl grunt_damage_native_tail(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntDamageNativeTailBindings* b,ServerNpcGruntDamageNativeTailResult* out) noexcept{
     if(!out)return 0;
     out->tail={};out->notify={};out->report={};reset_squad_report(out->squad);out->report_called=0;
@@ -5125,4 +5210,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntGroundLifeApi=_SiN_GetServerNpcGruntGroundLifeApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntGroundLifeApi* __cdecl SiN_GetServerNpcGruntGroundLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntGroundLifeApi)?&ground_life_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntSpecialImpactApi=_SiN_GetServerNpcGruntSpecialImpactApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntSpecialImpactApi* __cdecl SiN_GetServerNpcGruntSpecialImpactApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntSpecialImpactApi)?&special_impact_api:nullptr;
 }
