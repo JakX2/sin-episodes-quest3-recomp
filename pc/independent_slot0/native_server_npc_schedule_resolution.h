@@ -35,4 +35,10 @@ struct ServerJetpackScheduleResolutionApi {
     int (__cdecl *select)(void*,unsigned,float,bool,const ServerNpcScheduleResolutionBindings*,const ServerJetpackSelectorBindings*,ServerNpcScheduleResolutionResult*,ServerJetpackSelectorResult*) noexcept;
 };
 using GetServerJetpackScheduleResolutionApi=const ServerJetpackScheduleResolutionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_native_slot_resolution_export[]="SiN_GetServerNpcNativeSlotResolutionApi";
+struct ServerNpcNativeSlotResolutionApi {
+    std::uint32_t version,size;
+    int (__cdecl *select)(void*,unsigned,float,bool,const ServerNpcScheduleResolutionBindings*,const ServerNpcGruntSquadSlotsBindings*,ServerNpcScheduleResolutionResult*,ServerGruntNativeSlotSelectorResult*) noexcept;
+};
+using GetServerNpcNativeSlotResolutionApi=const ServerNpcNativeSlotResolutionApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }

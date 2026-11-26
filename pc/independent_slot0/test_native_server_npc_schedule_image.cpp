@@ -454,6 +454,14 @@ int main(int argc,char** argv){
     std::memset(f.actor,0,sizeof(f.actor));f.put(f.actor,0x850,1);f.put(f.actor,0x858,1);f.put(f.actor,0xc18,711u);f.put(f.actor,0xccc,-1);component_calls=0;
     dbind.preschedule.think.gather.gather.component_update=[](void* p,std::uint32_t token) noexcept -> int{assert(token==711);return ++*static_cast<unsigned*>(p)==1;};
     assert(!dt->run(f.actor,sizeof(f.actor),69.49f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&dbind,&dtr)&&dtr.cycle.preschedule.think.outer_gather.gather.completed&&dtr.cycle.speech.empty&&dtr.cycle.preschedule.think.maintenance_called&&dtr.cycle.preschedule.think.scheduler.gather_calls==1&&component_calls==2);
+    auto gnst=reinterpret_cast<GetServerNpcNativeSquadThinkApi>(GetProcAddress(s,server_npc_native_squad_think_export));
+    assert(gnst&&!GetProcAddress(c,server_npc_native_squad_think_export)&&!gnst(0,sizeof(ServerNpcNativeSquadThinkApi))&&!gnst(1,0));
+    const auto* nst=gnst(1,sizeof(ServerNpcNativeSquadThinkApi));assert(nst);
+    ServerNpcNativeSquadThinkBindings nbind{};nbind.preschedule=stbind.preschedule;nbind.perception.dialogue.sentence.speech=stbind.speech;
+    ServerNpcNativeSquadThinkResult nsrun;
+    install_at(96,2);bind_nav();f.put(f.actor,0x9d8,444u);f.put(f.actor,0xc18,711u);component_calls=0;
+    f.put(f.actor,0x16c,37u);f.put(f.actor,0xcc8,9u);f.put(f.actor,0xccc,17);f.put(f.actor,0xcd0,69.49f);f.put(f.actor,0xcd4,2);
+    assert(nst->run(f.actor,sizeof(f.actor),69.49f,&f.image,&runtime,&full,&ab,&fb,&tb,&mb,&cb,&ob,&scb,&tcb,&nbind,&nsrun)&&nsrun.cycle.preschedule.think.completed&&nsrun.cycle.speech.delivered&&nsrun.cycle.speech.cleared&&!nsrun.selections&&!nsrun.outer.release_calls&&component_calls==1&&f.think_component_tasks==5);
     tcb.submit_goal=cover_submit;
     ab.shared.component_storage=nullptr;ab.shared.component_task=nullptr;
     m.before_selection=old_before;
