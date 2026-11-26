@@ -1628,6 +1628,10 @@ int main(int argc,char** argv){
         F* f;
         alignas(4) unsigned char points[5][0x3c0]{};
         unsigned warnings{},last_warning{},casts{},detaches{};
+        alignas(4) unsigned char conditions[0x48]{},schedules[0x18]{};
+        unsigned behavior_list[1]{};
+        bool ready=true;
+        unsigned shared_calls{};
     } assault_f{&f};
     sin_independent::EntityHandleEntry assault_slots[6]{};
     for(unsigned i=0;i<5;++i){
@@ -1690,6 +1694,54 @@ int main(int argc,char** argv){
     f.put(f.actor,0x798,321u);
     assert(assault_input(901u)&&catalog_o.assault_missing&&!catalog_o.assault_selected&&!catalog_o.assault_reset&&assault_f.last_warning==0x223f3cd0u);
     assert(f.get<unsigned>(f.actor,0x798)==321u);
+    // One fresh InputAssault initializes the very same actor subsequently
+    // consumed by native behavior admission and schedule arbitration.
+    f.put(assault_f.points[3],0x3bc,0xffffffffu);
+    f.put(f.actor,0xc14,0x2249aa40u);
+    const unsigned actor_token=static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(f.actor));
+    f.put(f.actor,0xdc4,actor_token+0xc14u);f.put(f.actor,0xc18,0u);
+    f.put(f.actor,0xc1c,0x6611u);f.put(f.actor,0xc28,1);assault_f.behavior_list[0]=actor_token+0xdb8u;
+    f.put(f.actor,0xde4,0.f);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x9c4,0u);
+    for(unsigned i=0;i<8;++i)f.put(f.actor,0x7cc+4*i,0u);
+    assert(assault_input(901u)&&catalog_o.assault_linked&&catalog_o.assault_reset&&f.get<unsigned>(f.actor,0xdd0)==0x1003u);
+    auto get_arb=reinterpret_cast<GetServerNpcGruntAssaultArbitrationApi>(GetProcAddress(server,server_npc_grunt_assault_arbitration_export));
+    assert(get_arb);const auto* arb=get_arb(1,sizeof(ServerNpcGruntAssaultArbitrationApi));assert(arb);
+    ServerNpcGruntAssaultScheduleBindings assault_schedule{};auto& admission=assault_schedule.admission;
+    admission.entries=assault_slots;admission.count=6;admission.actor_vtable=ground_vt;admission.actor_token=actor_token;
+    admission.context=&assault_f;admission.extent=assault_search.extent;
+    admission.conditions.context=&assault_f;
+    admission.conditions.descriptor=[](void* p,void* actor,const void** desc,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);assert(actor==q.f->actor);*desc=q.conditions;*bytes=sizeof(q.conditions);return 1;
+    };
+    admission.owner_ready=[](void* p,void* actor,bool* yes) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);assert(actor==q.f->actor);*yes=q.ready;return 1;
+    };
+    f.put(assault_f.conditions,0x34,npc_global_condition_base);f.put(assault_f.conditions,0x38,0);f.put(assault_f.conditions,0x3c,100);
+    f.put(assault_f.schedules,4,npc_global_condition_base+300);f.put(assault_f.schedules,8,100000);
+    f.put(assault_f.schedules,12,100009);f.put(assault_f.schedules,16,npc_global_condition_base+309);
+    std::uint8_t guard=0;ServerNpcGruntAssaultActivationBindings activation{};activation.schedule=&assault_schedule;activation.activation_guard=&guard;
+    ServerNpcGruntAssaultPolicyBindings assault_policy{};assault_policy.admission=admission;
+    assault_policy.behavior_schedules.context=&assault_f;
+    assault_policy.behavior_schedules.descriptor=[](void* p,void* component,const void** desc,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);assert(component==q.f->actor+0xdb8);*desc=q.schedules;*bytes=sizeof(q.schedules);return 1;
+    };
+    ServerNpcGruntAssaultArbitrationBindings assault_arb{};assault_arb.activation=&activation;assault_arb.policy=&assault_policy;assault_arb.context=&assault_f;
+    assault_arb.list=[](void* p,unsigned token,const void** list,unsigned* bytes) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);assert(token==0x6611u);*list=q.behavior_list;*bytes=sizeof(q.behavior_list);return 1;
+    };
+    assault_arb.shared_select=[](void* p,void* actor,int* id) noexcept -> int{
+        auto& q=*static_cast<AssaultFixture*>(p);assert(actor==q.f->actor);++q.shared_calls;*id=49;return 1;
+    };
+    ServerNpcGruntAssaultArbitrationResult arbitration{};
+    assert(arb->select(f.actor,sizeof(f.actor),91.f,true,&assault_arb,&arbitration)&&arbitration.completed&&arbitration.selected&&arbitration.admission.admitted);
+    assert(arbitration.transition.changed&&arbitration.transition.guard_set&&arbitration.transition.guard_cleared&&!guard);
+    assert(arbitration.native_select&&arbitration.local_schedule==100000&&arbitration.private_id&&arbitration.mapped&&arbitration.schedule==npc_global_condition_base+300);
+    assert(f.get<unsigned>(f.actor,0xc18)==actor_token+0xdb8u&&f.get<unsigned>(assault_f.points[3],0x3bc)==0x2005u);
+    // The same behavior now fails native readiness and deactivates, releasing
+    // the reservation placed by InputAssault. No hosted behavior selection.
+    assault_f.ready=false;
+    assert(arb->select(f.actor,sizeof(f.actor),92.f,true,&assault_arb,&arbitration)&&!arbitration.selected&&arbitration.transition.native_departure&&arbitration.transition.departure.reservation_released);
+    assert(arbitration.shared_select&&arbitration.schedule==49&&assault_f.shared_calls==1&&!f.get<unsigned>(f.actor,0xc18)&&f.get<unsigned>(assault_f.points[3],0x3bc)==0xffffffffu);
     f.put(f.actor,0x378,saved_handle);
     // Break lifecycle keeps engine collision and fragment work external.
     // Native request fields, order and deferred removal are verified.
