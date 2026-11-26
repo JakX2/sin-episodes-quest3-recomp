@@ -8,6 +8,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <string>
 using namespace sin_port::native_map;
@@ -767,7 +768,10 @@ int main(int argc,char** argv){
     // converter. Preserve decimal prefix, old D exponent and null token.
     te.serial=3;tf.now=80.f;
     assert(timer_ai(0x223edce8,0,0)&&word(timer,0x74)==0xffffffffu);
-    assert(timer_ai(0x22420090,2,303)&&tair.converted&&tair.native_handler&&word(timer,0x3e0)==0x3e800000u);
+    const int decimal_status=timer_ai(0x22420090,2,303);
+    std::fprintf(stderr,"decimal input status=%d completed=%u accepted=%u maps=%u row=%u handler=%08x expected=%u actual=%u converted=%u native=%u reason=%u state=%08x disabled=%08x\n",
+        decimal_status,tair.completed,tair.accepted,tair.maps,tair.row,tair.handler,tair.expected_type,tair.actual_type,tair.converted,tair.native_handler,tair.reason,word(timer,0x3e0),word(timer,0x3dc));
+    assert(decimal_status&&tair.converted&&tair.native_handler&&word(timer,0x3e0)==0x3e800000u);
     assert(timer_ai(0x22420004,2,304)&&tair.converted&&tair.written==4&&word(timer,0x3ec)==0x41480000u);
     assert(timer_ai(0x22420004,2,305)&&tair.written==4&&!word(timer,0x3ec));
     assert(timer_ai(0x22420004,2,306)&&word(timer,0x3ec)==0x80000000u);
