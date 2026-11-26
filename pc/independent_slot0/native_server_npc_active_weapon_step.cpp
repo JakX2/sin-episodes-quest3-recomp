@@ -764,6 +764,94 @@ constexpr NativeInputMap npc_input_maps[]{
     {0x22534674u,0x22534da4u,2,nullptr,0},
     {0x22535b28u,0x22534da4u,26,jet_inputs,7}
 };
+// 22032000 SetSquad, 220a8050 manager lookup, and fixed-array
+// membership edits from 220aa0d0/220aa1b0. The allocator contract supplies
+// original-address-shaped tokens (group+8 is its embedded vector token).
+int native_set_squad(void* a,unsigned n,const ServerEntityInputData& d,const ServerEntityAcceptInputBindings& b,ServerEntityAcceptInputResult& o) noexcept {
+    if(!b.squad)return -1;
+    const auto& s=*b.squad;
+    if(n<0x9cc||!s.head||!b.storage||b.entities.count>sin_independent::kEntityHandleCapacity||(b.entities.count&&!b.entities.entries))return 0;
+    const sin_independent::EntityHandleView registry(b.entities.entries,b.entities.count);
+    unsigned caps=rd<unsigned>(a,0x8ec);
+    if(void* weapon=registry.Resolve(rd<unsigned>(a,0x78c))){
+        unsigned extra=0;if(!s.weapon_capabilities||!s.weapon_capabilities(s.context,weapon,&extra))return 0;caps|=extra;
+    }
+    auto warning=[&](unsigned token){return !s.warning||s.warning(s.context,a,token);};
+    if(!(caps&0x4000000u)){++o.squad_denied;return warning(0x223d9bc0u);}
+    const unsigned name=rd<unsigned>(d.variant,0x10)==2u?rd<unsigned>(d.variant,0):0u;
+    wr<unsigned>(a,0x9c8,name);
+    auto remove=[&](unsigned group_token,bool notify){
+        if(!group_token)return true;
+        void* group=nullptr;if(!resolve(*b.storage,group_token,0x4c,&group))return false;
+        const int count=rd<int>(group,0x48);if(count<0||count>16)return false;
+        const unsigned handle=rd<unsigned>(a,0x378);
+        if(registry.Resolve(handle)!=a)return false;
+        int i=0;for(;i<count;++i)if(registry.Resolve(rd<unsigned>(group,8+4*i))==a)break;
+        if(i==count)return warning(0x223ee75cu);
+        auto* rows=static_cast<unsigned char*>(group)+8;
+        std::memmove(rows+4*i,rows+4*(i+1),4u*static_cast<unsigned>(count-i-1));
+        wr<int>(group,0x48,count-1);++o.squad_removed;
+        if(notify){
+            for(int j=0;j<rd<int>(group,0x48);++j){
+                if(j>=16)return false;
+                void* peer=registry.Resolve(rd<unsigned>(group,8+4*j));if(!peer)continue;
+                if(!s.removed_notice||!s.removed_notice(s.context,peer,a))return false;++o.squad_notices;
+            }
+        }
+        // All reviewed +690 virtuals are the direct +9c4 setter.
+        wr<unsigned>(a,0x9c4,0u);wr<unsigned>(a,0x9c8,0u);return true;
+    };
+    if(!name){
+        if(!remove(rd<unsigned>(a,0x9c4),true))return 0;
+        wr<unsigned>(a,0x9c4,0u);return 1;
+    }
+    unsigned token=*s.head,seen[256]{};
+    void* group=nullptr;
+    while(token){
+        if(o.squad_visited>=256)return 0;
+        for(unsigned i=0;i<o.squad_visited;++i)if(seen[i]==token)return 0;
+        seen[o.squad_visited++]=token;
+        if(!resolve(*b.storage,token,0x4c,&group))return 0;
+        bool same=false;if(!input_name_equal(b,rd<unsigned>(group,4),name,same))return 0;
+        if(same)break;
+        token=rd<unsigned>(group,0);group=nullptr;
+    }
+    if(!group){
+        unsigned bytes=0,canonical=0;
+        if(!s.allocate||!s.intern||!s.allocate(s.context,&token,&group,&bytes)||!token||token>0xfffffff7u||!group||bytes<0x78||
+           !s.intern(s.context,name,&canonical))return 0;
+        for(unsigned i=0;i<o.squad_visited;++i)if(seen[i]==token)return 0;
+        // Original constructor initializes the embedded list and manager
+        // fields, then links the named group at the global head.
+        wr<unsigned>(group,4,canonical);wr<unsigned>(group,0x48,0u);
+        wr<unsigned>(group,0x4c,token+8);wr<unsigned>(group,0x50,0u);
+        wr<unsigned>(group,0x58,0xffffffffu);wr<unsigned>(group,0x5c,0u);
+        for(unsigned off=0x60;off<=0x74;off+=4)wr<unsigned>(group,off,0u);
+        wr<unsigned>(group,0,*s.head);*s.head=token;++o.squad_created;
+    }
+    const unsigned previous=rd<unsigned>(a,0x9c4);
+    // 220aa1b0 skips dead members or the same group. InputSetSquad still
+    // assigns the requested group token after that helper returns.
+    if(rd<int>(a,0x8c)!=0||previous==token){wr<unsigned>(a,0x9c4,token);return 1;}
+    if(previous&&!remove(previous,false))return 0;
+    int count=rd<int>(group,0x48);if(count<0||count>16)return 0;
+    if(count==16){
+        if(!warning(0x223ee798u))return 0;
+        --count;wr<int>(group,0x48,count);++o.squad_full;
+    }
+    const unsigned handle=rd<unsigned>(a,0x378);
+    if(registry.Resolve(handle)!=a||token>0xfffffff7u)return 0;
+    // 220a9790 appends and refreshes the embedded vector pointer at +4c.
+    // Existing groups must expose this complete header.
+    void* checked=nullptr;if(!resolve(*b.storage,token,0x50,&checked)||checked!=group)return 0;
+    wr<unsigned>(group,8+4*count,handle);wr<int>(group,0x48,count+1);wr<unsigned>(group,0x4c,token+8);
+    wr<unsigned>(a,0x9c4,token);wr<unsigned>(a,0x9c8,rd<unsigned>(group,4));++o.squad_added;
+    if(count>0){
+        void* leader=registry.Resolve(rd<unsigned>(group,8));
+        if(!leader||!s.copy_leader_memory||!s.copy_leader_memory(s.context,a,leader))return 0;++o.squad_memory;
+    }
+    return 1;
+}
 // Original concrete handlers, independent from the descriptor projection.
 // Return -1 for a handler not implemented here, 0 for malformed storage,
 // and 1 for a successfully executed native leaf.
@@ -783,6 +871,7 @@ int native_npc_input(void* a,unsigned n,unsigned vt,unsigned handler,const Serve
         return 1;
     };
     switch(handler){
+    case 0x22032000u:return native_set_squad(a,n,d,b,o);
     case 0x2202e7d0u:return byte(0x968,1); // StartScripting
     case 0x2202e7e0u:return byte(0x968,0); // StopScripting
     case 0x22044d80u:return flag(2u,true);  // GagEnable

@@ -1256,6 +1256,90 @@ int main(int argc,char** argv){
     path_actor[0x1084]=0;path_actor[0x1085]=9;
     assert(!path_input(0x2249886cu,0x1088u)&&!catalog_o.completed&&!path_actor[0x1084]&&path_actor[0x1085]==9);
     assert(path_f.calls==9);
+    // Original SetSquad: capacity, case-insensitive manager lookup, leave,
+    // move, creation and full-list policy. Memory/peer effects are explicit.
+    struct SquadInputFixture {
+        F* f;void* peer;void* weapon;
+        alignas(4) unsigned char groups[3][0x78]{};
+        unsigned head{},allocated{},interned{},notices{},copies{},warnings{},last_warning{},weapon_caps{},cap_calls{};
+    } sq{&f,wt.member,f.weapon};
+    constexpr unsigned group_a=0x1000u,group_b=0x2000u,group_c=0x3000u;
+    ServerNpcActivePostAnimationBindings sq_storage{};sq_storage.context=&sq;
+    sq_storage.resolve=[](void* p,unsigned token,void** out,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);
+        if(token!=0x1000u&&token!=0x2000u&&!(token==0x3000u&&q.allocated))return 0;
+        *out=q.groups[token/0x1000u-1];*n=0x78;return 1;
+    };
+    ServerNpcInputSquadBindings sq_services{};sq_services.context=&sq;sq_services.head=&sq.head;
+    sq_services.weapon_capabilities=[](void* p,void* w,unsigned* caps) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);assert(w==q.weapon);++q.cap_calls;*caps=q.weapon_caps;return 1;
+    };
+    sq_services.allocate=[](void* p,unsigned* token,void** data,unsigned* n) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);assert(!q.allocated);++q.allocated;
+        *token=0x3000u;*data=q.groups[2];*n=sizeof(q.groups[2]);std::memset(*data,0xcc,*n);return 1;
+    };
+    sq_services.intern=[](void* p,unsigned name,unsigned* canonical) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);assert(name==705u);++q.interned;*canonical=706u;return 1;
+    };
+    sq_services.removed_notice=[](void* p,void* peer,void* actor) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);assert(peer==q.peer&&actor==q.f->actor);
+        assert(q.f->get<unsigned>(actor,0x9c4)==0x1000u&&q.f->get<int>(q.groups[0],0x48)==1);
+        ++q.notices;return 1;
+    };
+    sq_services.copy_leader_memory=[](void* p,void* actor,void* leader) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);assert(actor==q.f->actor&&leader==q.peer);
+        const unsigned token=q.f->get<unsigned>(actor,0x9c4);assert(token==0x1000u||token==0x2000u);
+        assert(q.f->get<unsigned>(actor,0x9c8)==(token==0x1000u?701u:703u));
+        ++q.copies;return 1;
+    };
+    sq_services.warning=[](void* p,void* actor,unsigned token) noexcept -> int{
+        auto& q=*static_cast<SquadInputFixture*>(p);assert(actor==q.f->actor);++q.warnings;q.last_warning=token;return 1;
+    };
+    sin_independent::EntityHandleEntry sq_slots[3]{};
+    sq_slots[0].serial=6;sq_slots[0].entity=reinterpret_cast<CBaseEntity*>(f.weapon);
+    sq_slots[1].serial=7;sq_slots[1].entity=reinterpret_cast<CBaseEntity*>(wt.member);
+    sq_slots[2].serial=8;sq_slots[2].entity=reinterpret_cast<CBaseEntity*>(f.actor);
+    auto squad_b=leaves;squad_b.storage=&sq_storage;squad_b.squad=&sq_services;squad_b.name_equal=nullptr;
+    squad_b.entities.entries=sq_slots;squad_b.entities.count=3;
+    squad_b.string_text=[](void*,unsigned token,const char** text,unsigned* n) noexcept -> int{
+        switch(token){
+        case 0x223db3d8u:*text="SetSquad";break;
+        case 701u:*text="Alpha";break;case 702u:*text="aLPHA";break;
+        case 703u:*text="Beta";break;case 704u:*text="BETA";break;
+        case 705u:*text="Gamma";break;case 706u:*text="Gamma";break;
+        default:return 0;
+        }*n=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+    };
+    auto set_squad=[&](unsigned token,unsigned type=2u){
+        std::memset(inp.variant,0,sizeof(inp.variant));f.put(inp.variant,0,token);f.put(inp.variant,0x10,type);
+        return accept->run(f.actor,sizeof(f.actor),ground_vt,0x223db3d8u,f.weapon,f.actor,inp.variant,sizeof(inp.variant),0,&squad_b,&catalog_o);
+    };
+    f.put(f.actor,0x378,0x8002u);f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x8c,0);f.put(f.actor,0x8ec,0u);
+    f.put(f.actor,0x9c4,0u);f.put(f.actor,0x9c8,123u);f.actor[0x1f0]=1;
+    sq.head=group_a;f.put(sq.groups[0],0,group_b);f.put(sq.groups[0],4,701u);f.put(sq.groups[1],4,703u);
+    f.put(sq.groups[0],8,0x7001u);f.put(sq.groups[0],0x48,1);
+    f.put(sq.groups[1],8,0x7001u);f.put(sq.groups[1],0x48,1);
+    assert(set_squad(702u)&&catalog_o.native_handler&&catalog_o.squad_denied==1&&sq.last_warning==0x223d9bc0u&&f.get<unsigned>(f.actor,0x9c8)==123u);
+    f.put(f.actor,0x78c,0x6000u);sq.weapon_caps=0x4000000u;
+    assert(set_squad(702u)&&catalog_o.native_handler&&catalog_o.squad_added==1&&catalog_o.squad_memory==1&&sq.cap_calls==1&&sq.copies==1);
+    assert(f.get<unsigned>(f.actor,0x9c4)==group_a&&f.get<unsigned>(f.actor,0x9c8)==701u&&f.get<int>(sq.groups[0],0x48)==2&&f.get<unsigned>(sq.groups[0],12)==0x8002u);
+    assert(set_squad(702u)&&!catalog_o.squad_added&&!catalog_o.squad_removed&&f.get<unsigned>(f.actor,0x9c8)==702u);
+    assert(set_squad(0u,0u)&&catalog_o.squad_removed==1&&catalog_o.squad_notices==1&&sq.notices==1&&!f.get<unsigned>(f.actor,0x9c4)&&!f.get<unsigned>(f.actor,0x9c8));
+    f.put(f.actor,0x78c,0xffffffffu);f.put(f.actor,0x8ec,0x4000000u);
+    assert(set_squad(701u)&&catalog_o.squad_added&&sq.copies==2);
+    assert(set_squad(704u)&&catalog_o.squad_visited==2&&catalog_o.squad_removed==1&&catalog_o.squad_added==1&&!catalog_o.squad_notices&&sq.copies==3);
+    assert(f.get<int>(sq.groups[0],0x48)==1&&f.get<int>(sq.groups[1],0x48)==2&&f.get<unsigned>(f.actor,0x9c8)==703u);
+    assert(set_squad(705u)&&catalog_o.squad_created==1&&catalog_o.squad_removed==1&&catalog_o.squad_added==1&&!catalog_o.squad_memory);
+    assert(sq.head==group_c&&sq.allocated==1&&sq.interned==1&&f.get<unsigned>(sq.groups[2],0)==group_a&&f.get<unsigned>(sq.groups[2],4)==706u);
+    assert(f.get<int>(sq.groups[2],0x48)==1&&f.get<unsigned>(sq.groups[2],8)==0x8002u&&f.get<unsigned>(sq.groups[2],0x4c)==group_c+8&&f.get<unsigned>(sq.groups[2],0x58)==0xffffffffu);
+    // A full destination evicts the final row before append, as original.
+    for(unsigned i=0;i<16;++i)f.put(sq.groups[1],8+4*i,i==0?0x7001u:0xffffffffu);
+    f.put(sq.groups[1],0x48,16);
+    assert(set_squad(703u)&&catalog_o.squad_full==1&&catalog_o.squad_removed==1&&catalog_o.squad_added==1&&sq.last_warning==0x223ee798u&&f.get<int>(sq.groups[1],0x48)==16&&f.get<unsigned>(sq.groups[1],8+15*4)==0x8002u);
+    // Dead members skip list insertion; the outer input still sets +9c4.
+    f.put(f.actor,0x8c,1);
+    assert(set_squad(701u)&&!catalog_o.squad_added&&!catalog_o.squad_removed&&f.get<unsigned>(f.actor,0x9c4)==group_a&&f.get<int>(sq.groups[0],0x48)==1);
+    f.put(f.actor,0x8c,0);f.put(f.actor,0x9c4,0u);f.put(f.actor,0x9c8,0u);f.put(f.actor,0x378,saved_handle);
     // Stale generation fails before advancement.
     seed_frame();assert(dict->clear(&events));
     assert(!grunt->run(f.actor,sizeof(f.actor),&in,&gb,&gout)&&f.trace.empty());
