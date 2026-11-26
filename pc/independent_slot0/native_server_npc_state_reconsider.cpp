@@ -3177,6 +3177,50 @@ int __cdecl grunt_removal(void* a,unsigned n,std::uint32_t handle,void* attacker
     if(!b->finalize||!b->finalize(b->context,a))return 0;
     out->finalized=1;return done();
 }
+bool reaction_init(void* a,unsigned n,float now,const ServerNpcGruntReactionSpeechBindings* b,ServerNpcGruntReactionSpeechResult* out) noexcept{
+    if(!out)return false;*out={};out->sentence.request_result=-1;out->request.group_id=out->request.pick_result=out->request.sentence_id=out->request.request_result=-1;
+    return a&&n>=0xdb2&&b&&std::isfinite(now)&&relation_grunt_class(b->sentence.speech.original_vtable);
+}
+int __cdecl grunt_pain_speech(void* a,unsigned n,float now,const ServerNpcGruntReactionSpeechBindings* b,ServerNpcGruntReactionSpeechResult* out) noexcept{
+    if(!reaction_init(a,n,now,b,out))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    const auto flags=read<unsigned>(a,0xbc);
+    if(flags&0x10000000u){out->blocked_flags=1;return done();}
+    out->deadline=read<float>(a,0xc78);
+    if(!std::isfinite(out->deadline))return 0;
+    if(now<=out->deadline){out->blocked_deadline=1;return done();}
+    if(flags&0x08000000u){out->blocked_flags=1;return done();}
+    const int denom=read<int>(a,0x98);if(!denom)return 0;
+    out->ratio=static_cast<double>(read<int>(a,0x9c))/denom;
+    const auto marks=read<unsigned>(a,0x988);
+    out->cue="GRUNT_PAIN";
+    if(!(marks&0x80000000u)&&out->ratio>0.9){
+        write(a,0x988,marks|0x80000000u);out->taunt_marked=1;out->cue="GRUNT_TAUNT";
+    }else if(!(marks&0x40000000u)&&out->ratio<0.25){
+        write(a,0x988,marks|0x40000000u);out->pain_marked=1;
+    }
+    if(!sentence_dispatch_request(a,n,now,out->cue,-1,0,&b->sentence,&b->request,&out->sentence,&out->request))return 0;
+    out->deadline=static_cast<float>(static_cast<double>(now)+1.0);if(!std::isfinite(out->deadline))return 0;
+    write(a,0xc78,out->deadline);out->deadline_written=1;return done();
+}
+int __cdecl grunt_death_speech(void* a,unsigned n,float now,const ServerNpcGruntReactionSpeechBindings* b,ServerNpcGruntReactionSpeechResult* out) noexcept{
+    if(!reaction_init(a,n,now,b,out))return 0;
+    auto done=[&](){out->completed=1;return 1;};
+    const auto vt=b->sentence.speech.original_vtable;
+    const bool jet=vt==0x2248c514||vt==0x2248e83c||vt==0x2249964c||vt==0x224a4a4c;
+    if(jet){
+        if(n<0x1008)return 0;
+        if(read<int>(a,0x1004)==5){out->blocked_state=1;return done();}
+        if(read<std::uint8_t>(a,0xc44)){out->blocked_damage=1;return done();}
+    }
+    if(read<std::uint8_t>(a,0xbf)&0x10){out->blocked_flags=1;return done();}
+    if(!read<std::uint8_t>(a,0xcb1)){out->blocked_ready=1;return done();}
+    if(read<std::uint8_t>(a,0xc44)){out->blocked_damage=1;return done();}
+    out->cue=read<int>(a,0xc68)==10?"GRUNT_MUTANTDEATH":"GRUNT_DIE";
+    if(!sentence_dispatch_request(a,n,now,out->cue,-1,0,&b->sentence,&b->request,&out->sentence,&out->request))return 0;
+    return done();
+}
+const ServerNpcGruntReactionSpeechApi reaction_speech_api{1,sizeof(ServerNpcGruntReactionSpeechApi),&grunt_pain_speech,&grunt_death_speech};
 const ServerNpcGruntRemovalApi removal_api{1,sizeof(ServerNpcGruntRemovalApi),&grunt_removal};
 const ServerNpcGruntNativeStateApi native_state_api{1,sizeof(ServerNpcGruntNativeStateApi),&native_state_choose,&native_state_apply};
 const ServerNpcGruntSquadEnemyApi squad_enemy_api{1,sizeof(ServerNpcGruntSquadEnemyApi),&squad_enemy_broadcast};
@@ -3621,4 +3665,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntRemovalApi=_SiN_GetServerNpcGruntRemovalApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntRemovalApi* __cdecl SiN_GetServerNpcGruntRemovalApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntRemovalApi)?&removal_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntReactionSpeechApi=_SiN_GetServerNpcGruntReactionSpeechApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntReactionSpeechApi* __cdecl SiN_GetServerNpcGruntReactionSpeechApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntReactionSpeechApi)?&reaction_speech_api:nullptr;
 }

@@ -1699,5 +1699,45 @@ int main(int argc,char** argv){
         rb.origin=[](void* p,void* a,float* pos) noexcept -> int{auto& q=BroadcastFixture::self(p);assert(a==q.actor[0]&&BroadcastFixture::rd(a,0x9c4)==91&&BroadcastFixture::rd(q.group,0x48)==1);pos[0]=1;pos[1]=2;pos[2]=3;return 1;};
         assert(removal->run(q.actor[0],sizeof(q.actor[0]),0x1001u,q.targets[1],false,107,&rb,&rr)&&rr.completed&&rr.report_checked&&!rr.zero_key.record&&rr.report_called&&rr.report.blocked&&rr.departure.removed&&rr.finalized);
     }
+    {
+        auto g=reinterpret_cast<GetServerNpcGruntReactionSpeechApi>(GetProcAddress(s,server_npc_grunt_reaction_speech_export));
+        assert(g&&!GetProcAddress(c,server_npc_grunt_reaction_speech_export)&&!g(0,sizeof(ServerNpcGruntReactionSpeechApi))&&!g(1,0));
+        const auto* api=g(1,sizeof(ServerNpcGruntReactionSpeechApi));assert(api);
+        alignas(4) unsigned char actor[0x1088]{};
+        struct ReactionFixture{unsigned calls=0;const char* expected=nullptr;} q;
+        ServerNpcGruntReactionSpeechBindings b{};b.sentence.speech.original_vtable=0x2249aaa4;b.request.context=&q;b.request.manager_ready=true;b.sentence.speech.volume=1;b.sentence.speech.level=75;
+        b.request.group_index=[](void* p,const char* cue,int* out) noexcept -> int{auto& q=*static_cast<ReactionFixture*>(p);assert(q.expected&&!std::strcmp(cue,q.expected));++q.calls;*out=-1;return 1;};
+        f.put(actor,0x98,100);f.put(actor,0x9c,91);f.put(actor,0xc78,10.f);f.put(actor,0xccc,17);
+        ServerNpcGruntReactionSpeechResult rr{};
+        f.put(actor,0xbc,0x10000000u);
+        assert(api->pain(actor,sizeof(actor),11,&b,&rr)&&rr.blocked_flags&&!rr.deadline_written);
+        f.put(actor,0xbc,0u);
+        assert(api->pain(actor,sizeof(actor),10,&b,&rr)&&rr.blocked_deadline&&!rr.deadline_written);
+        f.put(actor,0xbc,0x08000000u);
+        assert(api->pain(actor,sizeof(actor),11,&b,&rr)&&rr.blocked_flags&&!rr.deadline_written);
+        f.put(actor,0xbc,0u);q.expected="GRUNT_TAUNT";
+        assert(api->pain(actor,sizeof(actor),11,&b,&rr)&&rr.taunt_marked&&rr.deadline_written&&rr.deadline==12&&rr.request.request_result==-1&&rr.sentence.queue_reset&&!rr.sentence.cooldown.owner_written&&q.calls==1);
+        q.expected="GRUNT_PAIN";f.put(actor,0x988,0u);f.put(actor,0x9c,90);
+        assert(api->pain(actor,sizeof(actor),13,&b,&rr)&&!rr.taunt_marked&&!rr.pain_marked&&q.calls==2);
+        f.put(actor,0x9c,25);
+        assert(api->pain(actor,sizeof(actor),15,&b,&rr)&&!rr.pain_marked&&q.calls==3);
+        f.put(actor,0x9c,24);
+        assert(api->pain(actor,sizeof(actor),17,&b,&rr)&&rr.pain_marked&&rr.deadline==18&&q.calls==4);
+        f.put(actor,0x98,0);assert(!api->pain(actor,sizeof(actor),19,&b,&rr)&&!rr.deadline_written);
+        actor[0xbf]=0x10;assert(api->death(actor,sizeof(actor),20,&b,&rr)&&rr.blocked_flags);
+        actor[0xbf]=0;assert(api->death(actor,sizeof(actor),20,&b,&rr)&&rr.blocked_ready);
+        actor[0xcb1]=1;actor[0xc44]=1;assert(api->death(actor,sizeof(actor),20,&b,&rr)&&rr.blocked_damage);
+        actor[0xc44]=0;q.expected="GRUNT_DIE";
+        assert(api->death(actor,sizeof(actor),20,&b,&rr)&&rr.completed&&rr.request.group_called&&q.calls==5);
+        f.put(actor,0xc68,10);q.expected="GRUNT_MUTANTDEATH";
+        assert(api->death(actor,sizeof(actor),20,&b,&rr)&&rr.completed&&rr.request.group_called&&q.calls==6);
+        for(unsigned vt:{0x2248c514u,0x2248e83cu,0x2249964cu,0x224a4a4cu}){
+            b.sentence.speech.original_vtable=vt;f.put(actor,0x1004,5);
+            assert(api->death(actor,sizeof(actor),21,&b,&rr)&&rr.blocked_state&&q.calls==6);
+            f.put(actor,0x1004,4);actor[0xc44]=1;
+            assert(api->death(actor,sizeof(actor),21,&b,&rr)&&rr.blocked_damage&&q.calls==6);
+            actor[0xc44]=0;assert(api->death(actor,sizeof(actor),21,&b,&rr)&&rr.completed&&rr.request.group_called);--q.calls;
+        }
+    }
     FreeLibrary(s);FreeLibrary(c);std::puts("PASS native NPC state reconsideration and Grunt ideal-state transitions");
 }

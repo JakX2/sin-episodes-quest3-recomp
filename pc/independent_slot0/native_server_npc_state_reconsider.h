@@ -1281,4 +1281,23 @@ struct ServerNpcGruntRemovalApi {
     int (__cdecl *run)(void*,unsigned,std::uint32_t,void*,bool,float,const ServerNpcGruntRemovalBindings*,ServerNpcGruntRemovalResult*) noexcept;
 };
 using GetServerNpcGruntRemovalApi=const ServerNpcGruntRemovalApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+inline constexpr char server_npc_grunt_reaction_speech_export[]="SiN_GetServerNpcGruntReactionSpeechApi";
+struct ServerNpcGruntReactionSpeechBindings {
+    ServerNpcGruntSentenceBindings sentence;
+    ServerNpcGruntSentenceRequestBindings request;
+};
+struct ServerNpcGruntReactionSpeechResult {
+    ServerNpcGruntSentenceResult sentence;
+    ServerNpcGruntSentenceRequestResult request;
+    const char* cue;
+    double ratio;
+    float deadline;
+    unsigned completed,blocked_flags,blocked_deadline,blocked_state,blocked_ready,blocked_damage,taunt_marked,pain_marked,deadline_written;
+};
+struct ServerNpcGruntReactionSpeechApi {
+    std::uint32_t version,size;
+    int (__cdecl *pain)(void*,unsigned,float,const ServerNpcGruntReactionSpeechBindings*,ServerNpcGruntReactionSpeechResult*) noexcept;
+    int (__cdecl *death)(void*,unsigned,float,const ServerNpcGruntReactionSpeechBindings*,ServerNpcGruntReactionSpeechResult*) noexcept;
+};
+using GetServerNpcGruntReactionSpeechApi=const ServerNpcGruntReactionSpeechApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
