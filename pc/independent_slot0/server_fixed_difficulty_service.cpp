@@ -2464,6 +2464,10 @@ int __cdecl SinPublishMapEventInternal(void* manager,int descriptor,const char* 
 // Original 22288a40: single-client guard, engine slot 19 index one,
 // edict free-bit check, networkable slot 5. A null result is ordinary;
 // malformed memory, unverified virtual slots or exceptions are refusal.
+bool __cdecl SinReadCampaignTouchMarkerInternal(const void* actor,unsigned* marker) noexcept {
+    if(!marker||!memory::Readable(actor,4))return false;
+    std::memcpy(marker,actor,4);return true;
+}
 int __cdecl SinResolveLocalPlayerInternal(void* globals,void* engine,void** out) noexcept {
     if(!out)return 0;*out=nullptr;
     if(!memory::Readable(globals,0x18))return 0;

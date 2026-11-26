@@ -409,6 +409,36 @@ inline constexpr char engine_trigger_touch_export[]="SiN_TouchCampaignTriggerWit
 inline constexpr int engine_event_not_attempted=-1;
 using EngineTriggerSpawn=int (__cdecl *)(void*,unsigned,const CampaignTriggerBindings*,void*,CampaignTriggerResult*,int*) noexcept;
 using EngineTriggerTouch=int (__cdecl *)(void*,unsigned,void*,const CampaignTriggerBindings*,void*,CampaignTriggerResult*,int*) noexcept;
+// The original +120 virtual leaf is constant for these RTTI-backed
+// primary tables. Unknown classes are NOT assumed to be nonplayers.
+enum class PlayerPredicate : int {Invalid=-1,Unknown=0,NonPlayer=1,Player=2};
+inline constexpr char player_predicate_export[]="SiN_ClassifyCampaignTouchPlayer";
+using ClassifyCampaignPlayer=PlayerPredicate (__cdecl *)(const void*,unsigned) noexcept;
+inline constexpr PlayerPredicate campaign_player_marker(unsigned vt) noexcept {
+    switch(vt){
+    case 0x224aec3cu: // CHL2_Player
+    case 0x2245222cu: // CBasePlayer
+        return PlayerPredicate::Player;
+    case 0x2240ac2cu: // CBaseEntity
+    case 0x2243b96cu: // CTriggerDynamicDifficulty
+    case 0x2243bc0cu: // CTriggerSecret
+    case 0x2241f0d4u: // CLogicAuto
+    case 0x22420e14u: // CTimerEntity
+    case 0x22422294u: // CLogicBranch
+    case 0x22421d74u: // CLogicCase
+    case 0x22422004u: // CLogicCompare
+    case 0x22421ae4u: // CMathCounter
+    case 0x22420b84u: // CLogicCompareInteger
+    case 0x2241f9e4u: // CLogicAutosave
+    case 0x2241ed04u: // CLogicNavigation
+    case 0x22422534u: // CLogicMenuListener
+    case 0x22421334u: // CMathRemap
+    case 0x224215c4u: // CMathColorBlend
+    case 0x224228ccu: // CLogicRelay
+        return PlayerPredicate::NonPlayer;
+    default:return PlayerPredicate::Unknown;
+    }
+}
 struct SpawnBindings {
     void* context;
     int (__cdecl *extent)(void*,void*,unsigned*) noexcept;

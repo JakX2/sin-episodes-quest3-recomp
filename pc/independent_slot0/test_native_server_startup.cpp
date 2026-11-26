@@ -234,7 +234,7 @@ int main(int argc,char** argv){
     tr.spawn_gate=[](void*,bool* suppress) noexcept ->int{*suppress=false;return 1;};
     tr.base_spawn=[](void*,void*) noexcept ->int{return 1;};
     tr.string_text=[](void*,unsigned token,const char** name,unsigned* bytes) noexcept ->int{assert(token==1);*name="secret";*bytes=7;return 1;};
-    tr.is_player=[](void* p,void* other,bool* yes) noexcept ->int{*yes=other==&static_cast<Map*>(p)->player;return 1;};
+    // No hosted predicate for authenticated original player/nonplayer classes.
     tr.remove=[](void* p,void*) noexcept ->int{++static_cast<Map*>(p)->removed;return 1;};
     nm::CampaignTriggerResult cr{};int publication=999;
     assert(!touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==nm::engine_event_not_attempted);
@@ -302,6 +302,37 @@ int main(int argc,char** argv){
     wrong=session;wrong.thread=0;
     assert(!level_events(&ls,&la,&lb,&lr,&wrong)&&!ls.level_ready);
     assert(level_events(&ls,&la,&lb,&lr,&session)&&lr.completed&&lr.map_event&&lr.map_pipeline.spawn.native_spawns==1&&started.events.fires==2&&started.events.creates==2);
+    const auto classify=reinterpret_cast<nm::ClassifyCampaignPlayer>(GetProcAddress(server,nm::player_predicate_export));
+    assert(classify&&!GetProcAddress(client,nm::player_predicate_export));
+    unsigned candidate=0;
+    assert(classify(nullptr,4)==nm::PlayerPredicate::Invalid&&classify(&candidate,3)==nm::PlayerPredicate::Invalid);
+    assert(classify(reinterpret_cast<void*>(1),4)==nm::PlayerPredicate::Invalid&&classify(&candidate,4)==nm::PlayerPredicate::Unknown);
+    candidate=0x224aec3cu;assert(classify(&candidate,4)==nm::PlayerPredicate::Player);
+    candidate=0x2245222cu;assert(classify(&candidate,4)==nm::PlayerPredicate::Player);
+    candidate=0x2240ac2cu;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x2243b96cu;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x2243bc0cu;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x2241f0d4u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x22420e14u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x22422294u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x22421d74u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x22422004u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x22421ae4u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x22420b84u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x2241f9e4u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x2241ed04u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x22422534u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x22421334u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x224215c4u;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=0x224228ccu;assert(classify(&candidate,4)==nm::PlayerPredicate::NonPlayer);
+    candidate=nm::relay_vtable;
+    assert(touch_events(&session,m.actor,sizeof(m.actor),&candidate,&tr,&cr,&publication)&&cr.nonplayer&&publication==nm::engine_event_not_attempted&&!m.removed&&started.events.creates==2);
+    candidate=0;
+    assert(!touch_events(&session,m.actor,sizeof(m.actor),&candidate,&tr,&cr,&publication)&&!m.removed&&started.events.creates==2);
+    assert(!touch_events(&session,m.actor,sizeof(m.actor),reinterpret_cast<void*>(1),&tr,&cr,&publication)&&!m.removed);
+    tr.is_player=[](void*,void*,bool* yes) noexcept ->int{*yes=false;return 1;};
+    assert(touch_events(&session,m.actor,sizeof(m.actor),&candidate,&tr,&cr,&publication)&&cr.nonplayer&&started.events.creates==2);
+    tr.is_player=nullptr;
     assert(touch_events(&session,m.actor,sizeof(m.actor),&m.player,&tr,&cr,&publication)&&publication==fs::EventFired&&cr.removed&&m.removed==1&&started.events.fires==3&&!started.events.frees);
     // Original map writer ignores ordinary FireEvent false. Health
     // remains published and activation continues; no double free.
