@@ -236,6 +236,17 @@ struct LogicDestroyResult {
     unsigned completed,outputs,actions,validated,released,base_called,freed,unregistered,comparisons,comparisons_released;
     unsigned base_prefix,registry_unlinked,base_suffix;
     unsigned base_outputs,base_actions,base_released;
+    unsigned trigger_vector_purged,trigger_vector_freed,trigger_vector_external;
+};
+// Separate entry: CBaseTrigger has three outputs and a vector before
+// the common base destructor. Do not admit it to logic input maps.
+struct TriggerDestroyBindings {
+    const LogicDestroyBindings* shared;
+    void* context;
+    // Original vector allocator owner. Resolve returns the actual live
+    // extent so overlapping storage can be refused before destruction.
+    int (__cdecl *resolve_vector)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *free_vector)(void*,unsigned,void*) noexcept;
 };
 struct CounterBindings {
     void* context;
@@ -659,6 +670,7 @@ struct Api {
     int (__cdecl *destroy_campaign_trigger)(void*,unsigned,void*,const TriggerFactoryBindings*) noexcept;
     int (__cdecl *campaign_trigger_spawn)(void*,unsigned,const CampaignTriggerBindings*,CampaignTriggerResult*) noexcept;
     int (__cdecl *campaign_trigger_touch)(void*,unsigned,void*,const CampaignTriggerBindings*,CampaignTriggerResult*) noexcept;
+    int (__cdecl *destroy_trigger_members)(void*,unsigned,unsigned,const TriggerDestroyBindings*,LogicDestroyResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
