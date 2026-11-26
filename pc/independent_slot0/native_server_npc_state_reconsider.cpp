@@ -8575,7 +8575,18 @@ int elite_post_impl(void* a,unsigned n,const ServerNpcGruntEliteDeathBindings& b
         ++out.random_calls;
     }
     if(!b.orientation||!b.orientation(b.context,target,out.angles))return 0;out.oriented=1;
-    if(!b.velocity||!b.velocity(b.context,target,-10.f,10.f,out.velocity)||!finite_vec(out.velocity))return 0;out.velocity_generated=1;
+    if(b.velocity_random_int){
+        // 2202e350 uses the independent integer stream through 2226ffa0.
+        // 223d974c is binary32 0x38000100, NOT an exact double 1/32767.
+        constexpr double scale=0x1.0002p-15;
+        for(unsigned i=0;i<3;++i){
+            int sample=0;if(!b.velocity_random_int(b.context,0,32767,&sample)||sample<0||sample>32767)return 0;
+            ++out.velocity_randoms;
+            out.velocity[i]=static_cast<float>(double(sample)*scale*20.0-10.0);
+        }
+        out.velocity_native=1;
+    }else if(!b.velocity||!b.velocity(b.context,target,-10.f,10.f,out.velocity))return 0;
+    if(!finite_vec(out.velocity))return 0;out.velocity_generated=1;
     if(!b.set_velocity||!b.set_velocity(b.context,target,out.velocity))return 0;out.velocity_set=1;
     if(!b.finish||!b.finish(b.context,target))return 0;out.finished=1;
     return 1;
