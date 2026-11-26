@@ -15,6 +15,19 @@ inline constexpr AmmoType ammo_types[count]{
 };
 struct AmmoRow {float desired,current,delta;std::int32_t nearby;};
 static_assert(sizeof(AmmoRow)==16);
+struct InventoryView {
+    const void* player;
+    unsigned player_bytes;
+    const sin_independent::EntityHandleEntry* entries;
+    unsigned entry_count;
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept;
+};
+struct OwnershipResult {
+    unsigned slots,weapons,primary_reads,secondary_reads,found;
+    int slot;
+    void* weapon;
+};
 struct Bindings {
     void* context;
     int (__cdecl *index)(void*,const char*,int*) noexcept;
@@ -22,8 +35,9 @@ struct Bindings {
     int (__cdecl *max_carry)(void*,int,int*) noexcept;
     int (__cdecl *reserve)(void*,int,int*) noexcept;
     int (__cdecl *scale)(void*,float*) noexcept;
+    const InventoryView* native_inventory;
 };
-struct Result {unsigned rows,owned,index_native,max_native,reserve_reads,scale_reads;};
+struct Result {unsigned rows,owned,index_native,max_native,reserve_reads,scale_reads,ownership_native,reserve_native;};
 inline constexpr char health_classname[]="item_healthvial";
 struct HealthBindings {
     void* context;
@@ -36,9 +50,10 @@ struct FallbackBindings {
     int (__cdecl *index)(void*,const char*,int*) noexcept;
     int (__cdecl *has_weapon)(void*,int,bool*) noexcept;
     int (__cdecl *random_float)(void*,float,float,float*) noexcept;
+    const InventoryView* native_inventory;
 };
 struct FallbackResult {
-    unsigned enabled,index_reads,ownership_reads,eligible,forced_magnum,random_called;
+    unsigned enabled,index_reads,ownership_reads,eligible,forced_magnum,random_called,ownership_native;
     float cumulative[count],total,draw;
     int selected;
     const char* classname;
@@ -82,6 +97,7 @@ struct EvaluateBindings {
     Bindings ammo;
     FallbackBindings fallback;
     SpawnBindings spawn;
+    bool native_player_inventory;
 };
 struct EvaluateResult {
     unsigned master_skipped,master_profile,origin_refreshes,motion_refreshes,
@@ -110,6 +126,8 @@ struct Api {
     // 222f8f40: evaluate health and ammo, spawn at most one of each,
     // optionally fall back, then clear think and request removal.
     int (__cdecl *evaluate)(void*,unsigned,const void*,unsigned,int,const EvaluateBindings*,EvaluateResult*) noexcept;
+    // 222a44d0: first inventory weapon whose primary or secondary index matches.
+    int (__cdecl *owns)(const InventoryView*,int,OwnershipResult*) noexcept;
 };
 using GetApi=const Api* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 }
