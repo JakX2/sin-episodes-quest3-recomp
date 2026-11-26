@@ -993,14 +993,27 @@ int main(int argc,char** argv){
     f.put(f.actor,0x378,0x8002u);f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);
     f.put(wt.member,0,ground_vt);f.put(wt.member,0x868,2);f.put(wt.member,0x78,0x20u);
     f.put(wt.member,0xbdc,0u);f.put(wt.member,0x16c,0u);wt.member[0x870]=0;wt.member[0x1f0]=1;wt.member[0x200]=0;
-    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&connected,&wto)&&wto.completed&&outf.result.queued==1&&outf.queue_allocated==1);
+    // The composed route no longer uses the fixture's hosted output/queue
+    // callback. Native transition supplies actor identity and queue time.
+    ServerEntityNativeOutputQueueBindings direct_wake_queue{&outf.bindings,&outf.queue_bindings,outf.queue_root,sizeof(outf.queue_root),root_token};
+    auto direct_queue_wake=connected;direct_queue_wake.output=nullptr;direct_queue_wake.output_queue=&direct_wake_queue;
+    direct_queue_wake.entities=scripted.input.entities;direct_queue_wake.output_now=20.f;
+    assert(transition_wake->run(f.actor,sizeof(f.actor),ground_vt,true,&direct_queue_wake,&wto)&&wto.completed&&wto.output_queue_calls==1&&wto.output_queue_actions==1&&outf.queue_allocated==1);
     assert(f.get<int>(f.actor,0x868)==0&&f.get<int>(wt.member,0x868)==2);
     assert(service->service(outf.queue_root,sizeof(outf.queue_root),root_token,20.f,false,&steps,&script_service,&sr)&&sr.future_stopped&&!sr.events);
     assert(service->service(outf.queue_root,sizeof(outf.queue_root),root_token,20.25f,false,&steps,&script_service,&sr)&&sr.completed&&sr.events==1&&sr.deliveries==1&&sr.removed==1);
     assert(scripted.input_result.accepted&&scripted.input_result.native_wake&&scripted.input_result.native_maps==2&&scripted.input_result.map==0x224dbd9cu&&scripted.input_result.row==126&&scripted.input_result.handler==0x220320b0u);
     assert(scripted.wake_result.completed&&scripted.wake_result.transitions==1&&scripted.wake_result.outputs==1&&scripted.wake_result.flags_changed==1);
     assert(f.get<int>(wt.member,0x868)==0&&f.get<unsigned>(wt.member,0x78)==0&&wt.member[0x200]&&!outf.service_locked);check_queue({});
-    f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
+    // A scripted Wake input uses AcceptInput time, not a stale binding clock.
+    reset_queue();seed_outputs();f.put(outf.rows[0],4,0x223db3c4u);f.put(outf.rows[0],0x18,0u);
+    f.put(f.actor,0x868,2);f.put(f.actor,0x78,0x20u);
+    auto source_input=scripted.input;source_input.wake=&direct_queue_wake;source_input.wake_result=&wto;source_input.now=44.f;
+    direct_queue_wake.output_now=12.f;
+    unsigned char source_variant[0x14]{};ServerEntityAcceptInputResult source_result{};
+    assert(accept->run(f.actor,sizeof(f.actor),ground_vt,0x223db3c4u,f.actor,f.actor,source_variant,sizeof(source_variant),0,&source_input,&source_result)&&source_result.native_wake&&wto.output_queue_actions==1);
+    assert(f.get<float>(outf.queue_rows[0],0)==44.25f&&f.get<unsigned>(outf.queue_rows[0],0xc)==0x8002u&&f.get<unsigned>(outf.queue_rows[0],0x10)==0x8002u);
+    reset_queue();f.put(f.actor,0x378,saved_handle);f.put(f.actor,0xbdc,0u);
     // Native input names compare bytes, not token identity. Decimal parsing
     // matches original 223a5673 including modulo-32-bit overflow.
     inp.bindings.name_equal=nullptr;inp.bindings.convert=nullptr;
