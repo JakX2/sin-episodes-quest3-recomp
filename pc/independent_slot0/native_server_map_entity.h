@@ -210,6 +210,7 @@ struct MenuBindings {
 struct MenuResult {
     unsigned completed,base_called,subscribed,name_reads,button_reads,selected,highlighted,outputs,queued,first_offset,last_offset,native_output_queued;
 };
+struct RegistryDestroyBindings;
 struct LogicDestroyBindings {
     void* context;
     int (__cdecl *resolve)(void*,unsigned,void**,unsigned*) noexcept;
@@ -217,9 +218,11 @@ struct LogicDestroyBindings {
     int (__cdecl *base_destroy)(void*,void*) noexcept;
     int (__cdecl *free_actor)(void*,void*) noexcept;
     int (__cdecl *unregister_menu)(void*,void*) noexcept;
+    const RegistryDestroyBindings* native_base;
 };
 struct LogicDestroyResult {
     unsigned completed,outputs,actions,validated,released,base_called,freed,unregistered,comparisons,comparisons_released;
+    unsigned base_prefix,registry_unlinked,base_suffix;
 };
 struct CounterBindings {
     void* context;
@@ -495,6 +498,14 @@ struct RegistryRemovalBindings {
 };
 struct RegistryRemovalResult {
     unsigned completed,empty,index,old_handle,old_serial,new_serial,handle_cleared,edict_cleared,counts_changed,unlinked,returned_to_free;
+};
+// Original base destructor split at the registry unlink call. Prefix
+// and suffix retain the not-yet-reconstructed owner operations.
+struct RegistryDestroyBindings {
+    const RegistryRemovalBindings* registry;
+    void* context;
+    int (__cdecl *prefix)(void*,void*) noexcept; // 2214427b..221442af
+    int (__cdecl *suffix)(void*,void*) noexcept; // 221442c3..22144357
 };
 struct Api {
     std::uint32_t version,size;
