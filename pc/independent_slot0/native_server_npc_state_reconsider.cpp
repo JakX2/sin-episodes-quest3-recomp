@@ -4443,11 +4443,13 @@ int __cdecl jetpack_death_mode(void* a,unsigned n,void* damage,unsigned dn,const
 struct JetpackBranchRoute {const ServerNpcJetpackDeathBranchBindings* bindings;ServerNpcJetpackDeathBranchResult* result;};
 struct JetpackDeathRoute {const ServerNpcJetpackDeathModeBindings* bindings;ServerNpcJetpackDeathModeResult* result;const JetpackBranchRoute* branch=nullptr;};
 int __cdecl grunt_ground_death(void*,unsigned,std::uint32_t,void*,unsigned,float,const ServerNpcGruntGroundDeathBindings*,ServerNpcGruntGroundDeathResult*) noexcept;
+struct EliteDeathRoute {const ServerNpcGruntEliteDeathBindings* bindings;ServerNpcGruntEliteDeathResult* result;};
 struct GroundDeathRoute {
     const ServerNpcGruntGroundDeathBindings* bindings;
     ServerNpcGruntGroundDeathResult* result;
     std::uint32_t handle;
     unsigned* called;
+    const EliteDeathRoute* elite=nullptr;
 };
 
 int jetpack_branch(void* a,unsigned n,void* damage,unsigned dn,float now,unsigned mode,const ServerNpcGruntSentenceBindings& sb,const GroundDeathRoute& ground,const JetpackBranchRoute& branch) noexcept{
@@ -4514,6 +4516,58 @@ int jetpack_branch(void* a,unsigned n,void* damage,unsigned dn,float now,unsigne
     if(!ok||!ended)return 0;
     out.completed=1;return 1;
 }
+
+int elite_post_impl(void* a,unsigned n,const ServerNpcGruntEliteDeathBindings& b,ServerNpcGruntEliteDeathResult& out) noexcept{
+    if(!a||n<0xfe0||!b.rule)return 0;
+    bool yes=false;if(!b.rule(b.context,&yes))return 0;
+    out.rule_checked=1;out.rule_allowed=yes;
+    if(!yes)return 1;
+    void* player=nullptr;if(!b.player||!b.player(b.context,&player))return 0;
+    if(!player)return 1;out.player_found=1;
+    void* target=nullptr;if(!b.entity||!b.entity(b.context,player,&target))return 0;
+    if(!target)return 1;out.entity_found=1;
+    if(read<unsigned>(a,0xb8)&0x800u){
+        if(!b.refresh_origin||!b.refresh_origin(b.context,a))return 0;
+        out.refreshed=1;
+    }
+    for(unsigned i=0;i<3;++i)out.origin[i]=read<float>(a,0x2bc+4*i);
+    if(!finite_vec(out.origin)||!b.position||!b.position(b.context,target,out.origin))return 0;
+    out.positioned=1;
+    for(unsigned i=0;i<3;++i){
+        const float lo=i==1?0.f:-20.f,hi=i==1?360.f:20.f;
+        if(!b.random_float||!b.random_float(b.context,lo,hi,&out.angles[i])||!std::isfinite(out.angles[i])||out.angles[i]<lo||out.angles[i]>hi)return 0;
+        ++out.random_calls;
+    }
+    if(!b.orientation||!b.orientation(b.context,target,out.angles))return 0;out.oriented=1;
+    if(!b.velocity||!b.velocity(b.context,target,-10.f,10.f,out.velocity)||!finite_vec(out.velocity))return 0;out.velocity_generated=1;
+    if(!b.set_velocity||!b.set_velocity(b.context,target,out.velocity))return 0;out.velocity_set=1;
+    if(!b.finish||!b.finish(b.context,target))return 0;out.finished=1;
+    return 1;
+}
+int __cdecl elite_post(void* a,unsigned n,const ServerNpcGruntEliteDeathBindings* b,ServerNpcGruntEliteDeathResult* out) noexcept{
+    if(!out)return 0;*out={};
+    if(!b||!elite_post_impl(a,n,*b,*out))return 0;
+    out->completed=1;return 1;
+}
+int elite_death(void* a,unsigned n,void* damage,unsigned dn,float now,const ServerNpcGruntSentenceBindings& sb,const GroundDeathRoute& ground) noexcept{
+    if(!ground.elite||!a||n<0xfe0||sb.speech.original_vtable!=0x2248df04)return 0;
+    auto& out=*ground.elite->result;out={};
+    const auto& b=*ground.elite->bindings;
+    out.prior_grenades=read<int>(a,0xc38);write(a,0xc38,0);out.grenades_cleared=1;
+    if(!b.effect_begin||!b.effect_begin(b.context,a))return 0;
+    out.effect_opened=1;
+    bool ok=b.effects&&b.effects(b.context,a);out.effects_called=ok;
+    if(ok){
+        auto bound=*ground.bindings;
+        auto& identity=bound.base.combat.death.event.prefix.removal.removal.leave.sentence;
+        identity.entries=sb.entries;identity.count=sb.count;identity.speech.original_vtable=sb.speech.original_vtable;
+        ok=grunt_ground_death(a,n,ground.handle,damage,dn,now,&bound,ground.result);
+        out.base_called=ok;if(ok)*ground.called=1;
+    }
+    if(ok)ok=elite_post_impl(a,n,b,out)!=0;
+    const bool ended=b.effect_end&&b.effect_end(b.context,a);out.effect_closed=ended;
+    if(!ok||!ended)return 0;out.completed=1;return 1;
+}
 bool ground_death_class(std::uint32_t vt) noexcept{
     return vt==0x224954a4||vt==0x2249aaa4||vt==0x224a416c;
 }
@@ -4569,6 +4623,8 @@ int grunt_life_dispatch_impl(void* a,unsigned n,const void* damage,unsigned dn,f
                     }else if(!bound.tail||!bound.tail(bound.context,a,copy,static_cast<unsigned>(jet->result->final_mode),jet->result->branch))return 0;
                     jet->result->tail_called=1;
                 }
+            }else if(ground&&ground->elite&&sb.speech.original_vtable==0x2248df04){
+                if(!elite_death(a,n,copy,sizeof(copy),now,sb,*ground))return 0;
             }else if(ground&&ground_death_class(sb.speech.original_vtable)){
                 // Bind the same class/registry as the accepted damage entry, preserving
                 // the death-specific engine service contexts.
@@ -4760,6 +4816,22 @@ int __cdecl jetpack_death_think(void* a,unsigned n,std::uint32_t handle,const Se
     out->scheduled_called=out->completed=1;return 1;
 }
 const ServerNpcJetpackDeathThinkApi jetpack_death_think_api{1,sizeof(ServerNpcJetpackDeathThinkApi),&jetpack_death_think};
+int __cdecl elite_life(void* a,unsigned n,std::uint32_t handle,const void* damage,unsigned dn,float now,const ServerNpcGruntEliteLifeBindings* b,ServerNpcGruntEliteLifeResult* out) noexcept{
+    if(!out)return 0;out->elite={};out->combat.branch={};
+    auto& c=out->combat.combat;
+    c.ground.completed=c.ground.base_called=0;c.ground_called=0;c.jet={};c.jet.sample=c.jet.initial_mode=c.jet.final_mode=-1;
+    if(!b||!a)return 0;
+    const auto& sb=b->combat.combat.life.combat.alive.chain.detail.damage.base.chain.prefix.damage.reaction.sentence;
+    if(!relation_grunt_class(sb.speech.original_vtable)||sb.count>sin_independent::kEntityHandleCapacity||(sb.count&&!sb.entries)||
+        sin_independent::EntityHandleView(sb.entries,sb.count).Resolve(handle)!=a)return 0;
+    const EliteDeathRoute elite{&b->elite,&out->elite};
+    const JetpackBranchRoute branch{&b->combat.branch,&out->combat.branch};
+    const JetpackDeathRoute jet{&b->combat.combat.jet,&c.jet,&branch};
+    const GroundDeathRoute ground{&b->combat.combat.ground,&c.ground,handle,&c.ground_called,&elite};
+    return grunt_life_dispatch_impl(a,n,damage,dn,now,&b->combat.combat.life,&c.life,&jet,&ground);
+}
+const ServerNpcGruntEliteLifeApi elite_life_api{1,sizeof(ServerNpcGruntEliteLifeApi),&elite_post,&elite_life};
+
 
 
 
@@ -5362,4 +5434,9 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcJetpackDeathThinkApi=_SiN_GetServerNpcJetpackDeathThinkApi")
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcJetpackDeathThinkApi* __cdecl SiN_GetServerNpcJetpackDeathThinkApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcJetpackDeathThinkApi)?&jetpack_death_think_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcGruntEliteLifeApi=_SiN_GetServerNpcGruntEliteLifeApi")
+extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcGruntEliteLifeApi* __cdecl SiN_GetServerNpcGruntEliteLifeApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcGruntEliteLifeApi)?&elite_life_api:nullptr;
 }
