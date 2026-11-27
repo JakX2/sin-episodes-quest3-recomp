@@ -68,7 +68,7 @@ if ($SelfTest) {
         throw 'Missing original server DLL accepted'
     }
     Write-Output 'PASS original-free owner interface factory package guardrails: confirmation, exact DLL names, bin folders, distinct paths, no game access'
-    exit 0
+    return
 }
 
 if (-not (Test-OriginalFactoryProbeArguments $ClientDll $ServerDll ([bool]$OwnerDisposableCopyConfirmed))) {
