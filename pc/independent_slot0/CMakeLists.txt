@@ -217,6 +217,16 @@ target_compile_features(sin_server_gameents_engine_edict_select_test PRIVATE cxx
 add_test(NAME independent_server_gameents_engine_edict_select_native
   COMMAND sin_server_gameents_engine_edict_select_test)
 
+# Host-owned physical pin, authenticated 0x14-byte array descriptor and
+# count/epoch commit around the original engine selection + reuse path.
+# The fixture also tests reentrancy, a competing thread and quarantine.
+# No retail allocator or ServerGameEnts001 factory registration is enabled.
+add_executable(sin_server_gameents_engine_edict_pinned_owner_adapter_test
+  test_server_gameents_engine_edict_pinned_owner_adapter.cpp)
+target_compile_features(sin_server_gameents_engine_edict_pinned_owner_adapter_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_engine_edict_pinned_owner_adapter_native
+  COMMAND sin_server_gameents_engine_edict_pinned_owner_adapter_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test

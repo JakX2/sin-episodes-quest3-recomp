@@ -1,0 +1,25 @@
+# Phase 1642: Host-pinned original-engine edict allocation adapter
+
+**Stack:** Phase 1641 PR #1650, commit 5399fb1a64453ac4152cc8f0f92c99b7c0261dc4, passed Windows 243/243, Android ARM64 NDK, x86_64 Bionic emulator, original-free audits, factory and original PE32 authentication CI. This phase is an independently authored owner boundary, not a retail engine injection.
+
+## Source-authenticated original evidence
+
+The owner-provided 2006 PE32 engine.dll SHA-256 f3add5b41300e6d709fd0b492bfcdd37b9b3d20d9744f874c0b860bf021cec81 contains the 0x14-byte edict array owner, negative-index allocation selection and record-restamp transitions recovered in Phases 1638–1641. Original source VAs: scan 0x20110ECC–0x20110FA7, restamp 0x20110FB0–0x20111008, array base global 0x2079DB04, count 0x2079DAFC, capacity 0x2079DB00, protected last index 0x2079DA64. Original engine uses the GameEnts +0x0C free callback in BOTH selection and restamp. Original per-edict uint32 serial (+0x04) is NOT the host lifetime generation, and edict+0x10 is an x87 reuse-time float, NOT a pointer.
+
+A bare pre/post callback authorizer does not pin physical memory. Concurrent backing moves, frees or reuse can invalidate the address between successful checks. Furthermore, count growth belongs to the real allocator; a transition that fails after destructive cleanup must not silently retry with unknown state.
+
+## Independent C++17 implementation
+
+File pc/independent_slot0/server_gameents_engine_edict_pinned_owner_adapter.h adds EnginePinnedEdictAllocatorAdapter::Allocate. A trusted host implements SIX mandatory callbacks: acquire an exclusive physical pin and snapshot (array, capacity_bytes, current_count, protected_last, token); validate the pin without dereferencing a foreign pointer; end it exactly once; idempotently release a selected record's containing server entity; reserve a globally monotonic uint64 ownership epoch; and atomically commit the selected index, count and epoch after the original-guided restamp. The host must prevent physical moves/frees, concurrent allocator writes and premature retirement for the ENTIRE pin; this header cannot enforce correctness of an untrusted callback implementation.
+
+The adapter holds the pin across the entire SelectEngineEdictForReuse -> RetireEngineEdict -> ReuseEngineEdictAt -> host commit chain. The server cleanup callback is invoked twice for the same selected index, matching the original two source transitions. It refuses mismatched record addresses, malformed/non-multiple-of-20 extents, capacity exceeding the signed original index bounds, invalid count/protected index, missing callbacks, unexpected serial and nonmonotonic new epoch. It returns ONLY index, serial, next count, epoch, never a dereferenceable unpinned edict pointer. Reentrant calls and simultaneous allocating threads fail closed with Busy.
+
+A partial server cleanup, aborted restamp, denied owner epoch, failed count/epoch commit or failed pin release permanently QUARANTINES that adapter instance. The caller must reconcile memory/metadata using a separately trusted owner before constructing a new adapter, not retry an uncertain serial. Reserved uint64 epochs are never reused, including when a later commit refuses. Ordinary no-capacity outcomes and clean malformed-pin denials do not poison a healthy adapter.
+
+File test_server_gameents_engine_edict_pinned_owner_adapter.cpp uses an original-free synthetic physically stable owner with six adjacent PE32 20-byte edicts and exclusive pin contract. It tests original select -> two idempotent slot-3 callbacks -> restamp -> count/epoch commit, uint32 serial wrap and ascending host uint64 epochs. During a callback, attempted backing deallocation is rejected while pinned, as are both a reentrant same-thread allocate and a competing-thread allocate. Further cases cover two consecutive allocations; failed acquire, malformed count/capacity, missing validator, physical authorization revoked midcallback, mutated serial on the second callback, denied epoch, stale epoch across new adapter sessions, denied commit, refused cleanup, refused end-pin and exhausted capacity. It checks exactly-once end-pin for all acquired scopes, no exposed success after a refused end, permanent quarantine after destructive partial failure, and no quarantine for clean capacity exhaustion.
+
+Locally built with Clang C++17 -Wall -Wextra -Werror -pedantic at unoptimized and -O2 and with AddressSanitizer + UndefinedBehaviorSanitizer, all passed. Public CI adds Windows x86 CTest #244. No original DLL bytes are exported.
+
+## Remaining owner integration
+
+The synthetic host demonstrates the pin contract but does NOT substitute for an unmodified retail engine DLL allocator, a live Windows engine process or Android engine ownership. Before enabling ServerGameEnts001 CreateInterface, establish genuine owner allocation lifetime, atomic commit integration with the existing GameEntsOwnerLifetimeRegistry, cross-DLL pointer-subobject offsets and live startup trace. No HL2-equivalent physics, surfaces or model/prop paths are touched.
