@@ -656,8 +656,8 @@ int main(int argc,char** argv){
     // Active, equipped NPC with no enemy: native ammo must run at both +420
     // call sites. Deliberately stop after the second gather at ideal-state query.
     {
-        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{},senses[0x60]{},empty_vectors[3][0x10]{},relationship[16]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;void* scripted_entity=nullptr;} equipped{&f};
-        sin_independent::EntityHandleEntry equipped_entries[3]{};
+        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{},senses[0x60]{},empty_vectors[3][0x10]{},relationship[16]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;void* scripted_entity=nullptr;void* scripted_other=nullptr;} equipped{&f};
+        sin_independent::EntityHandleEntry equipped_entries[4]{};
         equipped_entries[0].serial=3;equipped_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
         equipped_entries[1].serial=7;equipped_entries[1].entity=reinterpret_cast<CBaseEntity*>(equipped.weapon);
         const auto previous_entities=selection.state.entities;
@@ -671,7 +671,7 @@ int main(int argc,char** argv){
         };
         auto extent=[](void* p,void* e,unsigned* n) noexcept -> int{
             auto& q=*static_cast<EquippedThinkFixture*>(p);
-            if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.weapon)*n=sizeof(q.weapon);else if(e==q.enemy)*n=sizeof(q.enemy);else if(e&&e==q.scripted_entity)*n=sin_port::native_map::scripted_sequence_extent;else return 0;return 1;
+            if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.weapon)*n=sizeof(q.weapon);else if(e==q.enemy)*n=sizeof(q.enemy);else if(e&&(e==q.scripted_entity||e==q.scripted_other))*n=sin_port::native_map::scripted_sequence_extent;else return 0;return 1;
         };
         req_schedule.admission.context=&equipped;req_schedule.admission.extent=extent;
         auto active=combat_bind;
@@ -1021,7 +1021,7 @@ int main(int argc,char** argv){
             const auto scripted_frame=reinterpret_cast<RunServerNpcWeaponFrameWithScriptedEvents>(GetProcAddress(s,server_npc_scripted_weapon_frame_export));
             assert(scripted_frame&&!GetProcAddress(c,server_npc_scripted_weapon_frame_export));
             struct SequenceFixture {
-                F* f;alignas(4) unsigned char seq[nm::scripted_sequence_extent]{};
+                F* f;alignas(4) unsigned char seq[nm::scripted_sequence_extent]{},other[nm::scripted_sequence_extent]{};
                 const ServerNpcScheduleStateApi* state=nullptr;
                 const ServerNpcScheduleBindings* schedule=nullptr;
                 unsigned restored=0,cleared=0,reads=0;
@@ -1032,7 +1032,7 @@ int main(int argc,char** argv){
             selection.state.entities.count=3;
             nm::ScriptedSequenceControlBindings control{};control.context=&q;
             control.extent=[](void* p,void* entity,unsigned* n) noexcept ->int{
-                auto& q=*static_cast<SequenceFixture*>(p);*n=entity==q.seq?sizeof(q.seq):entity==q.f->actor?sizeof(q.f->actor):0;return *n!=0;
+                auto& q=*static_cast<SequenceFixture*>(p);*n=entity==q.seq||entity==q.other?sizeof(q.seq):entity==q.f->actor?sizeof(q.f->actor):0;return *n!=0;
             };
             nm::ScriptedSequenceInterruptBindings interrupt{&control,nullptr};
             nm::ScriptedNpcAnimationEventBindings events{&interrupt,nullptr};
@@ -1120,6 +1120,19 @@ int main(int argc,char** argv){
             // cursor advance: task completion and outer cadence drive it.
             std::memset(q.seq,0,sizeof(q.seq));f.put(q.seq,0,nm::scripted_sequence_vtable);
             f.put(q.seq,0x378,0x9002u);f.put(q.seq,0x3d0,0x3000u);f.put(q.seq,0x3d4,0xffffffffu);
+            // Two named sequences already registered with the barrier.
+            f.put(q.seq,0xc,0x2242ee1cu);f.put(q.seq,0xc0,23u);f.put(q.seq,0x3b8,2u);
+            f.put(q.other,0,nm::scripted_sequence_vtable);f.put(q.other,0xc,0x2242ee1cu);f.put(q.other,0xc0,23u);
+            f.put(q.other,0x378,0xa003u);f.put(q.other,0x3b8,2u);
+            equipped_entries[3].serial=10;equipped_entries[3].entity=reinterpret_cast<CBaseEntity*>(q.other);
+            equipped_entries[2].next=&equipped_entries[3];equipped_entries[3].previous=&equipped_entries[2];
+            equipped.scripted_other=q.other;chain.bound.scheduler.maintenance.selection.state.entities.count=4;
+            ServerEntitySearchBindings group{};group.context=&q;group.head=&equipped_entries[2];group.extent=control.extent;
+            group.string_text=[](void*,unsigned token,const char** text,unsigned* n) noexcept ->int{
+                *text=token==23?"group":token==0x2242ee1cu?"scripted_sequence":token==0?"":nullptr;
+                if(!*text)return 0;*n=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+            };
+            native_pos.search=&group;
             prepare_engaged(1,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
             f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0xffffffffu);
             f.put(f.actor,0x970,0x9002u);f.put(f.actor,0x378,0x3000u);f.put(f.actor,0x9c,100);f.put(f.actor,0x78,1u);
@@ -1148,17 +1161,17 @@ int main(int argc,char** argv){
                 assert(ok&&outer_result.completed&&outer_result.think_called&&tail_result.completed);
                 assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.schedule==8012&&sr.index==index);
                 if(index==0){assert(sr.task.id==116&&sr.status==4&&f.clear_paths==prior_clears+1&&!script_stats.starts);}
-                if(index==1){assert(sr.task.id==110&&sr.status==4&&script_stats.native_starts==1&&script_stats.native_runs==1&&script_stats.last_run.script.synchronized);}
+                if(index==1){assert(sr.task.id==110&&sr.status==4&&script_stats.native_starts==1&&script_stats.native_runs==1&&script_stats.last_run.script.synchronized&&script_stats.last_run.script.group_updates==2);}
                 if(index==2){assert(sr.task.id==106&&sr.status!=4&&script_stats.native_starts==1&&script_stats.native_runs==1&&script_stats.last_run.script.waiting);}
                 assert(outer_result.finish.deadline>prefix_time);prefix_time=outer_result.finish.deadline;
             }
-            unsigned sync_count=0;std::memcpy(&sync_count,q.seq+0x3b8,4);assert(sync_count==1);
+            unsigned sync_count=0,other_count=0;std::memcpy(&sync_count,q.seq+0x3b8,4);std::memcpy(&other_count,q.other+0x3b8,4);assert(sync_count==1&&other_count==1);
             // Without a sequence release, another due frame must stay on 106.
             seed_anim(prefix_time);
             const ServerNpcRunAnimationInput held{prefix_time,false,false};
             assert(combined->ground(f.actor,sizeof(f.actor),&held,.05f,&prefix_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out)&&outer_result.completed&&outer_result.think_called);
             assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.index==2&&sr.task.id==106&&sr.status!=4&&!script_stats.native_starts&&script_stats.native_runs==1&&script_stats.last_run.script.waiting);
-            meta.suppress=false;meta.scripted=false;equipped.scripted_entity=nullptr;equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
+            meta.suppress=false;meta.scripted=false;equipped.scripted_entity=nullptr;equipped.scripted_other=nullptr;equipped_entries[3]={};equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
         }
         // Real due-think wake route, using the original proximity branch
         // with PVS false to retain the already verified combat fixture.

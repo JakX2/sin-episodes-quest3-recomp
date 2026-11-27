@@ -1696,10 +1696,10 @@
     {
         namespace nw=sin_port::native_weapon_tables;
         struct TaskFixture {
-            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{},component[9]{},event_action[0x1c]{},event_layer[0x40]{};
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},other[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{},component[9]{},event_action[0x1c]{},event_layer[0x40]{};
             nw::ServerStudioEvent studio[4]{{.1f,1001,0,"",0},{.2f,1003,0,"3",0},{.3f,1002,0,"",0},{.4f,17,0,"fallback",0}};
             bool component_handles=false;
-            sin_independent::EntityHandleEntry entries[2]{};
+            sin_independent::EntityHandleEntry entries[3]{};
             float now=12.f;std::string calls;
         } f;
         const auto run=reinterpret_cast<RunScriptedNpcTask>(GetProcAddress(server,scripted_npc_task_export));
@@ -1715,10 +1715,10 @@
         };
         ScriptedSequenceControlBindings c{};c.context=&f;c.entries=f.entries;c.entry_count=2;c.now=&f.now;
         c.extent=[](void* p,void* a,unsigned* n) noexcept ->int{
-            auto& f=*static_cast<TaskFixture*>(p);*n=a==f.npc?sizeof(f.npc):a==f.seq?sizeof(f.seq):0;return *n!=0;
+            auto& f=*static_cast<TaskFixture*>(p);*n=a==f.npc?sizeof(f.npc):a==f.seq||a==f.other?sizeof(f.seq):0;return *n!=0;
         };
         ScriptedSequenceAnimationBindings anim{};anim.control=&c;
-        ScriptedSequencePossessionBindings pos{};pos.entries=f.entries;pos.entry_count=2;pos.now=&f.now;
+        ScriptedSequencePossessionBindings pos{};pos.entries=f.entries;pos.entry_count=2;pos.now=&f.now;pos.context=&f;pos.extent=c.extent;
         ScriptedSequenceFinishBindings finish{&anim,&pos,&f};
         finish.cleanup_script_state=[](void* p,void* a) noexcept ->int{
             auto& f=*static_cast<TaskFixture*>(p);assert(a==f.npc);f.calls+='C';return 1;
@@ -1735,7 +1735,28 @@
         f.seq[0x3c0]=1;
         assert(run(f.npc,sizeof(f.npc),110,&b,&o)&&o.waiting&&!o.synchronized);
         f.seq[0x3c0]=0;
-        assert(run(f.npc,sizeof(f.npc),110,&b,&o)&&o.synchronized&&o.group_updates==1&&o.task_completed&&word(f.seq,0x3b8)==1&&word(f.npc,0x7a4)==4);
+        assert(run(f.npc,sizeof(f.npc),110,&b,&o)&&o.synchronized&&o.group_updates==1&&o.task_completed&&!word(f.seq,0x3b8)&&word(f.seq,0x3bc)==0x41400000u&&word(f.npc,0x7a4)==4);
+        // Named release uses each matching sequence's count. The first
+        // release leaves both timestamps alone; the second sets both.
+        put(f.seq,0xc,0x2242ee1cu);put(f.seq,0xc0,23u);
+        put(f.other,0,scripted_sequence_vtable);put(f.other,0xc,0x2242ee1cu);put(f.other,0xc0,23u);put(f.other,0x378,0x5002u);
+        f.entries[2].entity=reinterpret_cast<CBaseEntity*>(f.other);f.entries[2].serial=5;
+        f.entries[0].next=&f.entries[2];f.entries[2].previous=&f.entries[0];
+        nw::ServerEntitySearchBindings group{};group.context=&f;group.head=f.entries;group.extent=c.extent;
+        group.string_text=[](void*,unsigned token,const char** text,unsigned* bytes) noexcept ->int{
+            *text=token==23?"group":token==0x2242ee1cu?"scripted_sequence":token==0?"":nullptr;
+            if(!*text)return 0;*bytes=static_cast<unsigned>(std::strlen(*text)+1);return 1;
+        };
+        c.entry_count=pos.entry_count=3;pos.search=&group;
+        put(f.seq,0x3b8,2u);put(f.other,0x3b8,2u);put(f.seq,0x3bc,0u);put(f.other,0x3bc,0u);
+        for(unsigned remaining:{1u,0u}){
+            put(f.npc,0x7a4,1);
+            assert(run(f.npc,sizeof(f.npc),110,&b,&o)&&o.synchronized&&o.group_updates==2&&o.task_completed);
+            assert(word(f.seq,0x3b8)==remaining&&word(f.other,0x3b8)==remaining);
+            const unsigned stamp=remaining?0u:0x41400000u;
+            assert(word(f.seq,0x3bc)==stamp&&word(f.other,0x3bc)==stamp);
+        }
+        put(f.seq,0xc0,0u);c.entry_count=pos.entry_count=2;pos.search=nullptr;f.entries[0].next=nullptr;
         assert(run(f.npc,sizeof(f.npc),108,&b,&o)&&o.waiting&&o.aim_called&&f.calls=="A");
         assert(run(f.npc,sizeof(f.npc),109,&b,&o)&&o.waiting&&f.calls=="A");
         put(f.npc,0x7a4,1);put(f.seq,0xb4,4u);f.npc[0x3e0]=1;

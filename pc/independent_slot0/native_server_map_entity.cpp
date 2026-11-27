@@ -3198,11 +3198,12 @@ int scripted_sequence_acquire(void* a,unsigned n,const ScriptedSequenceAcquireBi
 }
 // 221ae370: named scripts count matching sequence entities on self;
 // unnamed scripts write count=1 and stamp curtime immediately.
-bool sequence_sync(void* a,const ScriptedSequencePossessionBindings& b,ScriptedSequencePossessionResult& o) noexcept {
+// 221ae370: possession passes true; RunTask110 passes false (EBX=0).
+bool sequence_sync(void* a,const ScriptedSequencePossessionBindings& b,ScriptedSequencePossessionResult& o,bool delay) noexcept {
     const unsigned name=read_field<unsigned>(a,0xc0);
     if(!name){
         if(!b.now||!std::isfinite(*b.now))return false;
-        write_field(a,0x3b8,1u);write_field(a,0x3bc,*b.now);++o.group_updates;return true;
+        write_field(a,0x3b8,delay?1u:0u);write_field(a,0x3bc,*b.now);++o.group_updates;return true;
     }
     using namespace sin_port::native_weapon_tables;
     const auto* api=SiN_GetServerEntitySearchApi(1,sizeof(ServerEntitySearchApi));
@@ -3231,7 +3232,18 @@ bool sequence_sync(void* a,const ScriptedSequencePossessionBindings& b,ScriptedS
         if(match){
             if(vt!=scripted_sequence_vtable||n<scripted_sequence_extent)return false;
             ++o.group_matches;
-            write_field(a,0x3b8,read_field<unsigned>(a,0x3b8)+1u);++o.group_updates;
+            if(delay){
+                // Original increments self for every matching named sequence.
+                write_field(a,0x3b8,read_field<unsigned>(a,0x3b8)+1u);
+            }else{
+                // Release decrements the MATCHED entity, not self, and
+                // records the current clock only on transition to zero.
+                const unsigned count=read_field<unsigned>(previous,0x3b8)-1u;
+                if(!count&&(!b.now||!std::isfinite(*b.now)))return false;
+                write_field(previous,0x3b8,count);
+                if(!count)write_field(previous,0x3bc,*b.now);
+            }
+            ++o.group_updates;
         }
     }
     return false;
@@ -3296,7 +3308,7 @@ int scripted_sequence_possession(void* a,unsigned n,const ScriptedSequencePosses
     }else if(mode==0||mode==5)write_field(npc,0x96c,1u);
     else if(mode>=1&&mode<=3)write_field(npc,0x96c,mode+3);
     o->state=read_field<int>(npc,0x96c);
-    if(!sequence_sync(a,*b,*o))return 0;
+    if(!sequence_sync(a,*b,*o,true))return 0;
     if(read_field<int>(npc,0x858)!=4)write_field(npc,0x858,4);
     return done();
 }
@@ -3931,7 +3943,7 @@ int run_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcTas
     if(read_field<unsigned char>(seq,0x3c0))return wait();
     if(!finish.possession||finish.possession->entries!=c.entries||finish.possession->entry_count!=c.entry_count||finish.possession->now!=c.now)return 0;
     ScriptedSequencePossessionResult sync{};
-    if(!sequence_sync(seq,*finish.possession,sync))return 0;
+    if(!sequence_sync(seq,*finish.possession,sync,false))return 0;
     o->synchronized=1;o->group_updates=sync.group_updates;
     return complete()?done():0;
 }
