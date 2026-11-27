@@ -46,6 +46,18 @@ struct ServerNpcSharedScriptedTaskResult {
 inline constexpr char server_npc_shared_scripted_task_export[]="SiN_ExecuteServerNpcSharedScriptedTask";
 using ExecuteServerNpcSharedScriptedTask=int (__cdecl *)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,
     const ServerNpcSharedTaskBindings*,const native_map::ScriptedNpcTaskBindings*,ServerNpcSharedScriptedTaskResult*) noexcept;
+struct ServerNpcSharedScriptedStartResult {
+    ServerNpcSharedTaskResult shared;
+    native_map::ScriptedNpcStartTaskResult script;
+};
+inline constexpr char server_npc_shared_scripted_start_export[]="SiN_ExecuteServerNpcSharedScriptedStartTask";
+using ExecuteServerNpcSharedScriptedStartTask=int (__cdecl *)(void*,unsigned,const ServerNpcScheduleTask*,float,
+    const ServerNpcSharedTaskBindings*,const native_map::ScriptedNpcStartTaskBindings*,ServerNpcSharedScriptedStartResult*) noexcept;
+struct ServerNpcScriptedSchedulerStats {
+    unsigned starts,runs,native_starts,native_runs,component_handled;
+    ServerNpcSharedScriptedStartResult last_start;
+    ServerNpcSharedScriptedTaskResult last_run;
+};
 // Facing service extends the shared dispatcher without altering the v1 ABI.
 inline constexpr char server_npc_shared_facing_export[]="SiN_GetServerNpcSharedFacingApi";
 struct ServerNpcSharedFacingBindings {
@@ -308,6 +320,9 @@ struct ServerNpcSharedParentSession {
     const ServerNpcGruntScheduleAcquireBindings* native_acquire=nullptr;
     const ServerNpcGruntScheduleLineServices* native_line=nullptr;
     const ServerNpcGruntScheduleConeServices* native_cone=nullptr;
+    const native_map::ScriptedNpcTaskBindings* script_run=nullptr;
+    const native_map::ScriptedNpcStartTaskBindings* script_start=nullptr;
+    ServerNpcScriptedSchedulerStats* script_stats=nullptr;
 };
 int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementStats* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueStats* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationStats* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverStats* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverStats* = nullptr) noexcept;
 }
