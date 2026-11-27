@@ -19,6 +19,7 @@ import sys
 import time
 
 from audit_sin_original_engine_gameents_consumer import ENGINE_SHA, IMAGE_BASE
+from attest_sin_original_engine_live_allocator_code import verify_loaded_code
 
 # Original engine.dll SHA-pinned instruction witnesses from the independent
 # allocator/reuse audit. All values are original VAs, NOT process-relative
@@ -165,8 +166,13 @@ class Win32Reader:
                           "OpenProcess read/query denied for owner PID")
         try:
             self.game_path = self._query_game_path()
-            self.engine_base, self.engine_path = self._find_engine(pid)
+            (self.engine_base, self.engine_path,
+             self.engine_size) = self._find_engine(pid)
             self._verify_owner_installation()
+            # A matching on-disk DLL is not enough. The runtime instructions
+            # that read the four globals must also match SHA-backed original
+            # x86 witnesses, with OS-loader PE32 relocation accounted for.
+            self.attest_loaded_allocator_code()
         except BaseException:
             self.close()
             raise
@@ -204,7 +210,8 @@ class Win32Reader:
             ok = self.kernel.Module32FirstW(handle, ctypes.byref(item))
             while ok:
                 if item.szModule.casefold() == "engine.dll":
-                    return int(item.modBaseAddr), Path(item.szExePath)
+                    return (int(item.modBaseAddr),
+                            Path(item.szExePath), int(item.modBaseSize))
                 ok = self.kernel.Module32NextW(handle, ctypes.byref(item))
         finally:
             self.kernel.CloseHandle(handle)
@@ -224,6 +231,33 @@ class Win32Reader:
             raise RuntimeError("refusing unknown/non-original engine.dll SHA")
         if not 0 < self.engine_base <= 0xFFFFFFFF:
             raise RuntimeError("loaded engine.dll is not mapped as PE32")
+
+    def read_bytes(self, address, count):
+        """Read at most 16 code bytes; never inspect a remote pointer target."""
+        if (not isinstance(address, int) or
+                not isinstance(count, int) or
+                not 0 < address <= 0xFFFFFFFF or
+                not 0 < count <= 16 or address + count > 0x100000000):
+            raise ValueError("unbounded PE32 code witness read")
+        buffer = ctypes.create_string_buffer(count)
+        got = ctypes.c_size_t(0)
+        if not self.kernel.ReadProcessMemory(
+                self.handle, ctypes.c_void_p(address),
+                ctypes.byref(buffer), count, ctypes.byref(got)
+        ) or got.value != count:
+            raise OSError(ctypes.get_last_error(),
+                          "read-only PE32 original opcode unavailable")
+        return buffer.raw
+
+    def attest_loaded_allocator_code(self):
+        """Two unpinned witness passes, not an atomic/continuous guarantee."""
+        report = verify_loaded_code(
+            self.read_bytes, self.engine_base, self.engine_size)
+        if not report.accepted:
+            raise RuntimeError(
+                "loaded original engine allocator witness refused: " +
+                report.summary())
+        return report
 
     def read_dword(self, address):
         value = ctypes.c_uint32(0)
@@ -280,6 +314,18 @@ def test_win32_readonly_api_on_self():
             handle, ctypes.cast(ctypes.byref(original),ctypes.c_void_p),
             ctypes.byref(observed),4,ctypes.byref(transferred))
         assert transferred.value == 4 and observed.value == original.value
+        from types import SimpleNamespace
+        self_reader = SimpleNamespace(handle=handle, kernel=kernel)
+        assert Win32Reader.read_bytes(
+            self_reader, ctypes.addressof(original), 4) == (
+            original.value.to_bytes(4, "little"))
+        try:
+            Win32Reader.read_bytes(
+                self_reader, ctypes.addressof(original), 17)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unbounded process code read accepted")
     finally:
         assert kernel.CloseHandle(handle)
 
@@ -357,6 +403,7 @@ def main():
         with Win32Reader(args.pid) as reader:
             print("ORIGINAL_ENGINE_SHA256_VERIFIED=true")
             print("ORIGINAL_ENGINE_EDICT_VA_WITNESSES=4")
+            print("LOADED_ENGINE_ALLOCATOR_CODE_WITNESSES_BEGIN=10")
             observations = []
             for index in range(args.samples):
                 snapshot = reader.sample()
@@ -371,6 +418,10 @@ def main():
                 print(label,flush=True)
                 if index + 1 < args.samples:
                     time.sleep(args.interval_ms / 1000)
+            # Match the same loaded original code after the sampling window.
+            # Code could still change/ABA in between: no continuous claim.
+            reader.attest_loaded_allocator_code()
+            print("LOADED_ENGINE_ALLOCATOR_CODE_WITNESSES_END=10")
             plausible, moved = summary(observations)
             print(f"OWNER_EDICT_PLAUSIBLE_SAMPLES={plausible}")
             print(f"OWNER_EDICT_OBSERVED_ADJACENT_BASE_CHANGES={moved}")
