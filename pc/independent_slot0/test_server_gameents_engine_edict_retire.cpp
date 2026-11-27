@@ -111,6 +111,25 @@ int main() {
        test.serial!=43||test.reuse_time_bits!=0x12345678||
        test.flags!=0||test.unknown!=0)
         return Fail(10,"post-callback owner revocation must block engine epilogue");
+    // Reuse selection skips reserved slots and enforces the one-second boundary.
+    Fixture scan{};
+    EngineEdictRetireHooks sh{&scan,&Authorized,&AuthorizedArray,&FreeEntity};
+    auto stamp=[](EngineEdict& e,float v){std::memcpy(&e.reuse_time_bits,&v,4);};
+    stamp(scan.elements[1],3.0f);
+    stamp(scan.elements[2],3.0f);
+    std::size_t count=3,selected=99;
+    if(SelectEngineEdict(scan.elements,sizeof(scan.elements),count,0,3,1.0f,sh,selected)
+       !=EngineEdictSelectResult::Full||scan.freed||selected!=99)
+        return Fail(11,"premature reuse");
+    if(SelectEngineEdict(scan.elements,sizeof(scan.elements),count,0,4,1.0f,sh,selected)
+       !=EngineEdictSelectResult::Reused||selected!=1||count!=3||scan.freed!=1)
+        return Fail(12,"one-second reuse boundary");
+    Fixture grow{};
+    EngineEdictRetireHooks gh{&grow,&Authorized,&AuthorizedArray,&FreeEntity};
+    count=1;selected=99;
+    if(SelectEngineEdict(grow.elements,sizeof(grow.elements),count,0,0,1.0f,gh,selected)
+       !=EngineEdictSelectResult::Expanded||count!=2||selected!=1||!grow.valid)
+        return Fail(13,"array expansion");
     std::puts("PASS engine original 0x14 edict stride, indexed and direct retire, post-callback owner reauthorization and refusal boundary");
     return 0;
 }

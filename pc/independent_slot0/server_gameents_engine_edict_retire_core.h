@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 
 namespace sin_independent {
 constexpr std::size_t kEngineOriginalEdictStride=0x14;
@@ -21,7 +22,7 @@ constexpr std::size_t kEngineOriginalEdictReuseTime=0x10;
 constexpr std::uint32_t kEngineOriginalEdictFreeBit=2u;
 constexpr std::uint32_t kEngineOriginalEdictRetiredSerial=0xffffffffu;
 static_assert(kEngineOriginalEdictReuseTime+4==kEngineOriginalEdictStride,
-              "owner original edict element includes trailing free-link");
+              "owner original edict element includes trailing reuse-time");
 
 struct EngineEdictRetireHooks {
     void* context=nullptr;
@@ -108,5 +109,43 @@ inline EngineEdictRetireResult RetireEngineEdictAt(
         kEngineOriginalEdictFreeBit)==0)
         return EngineEdictRetireResult::Inactive;
     return RetireEngineEdict(edict,kEngineOriginalEdictStride,h);
+}
+
+// Original negative-index allocation path 0x20110ECC..0x20110FA7.
+// The original x87 comparisons use 2.0f and 1.0 (double).
+// Host must keep the array stable throughout selection and callback.
+enum class EngineEdictSelectResult { Reused, Expanded, Invalid, Full, Denied };
+inline EngineEdictSelectResult SelectEngineEdict(
+    void* array, std::size_t bytes, std::size_t& count,
+    std::size_t reserved, std::int32_t ticks, float scale,
+    const EngineEdictRetireHooks& h, std::size_t& selected) noexcept {
+    const auto capacity=bytes/kEngineOriginalEdictStride;
+    if(!array||!h.Complete()||!h.authorized_array||
+       bytes%kEngineOriginalEdictStride||count>capacity||
+       reserved>=count||!std::isfinite(scale))
+        return EngineEdictSelectResult::Invalid;
+    if(!h.authorized_array(h.context,array,bytes))
+        return EngineEdictSelectResult::Denied;
+    auto* raw=static_cast<unsigned char*>(array);
+    const double now=static_cast<double>(static_cast<float>(ticks))*scale;
+    std::size_t i=reserved+1;
+    for(;i<count;++i) {
+        auto* e=raw+i*kEngineOriginalEdictStride;
+        if(!h.authorized(h.context,e,kEngineOriginalEdictStride))
+            return EngineEdictSelectResult::Denied;
+        if(!(ReadEngineEdictDword(e,kEngineOriginalEdictFlags)&2u))continue;
+        float stamp;
+        std::memcpy(&stamp,e+kEngineOriginalEdictReuseTime,4);
+        // x87 unordered comparisons do not satisfy either branch.
+        if(stamp<2.0f || now-static_cast<double>(stamp)>=1.0)break;
+    }
+    const bool expand=i==count;
+    if(expand&&count==capacity)return EngineEdictSelectResult::Full;
+    auto* e=raw+i*kEngineOriginalEdictStride;
+    if(RetireEngineEdict(e,kEngineOriginalEdictStride,h)!=
+       EngineEdictRetireResult::Retired)return EngineEdictSelectResult::Denied;
+    if(expand)++count;
+    selected=i;
+    return expand?EngineEdictSelectResult::Expanded:EngineEdictSelectResult::Reused;
 }
 } // namespace sin_independent
