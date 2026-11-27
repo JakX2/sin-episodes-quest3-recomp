@@ -101,6 +101,29 @@ int main(int argc,char** argv){
         }
         assert(!reload_image->build(f.actor,NpcSubclassJetpack,7000,7001,&b,&ext,&er)&&ext.row_count==46&&ext.task_count==268);
     }
+    const auto get_scripts_image=reinterpret_cast<GetServerNpcScriptedScheduleImageApi>(GetProcAddress(s,server_npc_scripted_schedule_image_export));
+    assert(get_scripts_image&&!GetProcAddress(c,server_npc_scripted_schedule_image_export)&&!get_scripts_image(0,sizeof(ServerNpcScheduleImageApi))&&!get_scripts_image(1,0));
+    const auto* scripts_image=get_scripts_image(1,sizeof(ServerNpcScheduleImageApi));assert(scripts_image);
+    {
+        ServerScheduleImage ext{};ServerScheduleImageResult er{};
+        const int expected_ids[]{53,55,56,57,58,59};
+        const unsigned counts[]{2,10,10,10,5,6};
+        const int task_ids[6][10]{{116,115},{89,107,9,121,111,112,110,106,108,109},{89,107,10,121,111,112,110,106,108,109},{89,107,11,121,111,112,110,106,108,109},{116,110,106,108,109},{116,112,110,106,108,109}};
+        for(unsigned family:{NpcSubclassGround,NpcSubclassElite,NpcSubclassJetpack}){
+            assert(scripts_image->build(f.actor,family,8000,99,&b,&ext,&er)&&er.rows==6&&er.tasks==43&&er.interrupts==12&&!er.private_activities&&ext.head==8015&&ext.family==family);
+            for(unsigned i=0;i<6;++i){
+                const unsigned token=8000+3*i;
+                assert(scripts_image->storage(&ext,token,&p,&n)&&n==52);
+                const auto* desc=static_cast<const unsigned*>(p);
+                assert(desc[0]==static_cast<unsigned>(global+100+expected_ids[i])&&desc[2]==counts[i]&&desc[12]==(i?token-3:99));
+                assert(desc[4]==((1u<<4)|(1u<<5)));
+                assert(scripts_image->storage(&ext,token+1,&p,&n)&&n==counts[i]*sizeof(ServerNpcScheduleTask));
+                const auto* tasks=static_cast<const ServerNpcScheduleTask*>(p);
+                for(unsigned j=0;j<counts[i];++j)assert(tasks[j].id==task_ids[i][j]&&tasks[j].parameter==(tasks[j].id==89?2.f:0.f));
+            }
+        }
+        assert(!scripts_image->build(f.actor,NpcSubclassGround,8000,8001,&b,&ext,&er)&&ext.head==8015);
+    }
     auto gc=reinterpret_cast<GetServerNpcCatalogSchedulerApi>(GetProcAddress(s,server_npc_catalog_scheduler_export));
     assert(gc&&!GetProcAddress(c,server_npc_catalog_scheduler_export)&&!gc(0,sizeof(ServerNpcCatalogSchedulerApi))&&!gc(1,0));
     const auto* catalog=gc(1,sizeof(ServerNpcCatalogSchedulerApi));assert(catalog);

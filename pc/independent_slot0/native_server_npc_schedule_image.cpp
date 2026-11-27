@@ -39,7 +39,44 @@ constexpr ServerScheduleCatalogEntry reload_rows[]{
     {NpcSubclassGround,48,"SCHED_HIDE_AND_RELOAD",0x223e45a0u,0x2205e9d2u,inherited_hide_reload,8,inherited_reload_interrupts,1},
     {NpcSubclassGround,49,"SCHED_RELOAD",0x223e4538u,0x2205e9f4u,inherited_reload,2,inherited_reload_interrupts,1}
 };
-int build_impl(void* actor,unsigned family,std::uint32_t base,std::uint32_t fallback,const ServerScheduleImageBindings* b,ServerScheduleImage* out,ServerScheduleImageResult* result,bool with_reload) noexcept{
+// Original base parser 2205ea69..2205eb38 loads 53,55,56,57,58,59
+// in this order; the parser prepends each descriptor.
+constexpr ServerScheduleCatalogTask script_wait_indefinite[]{
+    {116,ScheduleArgumentScalar,0.f},{115,ScheduleArgumentScalar,0.f}
+};
+constexpr ServerScheduleCatalogTask script_walk[]{
+    {89,ScheduleArgumentScalar,2.f},{107,ScheduleArgumentScalar,0.f},{9,ScheduleArgumentScalar,0.f},
+    {121,ScheduleArgumentScalar,0.f},{111,ScheduleArgumentScalar,0.f},{112,ScheduleArgumentScalar,0.f},
+    {110,ScheduleArgumentScalar,0.f},{106,ScheduleArgumentScalar,0.f},{108,ScheduleArgumentScalar,0.f},{109,ScheduleArgumentScalar,0.f}
+};
+constexpr ServerScheduleCatalogTask script_run[]{
+    {89,ScheduleArgumentScalar,2.f},{107,ScheduleArgumentScalar,0.f},{10,ScheduleArgumentScalar,0.f},
+    {121,ScheduleArgumentScalar,0.f},{111,ScheduleArgumentScalar,0.f},{112,ScheduleArgumentScalar,0.f},
+    {110,ScheduleArgumentScalar,0.f},{106,ScheduleArgumentScalar,0.f},{108,ScheduleArgumentScalar,0.f},{109,ScheduleArgumentScalar,0.f}
+};
+constexpr ServerScheduleCatalogTask script_custom[]{
+    {89,ScheduleArgumentScalar,2.f},{107,ScheduleArgumentScalar,0.f},{11,ScheduleArgumentScalar,0.f},
+    {121,ScheduleArgumentScalar,0.f},{111,ScheduleArgumentScalar,0.f},{112,ScheduleArgumentScalar,0.f},
+    {110,ScheduleArgumentScalar,0.f},{106,ScheduleArgumentScalar,0.f},{108,ScheduleArgumentScalar,0.f},{109,ScheduleArgumentScalar,0.f}
+};
+constexpr ServerScheduleCatalogTask script_wait[]{
+    {116,ScheduleArgumentScalar,0.f},{110,ScheduleArgumentScalar,0.f},{106,ScheduleArgumentScalar,0.f},
+    {108,ScheduleArgumentScalar,0.f},{109,ScheduleArgumentScalar,0.f}
+};
+constexpr ServerScheduleCatalogTask script_face[]{
+    {116,ScheduleArgumentScalar,0.f},{112,ScheduleArgumentScalar,0.f},{110,ScheduleArgumentScalar,0.f},
+    {106,ScheduleArgumentScalar,0.f},{108,ScheduleArgumentScalar,0.f},{109,ScheduleArgumentScalar,0.f}
+};
+constexpr int script_interrupts[]{16,17};
+constexpr ServerScheduleCatalogEntry script_rows[]{
+    {NpcSubclassGround,53,"SCHED_WAIT_FOR_SCRIPT",0x223e5c88u,0x2205ea7fu,script_wait_indefinite,2,script_interrupts,2},
+    {NpcSubclassGround,55,"SCHED_SCRIPTED_WALK",0x223e3410u,0x2205eaa2u,script_walk,10,script_interrupts,2},
+    {NpcSubclassGround,56,"SCHED_SCRIPTED_RUN",0x223e3288u,0x2205eac4u,script_run,10,script_interrupts,2},
+    {NpcSubclassGround,57,"SCHED_SCRIPTED_CUSTOM_MOVE",0x223e30f0u,0x2205eae7u,script_custom,10,script_interrupts,2},
+    {NpcSubclassGround,58,"SCHED_SCRIPTED_WAIT",0x223e3010u,0x2205eb0au,script_wait,5,script_interrupts,2},
+    {NpcSubclassGround,59,"SCHED_SCRIPTED_FACE",0x223e2f18u,0x2205eb2cu,script_face,6,script_interrupts,2}
+};
+int build_impl(void* actor,unsigned family,std::uint32_t base,std::uint32_t fallback,const ServerScheduleImageBindings* b,ServerScheduleImage* out,ServerScheduleImageResult* result,bool with_reload,bool scripts_only=false) noexcept{
     if(!result)return 0;*result={};result->failed_schedule=result->failed_task=result->failed_condition=-1;
     if(!actor||family>NpcSubclassJetpack||!base||base>0xffffffffu-137u||(fallback>=base&&fallback-base<138u)||!b||!out)return 0;
     const auto* cat=SiN_GetServerNpcScheduleCatalogApi(1,sizeof(ServerNpcScheduleCatalogApi));
@@ -50,10 +87,10 @@ int build_impl(void* actor,unsigned family,std::uint32_t base,std::uint32_t fall
     ServerScheduleImage staged{};staged.family=family;staged.token_base=base;staged.head=staged.fallback_head=fallback;
     // Base initializes first, then subclass. Parser prepends new descriptors.
     // Inherited descriptors are loaded before Grunt and subclass schedules.
-    for(int pass=with_reload?-1:0;pass<(family==NpcSubclassGround?1:2);++pass){
+    for(int pass=scripts_only?-2:with_reload?-1:0;pass<(scripts_only?-1:family==NpcSubclassGround?1:2);++pass){
         const unsigned wanted=pass>0?family:static_cast<unsigned>(NpcSubclassGround);
-        const auto* table=pass<0?reload_rows:entries;
-        const unsigned table_count=pass<0?2u:count;
+        const auto* table=pass==-2?script_rows:pass<0?reload_rows:entries;
+        const unsigned table_count=pass==-2?6u:pass<0?2u:count;
         for(unsigned i=0;i<table_count;++i){
             const auto& e=table[i];if(e.family!=wanted)continue;
             result->failed_schedule=e.local_schedule;result->failed_task=result->failed_condition=-1;
@@ -105,6 +142,9 @@ int __cdecl build(void* actor,unsigned family,std::uint32_t base,std::uint32_t f
 }
 int __cdecl build_reload(void* actor,unsigned family,std::uint32_t base,std::uint32_t fallback,const ServerScheduleImageBindings* b,ServerScheduleImage* out,ServerScheduleImageResult* result) noexcept{
     return build_impl(actor,family,base,fallback,b,out,result,true);
+}
+int __cdecl build_scripts(void* actor,unsigned family,std::uint32_t base,std::uint32_t fallback,const ServerScheduleImageBindings* b,ServerScheduleImage* out,ServerScheduleImageResult* result) noexcept{
+    return build_impl(actor,family,base,fallback,b,out,result,false,true);
 }
 int __cdecl storage(const ServerScheduleImage* image,std::uint32_t token,const void** out,unsigned* bytes) noexcept{
     if(!out||!bytes)return 0;*out=nullptr;*bytes=0;
@@ -604,6 +644,7 @@ const ServerNpcCombatCatalogSchedulerApi combat_catalog_api{1,sizeof(ServerNpcCo
 const ServerNpcCatalogSchedulerApi catalog_scheduler_api{1,sizeof(ServerNpcCatalogSchedulerApi),&run_catalog};
 const ServerNpcScheduleImageApi api{1,sizeof(ServerNpcScheduleImageApi),&build,&storage};
 const ServerNpcScheduleImageApi reload_image_api{1,sizeof(ServerNpcScheduleImageApi),&build_reload,&storage};
+const ServerNpcScheduleImageApi scripted_image_api{1,sizeof(ServerNpcScheduleImageApi),&build_scripts,&storage};
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcScheduleImageApi=_SiN_GetServerNpcScheduleImageApi")
@@ -775,4 +816,9 @@ extern "C" int __cdecl SiN_RunServerNpcJetWeaponPolicyThinkWithScripts(void* a,u
     using namespace sin_port::native_weapon_tables;
     if(!valid_scripted_think_services(scripts))return 0;
     return run_native_jet_weapon_policy_think_impl(a,bytes,now,image,b,full,attack,facing,target,movement,cue,observe,sound_cover,tactical,bindings,result,outer_line,inner_line,weapons,outer_weapon,inner_weapon,scripts);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcScriptedScheduleImageApi=_SiN_GetServerNpcScriptedScheduleImageApi")
+extern "C" const sin_port::native_weapon_tables::ServerNpcScheduleImageApi* __cdecl SiN_GetServerNpcScriptedScheduleImageApi(std::uint32_t version,std::uint32_t size) noexcept{
+    using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcScheduleImageApi)?&scripted_image_api:nullptr;
 }
