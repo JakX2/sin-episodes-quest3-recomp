@@ -792,6 +792,18 @@ using CleanupScriptedNpc=int (__cdecl *)(void*,unsigned,const ScriptedNpcCleanup
 inline constexpr char scripted_sequence_finish_cleanup_export[]="SiN_FinishScriptedSequenceWithCleanup";
 using FinishScriptedSequenceWithCleanup=int (__cdecl *)(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,ScriptedSequenceFinishResult*,
     const ScriptedNpcCleanupBindings*,ScriptedNpcCleanupResult*) noexcept;
+// Opt-in native cleanup through both animation completion and RunTask.
+inline constexpr char scripted_sequence_start_cleanup_export[]="SiN_StartScriptedSequenceAnimationWithCleanup";
+inline constexpr char scripted_sequence_play_cleanup_export[]="SiN_CompleteScriptedSequencePlayWithCleanup";
+inline constexpr char scripted_npc_task_cleanup_export[]="SiN_RunScriptedNpcTaskWithCleanup";
+using StartScriptedSequenceAnimationWithCleanup=int (__cdecl *)(void*,unsigned,void*,unsigned,bool,
+    const ScriptedSequenceFinishBindings*,ScriptedSequenceAnimationResult*,ScriptedSequenceFinishResult*,
+    const ScriptedNpcCleanupBindings*,ScriptedNpcCleanupResult*) noexcept;
+using CompleteScriptedSequencePlayWithCleanup=int (__cdecl *)(void*,unsigned,void*,
+    const ScriptedSequenceFinishBindings*,ScriptedSequenceAnimationResult*,ScriptedSequenceFinishResult*,
+    const ScriptedNpcCleanupBindings*,ScriptedNpcCleanupResult*) noexcept;
+using RunScriptedNpcTaskWithCleanup=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcTaskBindings*,ScriptedNpcTaskResult*,
+    const ScriptedNpcCleanupBindings*,ScriptedNpcCleanupResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;

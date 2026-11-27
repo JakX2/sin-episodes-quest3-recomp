@@ -3661,14 +3661,16 @@ int cleanup_scripted_npc(void*,unsigned,const ScriptedNpcCleanupBindings*,Script
 int sequence_finish(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,ScriptedSequenceFinishResult*,
     const ScriptedNpcCleanupBindings* =nullptr,ScriptedNpcCleanupResult* =nullptr) noexcept;
 bool animation_done(void*,unsigned,void*,unsigned,const ScriptedSequenceAnimationBindings&,ScriptedSequenceAnimationResult&,
-    const ScriptedSequenceFinishBindings* =nullptr,ScriptedSequenceFinishResult* =nullptr) noexcept;
+    const ScriptedSequenceFinishBindings* =nullptr,ScriptedSequenceFinishResult* =nullptr,
+    const ScriptedNpcCleanupBindings* =nullptr,ScriptedNpcCleanupResult* =nullptr) noexcept;
 bool animation_start(void* a,unsigned n,void* npc,unsigned bytes,unsigned token,bool complete_empty,
     const ScriptedSequenceAnimationBindings& b,ScriptedSequenceAnimationResult& o,
-    const ScriptedSequenceFinishBindings* finish=nullptr,ScriptedSequenceFinishResult* terminal=nullptr) noexcept {
+    const ScriptedSequenceFinishBindings* finish=nullptr,ScriptedSequenceFinishResult* terminal=nullptr,
+    const ScriptedNpcCleanupBindings* cleanup=nullptr,ScriptedNpcCleanupResult* cleaned=nullptr) noexcept {
     write_field(a,0x3cd,static_cast<unsigned char>(1));
     if(!token&&complete_empty){
         o.empty_completed=1;
-        if(!animation_done(a,n,npc,bytes,b,o,finish,terminal))return false;
+        if(!animation_done(a,n,npc,bytes,b,o,finish,terminal,cleanup,cleaned))return false;
         o.started=0; // original AL false, even if post-idle started
         return true;
     }
@@ -3695,7 +3697,8 @@ bool animation_start(void* a,unsigned n,void* npc,unsigned bytes,unsigned token,
 // and native StartSequence; otherwise call the remaining finish leaf.
 // Both branches fire OnEndSequence with null activator and self caller.
 bool animation_done(void* a,unsigned n,void* npc,unsigned bytes,const ScriptedSequenceAnimationBindings& b,
-    ScriptedSequenceAnimationResult& o,const ScriptedSequenceFinishBindings* finish,ScriptedSequenceFinishResult* terminal) noexcept {
+    ScriptedSequenceAnimationResult& o,const ScriptedSequenceFinishBindings* finish,ScriptedSequenceFinishResult* terminal,
+    const ScriptedNpcCleanupBindings* cleanup,ScriptedNpcCleanupResult* cleaned) noexcept {
     const auto& c=*b.control;
     if(c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count)||!b.events||!b.events->output)return false;
     const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
@@ -3706,7 +3709,7 @@ bool animation_done(void* a,unsigned n,void* npc,unsigned bytes,const ScriptedSe
         o.post_idle_started=o.started;
     }else{
         if(finish){
-            if(!terminal||finish->animation!=&b||!sequence_finish(a,n,npc,finish,terminal))return false;
+            if(!terminal||finish->animation!=&b||!sequence_finish(a,n,npc,finish,terminal,cleanup,cleaned))return false;
         }else if(!b.finish||!b.finish(b.context,a,npc))return false;
         o.finish_called=1;
     }
@@ -3724,14 +3727,17 @@ bool animation_done(void* a,unsigned n,void* npc,unsigned bytes,const ScriptedSe
 }
 int run_sequence_animation(void* a,unsigned n,void* npc,unsigned token,bool complete_empty,bool done,
     const ScriptedSequenceAnimationBindings* b,ScriptedSequenceAnimationResult* o,
-    const ScriptedSequenceFinishBindings* finish=nullptr,ScriptedSequenceFinishResult* terminal=nullptr) noexcept {
+    const ScriptedSequenceFinishBindings* finish=nullptr,ScriptedSequenceFinishResult* terminal=nullptr,
+    const ScriptedNpcCleanupBindings* cleanup=nullptr,ScriptedNpcCleanupResult* cleaned=nullptr) noexcept {
+    if(cleaned)*cleaned={};
     if(terminal){*terminal={};terminal->due_tick=-1;terminal->successor_handle=0xffffffffu;terminal->animation.sequence=terminal->animation.activity=-1;}
     if(!o)return 0;*o={};o->sequence=o->activity=-1;
     if(finish&&(!terminal||finish->animation!=b))return 0;
+    if(cleanup&&(!cleaned||!finish||!b||cleanup->control!=b->control))return 0;
     unsigned bytes=0;if(!animation_valid(a,n,npc,b,bytes))return 0;
     static thread_local bool active=false;if(active)return 0;
     struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
-    const bool ok=done?animation_done(a,n,npc,bytes,*b,*o,finish,terminal):animation_start(a,n,npc,bytes,token,complete_empty,*b,*o,finish,terminal);
+    const bool ok=done?animation_done(a,n,npc,bytes,*b,*o,finish,terminal,cleanup,cleaned):animation_start(a,n,npc,bytes,token,complete_empty,*b,*o,finish,terminal,cleanup,cleaned);
     o->completed=ok;return int(ok);
 }
 // 221afa70 terminal completion, with 221af490 schedule reset
@@ -3838,11 +3844,14 @@ bool scripted_rate(void* npc,float rate,const ScriptedNpcTaskBindings& b,Scripte
     }
     write_field(npc,0x3c0,rate);o.rate_changed=1;return true;
 }
-int run_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcTaskBindings* b,ScriptedNpcTaskResult* o) noexcept {
+int run_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcTaskBindings* b,ScriptedNpcTaskResult* o,
+    const ScriptedNpcCleanupBindings* cleanup=nullptr,ScriptedNpcCleanupResult* cleaned=nullptr) noexcept {
+    if(cleaned)*cleaned={};
     if(!o)return 0;*o={};o->task=task;
     if(!b||!b->finish||!b->finish->animation||!b->finish->animation->control||
        !b->lifecycle||(task!=106&&task!=108&&task!=109&&task!=110)||bytes<0x9f4)return 0;
     const auto& finish=*b->finish;const auto& anim=*finish.animation;const auto& c=*anim.control;
+    if(cleanup&&(!cleaned||cleanup->control!=&c))return 0;
     unsigned marker=0;
     if(!c.extent||!c.now||!std::isfinite(*c.now)||c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count)||
        !SinReadCampaignTouchMarkerInternal(npc,&marker)||!scripted_npc_marker(marker)||!SinCampaignStorageReadableInternal(npc,bytes))return 0;
@@ -3883,7 +3892,7 @@ int run_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcTas
             }
         }
         if(!resolved(seq,n))return 0;
-        if(seq&&!run_sequence_animation(seq,n,npc,0,false,true,&anim,&o->animation,&finish,&o->terminal))return 0;
+        if(seq&&!run_sequence_animation(seq,n,npc,0,false,true,&anim,&o->animation,&finish,&o->terminal,cleanup,cleaned))return 0;
         return complete()?done():0;
     }
     if(!resolved(seq,n))return 0;
@@ -3907,7 +3916,7 @@ int run_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcTas
         }
         o->begin_output=1;
         if(!resolved(seq,n)||!seq||
-           !run_sequence_animation(seq,n,npc,read_field<unsigned>(seq,0x398),true,false,&anim,&o->animation,&finish,&o->terminal))return 0;
+           !run_sequence_animation(seq,n,npc,read_field<unsigned>(seq,0x398),true,false,&anim,&o->animation,&finish,&o->terminal,cleanup,cleaned))return 0;
         if(!resolved(seq,n))return 0;
         if(!seq){
             if(!finish.clear_schedule||!finish.clear_schedule(finish.context,npc))return 0;o->schedule_cleared=1;
@@ -3917,7 +3926,7 @@ int run_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcTas
     if(task==109){
         if(!read_field<unsigned char>(npc,0x3e0)&&!registry.Resolve(read_field<unsigned>(seq,0x3d4)))return wait();
         // No TaskComplete on the original terminal branch.
-        return sequence_finish(seq,n,npc,&finish,&o->terminal)?done():0;
+        return sequence_finish(seq,n,npc,&finish,&o->terminal,cleanup,cleaned)?done():0;
     }
     if(read_field<unsigned char>(seq,0x3c0))return wait();
     if(!finish.possession||finish.possession->entries!=c.entries||finish.possession->entry_count!=c.entry_count||finish.possession->now!=c.now)return 0;
@@ -4745,4 +4754,28 @@ extern "C" int __cdecl SiN_FinishScriptedSequenceWithCleanup(void* a,unsigned n,
     const sin_port::native_map::ScriptedNpcCleanupBindings* cleanup,sin_port::native_map::ScriptedNpcCleanupResult* cleaned) noexcept {
     if(!cleanup||!cleaned){if(o)*o={};if(cleaned)*cleaned={};return 0;}
     return sin_port::native_map::sequence_finish(a,n,npc,b,o,cleanup,cleaned);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_StartScriptedSequenceAnimationWithCleanup=_SiN_StartScriptedSequenceAnimationWithCleanup")
+extern "C" int __cdecl SiN_StartScriptedSequenceAnimationWithCleanup(void* a,unsigned n,void* npc,unsigned token,bool empty,
+    const sin_port::native_map::ScriptedSequenceFinishBindings* b,sin_port::native_map::ScriptedSequenceAnimationResult* o,
+    sin_port::native_map::ScriptedSequenceFinishResult* terminal,const sin_port::native_map::ScriptedNpcCleanupBindings* cleanup,
+    sin_port::native_map::ScriptedNpcCleanupResult* cleaned) noexcept {
+    if(!b||!cleanup||!cleaned||!terminal){if(o)*o={};if(terminal)*terminal={};if(cleaned)*cleaned={};return 0;}
+    return sin_port::native_map::run_sequence_animation(a,n,npc,token,empty,false,b->animation,o,b,terminal,cleanup,cleaned);
+}
+#pragma comment(linker,"/EXPORT:SiN_CompleteScriptedSequencePlayWithCleanup=_SiN_CompleteScriptedSequencePlayWithCleanup")
+extern "C" int __cdecl SiN_CompleteScriptedSequencePlayWithCleanup(void* a,unsigned n,void* npc,
+    const sin_port::native_map::ScriptedSequenceFinishBindings* b,sin_port::native_map::ScriptedSequenceAnimationResult* o,
+    sin_port::native_map::ScriptedSequenceFinishResult* terminal,const sin_port::native_map::ScriptedNpcCleanupBindings* cleanup,
+    sin_port::native_map::ScriptedNpcCleanupResult* cleaned) noexcept {
+    if(!b||!cleanup||!cleaned||!terminal){if(o)*o={};if(terminal)*terminal={};if(cleaned)*cleaned={};return 0;}
+    return sin_port::native_map::run_sequence_animation(a,n,npc,0,false,true,b->animation,o,b,terminal,cleanup,cleaned);
+}
+#pragma comment(linker,"/EXPORT:SiN_RunScriptedNpcTaskWithCleanup=_SiN_RunScriptedNpcTaskWithCleanup")
+extern "C" int __cdecl SiN_RunScriptedNpcTaskWithCleanup(void* a,unsigned n,int task,
+    const sin_port::native_map::ScriptedNpcTaskBindings* b,sin_port::native_map::ScriptedNpcTaskResult* o,
+    const sin_port::native_map::ScriptedNpcCleanupBindings* cleanup,sin_port::native_map::ScriptedNpcCleanupResult* cleaned) noexcept {
+    if(!cleanup||!cleaned){if(o)*o={};if(cleaned)*cleaned={};return 0;}
+    return sin_port::native_map::run_scripted_npc_task(a,n,task,b,o,cleanup,cleaned);
 }
