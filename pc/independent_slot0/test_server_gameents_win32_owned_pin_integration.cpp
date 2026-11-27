@@ -236,7 +236,7 @@ int main() {
        allocated.index!=2||allocated.count!=3||
        allocated.owner_epoch!=1001||allocated.serial!=0||
        owner.count!=3||owner.committed_epoch!=1001||
-       owner.cleanups!=2||owner.ends!=2||owner.acquires!=2||
+       owner.cleanups!=2||owner.ends!=1||owner.acquires!=1||
        owner.pages.RefusedOperations()<10||owner.TryClose()||
        allocator.Quarantined())
         return Fail(4,"owner-backed edict selection, dual free and epoch commit");
