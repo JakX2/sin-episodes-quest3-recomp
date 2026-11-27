@@ -15,6 +15,9 @@ struct GameEntsContactBridgeHooks {
     bool (*resolve)(void*,const void*,TouchEntity**) noexcept=nullptr;
     // Owner initializes the full 0x54-byte trace, including global defaults.
     bool (*init_trace)(void*,GameEntsTouchTrace*) noexcept=nullptr;
+    // Original 0x22221080 copies the 0x54 trace into global contact state
+    // BEFORE either 0x2221f350 directed-contact method. Host owns globals.
+    bool (*publish_trace)(void*,const GameEntsTouchTrace*) noexcept=nullptr;
     ContactCleanupState* contacts=nullptr;
     const EntityHandleEntry* entries=nullptr;
     std::size_t entry_count=0;
@@ -24,7 +27,7 @@ struct GameEntsContactBridgeResult {
     GameEntsTouchEntryResult entry{};
     TouchTraceState contact_trace{};
     TouchMarkResult contact_status=TouchMarkResult::InvalidInput;
-    unsigned resolved_calls=0,refresh_calls=0,contact_calls=0;
+    unsigned resolved_calls=0,refresh_calls=0,contact_calls=0,publish_calls=0;
 };
 
 namespace detail {
@@ -81,9 +84,11 @@ inline bool MarkContactPair(void* p,void* a,void* b,
        !original_trace||!frame.hooks.contacts)return false;
     auto& first=*frame.first;
     auto& second=*frame.second;
-    // Source's 0x22221080 publishes global trace state before dispatching
-    // two directed links. The independent graph owns those links, while
-    // the wrapper retains the original initialized trace on the result.
+    // Source's 0x22221080 publishes the global contact trace before
+    // either directed +0x2221f350 call. This stays engine-owned.
+    ++result.publish_calls;
+    if(!frame.hooks.publish_trace(frame.hooks.context,original_trace))
+        return false;
     const auto status=MarkTouchPair(first,second,*frame.hooks.contacts,
         EntityHandleView(frame.hooks.entries,frame.hooks.entry_count),
         result.contact_trace,frame.hooks.touch);
@@ -103,7 +108,7 @@ inline GameEntsTouchEntryStatus MarkEntitiesAsTouchingWithContactGraph(
     GameEntsContactBridgeResult& result) noexcept {
     result={};
     result.contact_status=TouchMarkResult::InvalidInput;
-    if(!hooks.resolve||!hooks.init_trace||!hooks.contacts||
+    if(!hooks.resolve||!hooks.init_trace||!hooks.publish_trace||!hooks.contacts||
        !hooks.entries||hooks.entry_count==0||!hooks.touch.Complete())
         return GameEntsTouchEntryStatus::InvalidInput;
     detail::GameEntsContactFrame frame{hooks,result};
