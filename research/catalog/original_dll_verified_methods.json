@@ -4809,6 +4809,63 @@
       "original_code_length": 146,
       "original_code_sha256": "c292491b77e181d88ab5c65d6c49667f99cbd9fcf82a6be39d62f1af23e7c4b5",
       "label": "Original 60-byte INTEGER placeholder RecvProp factory uses optional explicit proxy or byte width 1/2/4 fallback"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2237E8C0",
+      "label": "Recombinant Minor +0x398 damage reaction gate: original global veto then strict scalar >10",
+      "owner": "Recombinant Minor",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "e08a5b91b9f7e3411976303123a218fb28e6d3ff2df0690a1e8df6525b714ff7",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-minor-damage-gate-phase1613.md",
+      "original_code_length": 56,
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-native-recombinant-minor-metric-gate-phase1625.md"
+      ],
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_minor_damage_gate.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_minor_damage_gate.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2237B420",
+      "label": "Recombinant Minor +0x1d4 dirty-origin refresh and origin-plus-six output",
+      "owner": "Recombinant Minor",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "99df09c6a541d40a2890fcee0f7861e8ad3354987d117f9d539542fafb6c1e7a",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-minor-origin-point-phase1623.md",
+      "original_code_length": 93,
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_minor.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_minor.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E9380",
+      "label": "ServerGameEnts001 MarkEntitiesAsTouching entry: resolve edicts, refresh origins and submit trace midpoint",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "8352791af429bd1cf0d040a0765b42ec959181b34d67f98f818a8c039389f1c1",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 299,
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-original-servergameents-methods-phase1627.md"
+      ],
+      "implementation_path": "pc/independent_slot0/server_gameents_touch_entry_core.h",
+      "test_path": "pc/independent_slot0/test_server_gameents_touch_entry_core.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E94D0",
+      "label": "ServerGameEnts001 CheckTransmit: recipient snapshot, flags and selection bitsets",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "e069400e844edfe9c5e756bfd828abfc6764df7b37ce13dfca374f94c25ad176",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 354,
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-original-servergameents-methods-phase1627.md"
+      ],
+      "implementation_path": "pc/independent_slot0/server_transmit_policy_core.h",
+      "test_path": "pc/independent_slot0/test_server_transmit_policy_core.cpp"
     }
   ]
 }
