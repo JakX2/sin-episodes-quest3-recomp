@@ -31,7 +31,8 @@ struct ModuleExpected {
 constexpr NameExpected kClient[]={
  {"VClient011",0x2fa4b8u},
  {"VClientEntityList003",0x34fddcu},
- {"VClientPrediction001",0x37fa00u}
+ {"VClientPrediction001",0x37fa00u},
+ {"GameClientExports001",0x2fa4b0u}
 };
 constexpr NameExpected kServer[]={
  {"ServerGameDLL003",0x510650u},
@@ -173,6 +174,44 @@ bool read_original_interfacereg_byte(
  if(!value)return false;
  return read_current_process_byte(address,*value);
 }
+// Phase1654: owner-only post-DllMain read of the authentic original
+// GameClientExports001 singleton vptr and all four virtual function RVAs.
+// The exact original client.dll SHA is verified by inspect() before
+// LoadLibraryEx; this code never invokes a vtable function or pointer.
+bool inspect_game_client_exports_four_slots(HMODULE client) noexcept {
+ const auto base=reinterpret_cast<std::uintptr_t>(client);
+ constexpr std::uintptr_t singleton_rva=0x2fa4b0u;
+ constexpr std::uintptr_t vtable_rva=0x296b18u;
+ constexpr std::uint32_t expected_method_rvas[4]={
+     0xfe9b0u,0xfe950u,0xfe970u,0xfe990u
+ };
+ std::uint32_t vptr=0u;
+ bool ok=read_current_process_dword(
+     base+singleton_rva,vptr)&&
+     static_cast<std::uintptr_t>(vptr)==base+vtable_rva;
+ unsigned matched=0u;
+ for(unsigned i=0u;ok&&i<4u;++i) {
+    std::uint32_t target=0u;
+    if(!read_current_process_dword(base+vtable_rva+i*4u,target)) {
+       ok=false;
+       break;
+    }
+    if(static_cast<std::uintptr_t>(target)!=base+expected_method_rvas[i]) {
+       ok=false;
+       break;
+    }
+    ++matched;
+ }
+ std::printf(
+     "{\"module\":\"client\",\"event\":"
+     "\"original_gameclientexports_vtable\","
+     "\"status\":\"%s\",\"matched_slots\":%u,"
+     "\"expected_slots\":4,\"actual_method_invocations\":0}\n",
+     ok?"pinned_original_vptr_read":"vptr_or_slot_mismatch",
+     matched);
+ return ok;
+}
+
 bool inspect_original_interface_registry(
     HMODULE original,const ModuleExpected& module) noexcept {
  namespace abi=sin_independent::original_interfacereg_snapshot;
@@ -383,6 +422,9 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
   }
  }
  if(!inspect_original_interface_registry(module,spec))
+  ok=false;
+ if(std::strcmp(spec.side,"client")==0 &&
+    !inspect_game_client_exports_four_slots(module))
   ok=false;
  if(std::strcmp(spec.side,"client")==0 && !inspect_client_registration_list(module))
   ok=false;
