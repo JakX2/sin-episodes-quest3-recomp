@@ -1,10 +1,12 @@
 // Phase 1658: original-free native Win32 x86 prediction slot1 ABI fixture.
 // SHA-matched retail client.dll slot1 (0x24195F80) has NO stack arguments,
-// reads the service pointer from global 0x24374540, tests its +0x2C DWORD,
-// and sets byte this+0x10 to (nonzero?1:0), RET 0.
+// reads cl_predict's m_pParent pointer from 0x24374540
+// (cl_predict ConVar object 0x24374528 + 0x18), tests that parent's
+// numeric ConVar m_nValue DWORD at +0x2C, and writes prediction
+// this+0x10 = (nonzero?1:0), RET 0.
 //
-// The original does not check whether the global pointer is null. The
-// independently owned diagnostic model instead refuses a missing provider.
+// The original does not check whether the ConVar parent pointer is null.
+// The independently owned diagnostic model refuses a missing ConVar view.
 // This fixture is NOT registered in CreateInterface or an original engine.
 #pragma once
 #include <array>
@@ -22,19 +24,29 @@ namespace client_prediction23_diagnostic {
 constexpr std::uintptr_t kOriginalSingletonRva=0x37FA00u;
 constexpr std::uintptr_t kOriginalVtableRva=0x2A363Cu;
 constexpr std::uintptr_t kOriginalInitMethodRva=0x195F80u;
-constexpr std::uintptr_t kOriginalInitDependencyGlobalRva=0x374540u;
-constexpr unsigned kOriginalInitDependencyMemberOffset=0x2Cu;
+constexpr std::uintptr_t kOriginalClPredictConVarRva=0x374528u;
+constexpr std::uintptr_t kOriginalClPredictParentSlotRva=0x374540u;
+constexpr unsigned kOriginalConVarParentFieldOffset=0x18u;
+constexpr unsigned kOriginalConVarNumericValueOffset=0x2Cu;
 constexpr unsigned kOriginalPredictionEnabledOffset=0x10u;
 constexpr unsigned kOriginalVirtualCount=23u;
 
-// Only invented provider values are accepted. This mimics the *effect*
-// of original initialized service+0x2C without exposing engine memory.
-struct Provider {
-    std::array<std::uint8_t,0x2Cu> opaque{};
-    std::uint32_t flag=0u;
+// Only invented ConVar storage is accepted. Original ConVar constructor
+// sets this+0x18 (m_pParent) to self; the integer m_nValue is +0x2C.
+struct ConVarView {
+    std::array<std::uint8_t,0x18u> opaque_prefix{};
+    const ConVarView* parent=nullptr;
+    std::array<std::uint8_t,0x10u> opaque_middle{};
+    std::int32_t numeric_value=0;
 };
-static_assert(offsetof(Provider,flag)==0x2Cu,
-              "native synthetic engine service +0x2C offset changed");
+static_assert(offsetof(ConVarView,parent)==0x18u,
+              "synthetic cl_predict ConVar parent pointer offset drift");
+static_assert(offsetof(ConVarView,numeric_value)==0x2Cu,
+              "synthetic cl_predict integer m_nValue offset drift");
+static_assert(kOriginalClPredictConVarRva+
+              kOriginalConVarParentFieldOffset==
+              kOriginalClPredictParentSlotRva,
+              "original cl_predict pointer RVA and parent offset drift");
 
 struct Events {
     unsigned init_calls=0u;
@@ -49,17 +61,17 @@ inline Events events{};
 // the actual retail IPrediction methods or their parameters.
 class Prediction23Fixture {
 public:
-    explicit Prediction23Fixture(const Provider* provider) noexcept
-        : provider_(provider) {}
+    explicit Prediction23Fixture(const ConVarView* cl_predict) noexcept
+        : cl_predict_(cl_predict) {}
     virtual ~Prediction23Fixture() noexcept { ++events.destructor_calls; }
 
     virtual void __thiscall InitializeFromEngine() noexcept {
         ++events.init_calls;
-        if(!provider_) {
+        if(!cl_predict_ || !cl_predict_->parent) {
             ++events.missing_provider_refusals;
             return;
         }
-        enabled_=provider_->flag!=0u ? 1u : 0u;
+        enabled_=cl_predict_->parent->numeric_value!=0 ? 1u : 0u;
     }
     virtual std::uint32_t __thiscall UnknownSlot02() noexcept {return 0xA002u;}
     virtual std::uint32_t __thiscall UnknownSlot03() noexcept {return 0xA003u;}
@@ -87,15 +99,15 @@ public:
     std::uintptr_t enabled_address() const noexcept {
         return reinterpret_cast<std::uintptr_t>(&enabled_);
     }
-    void set_provider(const Provider* provider) noexcept {
-        provider_=provider;
+    void set_cl_predict(const ConVarView* cl_predict) noexcept {
+        cl_predict_=cl_predict;
     }
 private:
     // PE32 native vfptr occupies this+0 through this+3. This opaque
     // placeholder spans this+4..+0xF, and enabled_ is at +0x10.
     std::array<std::uint8_t,12> opaque_{};
     std::uint8_t enabled_=0u;
-    const Provider* provider_=nullptr;
+    const ConVarView* cl_predict_=nullptr;
 };
 
 static_assert(sizeof(void*)==4u,"original 2006 PE32 pointer width");
