@@ -329,7 +329,7 @@ def verify_original(client_bytes: bytes, server_bytes: bytes) -> dict:
         "shared_rtti_class_hierarchy_va": hex(CLASS_HIERARCHY_VA),
         "rtti_multiple_inheritance": True,
         "rtti_base_class_count": len(BASE_DESCRIPTOR_VAS),
-        "rtti_base_names": [name.decode("ascii").rstrip("\\0") for name
+        "rtti_base_names": [name.decode("ascii")[:-1] for name
                             in BASE_TYPE_NAMES],
         "rtti_base_member_displacements": list(BASE_MEMBER_DISPLACEMENTS),
         "rtti_interface_base_mdisp_matches_factory": True,
