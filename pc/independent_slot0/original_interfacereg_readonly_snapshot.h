@@ -34,6 +34,34 @@ struct Layout {
     std::size_t priority_count=0;
 };
 
+// Read-only PE section extents are from the complete SHA-pinned original
+// 2006 PE32 images, NOT from HL2 SDK layouts or observed source strings
+// alone. IMAGE_BASE relocation is handled by the module_base argument.
+// The 55/10 total InterfaceReg manifests predate this observer (Phase 177).
+inline constexpr const char* kClientPriority[]={
+    "VClient011", "VClientEntityList003", "VClientPrediction001",
+    "GameClientExports001", "ClientLeafSystem001",
+    "IEffects001", "VCENTERPRINT002", "GameMovement001"
+};
+inline constexpr const char* kServerPriority[]={
+    "ServerGameDLL003", "ServerGameEnts001", "ServerGameClients003",
+    "GameMovement001", "IEffects001", "PlayerInfoManager001",
+    "PlayerInfoManager002", "BotManager001",
+    "HLTVDirector001", "PluginHelpersCheck001"
+};
+inline Layout OriginalClientLayout(std::uintptr_t relocated_base) noexcept {
+    return {relocated_base,0x3D9000,0x369378,
+            0x1000,0x275FBA,0x276000,0x2F29FD,
+            0x2F3000,0x38F320,55,
+            kClientPriority,sizeof(kClientPriority)/sizeof(kClientPriority[0])};
+}
+inline Layout OriginalServerLayout(std::uintptr_t relocated_base) noexcept {
+    return {relocated_base,0x628000,0x573C5C,
+            0x1000,0x3D111A,0x3D2000,0x4D5626,
+            0x4D6000,0x5A0B24,10,
+            kServerPriority,sizeof(kServerPriority)/sizeof(kServerPriority[0])};
+}
+
 struct Reader {
     void* context=nullptr;
     bool (*dword)(void*,std::uintptr_t,std::uint32_t*) noexcept=nullptr;
