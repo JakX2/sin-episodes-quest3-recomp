@@ -1558,3 +1558,59 @@
         DeferredRemovalResult dr{};
         assert(api->cleanup_deferred(&deferred,&dr)&&dr.released==1&&!f.queue.count&&!f.entries[0].entity&&f.calls=="R[HWU]D");
     }
+
+
+    // Original scripted RunTask cases, with real lifecycle completion,
+    // group synchronization and terminal cleanup.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct TaskFixture {
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            float now=12.f;std::string calls;
+        } f;
+        const auto run=reinterpret_cast<RunScriptedNpcTask>(GetProcAddress(server,scripted_npc_task_export));
+        assert(run&&!GetProcAddress(client,scripted_npc_task_export));
+        put(f.seq,0,scripted_sequence_vtable);put(f.seq,0x378,0x3000u);put(f.seq,0x3d4,0xffffffffu);
+        put(f.npc,0,0x224954a4u);put(f.npc,0x378,0x4001u);put(f.npc,0x970,0x3000u);
+        f.entries[0].entity=reinterpret_cast<CBaseEntity*>(f.seq);f.entries[0].serial=3;
+        f.entries[1].entity=reinterpret_cast<CBaseEntity*>(f.npc);f.entries[1].serial=4;
+        put(f.desc,0x34,nw::npc_global_condition_base);put(f.desc,0x38,0);put(f.desc,0x3c,127);
+        nw::ServerNpcTaskLifecycleBindings life{};life.conditions.context=&f;
+        life.conditions.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);*out=f.desc;*n=sizeof(f.desc);return 1;
+        };
+        ScriptedSequenceControlBindings c{};c.context=&f;c.entries=f.entries;c.entry_count=2;c.now=&f.now;
+        c.extent=[](void* p,void* a,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);*n=a==f.npc?sizeof(f.npc):a==f.seq?sizeof(f.seq):0;return *n!=0;
+        };
+        ScriptedSequenceAnimationBindings anim{};anim.control=&c;
+        ScriptedSequencePossessionBindings pos{};pos.entries=f.entries;pos.entry_count=2;pos.now=&f.now;
+        ScriptedSequenceFinishBindings finish{&anim,&pos,&f};
+        finish.cleanup_script_state=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(a==f.npc);f.calls+='C';return 1;
+        };
+        finish.current_schedule=[](void*,void*,bool* present,int*) noexcept ->int{*present=false;return 1;};
+        finish.clear_schedule=[](void* p,void*) noexcept ->int{static_cast<TaskFixture*>(p)->calls+='X';return 1;};
+        ScriptedNpcTaskBindings b{&finish,&life,&f};
+        b.warning=[](void* p,void*,int) noexcept ->int{static_cast<TaskFixture*>(p)->calls+='W';return 1;};
+        b.task_fail=[](void* p,void*,int code) noexcept ->int{assert(code==5);static_cast<TaskFixture*>(p)->calls+='F';return 1;};
+        b.update_aim=[](void* p,void*,int x,int y) noexcept ->int{assert(!x&&!y);static_cast<TaskFixture*>(p)->calls+='A';return 1;};
+        ScriptedNpcTaskResult o{};
+        put(f.seq,0x3b8,2u);put(f.npc,0x7a4,1);
+        assert(run(f.npc,sizeof(f.npc),106,&b,&o)&&o.waiting&&!o.task_completed&&f.calls.empty());
+        f.seq[0x3c0]=1;
+        assert(run(f.npc,sizeof(f.npc),110,&b,&o)&&o.waiting&&!o.synchronized);
+        f.seq[0x3c0]=0;
+        assert(run(f.npc,sizeof(f.npc),110,&b,&o)&&o.synchronized&&o.group_updates==1&&o.task_completed&&word(f.seq,0x3b8)==1&&word(f.npc,0x7a4)==4);
+        assert(run(f.npc,sizeof(f.npc),108,&b,&o)&&o.waiting&&o.aim_called&&f.calls=="A");
+        assert(run(f.npc,sizeof(f.npc),109,&b,&o)&&o.waiting&&f.calls=="A");
+        put(f.npc,0x7a4,1);put(f.seq,0xb4,4u);f.npc[0x3e0]=1;
+        assert(run(f.npc,sizeof(f.npc),109,&b,&o)&&o.terminal.completed&&o.terminal.cleanup_called&&!o.task_completed&&word(f.npc,0x7a4)==1&&f.calls=="ACX");
+        put(f.npc,0x970,0x5000u); // stale serial
+        assert(run(f.npc,sizeof(f.npc),106,&b,&o)&&o.missing&&o.warned&&o.task_completed&&f.calls=="ACXW");
+        assert(run(f.npc,sizeof(f.npc),109,&b,&o)&&o.task_failed&&f.calls=="ACXWWF");
+        assert(run(f.npc,sizeof(f.npc),110,&b,&o)&&o.task_failed&&f.calls=="ACXWWFWF");
+        assert(!run(f.npc,sizeof(f.npc),108,&b,&o)&&o.aim_called&&f.calls=="ACXWWFWFA");
+        assert(!run(f.npc,sizeof(f.npc),107,&b,&o));
+    }

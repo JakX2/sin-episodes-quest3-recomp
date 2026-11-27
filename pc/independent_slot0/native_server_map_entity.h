@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; struct ServerNpcActivityAssignmentBindings; }
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; struct ServerNpcActivityAssignmentBindings; struct ServerNpcTaskLifecycleBindings; }
 namespace sin_port::native_map {
 inline constexpr char export_name[]="SiN_GetServerMapEntityApi";
 inline constexpr unsigned token_capacity=2048;
@@ -697,6 +697,27 @@ using StartScriptedSequenceAnimationNative=int (__cdecl *)(void*,unsigned,void*,
     ScriptedSequenceAnimationResult*,ScriptedSequenceFinishResult*) noexcept;
 using CompleteScriptedSequencePlayNative=int (__cdecl *)(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,
     ScriptedSequenceAnimationResult*,ScriptedSequenceFinishResult*) noexcept;
+// Original RunTask 106/108/109/110. Separate opt-in route retains
+// the generic shared scheduler ABI and explicit engine/AI boundaries.
+struct ScriptedNpcTaskBindings {
+    const ScriptedSequenceFinishBindings* finish;
+    const native_weapon_tables::ServerNpcTaskLifecycleBindings* lifecycle;
+    void* context;
+    int (__cdecl *warning)(void*,void*,int) noexcept;
+    int (__cdecl *task_fail)(void*,void*,int) noexcept; // original virtual +47c
+    int (__cdecl *update_aim)(void*,void*,int,int) noexcept; // 2204d350
+    int (__cdecl *remove_flags)(void*,void*,unsigned) noexcept; // 2214c730
+    int (__cdecl *rate_storage)(void*,unsigned,void**,unsigned*) noexcept; // +16c
+};
+struct ScriptedNpcTaskResult {
+    unsigned completed,waiting,missing,warned,task_completed,task_failed,begin_output,begin_queued,begin_native_queued,
+        aim_called,motion_checked,flags_removed,rate_changed,schedule_cleared,synchronized,group_updates;
+    int task,status;
+    ScriptedSequenceAnimationResult animation;
+    ScriptedSequenceFinishResult terminal;
+};
+inline constexpr char scripted_npc_task_export[]="SiN_RunScriptedNpcTask";
+using RunScriptedNpcTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcTaskBindings*,ScriptedNpcTaskResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
