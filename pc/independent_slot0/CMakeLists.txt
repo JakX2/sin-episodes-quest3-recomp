@@ -312,6 +312,22 @@ target_compile_features(sin_original_interfacereg_readonly_snapshot_test PRIVATE
 add_test(NAME independent_original_interfacereg_readonly_snapshot_native
   COMMAND sin_original_interfacereg_readonly_snapshot_test)
 
+# Phase 1654: SHA-pinned original PE32 GameClientExports001 four-slot
+# virtual ABI. The Python audit uses invented x86 snippets in public CI,
+# while the native C++ test calls only its own compiler-generated fake
+# object. No original DLL is ever linked, loaded or executed.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_gameclientexports_abi_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_gameclientexports_abi.py"
+      --self-test)
+endif()
+add_executable(sin_original_gameclientexports_abi_test
+  test_original_gameclientexports_abi.cpp)
+target_compile_features(sin_original_gameclientexports_abi_test PRIVATE cxx_std_17)
+add_test(NAME independent_original_gameclientexports_4slot_native_abi
+  COMMAND sin_original_gameclientexports_abi_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
