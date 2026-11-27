@@ -1,0 +1,11 @@
+# Phase 1618: Native Major damage and Ignite to pending activity
+
+This integration phase composes previously reconstructed SiN functions. It does **not** claim any newly authenticated retail machine-code regions, original function boundaries, or full game-engine execution.
+
+The native Major-only `damage_major`/`ignite_major` routines were recovered earlier from the SHA-256 authenticated retail server DLL. Their activity request is the original virtual +0x4dc invocation with a value selected from current activity (6 -> 112, 10 -> 113, 1 -> 111; otherwise no request). Previously, that request crossed an externally hosted callback. This phase binds that callback to Phase 1617's native recombinant pending-activity `set_pending` API, which preserves the shared pending request/sequence selection behavior and only calls the Phase 1612 class-specific override if actual activity assignment follows. No animation advancement is invented.
+
+The new separate `SiN_GetServerRecombinantDamagePendingApi` composes the existing APIs without changing either ABI. A bounded non-escaping frame forwards the source's callback contexts for class/extent, inherited damage/ignite, color, RNG and health. Only pending activity is intercepted. A Major actor, minimum pending object extent and generation-bound Major activity registration are checked **before** delegated callbacks, including on non-igniting damage. On failure after a delegated effect, this bridge does not roll back inherited effects or actor state. Results distinguish damage, ignition, pending request and requested activity.
+
+The loaded Windows fixture checks a direct Ignite-triggered request 113, damage threshold crossing through inherited Ignite into pending activity before parent damage, non-igniting immune damage, stale registration, wrong actor/class, insufficient actor extent and invalid API call arguments. It verifies the actor's current +0x878 activity remains unchanged when only a pending activity is requested. Host-provided metadata can make the pending selection skip; no success or in-engine gameplay is claimed from those synthetic callbacks.
+
+No generic Source physics, surface/material, model or prop implementation; no original proprietary executable bytes committed. CI pending.
