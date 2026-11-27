@@ -79,8 +79,12 @@ MSVC x86 virtual dispatch and inline-assembly caller ESP checks. It covers
 all nine methods, both mirror boundaries, 4096 raw records, serial mismatch,
 reserved handle `0xFFFFFFFF`, stale entity reuse, callbacks on valid
 unknowns only, default and optional counts, highest index, max setter,
-and corruption/missing callback refusal. No original DLLs or contents are
-linked or run in CI.
+and corruption/missing callback refusal. It also **differentially compares**
+native EHandle resolve and the unknown-to-networkable/entity methods
+(virtual slots 1 through 4) against the independent, previously SHA-audited
+portable Phase230 byte-buffer reference. It checks valid/stale/invalid
+handles and signed indexed entity lookups, using 32-bit process-local
+tokens only. No original DLLs or contents are linked or run in CI.
 
 ## Owner-only startup-state readback
 
