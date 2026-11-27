@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; struct ServerNpcActivityAssignmentBindings; struct ServerNpcTaskLifecycleBindings; }
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; struct ServerNpcActivityAssignmentBindings; struct ServerNpcTaskLifecycleBindings; struct ServerNpcConditionMapBindings; }
 namespace sin_port::native_map {
 inline constexpr char export_name[]="SiN_GetServerMapEntityApi";
 inline constexpr unsigned token_capacity=2048;
@@ -751,6 +751,25 @@ struct ScriptedNpcStartMotionResult {
 };
 inline constexpr char scripted_npc_start_motion_export[]="SiN_StartScriptedNpcMotionTask";
 using StartScriptedNpcMotionTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcStartMotionBindings*,ScriptedNpcStartMotionResult*) noexcept;
+// Original sequence interruptibility setter, query, condition suppression,
+// and the NPC's state-sensitive gate. Not a generic combat policy.
+struct ScriptedSequenceInterruptBindings {
+    const ScriptedSequenceControlBindings* control;
+    const native_weapon_tables::ServerNpcConditionMapBindings* conditions;
+};
+struct ScriptedSequenceInterruptResult {
+    unsigned completed,permitted,flag_protected,changed,live_actor,dead_actor,non_npc,
+        condition16,condition17,cleared16,cleared17,script_live,script_gate,motion_gate;
+};
+struct ScriptedSequenceInterruptApi {
+    std::uint32_t version,size;
+    int (__cdecl *set)(void*,unsigned,bool,ScriptedSequenceInterruptResult*) noexcept;
+    int (__cdecl *query)(void*,unsigned,const ScriptedSequenceInterruptBindings*,ScriptedSequenceInterruptResult*) noexcept;
+    int (__cdecl *suppress)(void*,unsigned,const ScriptedSequenceInterruptBindings*,ScriptedSequenceInterruptResult*) noexcept;
+    int (__cdecl *npc_gate)(void*,unsigned,const ScriptedSequenceInterruptBindings*,ScriptedSequenceInterruptResult*) noexcept;
+};
+inline constexpr char scripted_sequence_interrupt_export[]="SiN_GetScriptedSequenceInterruptApi";
+using GetScriptedSequenceInterruptApi=const ScriptedSequenceInterruptApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
