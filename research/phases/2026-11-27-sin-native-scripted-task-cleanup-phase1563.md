@@ -1,0 +1,3 @@
+# Phase 1563: native cleanup propagation through animation and RunTask
+
+Optional explicit cleanup arguments traverse animation start's empty-token path, PlayDone and terminal finish, and RunTask 106/108/109. New exports preserve previous layouts. All opt-in routes require the same control binding. Loaded regression disables hosted cleanup and verifies end output after restored effects and handles, both ordinary completion and empty-token start. RunTask cleanup route needs scheduler-level regression. No new original code digests; CI pending.

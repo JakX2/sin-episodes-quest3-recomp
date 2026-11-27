@@ -1615,6 +1615,15 @@
         put(f.npc,0x8c,0);auto wrong=cleanup;wrong.control=nullptr;
         assert(!native_finish(f.seq,sizeof(f.seq),f.npc,&b,&out,&wrong,&cleaned)&&!out.removal_scheduled&&f.calls.empty());
         assert(native_finish(f.seq,sizeof(f.seq),f.npc,&b,&out,&cleanup,&cleaned)&&out.removal_scheduled&&out.cleanup_called&&out.transferred&&cleaned.completed&&cleaned.script_released&&cleaned.effects_restored&&cleaned.handles_cleared==3&&f.calls=="TESXP"&&word(f.npc,0x970)==0x5002u&&word(f.next,0x3d0)==0x4001u);
+        const auto complete_clean=reinterpret_cast<CompleteScriptedSequencePlayWithCleanup>(GetProcAddress(server,scripted_sequence_play_cleanup_export));
+        const auto start_clean=reinterpret_cast<StartScriptedSequenceAnimationWithCleanup>(GetProcAddress(server,scripted_sequence_start_cleanup_export));
+        assert(complete_clean&&start_clean&&!GetProcAddress(client,scripted_sequence_play_cleanup_export)&&!GetProcAddress(client,scripted_sequence_start_cleanup_export));
+        put(f.seq,0xb4,4u);put(f.seq,0x3d4,0xffffffffu);put(f.seq,0x3d0,0x4001u);
+        put(f.npc,0x970,0x3000u);put(f.npc,0x78,1u);f.calls.clear();
+        assert(complete_clean(f.seq,sizeof(f.seq),f.npc,&b,&anim,&out,&cleanup,&cleaned)&&anim.finish_called&&anim.output_called&&cleaned.completed&&cleaned.effects_restored&&f.calls=="ESXO"&&word(f.npc,0x970)==0xffffffffu);
+        put(f.seq,0x3d0,0x4001u);put(f.npc,0x970,0x3000u);put(f.npc,0x78,1u);f.calls.clear();
+        assert(start_clean(f.seq,sizeof(f.seq),f.npc,0,true,&b,&anim,&out,&cleanup,&cleaned)&&anim.empty_completed&&anim.output_called&&cleaned.completed&&f.calls=="ESXO");
+        assert(!complete_clean(f.seq,sizeof(f.seq),f.npc,&b,&anim,&out,&wrong,&cleaned)&&!cleaned.completed&&f.calls=="ESXO");
     }
 
 
