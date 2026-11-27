@@ -1,4 +1,5 @@
 #include "native_server_recombinant_registration.h"
+#include <cstring>
 extern "C" const sin_port::native_weapon_tables::ServerActivityDictionaryApi* __cdecl SiN_GetServerActivityDictionaryApi(unsigned,unsigned) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
@@ -65,9 +66,54 @@ int __cdecl bind_minor(const ServerRecombinantActivityRegistration* r,const Serv
     next.custom_activity=r->ids[3];next.arrival_activity=r->ids[4];*out=next;return 1;
 }
 const ServerRecombinantRegistrationApi api{1,sizeof(ServerRecombinantRegistrationApi),&definitions,&register_activities,&valid,&bind_minor};
+
+constexpr const char* major_sounds[]{
+    "NPC_Leperkin.Idle",
+    "NPC_Leperkin.Run",
+    "NPC_Leperkin.WalkFast"
+};
+constexpr const char* minor_sounds[]{
+    "NPC_gib_hopper.Idle",
+    "NPC_gib_hopper.Walk",
+    "NPC_gib_hopper.WalkBackwards",
+    "NPC_gib_hopper.Run"
+};
+int __cdecl sound_precache(void* actor,unsigned bytes,const ServerRecombinantSoundPrecacheBindings* b,
+    ServerRecombinantSoundPrecacheResult* out) noexcept {
+    if(!out)return 0;*out={};out->failed_index=-1;
+    if(!actor||bytes<4||!b||!b->precache)return 0;
+    unsigned vt=0;std::memcpy(&vt,actor,4);
+    const char* const* names=nullptr;
+    unsigned count=0;
+    if(vt==recombinant_major_vtable){
+        out->kind=RecombinantMajor;
+        names=major_sounds;count=sizeof(major_sounds)/sizeof(*major_sounds);
+    }else if(vt==recombinant_minor_vtable){
+        out->kind=RecombinantMinor;
+        names=minor_sounds;count=sizeof(minor_sounds)/sizeof(*minor_sounds);
+    }else return 0;
+    for(unsigned i=0;i<count;++i){
+        out->failed_index=static_cast<int>(i);
+        ++out->attempted;
+        if(!b->precache(b->context,actor,names[i]))return 0;
+        ++out->registered;
+    }
+    out->failed_index=-1;out->completed=1;return 1;
+}
+const ServerRecombinantSoundPrecacheApi sounds_api{
+    1,sizeof(ServerRecombinantSoundPrecacheApi),&sound_precache
+};
+
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantRegistrationApi=_SiN_GetServerRecombinantRegistrationApi")
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantRegistrationApi* __cdecl SiN_GetServerRecombinantRegistrationApi(unsigned v,unsigned n) noexcept{
     using namespace sin_port::native_weapon_tables;return v==1&&n==sizeof(ServerRecombinantRegistrationApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantSoundPrecacheApi=_SiN_GetServerRecombinantSoundPrecacheApi")
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantSoundPrecacheApi* __cdecl
+SiN_GetServerRecombinantSoundPrecacheApi(unsigned v,unsigned n) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return v==1&&n==sizeof(ServerRecombinantSoundPrecacheApi)?&sounds_api:nullptr;
 }
