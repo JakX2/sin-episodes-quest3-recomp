@@ -1769,4 +1769,41 @@
         assert(interrupt->suppress(f.seq,sizeof(f.seq),&ib,&ir)&&ir.non_npc&&!ir.condition16);
         put(f.npc,0x970,0x5000u);
         assert(interrupt->npc_gate(f.npc,sizeof(f.npc),&ib,&ir)&&ir.permitted&&!ir.script_live);
+        const auto cleanup=reinterpret_cast<CleanupScriptedNpc>(GetProcAddress(server,scripted_npc_cleanup_export));
+        assert(cleanup&&!GetProcAddress(client,scripted_npc_cleanup_export));
+        ScriptedNpcCleanupBindings cb{&c,&life.conditions,&f};
+        cb.effect_registry=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(a==f.npc&&f.npc[0x78]==8&&f.seq[0x3d0]==0xff&&f.npc[0x970]==0);f.calls+='E';return 1;
+        };
+        cb.effect_changed=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(a==f.npc&&f.npc[0x78]==8);f.calls+='N';return 1;
+        };
+        cb.collision_flags=[](void* p,void* a,unsigned flags) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(a==f.npc&&flags==0x12u);f.calls+='B';return 1;
+        };
+        cb.root_motion_relocate=[](void* p,void* a,void* seq) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(a==f.npc&&seq==f.seq&&f.npc[0x970]==0xff&&f.npc[0x90c]==0xff&&f.npc[0x8a8]==0xff);f.calls+='R';return 1;
+        };
+        cb.life_state_changed=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(a==f.npc&&!f.npc[0x8c]);f.calls+='H';return 1;
+        };
+        ScriptedNpcCleanupResult cr{};
+        put(f.npc,0x970,0x3000u);put(f.npc,0x90c,0x3000u);put(f.npc,0x8a8,0x3000u);put(f.seq,0x3d0,0x4001u);
+        put(f.npc,0x78,1u);put(f.seq,0x3c4,8u);put(f.npc,0x9c,100);put(f.npc,0x858,4);
+        put(f.npc,0x878,88);put(f.npc,0xb4,0x180u);f.npc[0x1f0]=1;f.npc[0x200]=0;f.calls.clear();
+        assert(cleanup(f.npc,sizeof(f.npc),&cb,&cr)&&cr.completed&&cr.retail_result&&cr.script_released&&cr.effects_restored&&cr.effect_registry_called&&cr.effect_changed_called&&cr.handles_cleared==3&&cr.ideal_written==1&&cr.spawnflag_cleared&&!cr.activity_cleared&&word(f.npc,0x878)==88&&word(f.npc,0x858)==1&&word(f.npc,0xb4)==0x100u&&f.npc[0x200]&&f.calls=="EN");
+        // Missing script restores collision flag, and no effect callback.
+        put(f.npc,0x120,2u);f.calls.clear();
+        assert(cleanup(f.npc,sizeof(f.npc),&cb,&cr)&&cr.collision_called&&!cr.script_live&&cr.handles_cleared==3&&f.calls=="B");
+        // Flag 0x80 skips root-motion relocation but clears activity.
+        put(f.npc,0x970,0x3000u);put(f.seq,0x398,9u);f.seq[0x3cd]=1;put(f.seq,0xb4,0x80u);put(f.npc,0x878,88);f.calls.clear();
+        assert(cleanup(f.npc,sizeof(f.npc),&cb,&cr)&&cr.root_motion_skipped&&cr.activity_cleared&&!cr.root_motion_called&&!word(f.npc,0x878)&&f.calls.empty());
+        // Owner relocation leaf is bounded. Nonpositive health then
+        // follows the exact ideal/condition/life-state suffix.
+        put(f.npc,0x970,0x3000u);put(f.seq,0xb4,0u);put(f.npc,0x9c,0);put(f.npc,0x7cc,0u);f.calls.clear();
+        auto no_root=cb;no_root.root_motion_relocate=nullptr;
+        assert(!cleanup(f.npc,sizeof(f.npc),&no_root,&cr)&&word(f.npc,0x970)==0x3000u&&f.calls.empty());
+        assert(cleanup(f.npc,sizeof(f.npc),&cb,&cr)&&cr.root_motion_called&&cr.life_state_written&&cr.condition16_calls==2&&word(f.npc,0x8c)==1&&word(f.npc,0x858)==7&&word(f.npc,0x7cc)==0x10000u&&f.calls=="RH");
+        put(f.npc,0x970,0x3000u);f.calls.clear();
+        assert(!cleanup(f.npc,sizeof(f.npc),&cb,&cr)&&cr.unsupported_death&&word(f.npc,0x970)==0x3000u&&f.calls.empty());
     }

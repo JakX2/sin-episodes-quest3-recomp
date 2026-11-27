@@ -131,6 +131,8 @@ ORIGINAL_METHODS={
   "sequence_interrupt_suppress":(0x221aecf0,136,"4bd99a9ee986bc88b1610b3116c6ddb23bfa6dfc39cb042cd0282193cc21de01"),
   "sequence_npc_interrupt_gate":(0x2204fc70,153,"f0d15b63fc12896181bf10b7fbd10233df6c088fcefb3dde83328dc69b46b3a0"),
   "sequence_clear_condition":(0x220398a0,91,"1c8c2465a759e27e7eead05d5d31074fc077765f60b8ed55ed44617a86f97327"),
+  "sequence_npc_cleanup":(0x22048fe0,1321,"e7b8ef94bef14d7f2e37ada620ffcedf852acdc4907032a62e995f9828244fd1"),
+  "sequence_effect_restore":(0x2214c7f0,73,"87e6497044f192353595c5311d68bb6893fc3a1513f020fb53f748e42330956f"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),

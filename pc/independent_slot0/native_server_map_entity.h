@@ -770,6 +770,25 @@ struct ScriptedSequenceInterruptApi {
 };
 inline constexpr char scripted_sequence_interrupt_export[]="SiN_GetScriptedSequenceInterruptApi";
 using GetScriptedSequenceInterruptApi=const ScriptedSequenceInterruptApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// 22048fe0 common non-dying script cleanup. The initial life-state-1
+// corpse branch remains owner-bound and is refused before mutation.
+struct ScriptedNpcCleanupBindings {
+    const ScriptedSequenceControlBindings* control;
+    const native_weapon_tables::ServerNpcConditionMapBindings* conditions;
+    void* context;
+    int (__cdecl *dirty_storage)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *effect_registry)(void*,void*) noexcept; // 22163730
+    int (__cdecl *effect_changed)(void*,void*) noexcept; // virtual +58
+    int (__cdecl *collision_flags)(void*,void*,unsigned) noexcept; // 22201900, NPC collision member +fc
+    int (__cdecl *root_motion_relocate)(void*,void*,void*) noexcept; // bounded original 22049292..22049417
+    int (__cdecl *life_state_changed)(void*,void*) noexcept; // virtual +1a8 before life-state write
+};
+struct ScriptedNpcCleanupResult {
+    unsigned completed,retail_result,unsupported_death,script_live,script_released,effects_restored,effect_registry_called,effect_changed_called,
+        collision_called,handles_cleared,root_motion_called,root_motion_skipped,activity_cleared,ideal_written,condition16_calls,life_state_written,spawnflag_cleared;
+};
+inline constexpr char scripted_npc_cleanup_export[]="SiN_CleanupScriptedNpc";
+using CleanupScriptedNpc=int (__cdecl *)(void*,unsigned,const ScriptedNpcCleanupBindings*,ScriptedNpcCleanupResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
