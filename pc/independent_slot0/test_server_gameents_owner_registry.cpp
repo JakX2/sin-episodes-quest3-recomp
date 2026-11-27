@@ -39,7 +39,7 @@ int main() {
     if(!original_alias_registry.Enroll(0,original_alias))
         return Fail(34,"original entity/unknown exact-base alias rejected");
     auto shifted=Identity(other_actor,2);
-    shifted.unknown=shifted.entity+4;
+    shifted.unknown=static_cast<const unsigned char*>(shifted.entity)+4;
     shifted.unknown_bytes=sizeof(void*);
     if(original_alias_registry.Enroll(1,shifted))
         return Fail(35,"shifted unknown subobject treated as exact entity base");
