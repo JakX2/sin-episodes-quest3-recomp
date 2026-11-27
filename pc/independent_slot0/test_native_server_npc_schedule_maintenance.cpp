@@ -179,6 +179,21 @@ int main(int argc,char** argv){
         f.actor[0x3e0]=1;f.trace.clear();
         assert(run(f.actor,sizeof(f.actor),10,&route,&sout,&stats)&&!stats.starts&&stats.runs==1&&stats.native_runs==1&&stats.last_run.script.terminal.completed&&stats.last_run.script.terminal.cleanup_called&&!stats.last_run.script.task_completed&&x.cleaned==1&&x.checks==1&&x.cleared==1&&f.get<unsigned>(0x970)==0xffffffffu);
         assert(!control.entries&&!pos.entries&&control.now==&x.stale_now&&pos.now==&x.stale_now&&x.stale_now==-100.f&&!task.lifecycle);
+        const auto run_motion=reinterpret_cast<RunServerNpcScriptedSchedulerWithMotion>(GetProcAddress(s,server_npc_scripted_motion_scheduler_export));
+        assert(run_motion&&!GetProcAddress(c,server_npc_scripted_motion_scheduler_export));
+        nm::ScriptedNpcStartMotionBindings motion{&start,&x};
+        motion.event_lookup=[](void*,unsigned token,int* index) noexcept ->int{assert(token==33);*index=27;return 1;};
+        motion.duration=[](void*,void*,int,double* value) noexcept ->int{*value=1.;return 1;};
+        finish.sequence_has_motion=[](void*,void*,int,bool* value) noexcept ->int{*value=false;return 1;};
+        task.update_aim=[](void*,void*,int a,int b) noexcept ->int{assert(!a&&!b);return 1;};
+        ServerNpcScriptedMotionSchedulerStats ms{};
+        f.put(x.seq,0x398,33u);f.put(f.tasks[0],0,107);reset();f.yield=true;
+        f.put(f.actor,0,scheduler.original_vtable);f.put(f.actor,0x378,0x4001u);f.put(f.actor,0x970,0x3000u);
+        assert(run_motion(f.actor,sizeof(f.actor),10,&route,&sout,&stats,&motion,&ms)&&ms.starts==1&&ms.native_starts==1&&ms.last.task_completed&&ms.last.event_index==27&&f.get<int>(0x974)==27&&f.get<int>(0x7a4)==4&&!stats.runs);
+        f.put(f.tasks[0],0,108);f.put(x.seq,0x3bc,10.f);reset();
+        f.put(f.actor,0,scheduler.original_vtable);f.put(f.actor,0x378,0x4001u);f.put(f.actor,0x970,0x3000u);f.put(f.actor,0x96c,2u);
+        assert(run_motion(f.actor,sizeof(f.actor),10,&route,&sout,&stats,&motion,&ms)&&ms.native_starts==1&&ms.last.motion_checked&&ms.last.duration_called&&!ms.last.elapsed&&ms.last.state_written&&!f.get<unsigned>(0x96c)&&stats.native_runs==1&&stats.last_run.script.waiting&&stats.last_run.script.aim_called);
+        assert(motion.base==&start&&!control.entries&&control.now==&x.stale_now&&!task.lifecycle);
         std::memcpy(f.rows,old_rows,sizeof(f.rows));std::memcpy(f.tasks,old_tasks,sizeof(f.tasks));
     }
 

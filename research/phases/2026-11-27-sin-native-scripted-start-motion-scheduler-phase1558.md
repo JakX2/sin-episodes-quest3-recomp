@@ -1,0 +1,3 @@
+# Phase 1558: Start107/108 in actual subclass scheduler
+
+Add optional motion-sidecar scheduler export without changing existing public structs. Native motion start dispatch sits after shared component delegation, binds lifecycle from the scheduler, and uses the same scoped control/possession clock and registry as native RunTask. Old route retains original fallback for 107/108; new route refuses mismatched sidecar. Actual loaded maintenance fixture checks Start107 task completion and Start108 followed by Run108 wait. CI pending.
