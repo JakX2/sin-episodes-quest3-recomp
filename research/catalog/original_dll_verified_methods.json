@@ -1460,7 +1460,10 @@
       "owner": "original server engine-interface CreateInterface factory",
       "label": "Original ServerGameEnts001 six-byte singleton-return factory; PE-backed RTTI/vtable",
       "original_code_length": 6,
-      "original_code_sha256": "81f3c5629ce13db9b52fddf5328c9d8301d28f7d02a510d2108ede5d9d3ea532"
+      "original_code_sha256": "81f3c5629ce13db9b52fddf5328c9d8301d28f7d02a510d2108ede5d9d3ea532",
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md"
+      ]
     },
     {
       "dll": "server",
@@ -4809,6 +4812,237 @@
       "original_code_length": 146,
       "original_code_sha256": "c292491b77e181d88ab5c65d6c49667f99cbd9fcf82a6be39d62f1af23e7c4b5",
       "label": "Original 60-byte INTEGER placeholder RecvProp factory uses optional explicit proxy or byte width 1/2/4 fallback"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2237E8C0",
+      "label": "Original +0x398 damage reaction gate",
+      "owner": "Recombinant Minor",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "e08a5b91b9f7e3411976303123a218fb28e6d3ff2df0690a1e8df6525b714ff7",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-minor-damage-gate-phase1613.md",
+      "original_code_length": 56,
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_minor_damage_gate.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_minor_damage_gate.cpp",
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-native-recombinant-minor-metric-gate-phase1625.md"
+      ]
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22377740",
+      "label": "Original +0x438 failure-schedule override",
+      "owner": "Recombinant Major",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "1bb8bf9a94ec39b0f2fc61af78f59275cadf10ebf4d30e8ab4b8a11b4cb33ddb",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-fail-schedule-phase1620.md",
+      "original_code_length": 15,
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_policy.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_policy.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2237D2A0",
+      "label": "Original +0x438 failure-schedule override",
+      "owner": "Recombinant Minor",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "34d3a33fbf552bb81ba0c1b0b998911fca3a9da5f6715ede5c7f76736211667c",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-fail-schedule-phase1620.md",
+      "original_code_length": 104,
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_policy.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_policy.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2237C190",
+      "label": "Delegated clearance predicate",
+      "owner": "Recombinant Minor",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "29205b3cc791f38206bc936e96cd87cbf7a44375440cd656ed0b0320f7247ed9",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-fail-schedule-phase1620.md",
+      "original_code_length": 196
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22377150",
+      "label": "Original +0x5d8 altitude scalar adjustment",
+      "owner": "Recombinant Major",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "686775c2a480914b29e50f0bb5ee7d8b3f50dd46c7296fa2b7c24ee7e2f98ed8",
+      "evidence_path": "research/phases/2026-11-27-sin-native-major-altitude-scale-phase1621.md",
+      "original_code_length": 94,
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_policy.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_policy.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22377070",
+      "label": "Original +0x180 sound precache sequence",
+      "owner": "Recombinant Major",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "56f79788d273357d82b978175fd72407c39c2fc7d33b4d11ddcb96501d92c477",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-sound-precache-phase1622.md",
+      "original_code_length": 39,
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_registration.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_registration.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2237B3E0",
+      "label": "Original +0x180 sound precache sequence",
+      "owner": "Recombinant Minor",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "19a90f5a8e59095f9e53e115554c228e3aa25baecdf4dd707c0c2a113441c139",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-sound-precache-phase1622.md",
+      "original_code_length": 51,
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_registration.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_registration.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2237B420",
+      "label": "Original +0x1d4 offset origin point",
+      "owner": "Recombinant Minor",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "99df09c6a541d40a2890fcee0f7861e8ad3354987d117f9d539542fafb6c1e7a",
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-minor-origin-point-phase1623.md",
+      "original_code_length": 93,
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_minor.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_minor.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x223BF210",
+      "label": "Original static factory registration thunk",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "6c46b07d21b9fa3c4a216b491ec0719e94c4b1dd6d2a72bbf9b13bb9df79209a",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 21
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E9360",
+      "label": "Original scalar deleting destructor",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "6d003e7b41562fcfcf5f3741ad6888bd72f881fac026b5ea76dd8f976d115e32",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 31
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E82D0",
+      "label": "Original +0x04 debug edict base store",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "dca33cf1628220c76b1919029a5e882dfe903aa93934aee599ef63f66e59c78f",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 12
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E9380",
+      "label": "Original MarkEntitiesAsTouching entry",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "8352791af429bd1cf0d040a0765b42ec959181b34d67f98f818a8c039389f1c1",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 299,
+      "implementation_path": "pc/independent_slot0/server_gameents_touch_entry_core.h",
+      "test_path": "pc/independent_slot0/test_server_gameents_touch_entry_core.cpp",
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-original-servergameents-methods-phase1627.md"
+      ]
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E82E0",
+      "label": "Original FreeContainingEntity delegation",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "0b0caf62afd15971ebdd8778c492e03519e45a2c93c03b42aceec070630cb0ac",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 14
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E94B0",
+      "label": "Original BaseEntityToEdict lookup",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "c702a6d4ebf9c7ec08865a2dfa7b1010364af129604919721528675c3c3fac53",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 22,
+      "implementation_path": "pc/independent_slot0/server_entity_conversion_core.h",
+      "test_path": "pc/independent_slot0/test_server_entity_conversion_core.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E82F0",
+      "label": "Original EdictToBaseEntity lookup",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "189b466407658510bb27d05b63609600b2e338a8c920d5b5997cb2002869bbe3",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 28,
+      "implementation_path": "pc/independent_slot0/server_entity_conversion_core.h",
+      "test_path": "pc/independent_slot0/test_server_entity_conversion_core.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E94D0",
+      "label": "Original CheckTransmit candidate policy",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified_host_neutral_partial_model",
+      "original_code_sha256": "e069400e844edfe9c5e756bfd828abfc6764df7b37ce13dfca374f94c25ad176",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "original_code_length": 354,
+      "implementation_path": "pc/independent_slot0/server_transmit_policy_core.h",
+      "test_path": "pc/independent_slot0/test_server_transmit_policy_core.cpp",
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-original-servergameents-methods-phase1627.md"
+      ]
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22285A10",
+      "label": "Original trace initializer",
+      "owner": "Server contact helper",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "35e66fcdbd33a37b6440a98ed9b363478da2322bc6fc388461ddb5e0edd2a28d",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-methods-phase1627.md",
+      "original_code_length": 45
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22221080",
+      "label": "Original pair-contact registration helper",
+      "owner": "Server contact helper",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "7b7c2ab2d13044215c84ceac8a39306ea31cb1e17f142be6ce2e64771252b5d3",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-methods-phase1627.md",
+      "original_code_length": 106
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2221F350",
+      "label": "Original directed contact registration helper",
+      "owner": "Server contact helper",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "bbdebe8fad62ff42eb88b6b282addbd23be90161aca0a7fd5aec4a814ced8dff",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-methods-phase1627.md",
+      "original_code_length": 526
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2206E2C0",
+      "label": "Original global trace-prefix copy helper",
+      "owner": "Server contact helper",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "383458ce02ffe087f4aa8fb8a3d4d68a761eeae74a77673b6e259949dad6f47d",
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-methods-phase1627.md",
+      "original_code_length": 128
     }
   ]
 }
