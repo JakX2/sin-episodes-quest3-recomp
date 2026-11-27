@@ -66,13 +66,15 @@ struct Fixture {
              roots=0,updated=0,deleted=0,should=0,set=0,ent_reads=0;
     std::size_t index_extent=2;
     bool first_alive=true,valid=true,fail_publish=false,reenter=false,
-         reentrancy_refused=false,foreign_touch=false,foreign_transmit=false;
+         reentrancy_refused=false,foreign_touch=false,foreign_transmit=false,
+         expire_pair_on_publish=false,crosswired_transmit=false;
     bool lease_active=false,deny_next_lease=false,
          reenter_lease_begin=false,reenter_lease_end=false;
     std::uint64_t owner_epoch=77,held_epoch=0;
     GameEntsDispatchSlot held_slot=GameEntsDispatchSlot::SetDebugEdictBase;
     unsigned lease_attempts=0,lease_granted=0,lease_released=0,
              lease_denied=0;
+    unsigned pair_checks=0,pair_denials=0;
     Fixture() {
         ea.serial=1;eb.serial=2;
         ea.unknown=&first_unknown;eb.unknown=&second_unknown;
@@ -150,6 +152,31 @@ static bool ValidTouch(void* p,const TouchEntity* touch) noexcept {
     if(!f.lease_active)f.valid=false;
     return touch==&f.ta||touch==&f.tb;
 }
+static bool ValidPair(void* p,const edict_t* edict,
+                      const CBaseEntity* entity) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    ++f.pair_checks;
+    if(!f.lease_active)f.valid=false;
+    // The fixture uses a generation-tagged registry instead of merely
+    // comparing the numerical addresses of two independently live objects.
+    const bool first=edict==&f.ea&&entity==&f.first&&f.first_alive&&
+        f.ea.serial==f.registry[1].serial&&
+        f.registry[1].entity==&f.first&&f.first.edict==&f.ea&&
+        f.ea.unknown==&f.first_unknown;
+    const bool second=edict==&f.eb&&entity==&f.second&&
+        f.eb.serial==f.registry[2].serial&&
+        f.registry[2].entity==&f.second&&f.second.edict==&f.eb&&
+        f.eb.unknown==&f.second_unknown;
+    if(!first&&!second)++f.pair_denials;
+    return first||second;
+}
+static bool ValidCandidate(void* p,std::uint32_t table_token,
+                           std::size_t index,const CBaseEntity* entity) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
+    // Authenticity proof over synthetic table slot 2, using its handle serial.
+    return table_token==91&&index==2&&ValidPair(p,&f.eb,entity);
+}
 static bool Extent(void* p,const CCheckTransmitInfo* info,
                    const unsigned short* indices,int,
                    std::size_t* out_info,std::size_t* out_indices) noexcept {
@@ -192,6 +219,9 @@ static bool Publish(void* p,const GameEntsTouchTrace* trace) noexcept {
     if(trace->ReadFloat(0x0c)!=5.f||trace->ReadFloat(0x10)!=7.f||
        trace->ReadFloat(0x14)!=9.f||trace->ReadFloat(0x2c)!=1.f||
        trace->ReadFloat(0x3c)!=123.f)f.valid=false;
+    // Stress a misbehaving host callback that recycles an entity generation
+    // even while the bounded dispatch holds its access lease.
+    if(f.expire_pair_on_publish)++f.registry[1].serial;
     return !f.fail_publish;
 }
 static ContactNode* Allocate(void* p) noexcept {
@@ -290,7 +320,7 @@ static bool TransmitEntity(void* p,std::uint32_t token,
     if(token!=1002)return false;
     *out=f.foreign_transmit
         ?reinterpret_cast<CBaseEntity*>(std::uintptr_t{1})
-        :&f.second;
+        :f.crosswired_transmit?&f.first:&f.second;
     return true;
 }
 static std::uint32_t Should(CBaseEntity* e,TransmitContext&,void* p) noexcept {
@@ -316,6 +346,7 @@ static GameEntsBoundedOwner Hooks(Fixture& f) noexcept {
     h.begin_access=&BeginOwnerAccess;h.end_access=&EndOwnerAccess;
     h.valid_edict=&ValidEdict;h.valid_entity=&ValidEntity;
     h.valid_unknown=&ValidUnknown;h.valid_touch=&ValidTouch;
+    h.valid_pair=&ValidPair;h.valid_candidate=&ValidCandidate;
     h.transmit_extent=&Extent;
     h.touch={&f,&ResolveTouch,&Init,&Publish,&f.contacts,
              f.registry.data(),f.registry.size(),
@@ -362,6 +393,14 @@ int main() {
     no_lease_end.end_access=nullptr;
     if(ServerGameEntsBoundedDispatch(no_lease_end).Ready())
         return Fail(41,"missing owner access lease release gate");
+    GameEntsBoundedOwner no_pair=Hooks(f);
+    no_pair.valid_pair=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_pair).Ready())
+        return Fail(49,"missing edict/entity generation association gate");
+    GameEntsBoundedOwner no_candidate=Hooks(f);
+    no_candidate.valid_candidate=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_candidate).Ready())
+        return Fail(60,"missing transmit candidate generation gate");
     GameEntsBoundedOwner no_unknown=Hooks(f);
     no_unknown.valid_unknown=nullptr;
     if(ServerGameEntsBoundedDispatch(no_unknown).Ready())
@@ -439,6 +478,67 @@ int main() {
         return Fail(47,"reentry during owner lease release was not refused");
     f.reenter_lease_end=false;
 
+    // Owned-pointer status alone does not establish a correct edict/entity
+    // pair. The owner checks reciprocal mapping and handle generation.
+    f.calls.clear();
+    const auto valid_pairs_before=f.pair_checks;
+    f.first.edict=&f.eb;  // both pointers are individually approved
+    if(v->BaseEntityToEdict(&f.first)!=nullptr||
+       game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       f.pair_checks==valid_pairs_before||f.lease_active)
+        return Fail(50,"owned entity must not export another owned edict");
+    f.first.edict=&f.ea;
+    // A trusted *other* unknown can return a trusted *other* entity.
+    // Neither identity may authorize release or touch for the wrong edict.
+    f.ea.unknown=&f.second_unknown;
+    if(v->EdictToBaseEntity(&f.ea)!=nullptr||
+       game->Report().status!=GameEntsDispatchResult::Unauthorized)
+        return Fail(51,"foreign mapping through owned unknown rejected");
+    v->FreeContainingEntity(&f.ea);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       f.ea.unknown!=&f.second_unknown||f.ea.flags!=0x65||
+       !f.calls.empty()||f.deleted)
+        return Fail(52,"cross-wired unknown cannot free another owned entity");
+    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
+       f.calls!="A"||f.allocated||f.starts)
+        return Fail(53,"cross-wired unknown must fail before contact mutation");
+    f.ea.unknown=&f.first_unknown;
+    f.calls.clear();
+    // Simulate retirement and reuse of the same memory at a new generation
+    // without changing either authorized address or its virtual target.
+    const auto serial=f.registry[1].serial;
+    f.registry[1].serial=serial+13;
+    if(v->BaseEntityToEdict(&f.first)!=nullptr||
+       game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       v->EdictToBaseEntity(&f.ea)!=nullptr||
+       game->Report().status!=GameEntsDispatchResult::Unauthorized)
+        return Fail(54,"stale-generation pair rejected by both conversions");
+    v->FreeContainingEntity(&f.ea);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       f.ea.unknown!=&f.first_unknown||f.ea.flags!=0x65||
+       !f.calls.empty()||f.deleted)
+        return Fail(55,"stale-generation pair cannot free entity");
+    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
+       f.calls!="A"||f.allocated)
+        return Fail(56,"stale-generation pair cannot enter contact publication");
+    f.registry[1].serial=serial;
+    f.calls.clear();
+    // A perfectly valid TouchEntity object may embed a different, owned
+    // CBaseEntity. The owner association must reject before reading origin.
+    f.ta.entity=&f.second;
+    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
+       f.calls!="A"||f.allocated)
+        return Fail(57,"owned touch data cannot refer to mismatched entity");
+    f.ta.entity=&f.first;
+    f.calls.clear();
+    if(v->BaseEntityToEdict(&f.first)!=&f.ea||
+       v->EdictToBaseEntity(&f.ea)!=&f.first||
+       game->Report().status!=GameEntsDispatchResult::Completed)
+        return Fail(58,"original generation restored for normal conversions");
+
     // Unauthorized tokens are tested without ever dereferencing memory.
     edict_t rogue{};
     CBaseEntity rogue_entity{};
@@ -503,16 +603,41 @@ int main() {
        !game->Report().transmit.unauthorized_entity||
        f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
         return Fail(38,"foreign transmit entity rejected before policy");
-    // The negative fixture intentionally performs one entity lookup;
-    // reset this counter before the established successful-transmit probe.
-    f.foreign_transmit=false;f.indices[0]=1;f.ent_reads=0;
+    f.foreign_transmit=false;
+    // An individually authorized entity cannot be sent as another slot.
+    f.crosswired_transmit=true;f.calls.clear();
+    v->CheckTransmit(&f.info,f.indices,1);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       !game->Report().transmit.unauthorized_entity||
+       f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
+        return Fail(61,"owned but wrong transmit candidate must be refused");
+    f.crosswired_transmit=false;
+    // Same address, newer serial: reject before transmission policy.
+    const auto second_generation=f.registry[2].serial;
+    f.registry[2].serial=second_generation+21;
+    f.calls.clear();v->CheckTransmit(&f.info,f.indices,1);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       !game->Report().transmit.unauthorized_entity||
+       f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
+        return Fail(62,"stale-generation transmit candidate cannot enter policy");
+    f.registry[2].serial=second_generation;
+    // Negative fixtures performed multiple entity lookups; reset before
+    // established successful-transmit probe.
+    f.indices[0]=1;f.ent_reads=0;
 
     f.calls.clear();f.fail_publish=true;
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);
     if(game->Report().status!=GameEntsDispatchResult::HostFailure||
        f.calls!="ABI21P"||f.allocated||f.contacts.touchAllocated)
         return Fail(11,"original trace publish refusal before contact link allocation");
-    f.fail_publish=false;f.ta.dirtyOrigin=true;f.tb.dirtyOrigin=true;
+    f.fail_publish=false;f.expire_pair_on_publish=true;f.calls.clear();
+    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
+       f.calls!="ABIP"||f.allocated||f.starts||f.contacts.touchAllocated)
+        return Fail(59,"expired post-publication pair cannot mutate contact graph");
+    f.expire_pair_on_publish=false;
+    f.registry[1].serial=f.ea.serial;
+    f.ta.dirtyOrigin=true;f.tb.dirtyOrigin=true;
     f.ta.origin={0,0,0};f.tb.origin={0,0,0};f.calls.clear();
     CHECK_X86_STACK(touchSlot(game,&f.ea,&f.eb),28);
     if(game->Report().status!=GameEntsDispatchResult::Completed||
@@ -594,6 +719,7 @@ int main() {
     // Every successful virtual call releases precisely the owner token it
     // acquired, including failed authorization, no-entity and host failures.
     if(!f.valid||f.lease_active||f.lease_granted!=f.lease_released||
+       f.pair_checks<10||f.pair_denials<7||
        f.lease_attempts!=f.lease_granted+f.lease_denied||
        game->Report().lease_attempts!=f.lease_attempts||
        game->Report().lease_acquisitions!=f.lease_granted||
@@ -601,6 +727,6 @@ int main() {
        game->Report().lease_denials!=f.lease_denied)
         return Fail(48,"owner leases must balance on every successful/failed ABI call");
     delete v;
-    std::puts("PASS ServerGameEnts001 concrete seven-slot Win32 vtable: owner leases, bounded conversions, edict touch, transmit, release, invalid extents and reentrant refusal");
+    std::puts("PASS ServerGameEnts001 concrete seven-slot Win32 vtable: owner leases, generation-aware associations, conversions, edict touch, transmit, release, invalid extents and reentrant refusal");
     return 0;
 }

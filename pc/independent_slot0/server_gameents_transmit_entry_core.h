@@ -31,6 +31,10 @@ struct GameEntsTransmitEntryHooks {
     // policy callbacks; left optional for existing lower-level fixtures.
     bool (*authorized_entity)(void*,const CBaseEntity*) noexcept=nullptr;
     void* authorization_context=nullptr;
+    // Optional on the isolated core; mandatory for bounded original vtable.
+    bool (*authorized_candidate)(void*,std::uint32_t,std::size_t,
+                                 const CBaseEntity*) noexcept=nullptr;
+    void* candidate_authorization_context=nullptr;
 };
 struct GameEntsTransmitEntryResult {
     unsigned table_calls=0,recipient_calls=0,bitset_calls=0,entity_calls=0;
@@ -96,12 +100,13 @@ inline TransmitResult CheckTransmitEntry(
             return TransmitResult::HostFailure;
     }
     const auto records=primary.records;
+    const auto table_token=primary.base_token;
     return CheckTransmitAccess(primary.bytes/kGameEntsTransmitRecordBytes,
         indices,work,ctx,hooks.policy,
         [records](std::size_t i) noexcept {
             return GameEntsReadU32(records+i*kGameEntsTransmitRecordBytes);
         },
-        [&hooks,&out,records](std::size_t i,CBaseEntity*& entity) noexcept {
+        [&hooks,&out,records,table_token](std::size_t i,CBaseEntity*& entity) noexcept {
             const auto token=GameEntsReadU32(records+i*kGameEntsTransmitRecordBytes+
                                           kGameEntsTransmitEntityOffset);
             if(!token){entity=nullptr;return true;}
@@ -109,6 +114,12 @@ inline TransmitResult CheckTransmitEntry(
             if(!hooks.entity(hooks.context,token,&entity))return false;
             if(entity&&hooks.authorized_entity&&
                !hooks.authorized_entity(hooks.authorization_context,entity)) {
+                out.unauthorized_entity=true;
+                return false;
+            }
+            if(entity&&hooks.authorized_candidate&&
+               !hooks.authorized_candidate(
+                   hooks.candidate_authorization_context,table_token,i,entity)) {
                 out.unauthorized_entity=true;
                 return false;
             }

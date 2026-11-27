@@ -37,6 +37,13 @@ struct GameEntsBoundedOwner {
     // TouchEntity storage before any virtual call or field dereference.
     bool (*valid_unknown)(void*,const ServerUnknownAbi*) noexcept=nullptr;
     bool (*valid_touch)(void*,const TouchEntity*) noexcept=nullptr;
+    // Must prove that this edict and entity refer to the SAME live owner
+    // generation, not merely two individually approved heap addresses.
+    // The host checks a trusted edict serial/handle registry under lease.
+    bool (*valid_pair)(void*,const edict_t*,const CBaseEntity*) noexcept=nullptr;
+    // Authenticate the entity against the exact table and slot generation.
+    bool (*valid_candidate)(void*,std::uint32_t,std::size_t,
+                            const CBaseEntity*) noexcept=nullptr;
     // Must prove stable storage for CCheckTransmitInfo and index array.
     // Count is the original signed input; callback reports index ELEMENTS.
     bool (*transmit_extent)(void*,const CCheckTransmitInfo*,
@@ -48,7 +55,7 @@ struct GameEntsBoundedOwner {
     bool Complete() const noexcept {
         return begin_access&&end_access&&
             valid_edict&&valid_entity&&valid_unknown&&valid_touch&&
-            transmit_extent&&
+            valid_pair&&valid_candidate&&transmit_extent&&
             touch.resolve&&touch.init_trace&&touch.publish_trace&&
             touch.contacts&&touch.entries&&touch.entry_count&&
             touch.touch.Complete()&&release.Complete()&&
@@ -121,6 +128,8 @@ public:
             bounded_touch.authorized_touch=owner_.valid_touch;
             bounded_touch.authorized_entity=owner_.valid_entity;
             bounded_touch.authorization_context=owner_.context;
+            bounded_touch.authorized_pair=&VerifyContactPair;
+            bounded_touch.pair_authorization_context=const_cast<GameEntsBoundedOwner*>(&owner_);
             const auto outcome=MarkEntitiesAsTouchingWithContactGraph(
                 first,second,bounded_touch,report_.touch);
             switch(outcome) {
@@ -147,7 +156,7 @@ public:
         } else {
             report_.release=TryReleaseContainingEntity(
                 conversion_,edict,owner_.release,
-                owner_.valid_entity,owner_.context);
+                owner_.valid_entity,owner_.context,owner_.valid_pair);
             switch(report_.release) {
             case EntityReleaseStatus::DetachedAndHooksInvoked:
                 report_.status=GameEntsDispatchResult::Completed;break;
@@ -173,7 +182,8 @@ public:
             result=conversion_.BaseEntityToEdict(entity);
             // The original may return a stale edict pointer. Do not pass an
             // unauthenticated owner pointer out of the diagnostic boundary.
-            if(result&&!owner_.valid_edict(owner_.context,result)) {
+            if(result&&(!owner_.valid_edict(owner_.context,result)||
+                        !owner_.valid_pair(owner_.context,result,entity))) {
                 result=nullptr;
                 report_.status=GameEntsDispatchResult::Unauthorized;
             } else report_.status=result
@@ -194,7 +204,8 @@ public:
             report_.status=GameEntsDispatchResult::Unauthorized;
         } else {
             result=conversion_.EdictToBaseEntity(edict);
-            if(result&&!owner_.valid_entity(owner_.context,result)) {
+            if(result&&(!owner_.valid_entity(owner_.context,result)||
+                        !owner_.valid_pair(owner_.context,edict,result))) {
                 result=nullptr;
                 report_.status=GameEntsDispatchResult::Unauthorized;
             } else report_.status=result
@@ -220,6 +231,8 @@ public:
             auto bounded_transmit=owner_.transmit;
             bounded_transmit.authorized_entity=owner_.valid_entity;
             bounded_transmit.authorization_context=owner_.context;
+            bounded_transmit.authorized_candidate=owner_.valid_candidate;
+            bounded_transmit.candidate_authorization_context=owner_.context;
             report_.transmit_status=CheckTransmitEntry(
                 reinterpret_cast<const unsigned char*>(info),info_extent,
                 reinterpret_cast<const std::uint16_t*>(indices),
@@ -241,6 +254,15 @@ public:
     }
 
 private:
+    // Raw-edict touch helper requires a void* ABI, while the independent
+    // owner contract carries the original typed edict pointer.
+    static bool VerifyContactPair(void* p,const void* edict,
+                                  const CBaseEntity* entity) noexcept {
+        const auto* owner=static_cast<const GameEntsBoundedOwner*>(p);
+        return owner->valid_pair(owner->context,
+                                 static_cast<const edict_t*>(edict),entity);
+    }
+
     // Release while active_ is still set, so a host release callback cannot
     // reenter the same object between the last operation and lease unlock.
     void End() noexcept {
