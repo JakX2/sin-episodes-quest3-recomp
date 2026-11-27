@@ -1,4 +1,5 @@
 #include "native_server_recombinant_session.h"
+#include "native_server_recombinant_registration.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -10,7 +11,7 @@
 using namespace sin_port::native_weapon_tables;
 struct F{
     alignas(4) unsigned char actor[0xc70]{},desc[0x48]{};
-    unsigned inherited_desc[13]{},resets=0,parents=0,goals=0,activities=0;
+    unsigned inherited_desc[13]{},resets=0,parents=0,goals=0,activities=0;int hit_activity=-1;
     ServerNpcScheduleTask inherited_task{116,0};
     ServerRecombinantSession session{};
     const ServerNpcConditionApi* ca=nullptr;const ServerNpcTaskLifecycleApi* life=nullptr;const ServerNpcScheduleStateApi* state=nullptr;
@@ -26,16 +27,19 @@ int main(int argc,char** argv){
     const auto gl=reinterpret_cast<GetServerNpcTaskLifecycleApi>(GetProcAddress(server,server_npc_task_lifecycle_export));
     const auto gs=reinterpret_cast<GetServerNpcScheduleStateApi>(GetProcAddress(server,server_npc_schedule_state_export));
     const auto gd=reinterpret_cast<GetServerActivityDictionaryApi>(GetProcAddress(server,server_activity_dictionary_export));
+    const auto gr=reinterpret_cast<GetServerRecombinantRegistrationApi>(GetProcAddress(server,server_recombinant_registration_export));
     const auto gi=reinterpret_cast<GetServerRecombinantScheduleApi>(GetProcAddress(server,server_recombinant_schedule_export));
-    assert(get&&gc&&gl&&gs&&gd&&gi&&!GetProcAddress(client,server_recombinant_session_export)&&!get(2,sizeof(ServerRecombinantSessionApi)));
+    assert(get&&gc&&gl&&gs&&gd&&gi&&gr&&!GetProcAddress(client,server_recombinant_session_export)&&!get(2,sizeof(ServerRecombinantSessionApi)));
     const auto* api=get(1,sizeof(ServerRecombinantSessionApi));F f;f.ca=gc(1,sizeof(ServerNpcConditionApi));f.life=gl(1,sizeof(ServerNpcTaskLifecycleApi));f.state=gs(1,sizeof(ServerNpcScheduleStateApi));
     const auto* da=gd(1,sizeof(ServerActivityDictionaryApi));const auto* image_api=gi(1,sizeof(ServerRecombinantScheduleApi));assert(api&&f.ca&&f.life&&f.state&&da&&image_api);
     f.put(f.desc,4,npc_global_condition_base+100);f.put(f.desc,8,0);f.put(f.desc,12,127);f.put(f.desc,16,npc_global_condition_base+227);
     f.put(f.desc,0x34,npc_global_condition_base);f.put(f.desc,0x38,0);f.put(f.desc,0x3c,127);
     f.lifecycle.conditions.context=&f;f.lifecycle.conditions.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept ->int{auto& f=*static_cast<F*>(p);*out=f.desc;*n=sizeof(f.desc);return 1;};
     ServerEventDictionaryEntry names[16]{};ServerActivityDictionary dictionary{{names,16,0,1,920},0};
-    const char* private_names[]{"ACT_FRENZY","ACT_BIG_SLASH","ACT_LEAP_ATTACK","ACT_FLY_ATTACK","ACT_FLY_LAND","ACT_SIDESTEP","ACT_FLY_ATTACK_POUNCE_OFF","ACT_FLY_AWAY","ACT_FLY_LAND_AWAY"};
-    int ids[9]{};for(unsigned i=0;i<9;++i)assert(da->private_id(&dictionary,private_names[i],&ids[i]));
+    const auto* reg=gr(1,sizeof(ServerRecombinantRegistrationApi));assert(reg);
+    ServerRecombinantActivityRegistration major_ids{},minor_ids{};
+    assert(reg->register_activities(RecombinantMajor,&dictionary,nullptr,&major_ids)&&reg->register_activities(RecombinantMinor,&dictionary,nullptr,&minor_ids));
+    f.hit_activity=minor_ids.ids[3];
     ServerRecombinantPolicyBindings p{};p.context=&f;p.conditions=f.lifecycle.conditions;p.activities=&dictionary;
     p.parent_schedule=[](void*,void*,int id,int* out) noexcept ->int{*out=id;return 1;};
     ServerRecombinantDecisionBindings decision{};decision.policy=&p;decision.context=&f;
@@ -46,9 +50,10 @@ int main(int argc,char** argv){
     t.submit_goal=[](void* p,unsigned nav,const ServerRecombinantTaskGoal* g,int mode,bool* out) noexcept ->int{auto& f=*static_cast<F*>(p);assert(nav==44&&g->kind==4&&g->activity==10&&!mode);++f.goals;*out=true;return 1;};
     t.enemy=[](void*,void*,void** out) noexcept ->int{*out=nullptr;return 1;};
     t.goal_enemy=[](void*,unsigned nav,void* e) noexcept ->int{return nav==44&&!e;};
-    t.activity=[](void* p,void*,int id) noexcept ->int{auto& f=*static_cast<F*>(p);assert(id==932);++f.activities;return 1;};
+    t.activity=[](void* p,void*,int id) noexcept ->int{auto& f=*static_cast<F*>(p);assert(id==f.hit_activity);++f.activities;return 1;};
     ServerRecombinantDamageBindings d{&p,&f};ServerRecombinantMinorBindings minor{&d,&f,1};
-    ServerRecombinantMinorTouchBindings touch{&minor,&f};ServerRecombinantMinorTaskBindings mt{&t,&touch,&f,917,931,932};
+    ServerRecombinantMinorTouchBindings touch{&minor,&f};ServerRecombinantMinorTaskBindings unbound{&t,&touch,&f,917,-1,-1},mt{};
+    assert(reg->bind_minor(&minor_ids,&unbound,&mt));
     mt.special_gate=[](void*,void*,bool* yes) noexcept ->int{*yes=false;return 1;};
     touch.set_movement=[](void*,void*,int type,int mode) noexcept ->int{return type==3&&!mode;};
     ServerRecombinantLaunchBindings launch{&mt,&f};ServerRecombinantDispatchBindings dispatch{&t,&mt,&launch};

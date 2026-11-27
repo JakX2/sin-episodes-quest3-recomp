@@ -9,6 +9,7 @@ extern "C" const sin_port::native_weapon_tables::ServerRecombinantLaunchApi* __c
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantMinorApi* __cdecl SiN_GetServerRecombinantMinorApi(unsigned,unsigned) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantPrescheduleApi* __cdecl SiN_GetServerRecombinantPrescheduleApi(unsigned,unsigned) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcScheduleStateApi* __cdecl SiN_GetServerNpcScheduleStateApi(unsigned,unsigned) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerActivityDictionaryApi* __cdecl SiN_GetServerActivityDictionaryApi(unsigned,unsigned) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcScheduleNamespaceApi* __cdecl SiN_GetServerNpcScheduleNamespaceApi(unsigned,unsigned) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
@@ -30,7 +31,13 @@ bool coherent(const ServerRecombinantSession& s) noexcept{
     if(d->launch&&d->launch->task!=minor)return false;
     if(minor&&minor->touch&&minor->touch->minor&&minor->touch->minor->damage&&minor->touch->minor->damage->policy!=&p)return false;
     if(b->major_preschedule&&b->major_preschedule->policy!=&p)return false;
-    if(s.kind==RecombinantMinor&&(!minor||!minor->touch||!minor->touch->minor||!minor->touch->minor->damage||!d->launch))return false;
+    if(s.kind==RecombinantMinor){
+        if(!minor||!minor->touch||!minor->touch->minor||!minor->touch->minor->damage||!d->launch)return false;
+        const auto* da=SiN_GetServerActivityDictionaryApi(1,sizeof(ServerActivityDictionaryApi));
+        int hit=-1,walk=-1;
+        if(!da||!da->lookup(p.activities,"ACT_HIT_FLYING",&hit)||!da->lookup(p.activities,"ACT_WALK_BACK",&walk)||
+           hit<0||walk<0||hit!=minor->custom_activity||walk!=minor->arrival_activity)return false;
+    }
     unsigned token=0;const auto* api=catalog();return api&&api->find(&im,80,&token)&&token;
 }
 int __cdecl storage(void* context,unsigned token,const void** out,unsigned* n) noexcept{
