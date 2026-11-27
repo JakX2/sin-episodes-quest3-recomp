@@ -103,6 +103,10 @@ inline constexpr char server_npc_scripted_motion_scheduler_export[]="SiN_RunServ
 using RunServerNpcScriptedSchedulerWithMotion=int (__cdecl *)(void*,unsigned,float,const ServerNpcScriptedSchedulerBindings*,
     ServerNpcSubclassSchedulerResult*,ServerNpcScriptedSchedulerStats*,const native_map::ScriptedNpcStartMotionBindings*,
     ServerNpcScriptedMotionSchedulerStats*) noexcept;
+inline constexpr char server_npc_scripted_cleanup_scheduler_export[]="SiN_RunServerNpcScriptedSchedulerWithCleanup";
+using RunServerNpcScriptedSchedulerWithCleanup=int (__cdecl *)(void*,unsigned,float,const ServerNpcScriptedSchedulerBindings*,
+    ServerNpcSubclassSchedulerResult*,ServerNpcScriptedSchedulerStats*,const native_map::ScriptedNpcStartMotionBindings*,
+    ServerNpcScriptedMotionSchedulerStats*,const native_map::ScriptedNpcCleanupBindings*,native_map::ScriptedNpcCleanupResult*) noexcept;
 // New ground-Grunt path connecting original +494/+498 requests to actual task maintenance.
 inline constexpr char server_npc_native_request_scheduler_export[]="SiN_GetServerNpcNativeRequestSchedulerApi";
 struct ServerGruntHelperTaskBindings;

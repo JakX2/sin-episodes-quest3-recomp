@@ -194,6 +194,24 @@ int main(int argc,char** argv){
         f.put(f.actor,0,scheduler.original_vtable);f.put(f.actor,0x378,0x4001u);f.put(f.actor,0x970,0x3000u);f.put(f.actor,0x96c,2u);
         assert(run_motion(f.actor,sizeof(f.actor),10,&route,&sout,&stats,&motion,&ms)&&ms.native_starts==1&&ms.last.motion_checked&&ms.last.duration_called&&!ms.last.elapsed&&ms.last.state_written&&!f.get<unsigned>(0x96c)&&stats.native_runs==1&&stats.last_run.script.waiting&&stats.last_run.script.aim_called);
         assert(motion.base==&start&&!control.entries&&control.now==&x.stale_now&&!task.lifecycle);
+        const auto run_clean=reinterpret_cast<RunServerNpcScriptedSchedulerWithCleanup>(GetProcAddress(s,server_npc_scripted_cleanup_scheduler_export));
+        assert(run_clean&&!GetProcAddress(c,server_npc_scripted_cleanup_scheduler_export));
+        nm::ScriptedNpcCleanupBindings cleanup{&control,nullptr,&x};
+        cleanup.effect_changed=[](void* p,void* a) noexcept ->int{
+            auto& x=*static_cast<ScriptFixture*>(p);assert(a==x.f->actor&&x.f->get<unsigned>(0x78)==2);++x.cleaned;return 1;
+        };
+        finish.cleanup_script_state=nullptr;
+        finish.clear_schedule=[](void* p,void* a) noexcept ->int{
+            auto& x=*static_cast<ScriptFixture*>(p);assert(a==x.f->actor&&x.f->get<unsigned>(0x970)==0xffffffffu&&x.f->get<unsigned>(0x78)==2);++x.cleared;return 1;
+        };
+        nm::ScriptedNpcCleanupResult cr{};
+        f.put(f.tasks[0],0,109);f.put(x.seq,0x398,0u);f.put(x.seq,0x3c4,2u);f.put(x.seq,0x3d0,0x4001u);
+        reset();f.put(f.actor,0,scheduler.original_vtable);f.put(f.actor,0x378,0x4001u);f.put(f.actor,0x970,0x3000u);
+        f.put(f.actor,0x9c,100);f.put(f.actor,0x78,1u);f.actor[0x3e0]=1;
+        auto wrong_cleanup=cleanup;wrong_cleanup.control=nullptr;
+        assert(!run_clean(f.actor,sizeof(f.actor),10,&route,&sout,&stats,&motion,&ms,&wrong_cleanup,&cr)&&f.trace.empty());
+        assert(run_clean(f.actor,sizeof(f.actor),10,&route,&sout,&stats,&motion,&ms,&cleanup,&cr)&&stats.native_starts==1&&stats.native_runs==1&&stats.last_run.script.terminal.cleanup_called&&cr.completed&&cr.script_released&&cr.effects_restored&&cr.handles_cleared==3&&x.cleaned==2&&x.cleared==2&&f.get<unsigned>(0x970)==0xffffffffu);
+        assert(cleanup.control==&control&&!cleanup.conditions&&!control.entries&&control.now==&x.stale_now);
         std::memcpy(f.rows,old_rows,sizeof(f.rows));std::memcpy(f.tasks,old_tasks,sizeof(f.tasks));
     }
 
