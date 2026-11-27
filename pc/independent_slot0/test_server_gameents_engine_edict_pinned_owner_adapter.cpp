@@ -13,9 +13,12 @@ struct Edict {
                   unknown=0x4567,reuse_time=0;
 };
 static_assert(sizeof(Edict)==0x14,"original 2006 PE32 engine edict stride");
+using PinnedRegistry=GameEntsOwnerLifetimeRegistry<2,2>;
 struct Owner {
     std::array<Edict,6> slots{};
     EnginePinnedEdictAllocatorAdapter* adapter=nullptr;
+    PinnedRegistry* registry=nullptr; // optional trusted synthetic commit journal
+    unsigned commit_reservations=0;
     std::size_t count=2, protected_last=1;
     std::uint64_t token=100,host_epoch=1000,last_reserved=0;
     unsigned begin_count=0,end_count=0,cleanup_calls=0,
@@ -112,6 +115,15 @@ static bool Commit(void* p,std::uint64_t token,
        o.slots[c.index].serial!=c.restamp.next_serial||
        o.slots[c.index].reuse_time!=c.restamp.time_bits||
        (o.slots[c.index].flags&2u)==0)return false;
+    // The owner commits the edict-only generation WHILE the physical pin is
+    // held. Entity construction is a later, separately attested transition.
+    // No failure is permitted after this successful journal reservation.
+    if(o.registry) {
+        if(c.index<2||c.index>3||
+           !o.registry->ReserveEdict(c.index-2,&o.slots[c.index],
+                                     sizeof(Edict),c.epoch))return false;
+        ++o.commit_reservations;
+    }
     o.count=c.new_count;
     return true;
 }
@@ -169,6 +181,76 @@ int main() {
        !registry.ValidPair(ia.edict,ia.entity)||
        !registry.End(5,registry_token))
         return Fail(15,"real allocator epoch to original unknown alias registry");
+
+    // Phase 1644: unlike the prior post-unpin enrollment fixture above,
+    // owner.Commit itself reserves each edict generation under the pin.
+    // Creation of CBaseEntity happens later; a pending edict has no entity
+    // or IServerUnknown authorization. These are stable synthetic arrays.
+    PinnedRegistry pinned_registry;
+    Owner pinned_owner{};
+    pinned_owner.registry=&pinned_registry;
+    EnginePinnedEdictAllocatorAdapter pinned_adapter(1000);
+    const auto pinned_first=pinned_adapter.Allocate(Host(pinned_owner),400,0.01f);
+    const auto pinned_second=pinned_adapter.Allocate(Host(pinned_owner),400,0.01f);
+    std::uint64_t pinned_token=0;
+    if(pinned_first.status!=S::Activated||pinned_second.status!=S::Activated||
+       pinned_first.owner_epoch!=1001||pinned_second.owner_epoch!=1002||
+       pinned_owner.commit_reservations!=2||pinned_owner.count!=4||
+       pinned_owner.pin_held||pinned_owner.end_count!=2||
+       !pinned_registry.Begin(5,&pinned_token)||
+       !pinned_registry.ValidEdict(&pinned_owner.slots[2])||
+       !pinned_registry.ValidEdict(&pinned_owner.slots[3])||
+       pinned_registry.ValidUnknownPair(&pinned_owner.slots[2],
+                                        entity_a.data())||
+       !pinned_registry.End(5,pinned_token))
+        return Fail(16,"owner commit did not reserve pending epochs under pin");
+    GameEntsOwnerIdentity pinned_ia{
+        &pinned_owner.slots[2],sizeof(Edict),entity_a.data(),entity_a.size(),
+        entity_a.data(),sizeof(void*),touch_a.data(),touch_a.size(),
+        pinned_first.owner_epoch};
+    GameEntsOwnerIdentity pinned_ib{
+        &pinned_owner.slots[3],sizeof(Edict),entity_b.data(),entity_b.size(),
+        entity_b.data(),sizeof(void*),touch_b.data(),touch_b.size(),
+        pinned_second.owner_epoch};
+    auto swapped=pinned_ia;
+    swapped.generation=pinned_second.owner_epoch;
+    if(pinned_registry.ActivateReservedEntity(0,swapped)||
+       !pinned_registry.ActivateReservedEntity(1,pinned_ib)||
+       !pinned_registry.ActivateReservedEntity(0,pinned_ia)||
+       pinned_registry.ActivateReservedEntity(0,pinned_ia)||
+       !pinned_registry.Begin(5,&pinned_token)||
+       !pinned_registry.ValidUnknownPair(pinned_ia.edict,pinned_ia.entity)||
+       !pinned_registry.ValidUnknownPair(pinned_ib.edict,pinned_ib.entity)||
+       pinned_registry.ValidUnknownPair(pinned_ia.edict,pinned_ib.entity)||
+       !pinned_registry.End(5,pinned_token))
+        return Fail(17,"deferred entity binding lost the pinned reservation epoch");
+    // A duplicated/preexisting pending record refuses host count commit:
+    // the adapter is permanently quarantined after edict restamp.
+    PinnedRegistry collision_registry;
+    Owner collision_owner{};
+    collision_owner.registry=&collision_registry;
+    if(!collision_registry.ReserveEdict(
+           0,&collision_owner.slots[2],sizeof(Edict),1000))
+        return Fail(18,"collision fixture could not reserve pending edict");
+    EnginePinnedEdictAllocatorAdapter collision_adapter(1000);
+    const auto collision=collision_adapter.Allocate(
+        Host(collision_owner),400,0.01f);
+    if(collision.status!=S::CommitFailed||!collision_adapter.Quarantined()||
+       collision_owner.count!=2||collision_owner.commit_reservations||
+       collision_owner.end_count!=1||collision_owner.pin_held)
+        return Fail(19,"duplicate pending reservation did not fail closed");
+    // Even successful owner journal/count commit cannot report allocation
+    // if the physical pin's release is refused.
+    PinnedRegistry unpin_registry;
+    Owner unpin_owner{};
+    unpin_owner.registry=&unpin_registry;
+    unpin_owner.deny_end=true;
+    EnginePinnedEdictAllocatorAdapter unpin_adapter(1000);
+    const auto unpin=unpin_adapter.Allocate(Host(unpin_owner),400,0.01f);
+    if(unpin.status!=S::PinReleaseFailed||!unpin_adapter.Quarantined()||
+       unpin_owner.commit_reservations!=1||unpin_owner.count!=3||
+       unpin.owner_epoch)
+        return Fail(20,"failed unpin exposed committed pending owner");
     Owner parallel{};
     EnginePinnedEdictAllocatorAdapter parallel_adapter(1000);
     parallel.adapter=&parallel_adapter;
