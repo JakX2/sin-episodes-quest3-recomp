@@ -1,6 +1,7 @@
 #include "native_server_npc_schedule_image.h"
 #include <cmath>
 #include <cstring>
+#include <initializer_list>
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleCatalogApi* __cdecl SiN_GetServerNpcScheduleCatalogApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcScheduleNamespaceApi* __cdecl SiN_GetServerNpcScheduleNamespaceApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
@@ -272,6 +273,48 @@ bool think_after(void* actor,unsigned bytes,const ServerNpcConditionMapBindings&
         out.conditions_cleared+=cr.changed;
     }
     out.completed=1;return true;
+}
+int bind_scripted_chain(void* actor,const ServerScheduleImage* scripts,const ServerScheduleImage* derived,
+    const ServerNpcScheduleServicesBindings* owner,ServerNpcScriptedScheduleChain* out) noexcept {
+    if(!actor||!scripts||!derived||scripts==derived||!owner||!out||owner==&out->bound)return 0;
+    const auto& selection=owner->scheduler.maintenance.selection;
+    const auto* cls=SiN_GetServerNpcSubclassSchedulerApi(1,sizeof(ServerNpcSubclassSchedulerApi));
+    unsigned family=0;
+    if(!cls||!cls->classify(owner->scheduler.original_vtable,&family)||family!=scripts->family||family!=derived->family||
+       scripts->row_count!=6||scripts->task_count!=43||derived->row_count==0||derived->row_count>46||
+       derived->task_count>270||!scripts->token_base||!derived->token_base||
+       scripts->token_base>0xffffffffu-137u||derived->token_base>0xffffffffu-137u||
+       scripts->fallback_head!=selection.head||derived->fallback_head!=scripts->head||
+       derived->head!=derived->token_base+3u*(derived->row_count-1)||
+       (scripts->token_base<=derived->token_base+137u&&derived->token_base<=scripts->token_base+137u)||
+       (selection.head>=derived->token_base&&selection.head-derived->token_base<138u))return 0;
+    // Rebuild and compare the compact inherited image against the exact
+    // current namespace. Do not publish a caller-mutated descriptor.
+    ServerScheduleImage expected{};ServerScheduleImageResult result{};
+    ServerScheduleImageBindings bindings{};bindings.namespace_map=selection.grunt.schedule.conditions;
+    if(!build_scripts(actor,family,scripts->token_base,selection.head,&bindings,&expected,&result)||
+       scripts->head!=expected.head||scripts->activity_owner||scripts->activity_generation||
+       std::memcmp(scripts->tasks,expected.tasks,43*sizeof(ServerNpcScheduleTask)))return 0;
+    for(unsigned i=0;i<6;++i){
+        const auto& a=scripts->rows[i];const auto& b=expected.rows[i];
+        if(a.source!=b.source||a.task_offset!=b.task_offset||std::memcmp(a.descriptor,b.descriptor,sizeof(a.descriptor)))return 0;
+    }
+    out->bound=*owner;out->original=selection.grunt.schedule;out->scripts=scripts;out->derived=derived;
+    auto& bound=out->bound.scheduler.maintenance.selection;
+    bound.head=scripts->head;
+    auto& sb=bound.grunt.schedule;sb.context=out;
+    sb.storage=[](void* p,std::uint32_t token,const void** data,unsigned* n) noexcept ->int{
+        auto& q=*static_cast<ServerNpcScriptedScheduleChain*>(p);
+        for(const auto* image:{q.derived,q.scripts}){
+            if(token>=image->token_base&&token-image->token_base<138u)return storage(image,token,data,n);
+        }
+        return q.original.storage&&q.original.storage(q.original.context,token,data,n);
+    };
+    sb.reset_movement=[](void* p,void* a,std::uint32_t token) noexcept ->int{
+        const auto& b=static_cast<ServerNpcScriptedScheduleChain*>(p)->original;
+        return b.reset_movement&&b.reset_movement(b.context,a,token);
+    };
+    return 1;
 }
 struct CatalogCall {
     const ServerScheduleImage* image;
@@ -821,4 +864,11 @@ extern "C" int __cdecl SiN_RunServerNpcJetWeaponPolicyThinkWithScripts(void* a,u
 #pragma comment(linker,"/EXPORT:SiN_GetServerNpcScriptedScheduleImageApi=_SiN_GetServerNpcScriptedScheduleImageApi")
 extern "C" const sin_port::native_weapon_tables::ServerNpcScheduleImageApi* __cdecl SiN_GetServerNpcScriptedScheduleImageApi(std::uint32_t version,std::uint32_t size) noexcept{
     using namespace sin_port::native_weapon_tables;return version==1&&size==sizeof(ServerNpcScheduleImageApi)?&scripted_image_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_BindServerNpcScriptedScheduleChain=_SiN_BindServerNpcScriptedScheduleChain")
+extern "C" int __cdecl SiN_BindServerNpcScriptedScheduleChain(void* actor,const sin_port::native_weapon_tables::ServerScheduleImage* scripts,
+    const sin_port::native_weapon_tables::ServerScheduleImage* derived,const sin_port::native_weapon_tables::ServerNpcScheduleServicesBindings* owner,
+    sin_port::native_weapon_tables::ServerNpcScriptedScheduleChain* out) noexcept {
+    return sin_port::native_weapon_tables::bind_scripted_chain(actor,scripts,derived,owner,out);
 }
