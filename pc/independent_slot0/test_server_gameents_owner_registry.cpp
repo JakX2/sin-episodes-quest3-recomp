@@ -26,9 +26,71 @@ int main() {
     auto third=Identity(c,3);
     if(!r.Enroll(0,first)||!r.Enroll(1,second))
         return Fail(1,"initial enrollment denied");
+
+    // Source-authenticated original CBaseEntity implements IServerUnknown at
+    // the same base address: CBaseEntity +0x14 vtable entry returns this,
+    // and CServerNetworkProperty writes that entity to edict +0x0c.
+    // Test this exact alias independently from older disjoint fixtures.
+    Registry original_alias_registry;
+    Storage original_actor{},other_actor{};
+    auto original_alias=Identity(original_actor,1);
+    original_alias.unknown=original_alias.entity;
+    original_alias.unknown_bytes=sizeof(void*);
+    if(!original_alias_registry.Enroll(0,original_alias))
+        return Fail(34,"original entity/unknown exact-base alias rejected");
+    auto shifted=Identity(other_actor,2);
+    shifted.unknown=shifted.entity+4;
+    shifted.unknown_bytes=sizeof(void*);
+    if(original_alias_registry.Enroll(1,shifted))
+        return Fail(35,"shifted unknown subobject treated as exact entity base");
+    shifted=Identity(other_actor,2);
+    shifted.unknown=shifted.entity;
+    shifted.unknown_bytes=shifted.entity_bytes+1;
+    if(original_alias_registry.Enroll(1,shifted))
+        return Fail(36,"unknown alias extends beyond entity lifetime range");
+    shifted=Identity(other_actor,2);
+    shifted.unknown=shifted.edict;
+    shifted.unknown_bytes=sizeof(void*);
+    if(original_alias_registry.Enroll(1,shifted))
+        return Fail(37,"edict overlapping unknown accepted");
+    shifted=Identity(other_actor,2);
+    shifted.touch=shifted.entity;
+    if(original_alias_registry.Enroll(1,shifted))
+        return Fail(38,"entity touching-list alias accepted");
+    shifted=Identity(other_actor,2);
+    shifted.unknown=original_alias.entity;
+    shifted.unknown_bytes=sizeof(void*);
+    if(original_alias_registry.Enroll(1,shifted))
+        return Fail(39,"cross-entity unknown pointer accepted");
+    if(!original_alias_registry.Enroll(1,Identity(other_actor,2)))
+        return Fail(40,"negative alias cases poisoned legitimate new owner");
+    std::uint64_t alias_token=0;
+    if(!original_alias_registry.Begin(5,&alias_token)||
+       !original_alias_registry.ValidUnknown(original_alias.entity)||
+       !original_alias_registry.ValidUnknownPair(original_alias.edict,
+                                                 original_alias.entity)||
+       !original_alias_registry.ValidPair(original_alias.edict,
+                                          original_alias.entity)||
+       original_alias_registry.ValidUnknownPair(other_actor.edict,
+                                                 original_alias.entity)||
+       !original_alias_registry.End(5,alias_token))
+        return Fail(41,"original unknown alias not associated with exact edict");
+    if(!original_alias_registry.Begin(3,&alias_token)||
+       !original_alias_registry.RetireEntity(0)||
+       original_alias_registry.ValidUnknown(original_alias.entity)||
+       original_alias_registry.ValidUnknownPair(original_alias.edict,
+                                                original_alias.entity)||
+       !original_alias_registry.ValidEdict(original_alias.edict)||
+       !original_alias_registry.End(3,alias_token)||
+       !original_alias_registry.ForgetEdict(0))
+        return Fail(42,"original alias not tombstoned on entity release");
+    original_alias.generation=3;
+    if(!original_alias_registry.Enroll(0,original_alias))
+        return Fail(43,"higher generation original alias re-enrollment refused");
     if(r.Enroll(2,first))return Fail(2,"duplicate live address enrolled");
-    // All four memory ranges must be nonoverlapping, not just unlike
-    // base pointers. Alias across field types and partial overlap count.
+    // All owner ranges are disjoint EXCEPT source-backed exact
+    // CBaseEntity == IServerUnknown identity. Cross-owner, partial-offset,
+    // oversized alias, or entity/touch alias must still be rejected.
     auto aliased=third;
     aliased.unknown=first.entity;
     if(r.Enroll(2,aliased))return Fail(27,"cross-field live address alias");
@@ -125,6 +187,6 @@ int main() {
         return Fail(32,"global generation rollback through fresh address");
     if(!r.Enroll(2,Identity(fresh,6)))
         return Fail(33,"new higher owner generation unexpectedly refused");
-    std::puts("PASS owner lifecycle registry: leases, thread isolation, overlap/overflow bounds, retirement, global generations and transmit rebinding");
+    std::puts("PASS owner lifecycle registry: source-backed exact CBaseEntity/IServerUnknown alias, leases, thread isolation, overlap/overflow bounds, retirement, global generations and transmit rebinding");
     return 0;
 }

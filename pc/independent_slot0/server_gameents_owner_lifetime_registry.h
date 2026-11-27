@@ -220,6 +220,10 @@ private:
                Overlap(v.unknown,v.unknown_bytes,base,bytes)||
                Overlap(v.touch,v.touch_bytes,base,bytes);
     }
+    // The original CBaseEntity itself supplies IServerUnknown at its base:
+    // authenticated GameEnts +0x14 returns this; m_NetworkProp is embedded
+    // at entity+0x160 and writes entity into edict+0x0c. Therefore ONE
+    // exact-base alias is valid, never a partial/shifted/cross-owner alias.
     static bool WellFormed(const GameEntsOwnerIdentity& v) noexcept {
         if(!v.generation||v.edict_bytes<0x14||v.entity_bytes<0x170||
            v.unknown_bytes<sizeof(void*)||!v.touch_bytes||
@@ -227,10 +231,13 @@ private:
            !RangeValid(v.entity,v.entity_bytes)||
            !RangeValid(v.unknown,v.unknown_bytes)||
            !RangeValid(v.touch,v.touch_bytes))return false;
+        const bool original_unknown_alias=
+            v.entity==v.unknown&&v.unknown_bytes<=v.entity_bytes;
         return !Overlap(v.edict,v.edict_bytes,v.entity,v.entity_bytes)&&
             !Overlap(v.edict,v.edict_bytes,v.unknown,v.unknown_bytes)&&
             !Overlap(v.edict,v.edict_bytes,v.touch,v.touch_bytes)&&
-            !Overlap(v.entity,v.entity_bytes,v.unknown,v.unknown_bytes)&&
+            (original_unknown_alias||
+             !Overlap(v.entity,v.entity_bytes,v.unknown,v.unknown_bytes))&&
             !Overlap(v.entity,v.entity_bytes,v.touch,v.touch_bytes)&&
             !Overlap(v.unknown,v.unknown_bytes,v.touch,v.touch_bytes);
     }
