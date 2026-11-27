@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstring>
 #include <limits>
+#include <cmath>
 using namespace sin_port::native_weapon_tables;
 struct F {
     alignas(4) unsigned char actor[8]{},info[0x48]{};
@@ -42,5 +43,48 @@ int main(int argc,char** argv){
     const unsigned prior=f.calls;
     assert(!call(11.f)&&f.calls==prior&&!o.completed);
     assert(!api->evaluate(nullptr,0,nullptr,0,&b,&o));
+
+    // Phase 1625's separately published API is a compatibility alias of
+    // this original +398 routine, not another native implementation.
+    auto get_metric=reinterpret_cast<GetServerRecombinantMinorMetricGateApi>(
+        GetProcAddress(server,server_recombinant_minor_metric_gate_export));
+    assert(get_metric&&!GetProcAddress(client,server_recombinant_minor_metric_gate_export));
+    const auto* metric=get_metric(1,sizeof(ServerRecombinantMinorMetricGateApi));
+    assert(metric);
+    ServerRecombinantMinorMetricGateBindings mb{b.context,b.mode_blocks};
+    ServerRecombinantMinorMetricGateResult m{};
+    f.put(f.actor,0,recombinant_minor_vtable);
+    auto equivalent=[&](const void* input,unsigned n) {
+        const auto before=f.calls;
+        const int canonical=api->evaluate(f.actor,sizeof(f.actor),input,n,&b,&o);
+        const auto after=f.calls;
+        const int alias=metric->evaluate(f.actor,sizeof(f.actor),input,n,&mb,&m);
+        assert(alias==canonical&&f.calls-after==after-before&&
+            o.completed==m.completed&&o.mode_queries==m.manager_calls&&
+            o.suppressed==m.suppressed&&o.damage_read==m.compared&&
+            o.accepted==m.allowed&&o.threshold==m.threshold&&
+            (o.damage==m.observed||(std::isnan(o.damage)&&std::isnan(m.observed))));
+        return canonical;
+    };
+    const float samples[]={-50.f,0.f,9.999f,10.f,10.001f,1000.f,
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity(),-std::numeric_limits<float>::infinity()};
+    for(float sample:samples) {
+        f.put(f.info,0x2c,sample);
+        assert(equivalent(f.info,sizeof(f.info))&&o.accepted==(sample>10.f));
+    }
+    f.blocked=true;
+    assert(equivalent(nullptr,0)&&o.suppressed&&!o.damage_read);
+    f.blocked=false;
+    assert(!equivalent(nullptr,0)&&!o.completed);
+    assert(!equivalent(f.info,0x2f)&&!o.completed);
+    f.fail=true;
+    assert(!equivalent(f.info,sizeof(f.info))&&!o.completed&&o.mode_queries==1);
+    f.fail=false;f.put(f.actor,0,recombinant_major_vtable);
+    assert(!equivalent(f.info,sizeof(f.info))&&!o.mode_queries);
+    f.put(f.actor,0,recombinant_minor_vtable);
+    assert(!api->evaluate(f.actor,sizeof(f.actor),f.info,sizeof(f.info),nullptr,&o)&&
+        !metric->evaluate(f.actor,sizeof(f.actor),f.info,sizeof(f.info),nullptr,&m)&&
+        !o.mode_queries&&!m.manager_calls);
     FreeLibrary(server);FreeLibrary(client);return 0;
 }
