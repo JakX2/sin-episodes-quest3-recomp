@@ -107,7 +107,8 @@ int main() {
     const std::uint16_t ids[]{1,2,3,4,5,6,7,8,33,3,4,7};
     constexpr auto count=sizeof(ids)/sizeof(*ids);
     GameEntsTransmitEntryResult out{};
-    auto run=[&](Fixture& f,int n=static_cast<int>(count)){
+    static_assert(count==12,"default test count must match candidate array");
+    auto run=[&](Fixture& f,int n=12){
         return CheckTransmitEntry(f.info.data(),f.info.size(),ids,count,n,Hooks(f),out);
     };
     Fixture direct;
