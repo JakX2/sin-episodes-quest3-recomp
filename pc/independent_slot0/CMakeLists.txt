@@ -166,6 +166,15 @@ target_compile_features(sin_server_gameents_touch_contact_bridge_test PRIVATE cx
 add_test(NAME independent_server_gameents_touch_contact_bridge_native
   COMMAND sin_server_gameents_touch_contact_bridge_test)
 
+# Original ServerGameEnts001 +0x08 touch entry -> +0x0c FreeContainingEntity
+# lifecycle. Exercise actual newly allocated reciprocal links and all three
+# cleanup stages, not manually preseeded fixture contact nodes. MSVC x86 only.
+add_executable(sin_server_gameents_touch_release_lifecycle_test
+  test_server_gameents_touch_release_lifecycle.cpp)
+target_compile_features(sin_server_gameents_touch_release_lifecycle_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_touch_release_lifecycle_native
+  COMMAND sin_server_gameents_touch_release_lifecycle_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
