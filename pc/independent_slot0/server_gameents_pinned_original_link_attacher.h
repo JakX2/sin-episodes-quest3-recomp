@@ -118,6 +118,12 @@ public:
                 result=S::MismatchedLinks;
             } else if(!registry.ActivateReservedEntity(slot,identity)) {
                 result=S::RegistryRefused;
+            } else if(!host.validate_pin(host.context,&view)) {
+                // Metadata is already active. Losing the physical owner
+                // immediately afterward is a destructive partial success,
+                // never a retryable clean PinRevoked.
+                quarantined_.store(true,std::memory_order_release);
+                result=S::PinRevoked;
             } else {
                 result=S::Activated;
             }
