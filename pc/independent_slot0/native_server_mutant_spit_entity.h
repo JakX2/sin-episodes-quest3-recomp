@@ -13,7 +13,7 @@ struct ServerMutantSpitEntityBindings {
     int (__cdecl *dispatch_spawn)(void*,void*) noexcept;
     int (__cdecl *precache)(void*,void*) noexcept;
     int (__cdecl *movement)(void*,void*,int,int) noexcept;
-    int (__cdecl *particle_name)(void*,void*,const char*) noexcept; // original 22138160, name only
+    int (__cdecl *entity_name)(void*,void*,const char*) noexcept; // original 22138160, pooled string at +0c
     int (__cdecl *solid)(void*,void*,int) noexcept;
     int (__cdecl *model)(void*,void*,const char*) noexcept;
     int (__cdecl *bounds)(void*,void*,const float[3],const float[3]) noexcept;
