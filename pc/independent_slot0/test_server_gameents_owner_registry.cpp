@@ -187,6 +187,84 @@ int main() {
         return Fail(32,"global generation rollback through fresh address");
     if(!r.Enroll(2,Identity(fresh,6)))
         return Fail(33,"new higher owner generation unexpectedly refused");
+
+    // Phase 1644: the edict reservation must be visible while the engine
+    // owner pin is still held; the entity is created and attested later.
+    // These are independently owned synthetic allocations, not retail DLLs.
+    Registry staged;
+    Storage stage_a{},stage_b{},stage_c{},stage_spare{};
+    if(staged.ReserveEdict(0,stage_a.edict,0x10,1000)||
+       staged.ReserveEdict(0,stage_a.edict,0x14,0)||
+       !staged.ReserveEdict(0,stage_a.edict,0x14,1000)||
+       staged.ReserveEdict(0,stage_a.edict,0x14,1001)||
+       staged.ReserveEdict(1,stage_a.edict,0x14,1001)||
+       staged.ReserveEdict(1,stage_b.edict,0x14,1000)||
+       !staged.ReserveEdict(1,stage_b.edict,0x14,1001))
+        return Fail(44,"invalid, replayed or overlapping pinned reservation");
+    std::uint64_t staged_lease=0;
+    auto pending_a=Identity(stage_a,1000);
+    pending_a.edict_bytes=0x14;
+    pending_a.unknown=pending_a.entity;
+    pending_a.unknown_bytes=sizeof(void*);
+    auto pending_b=Identity(stage_b,1001);
+    pending_b.edict_bytes=0x14;
+    pending_b.unknown=pending_b.entity;
+    pending_b.unknown_bytes=sizeof(void*);
+    if(!staged.Begin(5,&staged_lease)||
+       !staged.ValidEdict(pending_a.edict)||
+       !staged.ValidEdict(pending_b.edict)||
+       staged.ValidEntity(pending_a.entity)||
+       staged.ValidUnknown(pending_b.unknown)||
+       staged.ValidUnknownPair(pending_a.edict,pending_a.unknown)||
+       staged.ActivateReservedEntity(0,pending_a)||
+       staged.ReserveEdict(2,stage_spare.edict,0x14,1002)||
+       !staged.End(5,staged_lease))
+        return Fail(45,"pending edict exposed entity or bypassed lease");
+    auto forged=pending_a;
+    forged.generation=1001;
+    if(staged.ActivateReservedEntity(0,forged))
+        return Fail(46,"reserved slot accepted a different owner epoch");
+    forged=pending_a;
+    forged.edict=stage_spare.edict;
+    if(staged.ActivateReservedEntity(0,forged))
+        return Fail(47,"reserved slot accepted a different edict address");
+    forged=pending_a;
+    forged.unknown=static_cast<const unsigned char*>(forged.entity)+4;
+    if(staged.ActivateReservedEntity(0,forged))
+        return Fail(48,"reserved slot bypassed original unknown alias rule");
+    // Attachment order need not match globally monotonic reservation order.
+    if(!staged.ActivateReservedEntity(1,pending_b)||
+       !staged.ActivateReservedEntity(0,pending_a)||
+       staged.ActivateReservedEntity(0,pending_a)||
+       !staged.Begin(5,&staged_lease)||
+       !staged.ValidUnknownPair(pending_a.edict,pending_a.entity)||
+       !staged.ValidUnknownPair(pending_b.edict,pending_b.entity)||
+       staged.ValidUnknownPair(pending_a.edict,pending_b.entity)||
+       !staged.End(5,staged_lease))
+        return Fail(49,"out-of-order attested entity activation");
+    if(staged.ReserveEdict(0,stage_a.edict,0x14,1002)||
+       !staged.Begin(3,&staged_lease)||
+       !staged.RetireEntity(0)||
+       !staged.End(3,staged_lease)||
+       !staged.ReserveEdict(0,stage_a.edict,0x14,1002))
+        return Fail(50,"reused edict reservation before/after entity retirement");
+    auto next_entity=Identity(stage_c,1002);
+    next_entity.edict=stage_a.edict;
+    next_entity.edict_bytes=0x14;
+    next_entity.unknown=next_entity.entity;
+    next_entity.unknown_bytes=sizeof(void*);
+    if(!staged.ActivateReservedEntity(0,next_entity)||
+       !staged.Begin(5,&staged_lease)||
+       staged.ValidUnknownPair(pending_a.edict,pending_a.entity)||
+       !staged.ValidUnknownPair(next_entity.edict,next_entity.entity)||
+       !staged.End(5,staged_lease))
+        return Fail(51,"retired entity alias survived new owner epoch");
+    Registry abandoned;
+    if(!abandoned.ReserveEdict(0,stage_spare.edict,0x14,1)||
+       abandoned.ActivateReservedEntity(0,pending_a)||
+       !abandoned.ForgetEdict(0)||
+       !abandoned.ReserveEdict(0,stage_spare.edict,0x14,2))
+        return Fail(52,"abandoned reservation not confined to its epoch");
     std::puts("PASS owner lifecycle registry: source-backed exact CBaseEntity/IServerUnknown alias, leases, thread isolation, overlap/overflow bounds, retirement, global generations and transmit rebinding");
     return 0;
 }
