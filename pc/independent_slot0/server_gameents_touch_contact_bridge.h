@@ -27,7 +27,8 @@ struct GameEntsContactBridgeResult {
     GameEntsTouchEntryResult entry{};
     TouchTraceState contact_trace{};
     TouchMarkResult contact_status=TouchMarkResult::InvalidInput;
-    unsigned resolved_calls=0,refresh_calls=0,contact_calls=0,publish_calls=0;
+    unsigned resolved_calls=0,refresh_calls=0,contact_calls=0,publish_calls=0,
+             live_reads=0;
 };
 
 namespace detail {
@@ -70,6 +71,22 @@ inline bool RefreshContactOrigin(void* p,GameEntsTouchEntity* view) noexcept {
     // would refresh the same entity a second time during pair insertion.
     if(entity->dirtyOrigin)return false;
     view->dirty_origin=false;
+    view->origin[0]=entity->origin.x;
+    view->origin[1]=entity->origin.y;
+    view->origin[2]=entity->origin.z;
+    return true;
+}
+// The retail method reads both +b8 flags and +2bc..+2c4 origins
+// from live actors after any earlier refresh side effects. Do not retain
+// stale edict-resolution snapshots across a host callback.
+inline bool ReadLiveContactOrigin(void* p,GameEntsTouchEntity* view) noexcept {
+    auto& frame=*static_cast<GameEntsContactFrame*>(p);
+    if(!view||!view->opaque)return false;
+    auto* entity=static_cast<TouchEntity*>(view->opaque);
+    if((entity!=frame.first&&entity!=frame.second)||!entity->entity)
+        return false;
+    ++frame.result.live_reads;
+    view->dirty_origin=entity->dirtyOrigin;
     view->origin[0]=entity->origin.x;
     view->origin[1]=entity->origin.y;
     view->origin[2]=entity->origin.z;
@@ -121,7 +138,8 @@ inline GameEntsTouchEntryStatus MarkEntitiesAsTouchingWithContactGraph(
     detail::GameEntsContactFrame frame{hooks,result};
     const GameEntsTouchEntryHooks entry{
         &frame,&detail::ResolveContact,&detail::InitContactTrace,
-        &detail::RefreshContactOrigin,&detail::MarkContactPair
+        &detail::RefreshContactOrigin,&detail::MarkContactPair,
+        &detail::ReadLiveContactOrigin
     };
     return MarkEntitiesAsTouchingEntry(first_edict,second_edict,entry,result.entry);
 }

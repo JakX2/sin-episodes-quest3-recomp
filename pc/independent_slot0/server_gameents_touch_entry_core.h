@@ -40,6 +40,12 @@ struct GameEntsTouchEntryHooks {
     // Host owns 22221080, which globally publishes the trace and
     // dispatches 2221f350 twice, first -> second and second -> first.
     bool (*mark_contacts)(void*,void*,void*,const GameEntsTouchTrace*) noexcept=nullptr;
+    // Original 221e93d3 checks second +b8 AFTER trace initialization,
+    // then 221e93eb reads first +b8 AFTER any second-origin refresh.
+    // The owner can reread flags and origin from live entity state. This
+    // remains optional for legacy synthetic fixtures, but a real engine
+    // adapter should provide it (especially across aliasing/callbacks).
+    bool (*sync_live_origin)(void*,GameEntsTouchEntity*) noexcept=nullptr;
 };
 enum class GameEntsTouchEntryStatus {
     Completed, NoEntities, InvalidInput, HostFailure, InvalidOrigin
@@ -76,17 +82,38 @@ inline GameEntsTouchEntryStatus MarkEntitiesAsTouchingEntry(
     if(!hooks.init_trace(hooks.context,&result.trace))
         return GameEntsTouchEntryStatus::HostFailure;
     result.trace_initialized=1;
-    // Original 221e93e4 / 221e93f9: refresh SECOND then FIRST.
+    // Retail reads flags live at 221e93d3, after constructing the trace.
+    if(hooks.sync_live_origin &&
+       !hooks.sync_live_origin(hooks.context,&second))
+        return GameEntsTouchEntryStatus::HostFailure;
     if(second.dirty_origin) {
         ++result.second_refreshes;
         if(!hooks.refresh_origin(hooks.context,&second))
             return GameEntsTouchEntryStatus::HostFailure;
     }
+    // The retail second-origin refresh can clear the first actor's dirty
+    // bit when both edicts name the SAME entity. Reuse its new snapshot,
+    // not the stale snapshot taken during initial edict resolution.
+    if(first.opaque==second.opaque) first=second;
+    // Original 221e93eb rereads FIRST's dirty flags only now, rather
+    // than using the earlier edict-resolution snapshot. The callback
+    // also handles a second refresh affecting an unrelated first actor.
+    if(hooks.sync_live_origin &&
+       !hooks.sync_live_origin(hooks.context,&first))
+        return GameEntsTouchEntryStatus::HostFailure;
     if(first.dirty_origin) {
         ++result.first_refreshes;
         if(!hooks.refresh_origin(hooks.context,&first))
             return GameEntsTouchEntryStatus::HostFailure;
     }
+    // Original 221e9400..223c loads the refreshed actor origins live.
+    // Refresh here before computing the midpoint if a host supplies the
+    // owner-backed state reader. No third-party entity memory is guessed.
+    if(hooks.sync_live_origin &&
+       (!hooks.sync_live_origin(hooks.context,&first) ||
+        !hooks.sync_live_origin(hooks.context,&second)))
+        return GameEntsTouchEntryStatus::HostFailure;
+    if(first.opaque==second.opaque) second=first;
     // Original x87 stores each sum to float before multiplying by 0.5.
     // Its midpoint sits at +0x0c/+0x10/+0x14 in the 0x54-byte trace.
     for(std::size_t i=0;i<3;++i) {

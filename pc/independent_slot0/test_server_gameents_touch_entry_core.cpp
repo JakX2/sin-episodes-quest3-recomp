@@ -120,6 +120,102 @@ int main() {
     f.ea.bad=false;
     if(MarkEntitiesAsTouchingEntry(&f.ea,&f.eb,{},out)!=GameEntsTouchEntryStatus::InvalidInput)
         return fail(11,"missing host service rejected");
+    // Original 221e93e6 refreshes the second actor, then rereads the
+    // FIRST actor's +b8 dirty flag at 221e93eb. When both edicts name
+    // the same actor, only one refresh is required if it clears +b8.
+    struct Alias {
+        Entity actor{7,true,{1.f,2.f,3.f}};
+        Edict ea{&actor},eb{&actor};
+        unsigned refreshes=0,live_reads=0,marks=0;
+        bool clear_dirty_in_init=false;
+        std::string calls;
+    } alias;
+    GameEntsTouchEntryHooks alias_hooks{
+        &alias,
+        [](void* p,const void* edict,GameEntsTouchEntity* view) noexcept ->bool {
+            auto& x=*static_cast<Alias*>(p);
+            if(edict!=&x.ea&&edict!=&x.eb)return false;
+            x.calls+=edict==&x.ea?'A':'B';
+            view->opaque=&x.actor;
+            view->dirty_origin=x.actor.dirty;
+            for(int i=0;i<3;++i)view->origin[i]=x.actor.origin[i];
+            return true;
+        },
+        [](void* p,GameEntsTouchTrace* trace) noexcept ->bool {
+            auto& x=*static_cast<Alias*>(p);x.calls+='I';
+            if(x.clear_dirty_in_init){
+                x.actor.dirty=false;
+                x.actor.origin[0]=4.f;x.actor.origin[1]=6.f;
+                x.actor.origin[2]=8.f;
+            }
+            trace->WriteFloat(0x2c,1.f);return true;
+        },
+        [](void* p,GameEntsTouchEntity* view) noexcept ->bool {
+            auto& x=*static_cast<Alias*>(p);x.calls+='R';
+            if(view->opaque!=&x.actor)return false;
+            ++x.refreshes;
+            x.actor.dirty=false;
+            x.actor.origin[0]=4.f;x.actor.origin[1]=6.f;
+            x.actor.origin[2]=8.f;
+            view->dirty_origin=false;
+            for(int i=0;i<3;++i)view->origin[i]=x.actor.origin[i];
+            return true;
+        },
+        [](void* p,void* first,void* second,const GameEntsTouchTrace* trace) noexcept ->bool {
+            auto& x=*static_cast<Alias*>(p);x.calls+='M';++x.marks;
+            return first==&x.actor&&second==first&&
+                trace->ReadFloat(0x0c)==4.f&&trace->ReadFloat(0x10)==6.f&&
+                trace->ReadFloat(0x14)==8.f;
+        },
+        [](void* p,GameEntsTouchEntity* view) noexcept ->bool {
+            auto& x=*static_cast<Alias*>(p);
+            if(view->opaque!=&x.actor)return false;
+            ++x.live_reads;
+            view->dirty_origin=x.actor.dirty;
+            for(int i=0;i<3;++i)view->origin[i]=x.actor.origin[i];
+            return true;
+        }
+    };
+    if(MarkEntitiesAsTouchingEntry(&alias.ea,&alias.eb,alias_hooks,out)
+       !=GameEntsTouchEntryStatus::Completed ||
+       alias.calls!="ABIRM"||alias.refreshes!=1||alias.live_reads!=4||
+       out.second_refreshes!=1||out.first_refreshes||
+       out.midpoint[0]!=4.f||out.midpoint[1]!=6.f||out.midpoint[2]!=8.f||
+       alias.marks!=1)
+        return fail(12,"same entity live +b8 reread avoids duplicate refresh");
+    // Legacy callers without the extra live callback still detect exact
+    // actor aliasing and inherit the refreshed second actor snapshot.
+    alias.actor.dirty=true;
+    alias.actor.origin[0]=1.f;alias.actor.origin[1]=2.f;alias.actor.origin[2]=3.f;
+    alias.refreshes=alias.live_reads=alias.marks=0;alias.calls.clear();
+    alias_hooks.sync_live_origin=nullptr;
+    if(MarkEntitiesAsTouchingEntry(&alias.ea,&alias.eb,alias_hooks,out)
+       !=GameEntsTouchEntryStatus::Completed||
+       alias.calls!="ABIRM"||alias.refreshes!=1||alias.live_reads||
+       out.second_refreshes!=1||out.first_refreshes||alias.marks!=1)
+        return fail(13,"legacy same-actor alias protects against stale first snapshot");
+    // Retail reads SECOND +b8 only AFTER the trace initializer.
+    // If an owner initializer changes that live flag, stale snapshots
+    // must not cause an unnecessary origin refresh.
+    alias.actor.dirty=true;
+    alias.actor.origin[0]=1.f;alias.actor.origin[1]=2.f;alias.actor.origin[2]=3.f;
+    alias.refreshes=alias.live_reads=alias.marks=0;alias.calls.clear();
+    alias.clear_dirty_in_init=true;
+    alias_hooks.sync_live_origin=
+        [](void* p,GameEntsTouchEntity* view) noexcept ->bool {
+            auto& x=*static_cast<Alias*>(p);
+            if(view->opaque!=&x.actor)return false;
+            ++x.live_reads;
+            view->dirty_origin=x.actor.dirty;
+            for(int i=0;i<3;++i)view->origin[i]=x.actor.origin[i];
+            return true;
+        };
+    if(MarkEntitiesAsTouchingEntry(&alias.ea,&alias.eb,alias_hooks,out)
+       !=GameEntsTouchEntryStatus::Completed ||
+       alias.calls!="ABIM"||alias.refreshes||alias.live_reads!=4||
+       out.second_refreshes||out.first_refreshes||alias.marks!=1||
+       out.midpoint[0]!=4.f||out.midpoint[1]!=6.f||out.midpoint[2]!=8.f)
+        return fail(14,"trace initialization precedes live second-origin dirty check");
     std::puts("PASS original-gameents touch entry: 2-edict resolution, 0x54 trace, refresh order, midpoint, host failure boundaries");
     return 0;
 }
