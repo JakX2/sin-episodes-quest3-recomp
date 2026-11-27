@@ -1116,6 +1116,48 @@ int main(int argc,char** argv){
             assert(finished&&outer_result.completed&&outer_result.think_called&&tail_result.completed&&!script_stats.native_starts&&script_stats.native_runs==1&&script_stats.last_run.script.terminal.completed&&cleaned.completed&&cleaned.handles_cleared==3&&q.restored==1&&q.reads==2&&q.cleared==1);
             assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&!sr.schedule);
             unsigned script_handle=0;std::memcpy(&script_handle,f.actor+0x970,4);assert(script_handle==0xffffffffu);
+            // Begin a fresh original WAIT at index zero. No test-side
+            // cursor advance: task completion and outer cadence drive it.
+            std::memset(q.seq,0,sizeof(q.seq));f.put(q.seq,0,nm::scripted_sequence_vtable);
+            f.put(q.seq,0x378,0x9002u);f.put(q.seq,0x3d0,0x3000u);f.put(q.seq,0x3d4,0xffffffffu);
+            prepare_engaged(1,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+            f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0xffffffffu);
+            f.put(f.actor,0x970,0x9002u);f.put(f.actor,0x378,0x3000u);f.put(f.actor,0x9c,100);f.put(f.actor,0x78,1u);
+            f.put(q.seq,0xb4,4u);f.put(q.seq,0x3c4,2u);
+            f.put(equipped.nav,0xc,0);std::memset(equipped.path,0,sizeof(equipped.path));
+            auto prefix_move=mb;prefix_move.context=&equipped;
+            prefix_move.storage=[](void* p,std::uint32_t token,void** out,unsigned* n) noexcept ->int{
+                auto& q=*static_cast<EquippedThinkFixture*>(p);
+                if(token==604){*out=q.nav;*n=sizeof(q.nav);return 1;}
+                if(token==605){*out=q.path;*n=sizeof(q.path);return 1;}return 0;
+            };
+            prefix_move.clear_path=[](void* p,void* nav) noexcept ->int{
+                auto& q=*static_cast<EquippedThinkFixture*>(p);assert(nav==q.nav);
+                ++q.f->clear_paths;q.f->put(q.path,0,0u);q.f->put(q.path,0x44,0u);return 1;
+            };
+            auto prefix_step=scripted_step;prefix_step.movement=&prefix_move;
+            float prefix_time=78.f;f.put(f.actor,0x864,prefix_time);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1560);
+            assert(state->install(f.actor,sizeof(f.actor),8012,prefix_time,q.schedule,&sr)&&sr.index==0);
+            f.put(f.actor,0x79c,global+158);
+            const unsigned prior_clears=f.clear_paths;
+            for(unsigned index=0;index<3;++index){
+                seed_anim(prefix_time);
+                const ServerNpcRunAnimationInput input{prefix_time,false,false};
+                const int ok=combined->ground(f.actor,sizeof(f.actor),&input,.05f,&prefix_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out);
+                if(!ok)std::fprintf(stderr,"script prefix expected=%u task=%d start=%u run=%u anim=%u\n",index,step_result.think.requests.scheduler.maintenance.state.task.id,script_stats.native_starts,script_stats.native_runs,step_result.animation_called);
+                assert(ok&&outer_result.completed&&outer_result.think_called&&tail_result.completed);
+                assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.schedule==8012&&sr.index==index);
+                if(index==0){assert(sr.task.id==116&&sr.status==4&&f.clear_paths==prior_clears+1&&!script_stats.starts);}
+                if(index==1){assert(sr.task.id==110&&sr.status==4&&script_stats.native_starts==1&&script_stats.native_runs==1&&script_stats.last_run.script.synchronized);}
+                if(index==2){assert(sr.task.id==106&&sr.status!=4&&script_stats.native_starts==1&&script_stats.native_runs==1&&script_stats.last_run.script.waiting);}
+                assert(outer_result.finish.deadline>prefix_time);prefix_time=outer_result.finish.deadline;
+            }
+            unsigned sync_count=0;std::memcpy(&sync_count,q.seq+0x3b8,4);assert(sync_count==1);
+            // Without a sequence release, another due frame must stay on 106.
+            seed_anim(prefix_time);
+            const ServerNpcRunAnimationInput held{prefix_time,false,false};
+            assert(combined->ground(f.actor,sizeof(f.actor),&held,.05f,&prefix_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out)&&outer_result.completed&&outer_result.think_called);
+            assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.index==2&&sr.task.id==106&&sr.status!=4&&!script_stats.native_starts&&script_stats.native_runs==1&&script_stats.last_run.script.waiting);
             meta.suppress=false;meta.scripted=false;equipped.scripted_entity=nullptr;equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
         }
         // Real due-think wake route, using the original proximity branch
