@@ -600,9 +600,9 @@ int main() {
        !f.calls.empty()||f.deleted)
         return Fail(55,"stale-generation pair cannot free entity");
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);
-    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
-       f.calls!="A"||f.allocated)
-        return Fail(56,"stale-generation pair cannot enter contact publication");
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       !f.calls.empty()||f.allocated)
+        return Fail(56,"stale-generation unknown rejected before contact resolution");
     f.registry[1].serial=serial;
     f.calls.clear();
     // A perfectly valid TouchEntity object may embed a different, owned
