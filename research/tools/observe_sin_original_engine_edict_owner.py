@@ -234,11 +234,16 @@ class Win32Reader:
 
     def read_bytes(self, address, count):
         """Read at most 16 code bytes; never inspect a remote pointer target."""
+        # Python itself can be 64-bit on a Windows runner even when the
+        # target is a 32-bit game; the verifier separately enforces PE32
+        # addresses and the in-module read bound. Permit the 64-bit local
+        # self-process smoke pointer without widening any remote witness.
+        pointer_end = 1 << (8 * ctypes.sizeof(ctypes.c_void_p))
         if (not isinstance(address, int) or
                 not isinstance(count, int) or
-                not 0 < address <= 0xFFFFFFFF or
-                not 0 < count <= 16 or address + count > 0x100000000):
-            raise ValueError("unbounded PE32 code witness read")
+                not 0 < address < pointer_end or
+                not 0 < count <= 16 or address + count > pointer_end):
+            raise ValueError("unbounded process code witness read")
         buffer = ctypes.create_string_buffer(count)
         got = ctypes.c_size_t(0)
         if not self.kernel.ReadProcessMemory(
