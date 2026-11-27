@@ -102,7 +102,11 @@ def check_spans(pe,spans):
   require(pe.section(addr)=='.text','not code: '+name)
   require(hashlib.sha256(pe.at(addr,n)).hexdigest()==digest,
           'original complete function SHA mismatch: '+name)
-  require(pe.at(addr+n,1)==b'\xcc','non-INT3 end boundary: '+name)
+  if addr==0x2206e2c0:
+   require(pe.at(addr+n,3)==b'\x8b\x01\xc3',
+           'adjacent global trace copy successor changed')
+  else:
+   require(pe.at(addr+n,1)==b'\xcc','non-INT3 end boundary: '+name)
 
 def verify(data,check_whole=True):
  if check_whole:require(hashlib.sha256(data).hexdigest()==SERVER_SHA,'server.dll SHA mismatch')
