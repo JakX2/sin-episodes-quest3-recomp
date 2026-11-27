@@ -26,6 +26,14 @@ The original voice-status implementation at `0x241E5B20` includes the diagnostic
 - **True native Windows x86 virtual ABI fixture:** `pc/independent_slot0/test_original_gameclientexports_abi.cpp` uses an entirely owned, MSVC-compiled test object with virtual destructor and three single-DWORD `__thiscall` slots. It invokes the three virtual functions by the **actual compiler vtable**, confirms distinct methods and original one-DWORD stack cleanup by ESP before/after, and invokes the scalar deleting destructor with flags 1, verifying exactly one destruction and balanced ESP. No original DLL/process is loaded or invoked.
 - The two independent regression cases are registered in MSVC Win32 CTest, expected total **254** (up from the 252-case Phase 1653 baseline), and Python `--self-test` in original-free Linux decomp CI.
 
+## Owner-only Windows original factory and vtable check
+
+The existing SHA-gated `sin_original_interfacereg_owner_probe.exe` (source `research/tools/sin_win32_factory_probe_phase657.cpp`) now asks the **real original** client module's exported `CreateInterface` for `GameClientExports001` in addition to the three previously checked priority interfaces. The source-authenticated expected singleton offset is `0x2FA4B0`.
+
+After the owner-original `client.dll` has been SHA-verified and loaded, the probe uses `ReadProcessMemory(GetCurrentProcess())` to check the singleton's actual relocated vptr (`client_base+0x296B18`), then checks all four real vtable entries against the original method RVAs `0xFE9B0`, `0xFE950`, `0xFE970` and `0xFE990`. The new `original_gameclientexports_vtable` JSON event prints **only status and matched-slot count**, not process pointers, instructions or raw bytes, and never invokes any of the four methods.
+
+Use only an owner-controlled disposable Windows test copy with its original dependencies. **This probe calls `LoadLibraryExA` and the real original exported factory, which executes the original module's DllMain/static constructors and selected simple factory thunks.** It is **not** an external read-only process inspection. Public CI builds the tool and synthetic fixtures but does not execute commercial game DLLs; neither ChatGPT nor CI has observed this particular live loaded singleton yet.
+
 ## Why not enable the factory yet?
 
 `pc/independent_slot0/slot0.cpp` still correctly rejects `GameClientExports001`; its independent `VClient011::Init` returns **0** until all original startup gates have real behavior. This phase deliberately leaves those safeguards unchanged. A virtual slot 0 deleting destructor has especially sharp ownership consequences: falsely advertising this object to the engine could result in freeing host-owned memory with the wrong allocator. The native fixture proves x86 **calling convention**, not original runtime behavior.
