@@ -1598,6 +1598,23 @@
         // Nonrepeatable self links never transfer back to the dying script.
         f.calls.clear();put(f.seq,0xb4,0u);put(f.seq,0x3d4,0x3000u);put(f.seq,0xb8,0x400000u);put(f.seq,0x74,-1);
         assert(complete(f.seq,sizeof(f.seq),f.npc,&b,&anim,&out)&&out.removal_scheduled&&out.self_skipped&&!out.transferred&&f.calls=="TCSXO");
+        // Terminal completion with the reconstructed NPC cleanup, not
+        // a hosted substitute that writes invalid handles.
+        const auto native_finish=reinterpret_cast<FinishScriptedSequenceWithCleanup>(GetProcAddress(server,scripted_sequence_finish_cleanup_export));
+        assert(native_finish&&!GetProcAddress(client,scripted_sequence_finish_cleanup_export));
+        ScriptedNpcCleanupBindings cleanup{&control,nullptr,&f};
+        cleanup.effect_changed=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<FinishFixture*>(p);assert(a==f.npc&&f.npc[0x78]==2&&f.seq[0x3d0]==0xff&&f.npc[0x970]==0);f.calls+='E';return 1;
+        };
+        b.cleanup_script_state=nullptr;
+        put(f.seq,0xb4,0u);put(f.seq,0xb8,0x400000u);put(f.seq,0x74,-1);put(f.seq,0x3d4,0x5002u);put(f.seq,0x3d0,0x4001u);
+        put(f.seq,0x3c4,2u);put(f.npc,0x78,1u);put(f.npc,0x9c,100);put(f.npc,0x970,0x3000u);put(f.npc,0x90c,0x3000u);put(f.npc,0x8a8,0x3000u);
+        ScriptedNpcCleanupResult cleaned{};f.calls.clear();
+        put(f.npc,0x8c,1);
+        assert(!native_finish(f.seq,sizeof(f.seq),f.npc,&b,&out,&cleanup,&cleaned)&&cleaned.unsupported_death&&!out.removal_scheduled&&word(f.seq,0x74)==0xffffffffu&&f.calls.empty());
+        put(f.npc,0x8c,0);auto wrong=cleanup;wrong.control=nullptr;
+        assert(!native_finish(f.seq,sizeof(f.seq),f.npc,&b,&out,&wrong,&cleaned)&&!out.removal_scheduled&&f.calls.empty());
+        assert(native_finish(f.seq,sizeof(f.seq),f.npc,&b,&out,&cleanup,&cleaned)&&out.removal_scheduled&&out.cleanup_called&&out.transferred&&cleaned.completed&&cleaned.script_released&&cleaned.effects_restored&&cleaned.handles_cleared==3&&f.calls=="TESXP"&&word(f.npc,0x970)==0x5002u&&word(f.next,0x3d0)==0x4001u);
     }
 
 

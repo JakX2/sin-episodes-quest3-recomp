@@ -3657,7 +3657,9 @@ bool animation_valid(void* a,unsigned n,void* npc,const ScriptedSequenceAnimatio
         npc&&b->control->extent(b->control->context,npc,&bytes)&&bytes>=0x974&&
         SinReadCampaignTouchMarkerInternal(npc,&nv)&&scripted_npc_marker(nv)&&SinCampaignStorageReadableInternal(npc,bytes);
 }
-int sequence_finish(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,ScriptedSequenceFinishResult*) noexcept;
+int cleanup_scripted_npc(void*,unsigned,const ScriptedNpcCleanupBindings*,ScriptedNpcCleanupResult*) noexcept;
+int sequence_finish(void*,unsigned,void*,const ScriptedSequenceFinishBindings*,ScriptedSequenceFinishResult*,
+    const ScriptedNpcCleanupBindings* =nullptr,ScriptedNpcCleanupResult* =nullptr) noexcept;
 bool animation_done(void*,unsigned,void*,unsigned,const ScriptedSequenceAnimationBindings&,ScriptedSequenceAnimationResult&,
     const ScriptedSequenceFinishBindings* =nullptr,ScriptedSequenceFinishResult* =nullptr) noexcept;
 bool animation_start(void* a,unsigned n,void* npc,unsigned bytes,unsigned token,bool complete_empty,
@@ -3736,7 +3738,8 @@ int run_sequence_animation(void* a,unsigned n,void* npc,unsigned token,bool comp
 // reconstructed below. Successor resolution is intentionally AFTER the
 // owner cleanup and schedule calls, which can mutate live handles.
 bool sequence_finish_impl(void* a,unsigned n,void* npc,unsigned bytes,
-    const ScriptedSequenceFinishBindings& b,ScriptedSequenceFinishResult& o) noexcept {
+    const ScriptedSequenceFinishBindings& b,ScriptedSequenceFinishResult& o,
+    const ScriptedNpcCleanupBindings* cleanup,ScriptedNpcCleanupResult* cleaned) noexcept {
     const auto& animation=*b.animation;const auto& c=*animation.control;
     if(c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return false;
     const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
@@ -3756,7 +3759,10 @@ bool sequence_finish_impl(void* a,unsigned n,void* npc,unsigned bytes,
         if(!animation_start(a,n,npc,bytes,read_field<unsigned>(a,0x39c),false,animation,o.animation))return false;
         o.animation.completed=o.looped=1;return true;
     }
-    if(!b.cleanup_script_state||!b.current_schedule||!b.clear_schedule)return false;
+    if((!cleanup&&!b.cleanup_script_state)||!b.current_schedule||!b.clear_schedule)return false;
+    // The opt-in non-dying cleanup refuses this branch before the
+    // scheduled-removal mutation. Existing hosted finish stays available.
+    if(cleanup&&read_field<int>(npc,0x8c)==1){cleaned->unsupported_death=1;return false;}
     if(!(read_field<unsigned>(a,0xb4)&4u)){
         if(!c.now||!c.interval||!c.cadence||!std::isfinite(*c.now)||!std::isfinite(*c.interval)||*c.interval<=0)return false;
         using namespace sin_port::native_weapon_tables;
@@ -3769,7 +3775,10 @@ bool sequence_finish_impl(void* a,unsigned n,void* npc,unsigned bytes,
         o.removal_scheduled=1;o.due_tick=cadence.tick;
         write_field(a,0x3d8,static_cast<unsigned char>(0));write_field(a,0x3d9,static_cast<unsigned char>(1));
     }
-    if(!b.cleanup_script_state(b.context,npc))return false;o.cleanup_called=1;
+    if(cleanup){
+        if(!cleanup_scripted_npc(npc,bytes,cleanup,cleaned))return false;
+    }else if(!b.cleanup_script_state(b.context,npc))return false;
+    o.cleanup_called=1;
     // 221af490: preserve ideal state 7 or 1. Read the schedule twice
     // on the present branch, exactly as the original does.
     const unsigned flags=read_field<unsigned>(a,0x3c8);
@@ -3807,13 +3816,16 @@ bool sequence_finish_impl(void* a,unsigned n,void* npc,unsigned bytes,
     if(!scripted_sequence_possession(next,extent,b.possession,&o.possession)||!o.possession.claimed)return false;
     o.transferred=1;return true;
 }
-int sequence_finish(void* a,unsigned n,void* npc,const ScriptedSequenceFinishBindings* b,ScriptedSequenceFinishResult* o) noexcept {
+int sequence_finish(void* a,unsigned n,void* npc,const ScriptedSequenceFinishBindings* b,ScriptedSequenceFinishResult* o,
+    const ScriptedNpcCleanupBindings* cleanup,ScriptedNpcCleanupResult* cleaned) noexcept {
+    if(cleaned)*cleaned={};
     if(!o)return 0;*o={};o->due_tick=-1;o->successor_handle=0xffffffffu;o->animation.sequence=o->animation.activity=-1;
     unsigned bytes=0;
     if(!b||!animation_valid(a,n,npc,b->animation,bytes))return 0;
+    if(cleanup&&(!cleaned||cleanup->control!=b->animation->control))return 0;
     static thread_local bool active=false;if(active)return 0;
     struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
-    o->completed=sequence_finish_impl(a,n,npc,bytes,*b,*o);return o->completed;
+    o->completed=sequence_finish_impl(a,n,npc,bytes,*b,*o,cleanup,cleaned);return o->completed;
 }
 // 2203d0d0: networked playback rate setter, with same-value no-op.
 bool scripted_rate(void* npc,float rate,const ScriptedNpcTaskBindings& b,ScriptedNpcTaskResult& o) noexcept {
@@ -4725,4 +4737,12 @@ extern "C" const sin_port::native_map::ScriptedSequenceInterruptApi* __cdecl SiN
 extern "C" int __cdecl SiN_CleanupScriptedNpc(void* a,unsigned n,
     const sin_port::native_map::ScriptedNpcCleanupBindings* b,sin_port::native_map::ScriptedNpcCleanupResult* o) noexcept {
     return sin_port::native_map::cleanup_scripted_npc(a,n,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_FinishScriptedSequenceWithCleanup=_SiN_FinishScriptedSequenceWithCleanup")
+extern "C" int __cdecl SiN_FinishScriptedSequenceWithCleanup(void* a,unsigned n,void* npc,
+    const sin_port::native_map::ScriptedSequenceFinishBindings* b,sin_port::native_map::ScriptedSequenceFinishResult* o,
+    const sin_port::native_map::ScriptedNpcCleanupBindings* cleanup,sin_port::native_map::ScriptedNpcCleanupResult* cleaned) noexcept {
+    if(!cleanup||!cleaned){if(o)*o={};if(cleaned)*cleaned={};return 0;}
+    return sin_port::native_map::sequence_finish(a,n,npc,b,o,cleanup,cleaned);
 }
