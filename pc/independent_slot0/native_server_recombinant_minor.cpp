@@ -1,7 +1,9 @@
 #include "native_server_recombinant_minor.h"
+#include "native_server_recombinant_minor_damage_gate.h"
 #include <cmath>
 #include <cstring>
 extern "C" const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(unsigned,unsigned) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantMinorDamageGateApi* __cdecl SiN_GetServerRecombinantMinorDamageGateApi(unsigned,unsigned) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -136,28 +138,31 @@ int __cdecl gather(void* a,unsigned n,const ServerRecombinantMinorBindings* b,Se
 }
 const ServerRecombinantMinorApi api{1,sizeof(ServerRecombinantMinorApi),&damage,&detach,&gather};
 
+// Phase 1625 originally duplicated the method already recovered in
+// Phase 1613. Keep the public newer ABI but delegate to the single canonical
+// +0x398 implementation, so its branch and x87 threshold behavior cannot drift.
 int __cdecl minor_metric_gate(const void* actor,unsigned actor_bytes,
     const void* candidate,unsigned candidate_bytes,
     const ServerRecombinantMinorMetricGateBindings* b,
     ServerRecombinantMinorMetricGateResult* out) noexcept {
-    if(!out)return 0;*out={};out->threshold=10.f;
-    if(!actor||actor_bytes<4||rd<unsigned>(actor,0)!=recombinant_minor_vtable||
-       !b||!b->manager_suppresses)return 0;
-    bool suppressed=false;
-    ++out->manager_calls;
-    if(!b->manager_suppresses(b->context,&suppressed))return 0;
-    out->suppressed=suppressed;
-    // The original method returns false immediately if the global owner
-    // says yes. It never dereferences the candidate on that branch.
-    if(suppressed){out->completed=1;return 1;}
-    if(!candidate||candidate_bytes<0x30u)return 0;
-    out->observed=rd<float>(candidate,0x2c);
-    ++out->compared;
-    // x87 FCOMP sets C0/C3 for <= and unordered; only > 10 succeeds.
-    // IEEE NaN therefore returns false, while +infinity succeeds.
-    out->allowed=out->observed>10.f;
-    out->completed=1;
-    return 1;
+    if(!out)return 0;
+    *out={};out->threshold=10.f;
+    if(!b||!b->manager_suppresses)return 0;
+    const auto* canonical=SiN_GetServerRecombinantMinorDamageGateApi(
+        1,sizeof(ServerRecombinantMinorDamageGateApi));
+    if(!canonical||!canonical->evaluate)return 0;
+    ServerRecombinantMinorDamageGateBindings bindings{b->context,b->manager_suppresses};
+    ServerRecombinantMinorDamageGateResult result{};
+    const int ok=canonical->evaluate(const_cast<void*>(actor),actor_bytes,
+        candidate,candidate_bytes,&bindings,&result);
+    out->completed=result.completed;
+    out->manager_calls=result.mode_queries;
+    out->suppressed=result.suppressed;
+    out->compared=result.damage_read;
+    out->allowed=result.accepted;
+    out->observed=result.damage;
+    out->threshold=result.threshold;
+    return ok;
 }
 const ServerRecombinantMinorMetricGateApi metric_api{
     1,sizeof(ServerRecombinantMinorMetricGateApi),&minor_metric_gate
