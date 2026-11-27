@@ -168,6 +168,22 @@ struct ServerNpcGatherSchedulerApi {
 using GetServerNpcGatherSchedulerApi=const ServerNpcGatherSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 // Internal synchronous route; no change to legacy scheduler binding layouts.
 struct ServerNpcSharedNativeSpeechStats;
+// Explicit, synchronous sidecar for the complete combat-think route.
+struct ServerNpcScriptedThinkServices {
+    const native_map::ScriptedNpcTaskBindings* run;
+    const native_map::ScriptedNpcStartTaskBindings* start;
+    const native_map::ScriptedNpcStartMotionBindings* motion;
+    const native_map::ScriptedNpcCleanupBindings* cleanup;
+    ServerNpcScriptedSchedulerStats* stats;
+    ServerNpcScriptedMotionSchedulerStats* motion_stats;
+    native_map::ScriptedNpcCleanupResult* cleaned;
+};
+inline bool valid_scripted_think_services(const ServerNpcScriptedThinkServices* s) noexcept {
+    return s&&s->run&&s->start&&s->start->task==s->run&&s->stats&&s->run->finish&&
+        s->run->finish->animation&&s->run->finish->animation->control&&s->run->finish->possession&&
+        bool(s->motion)==bool(s->motion_stats)&&(!s->motion||s->motion->base==s->start)&&
+        bool(s->cleanup)==bool(s->cleaned)&&(!s->cleanup||s->cleanup->control==s->run->finish->animation->control);
+}
 struct ServerNpcNativeGatherRoute {
     const ServerNpcGruntGatherNativeBindings* bindings;
     ServerNpcGruntGatherNativeResult* result;
@@ -197,5 +213,6 @@ struct ServerNpcNativeGatherRoute {
     ServerNpcGruntNativeLineAttackResult* combat_line_result=nullptr;
     const ServerNpcWeaponPolicyBindings* weapon_policy=nullptr;
     ServerNpcWeaponPolicyResult* weapon_policy_result=nullptr;
+    const ServerNpcScriptedThinkServices* scripted=nullptr;
 };
 }
