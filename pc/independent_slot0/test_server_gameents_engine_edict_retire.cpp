@@ -16,6 +16,7 @@ struct Fixture {
     EngineEdict elements[3]{};
     unsigned authorized=0,freed=0;
     bool refuse=false,valid=true,revoke_after_callback=false;
+    std::uint32_t expected_stamp=0x12345678;
 };
 static bool Authorized(void* context,const void* edict,std::size_t count) noexcept {
     auto& f=*static_cast<Fixture*>(context);
@@ -37,7 +38,7 @@ static bool FreeEntity(void* context,void* edict) noexcept {
     // Source owner must be invoked after clearing bit 0x02, but BEFORE
     // engine clears the reuse-time dword and poisons serial+0x04.
     if((raw->flags&2u)!=0||raw->serial!=43||
-       raw->reuse_time_bits!=0x12345678)f.valid=false;
+       raw->reuse_time_bits!=f.expected_stamp)f.valid=false;
     if(f.refuse)return false;
     // Independently model server.dll's separate clearing of flags+unknown.
     raw->flags=0;
@@ -117,12 +118,13 @@ int main() {
     auto stamp=[](EngineEdict& e,float v){std::memcpy(&e.reuse_time_bits,&v,4);};
     stamp(scan.elements[1],3.0f);
     stamp(scan.elements[2],3.0f);
+    scan.expected_stamp=scan.elements[1].reuse_time_bits;
     std::size_t count=3,selected=99;
     if(SelectEngineEdict(scan.elements,sizeof(scan.elements),count,0,3,1.0f,sh,selected)
        !=EngineEdictSelectResult::Full||scan.freed||selected!=99)
         return Fail(11,"premature reuse");
     if(SelectEngineEdict(scan.elements,sizeof(scan.elements),count,0,4,1.0f,sh,selected)
-       !=EngineEdictSelectResult::Reused||selected!=1||count!=3||scan.freed!=1)
+       !=EngineEdictSelectResult::Reused||selected!=1||count!=3||scan.freed!=1||!scan.valid)
         return Fail(12,"one-second reuse boundary");
     Fixture grow{};
     EngineEdictRetireHooks gh{&grow,&Authorized,&AuthorizedArray,&FreeEntity};
