@@ -4120,6 +4120,80 @@ int __cdecl interrupt_npc_gate(void* a,unsigned n,const ScriptedSequenceInterrup
     o->dead_actor=read_field<int>(a,0x8c)!=0;o->permitted=!o->dead_actor;o->completed=1;return 1;
 }
 const ScriptedSequenceInterruptApi interrupt_api{1,sizeof(ScriptedSequenceInterruptApi),&interrupt_set,&interrupt_query,&interrupt_suppress,&interrupt_npc_gate};
+// 22048fe0 normal cleanup branch. Explicitly retain the complex
+// root-motion/collision leaf and the distinct initial dying branch.
+int cleanup_scripted_npc(void* npc,unsigned bytes,const ScriptedNpcCleanupBindings* b,ScriptedNpcCleanupResult* o) noexcept {
+    if(!o)return 0;*o={};unsigned vt=0;
+    if(!b||!b->control||!b->control->extent||bytes<0x974||
+       !SinReadCampaignTouchMarkerInternal(npc,&vt)||!scripted_npc_marker(vt)||!SinCampaignStorageReadableInternal(npc,bytes))return 0;
+    const auto& c=*b->control;
+    if(c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return 0;
+    if(read_field<int>(npc,0x8c)==1){o->unsupported_death=1;return 0;}
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    void* seq=registry.Resolve(read_field<unsigned>(npc,0x970));
+    unsigned saved_effects=0;
+    if(seq){
+        unsigned n=0;if(!c.extent(c.context,seq,&n)||!interrupt_storage(seq,n))return 0;
+        o->script_live=1;saved_effects=read_field<unsigned>(seq,0x3c4);
+        const bool changed=read_field<unsigned>(npc,0x78)!=saved_effects;
+        if(changed&&(!b->effect_changed||((saved_effects&8u)&&!b->effect_registry)))return 0;
+        if(read_field<unsigned>(seq,0x398)&&read_field<unsigned char>(seq,0x3cd)&&
+           !(read_field<unsigned>(seq,0xb4)&0x80u)&&!b->root_motion_relocate)return 0;
+    }else if(!b->collision_flags)return 0;
+    using namespace sin_port::native_weapon_tables;
+    const auto* conditions=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    auto condition16=[&](){
+        ServerNpcConditionResult result{};
+        if(!conditions||!b->conditions||!conditions->store(npc,bytes,16,NpcConditionCurrent,true,b->conditions,&result))return false;
+        ++o->condition16_calls;return true;
+    };
+    auto dirty=[&](){
+        if(read_field<unsigned char>(npc,0x1f0))write_field(npc,0x200,static_cast<unsigned char>(1));
+        else if(const unsigned token=read_field<unsigned>(npc,0x16c)){
+            void* p=nullptr;unsigned n=0;
+            if(!b->dirty_storage||!b->dirty_storage(b->context,token,&p,&n)||n<4||!SinCampaignStorageReadableInternal(p,4))return false;
+            write_field(p,0,read_field<unsigned>(p,0)|1u);
+        }
+        return true;
+    };
+    if(seq){
+        write_field(seq,0x3d0,0xffffffffu);o->script_released=1;
+        // Exact 2214c7f0 effect setter order, no dirty or virtual on equality.
+        if(read_field<unsigned>(npc,0x78)!=saved_effects){
+            if(!dirty())return 0;
+            write_field(npc,0x78,saved_effects);o->effects_restored=1;
+            if(saved_effects&8u){if(!b->effect_registry(b->context,npc))return 0;o->effect_registry_called=1;}
+            if(!b->effect_changed(b->context,npc))return 0;o->effect_changed_called=1;
+        }
+    }else{
+        if(!b->collision_flags(b->context,npc,read_field<unsigned short>(npc,0x120)|0x10u))return 0;o->collision_called=1;
+    }
+    write_field(npc,0x970,0xffffffffu);write_field(npc,0x8a8,0xffffffffu);write_field(npc,0x90c,0xffffffffu);o->handles_cleared=3;
+    // Original branches again on life state after the owner operations.
+    if(read_field<int>(npc,0x8c)==1){o->unsupported_death=1;return 0;}
+    auto ideal=[&](int state){if(read_field<int>(npc,0x858)!=state){write_field(npc,0x858,state);++o->ideal_written;}};
+    if(seq&&read_field<unsigned>(seq,0x398)&&read_field<unsigned char>(seq,0x3cd)){
+        if(read_field<unsigned>(seq,0xb4)&0x80u)o->root_motion_skipped=1;
+        else{
+            if(!b->root_motion_relocate||!b->root_motion_relocate(b->context,npc,seq))return 0;o->root_motion_called=1;
+            if(read_field<int>(npc,0x9c)<=0){
+                ideal(7);if(!condition16())return 0;
+                if(read_field<int>(npc,0x8c)!=1){
+                    if(!b->life_state_changed||!b->life_state_changed(b->context,npc))return 0;
+                    write_field(npc,0x8c,1);o->life_state_written=1;
+                }
+            }
+        }
+        write_field(npc,0x878,0u);o->activity_cleared=1;
+    }
+    if(read_field<int>(npc,0x9c)>0)ideal(1);
+    else{ideal(7);if(!condition16())return 0;}
+    const unsigned flags=read_field<unsigned>(npc,0xb4);
+    if(flags&0x80u){if(!dirty())return 0;write_field(npc,0xb4,flags&~0x80u);o->spawnflag_cleared=1;}
+    o->retail_result=o->completed=1;return 1;
+}
 // 2216b300 InputTestActivator: predicate (including inherited negation),
 // exactly one output, original activator and self caller, zero extra delay.
 int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
@@ -4645,4 +4719,10 @@ extern "C" int __cdecl SiN_StartScriptedNpcMotionTask(void* a,unsigned n,int tas
 extern "C" const sin_port::native_map::ScriptedSequenceInterruptApi* __cdecl SiN_GetScriptedSequenceInterruptApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_map;
     return version==1&&size==sizeof(ScriptedSequenceInterruptApi)?&interrupt_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_CleanupScriptedNpc=_SiN_CleanupScriptedNpc")
+extern "C" int __cdecl SiN_CleanupScriptedNpc(void* a,unsigned n,
+    const sin_port::native_map::ScriptedNpcCleanupBindings* b,sin_port::native_map::ScriptedNpcCleanupResult* o) noexcept {
+    return sin_port::native_map::cleanup_scripted_npc(a,n,b,o);
 }
