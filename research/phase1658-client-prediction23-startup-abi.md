@@ -65,12 +65,12 @@ exactly 92 bytes, SHA-256:
 |---:|---:|---|
 | 0 | `0x24195A50` | MSVC scalar deleting destructor, RET 4 |
 | 1 | `0x24195F80` | Parameterless Init, RET |
-| 2 | `0x24195710` | Target pointer authenticated only |
+| 2 | `0x24195710` | **No-argument empty RET**, engine shutdown virtual slot 2 |
 | 3 | `0x24197210` | Target pointer authenticated only |
 | 4 | `0x24195F90` | Target pointer authenticated only |
 | 5 | `0x24196040` | Target pointer authenticated only |
 | 6 | `0x241960E0` | Target pointer authenticated only |
-| 7 | `0x241957A0` | Target pointer authenticated only |
+| 7 | `0x241957A0` | **No-argument 16-byte reset**, fields +0x24/+0x28/+0x2C |
 | 8 | `0x24195DD0` | Target pointer authenticated only |
 | 9 | `0x24195DF0` | Target pointer authenticated only |
 | 10 | `0x24195E30` | Target pointer authenticated only |
@@ -86,6 +86,24 @@ exactly 92 bytes, SHA-256:
 | 20 | `0x24196790` | Target pointer authenticated only |
 | 21 | `0x24196AE0` | Target pointer authenticated only |
 | 22 | `0x241977B0` | Target pointer authenticated only |
+
+**Additional native method authentication:** original slot 2 at
+`0x24195710` is exactly one byte, `RET`, whose whole-function SHA256 is
+`ae3f4619b0413d70d3004b9131c3752153074e45725be13b9a148978895e359e`.
+Original `engine.dll` invokes it in its **client shutdown path**, at
+VA `0x20023DF7` via virtual byte offset `+8`; the original 11-byte
+read/call window at `0x20023DEF` has SHA256
+`4495aebe5d5ab5d1808a077cd1993f35112fc2a0be1388c1bff2ef5491b7438d`.
+
+Original slot 7 at `0x241957A0` is a complete **16-byte** no-argument
+reset method, SHA256
+`a6da88d507f80f25c7ebde380cf57df4b325e3acaba22aef172d84d6082733b2`.
+It zeroes prediction DWORDs `this+0x28` and `this+0x2C`, then stores
+`0xFFFFFFFF` at `this+0x24`, followed by `RET`.
+These two exact original method extents and their semantics are now
+checked by static authentication and original-free mutation tests.
+This does not make the other 19 unexamined method signatures safe or
+constitute evidence that the game has started.
 
 The subsequent `.rdata` bytes begin with non-pointer debug text,
 not a 24th prediction method. Every pointer carries a HIGHLOW
@@ -156,8 +174,8 @@ multiple-inheritance offset `+0x10014`.
 The read-only `research/tools/audit_sin_original_client_prediction23_abi.py`
 requires BOTH complete original client and engine SHA matches.
 It verifies the registration, singleton factory, constructor, vtable
-and every cell's PE32 relocation, slot0 and slot1 complete method
-hashes, original `cl_predict` registration and **both original
+and every cell's PE32 relocation, slots 0/1/2/7 complete method
+hashes and the engine's slot2 shutdown vcall, original `cl_predict` registration and **both original
 ConVar constructors**, including self-parent and +`0x2C` integer field
 stores, RTTI COL/hierarchy/base descriptors, and original engine
 callsite ordering. Public `--self-test` constructs invented windows,
@@ -165,12 +183,13 @@ mutates each byte and rejects fabricated original hashes.
 
 `native_client_prediction23_init_probe.h` is an intentionally separate
 host-owned MSVC Win32 x86 synthetic 23-slot object with a deleting
-destructor in slot0 and a parameterless Init in slot1. It checks
+destructor in slot0, parameterless Init in slot1, empty no-argument
+shutdown in slot2, and reset in slot7. It checks
 ECX/ESP invariants and transforms an invented **cl_predict
 ConVar** `m_pParent->m_nValue` at +`0x2C` into a byte at
 `this+0x10`. Synthetic `ConVarView` separately authenticates the
 +0x18 parent pointer and +0x2C integer offset and tests a distinct
-parent alias. Slots 2 through 22 are **inert sentinels**, not guesses
+parent alias. Slots 3-6 and 8-22 are **inert sentinels**, not guesses
 of original method signatures. Missing ConVar parent pointers are
 refused in this fixture, unlike the original unguarded dereference.
 
