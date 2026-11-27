@@ -377,6 +377,10 @@ int main() {
        foreign_unknown.calls||f.ea.unknown!=&foreign_unknown||
        f.ea.flags!=0x65||!f.calls.empty())
         return Fail(34,"foreign unknown cannot trigger release writes");
+    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       foreign_unknown.calls||!f.calls.empty()||f.allocated)
+        return Fail(39,"foreign unknown cannot enter touch resolver");
     f.ea.unknown=&f.first_unknown;
     // A trusted unknown may itself return an unauthorized CBaseEntity.
     f.first_unknown.entity=&rogue_entity;
