@@ -1,6 +1,8 @@
 #include "native_server_map_entity.h"
 #include "native_server_npc_active_weapon_step.h"
 #include "native_server_activity_assignment.h"
+#include "native_server_npc_task_lifecycle.h"
+extern "C" const sin_port::native_weapon_tables::ServerNpcTaskLifecycleApi* __cdecl SiN_GetServerNpcTaskLifecycleApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcActivityAssignmentApi* __cdecl SiN_GetServerNpcActivityAssignmentApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cmath>
 #include "server_fixed_difficulty_service.h"
@@ -3812,6 +3814,105 @@ int sequence_finish(void* a,unsigned n,void* npc,const ScriptedSequenceFinishBin
     struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
     o->completed=sequence_finish_impl(a,n,npc,bytes,*b,*o);return o->completed;
 }
+// 2203d0d0: networked playback rate setter, with same-value no-op.
+bool scripted_rate(void* npc,float rate,const ScriptedNpcTaskBindings& b,ScriptedNpcTaskResult& o) noexcept {
+    if(read_field<float>(npc,0x3c0)==rate)return true;
+    if(read_field<unsigned char>(npc,0x1f0))write_field(npc,0x200,static_cast<unsigned char>(1));
+    else if(const unsigned token=read_field<unsigned>(npc,0x16c)){
+        void* p=nullptr;unsigned n=0;
+        if(!b.rate_storage||!b.rate_storage(b.context,token,&p,&n)||n<4||!SinCampaignStorageReadableInternal(p,4))return false;
+        write_field(p,0,read_field<unsigned>(p,0)|1u);
+    }
+    write_field(npc,0x3c0,rate);o.rate_changed=1;return true;
+}
+int run_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcTaskBindings* b,ScriptedNpcTaskResult* o) noexcept {
+    if(!o)return 0;*o={};o->task=task;
+    if(!b||!b->finish||!b->finish->animation||!b->finish->animation->control||
+       !b->lifecycle||(task!=106&&task!=108&&task!=109&&task!=110)||bytes<0x9f4)return 0;
+    const auto& finish=*b->finish;const auto& anim=*finish.animation;const auto& c=*anim.control;
+    unsigned marker=0;
+    if(!c.extent||!c.now||!std::isfinite(*c.now)||c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count)||
+       !SinReadCampaignTouchMarkerInternal(npc,&marker)||!scripted_npc_marker(marker)||!SinCampaignStorageReadableInternal(npc,bytes))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    using namespace sin_port::native_weapon_tables;
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+    if(!life)return 0;
+    auto complete=[&](){
+        ServerNpcTaskLifecycleResult result{};
+        if(!life->complete(npc,bytes,*c.now,false,b->lifecycle,&result))return false;
+        o->task_completed=result.completed;o->status=result.status;return true;
+    };
+    auto resolved=[&](void*& seq,unsigned& n){
+        seq=registry.Resolve(read_field<unsigned>(npc,0x970));n=0;
+        if(!seq)return true;
+        unsigned vt=0;
+        return c.extent(c.context,seq,&n)&&n>=scripted_sequence_extent&&
+            SinReadCampaignTouchMarkerInternal(seq,&vt)&&vt==scripted_sequence_vtable&&SinCampaignStorageReadableInternal(seq,scripted_sequence_extent);
+    };
+    auto done=[&](){o->completed=1;return 1;};
+    auto wait=[&](){o->waiting=1;return done();};
+    auto warn=[&](){o->missing=1;if(!b->warning||!b->warning(b->context,npc,task))return false;o->warned=1;return true;};
+    void* seq=nullptr;unsigned n=0;
+    if(task==108){
+        // Original calls aim update even when the animation is unfinished.
+        if(!b->update_aim||!b->update_aim(b->context,npc,0,0))return 0;o->aim_called=1;
+        if(!read_field<unsigned char>(npc,0x3e0))return wait();
+        // Original dereferences the script here; refuse stale/foreign storage.
+        if(!resolved(seq,n)||!seq)return 0;
+        if(!(read_field<unsigned>(seq,0x3c8)&0x400u)){
+            bool motion=false;
+            if(!finish.sequence_has_motion||!finish.sequence_has_motion(finish.context,npc,read_field<int>(npc,0x3ec),&motion))return 0;
+            o->motion_checked=1;
+            if(motion){
+                if(!b->remove_flags||!b->remove_flags(b->context,npc,0x400u))return 0;o->flags_removed=1;
+            }
+        }
+        if(!resolved(seq,n))return 0;
+        if(seq&&!run_sequence_animation(seq,n,npc,0,false,true,&anim,&o->animation,&finish,&o->terminal))return 0;
+        return complete()?done():0;
+    }
+    if(!resolved(seq,n))return 0;
+    if(!seq){
+        if(!warn())return 0;
+        if(task==106)return complete()?done():0;
+        if(!b->task_fail||!b->task_fail(b->context,npc,5))return 0;o->task_failed=1;return done();
+    }
+    if(task==106){
+        if(read_field<unsigned>(seq,0x3b8))return wait();
+        if(!complete()||!resolved(seq,n)||!seq||!anim.events||!anim.events->output)return 0;
+        // 221adf70 OnBeginSequence, self caller and activator.
+        if(anim.events->native_queue){
+            if(!native_named_output(seq,n,seq,0x3e0,false,anim.events->output,anim.events->native_queue,o->begin_queued))return 0;
+            o->begin_native_queued=o->begin_queued;
+        }else{
+            const auto* fire=SiN_GetServerEntityVoidOutputApi(1,sizeof(ServerEntityVoidOutputApi));
+            ServerEntityVoidOutputResult r{};
+            if(!fire||!fire->fire(static_cast<unsigned char*>(seq)+0x3e0,0x18,seq,seq,n,0.f,anim.events->output,&r))return 0;
+            o->begin_queued=r.queued;
+        }
+        o->begin_output=1;
+        if(!resolved(seq,n)||!seq||
+           !run_sequence_animation(seq,n,npc,read_field<unsigned>(seq,0x398),true,false,&anim,&o->animation,&finish,&o->terminal))return 0;
+        if(!resolved(seq,n))return 0;
+        if(!seq){
+            if(!finish.clear_schedule||!finish.clear_schedule(finish.context,npc))return 0;o->schedule_cleared=1;
+        }
+        return scripted_rate(npc,1.f,*b,*o)?done():0;
+    }
+    if(task==109){
+        if(!read_field<unsigned char>(npc,0x3e0)&&!registry.Resolve(read_field<unsigned>(seq,0x3d4)))return wait();
+        // No TaskComplete on the original terminal branch.
+        return sequence_finish(seq,n,npc,&finish,&o->terminal)?done():0;
+    }
+    if(read_field<unsigned char>(seq,0x3c0))return wait();
+    if(!finish.possession||finish.possession->entries!=c.entries||finish.possession->entry_count!=c.entry_count||finish.possession->now!=c.now)return 0;
+    ScriptedSequencePossessionResult sync{};
+    if(!sequence_sync(seq,*finish.possession,sync))return 0;
+    o->synchronized=1;o->group_updates=sync.group_updates;
+    return complete()?done():0;
+}
 // 2216b300 InputTestActivator: predicate (including inherited negation),
 // exactly one output, original activator and self caller, zero extra delay.
 int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
@@ -4313,4 +4414,10 @@ extern "C" int __cdecl SiN_RunScriptedSequencePrimaryWithRemoval(void* a,unsigne
     const sin_port::native_map::ScriptedSequenceRemovalThinkBindings* removal,sin_port::native_map::ScriptedSequenceRemovalThinkResult* removed) noexcept {
     if(!removal||!removed){if(o)*o={};if(removed)*removed={};return 0;}
     return sin_port::native_map::sequence_primary(a,n,tick,b,o,removal,removed);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_RunScriptedNpcTask=_SiN_RunScriptedNpcTask")
+extern "C" int __cdecl SiN_RunScriptedNpcTask(void* a,unsigned n,int task,
+    const sin_port::native_map::ScriptedNpcTaskBindings* b,sin_port::native_map::ScriptedNpcTaskResult* o) noexcept {
+    return sin_port::native_map::run_scripted_npc_task(a,n,task,b,o);
 }
