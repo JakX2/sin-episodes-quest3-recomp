@@ -44,7 +44,8 @@ int __cdecl damage_major(void* a,unsigned n,const void* info,unsigned bytes,floa
     if(void* source=registry.Resolve(rd<unsigned>(info,0x24))){
         o->source_live=1;unsigned extent=0;
         if(!b->extent||!b->extent(b->context,source,&extent)||extent<4)return 0;
-        if(rd<unsigned>(source,0)==recombinant_major_vtable)o->source_class=10;
+        const unsigned vt=rd<unsigned>(source,0);
+        if(vt==0x2249f65cu||vt==recombinant_major_vtable||vt==recombinant_minor_vtable)o->source_class=10;
         else if(!b->classification||!b->classification(b->context,source,&o->source_class))return 0;
         if(o->source_class==10){o->immune=o->completed=1;return 1;}
     }
