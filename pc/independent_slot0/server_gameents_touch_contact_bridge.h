@@ -22,6 +22,12 @@ struct GameEntsContactBridgeHooks {
     const EntityHandleEntry* entries=nullptr;
     std::size_t entry_count=0;
     TouchMarkHooks touch{};
+    // Optional on the independent core; mandatory for bounded dispatch.
+    // Attest the TouchEntity storage *before* accessing its fields, then
+    // attest the returned CBaseEntity pointer before contact callbacks.
+    bool (*authorized_touch)(void*,const TouchEntity*) noexcept=nullptr;
+    bool (*authorized_entity)(void*,const CBaseEntity*) noexcept=nullptr;
+    void* authorization_context=nullptr;
 };
 struct GameEntsContactBridgeResult {
     GameEntsTouchEntryResult entry{};
@@ -38,6 +44,17 @@ struct GameEntsContactFrame {
     TouchEntity* first=nullptr;
     TouchEntity* second=nullptr;
 };
+inline bool AuthorizedContact(const GameEntsContactFrame& frame,
+                              const TouchEntity* entity) noexcept {
+    if(!entity)return false;
+    if(frame.hooks.authorized_touch&&
+       !frame.hooks.authorized_touch(frame.hooks.authorization_context,entity))
+        return false;
+    if(!entity->entity)return false;
+    return !frame.hooks.authorized_entity||
+        frame.hooks.authorized_entity(frame.hooks.authorization_context,
+                                      entity->entity);
+}
 inline bool ResolveContact(void* p,const void* edict,
                            GameEntsTouchEntity* out) noexcept {
     auto& frame=*static_cast<GameEntsContactFrame*>(p);
@@ -48,7 +65,7 @@ inline bool ResolveContact(void* p,const void* edict,
     else if(call==2)frame.second=entity;
     else return false;
     if(!entity)return true;
-    if(!entity->entity)return false;
+    if(!AuthorizedContact(frame,entity))return false;
     out->opaque=entity;
     out->dirty_origin=entity->dirtyOrigin;
     out->origin[0]=entity->origin.x;
@@ -63,13 +80,14 @@ inline bool InitContactTrace(void* p,GameEntsTouchTrace* trace) noexcept {
 inline bool RefreshContactOrigin(void* p,GameEntsTouchEntity* view) noexcept {
     auto& frame=*static_cast<GameEntsContactFrame*>(p);
     auto* entity=static_cast<TouchEntity*>(view->opaque);
-    if(!entity||(entity!=frame.first&&entity!=frame.second))return false;
+    if((entity!=frame.first&&entity!=frame.second)||
+       !AuthorizedContact(frame,entity))return false;
     ++frame.result.refresh_calls;
     if(!frame.hooks.touch.refreshOrigin(*entity,frame.hooks.touch.context))
         return false;
     // The owner must actually clear its dirty flag. Otherwise the core
     // would refresh the same entity a second time during pair insertion.
-    if(entity->dirtyOrigin)return false;
+    if(!AuthorizedContact(frame,entity)||entity->dirtyOrigin)return false;
     view->dirty_origin=false;
     view->origin[0]=entity->origin.x;
     view->origin[1]=entity->origin.y;
@@ -83,8 +101,8 @@ inline bool ReadLiveContactOrigin(void* p,GameEntsTouchEntity* view) noexcept {
     auto& frame=*static_cast<GameEntsContactFrame*>(p);
     if(!view||!view->opaque)return false;
     auto* entity=static_cast<TouchEntity*>(view->opaque);
-    if((entity!=frame.first&&entity!=frame.second)||!entity->entity)
-        return false;
+    if((entity!=frame.first&&entity!=frame.second)||
+       !AuthorizedContact(frame,entity))return false;
     ++frame.result.live_reads;
     view->dirty_origin=entity->dirtyOrigin;
     view->origin[0]=entity->origin.x;
@@ -98,7 +116,9 @@ inline bool MarkContactPair(void* p,void* a,void* b,
     auto& result=frame.result;
     ++result.contact_calls;
     if(!a||!b||a!=frame.first||b!=frame.second||
-       !original_trace||!frame.hooks.contacts)return false;
+       !original_trace||!frame.hooks.contacts||
+       !AuthorizedContact(frame,frame.first)||
+       !AuthorizedContact(frame,frame.second))return false;
     auto& first=*frame.first;
     auto& second=*frame.second;
     // Independent safety: verify that the pair core will produce the

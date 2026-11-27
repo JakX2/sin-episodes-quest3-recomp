@@ -11,6 +11,7 @@
 #include "server_gameents_transmit_entry_core.h"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace sin_independent {
 
@@ -22,6 +23,10 @@ struct GameEntsBoundedOwner {
     // Must authenticate live CBaseEntity bytes through original +0x16f
     // BEFORE the native +0x16c pointer read.
     bool (*valid_entity)(void*,const CBaseEntity*) noexcept=nullptr;
+    // Authenticate live unknown-interface dispatch target and synthetic
+    // TouchEntity storage before any virtual call or field dereference.
+    bool (*valid_unknown)(void*,const ServerUnknownAbi*) noexcept=nullptr;
+    bool (*valid_touch)(void*,const TouchEntity*) noexcept=nullptr;
     // Must prove stable storage for CCheckTransmitInfo and index array.
     // Count is the original signed input; callback reports index ELEMENTS.
     bool (*transmit_extent)(void*,const CCheckTransmitInfo*,
@@ -31,7 +36,8 @@ struct GameEntsBoundedOwner {
     EntityReleaseHooks release{};
     GameEntsTransmitEntryHooks transmit{};
     bool Complete() const noexcept {
-        return valid_edict&&valid_entity&&transmit_extent&&
+        return valid_edict&&valid_entity&&valid_unknown&&valid_touch&&
+            transmit_extent&&
             touch.resolve&&touch.init_trace&&touch.publish_trace&&
             touch.contacts&&touch.entries&&touch.entry_count&&
             touch.touch.Complete()&&release.Complete()&&
@@ -92,12 +98,18 @@ public:
         edict_t* first,edict_t* second) noexcept override {
         const auto gate=Begin(GameEntsDispatchSlot::MarkEntitiesAsTouching);
         if(gate!=GameEntsDispatchResult::Completed)return;
-        if((first&&!owner_.valid_edict(owner_.context,first))||
-           (second&&!owner_.valid_edict(owner_.context,second))) {
+        if((first&&(!owner_.valid_edict(owner_.context,first)||
+                    !UnknownAuthorized(first)))||
+           (second&&(!owner_.valid_edict(owner_.context,second)||
+                     !UnknownAuthorized(second)))) {
             report_.status=GameEntsDispatchResult::Unauthorized;
         } else {
+            auto bounded_touch=owner_.touch;
+            bounded_touch.authorized_touch=owner_.valid_touch;
+            bounded_touch.authorized_entity=owner_.valid_entity;
+            bounded_touch.authorization_context=owner_.context;
             const auto outcome=MarkEntitiesAsTouchingWithContactGraph(
-                first,second,owner_.touch,report_.touch);
+                first,second,bounded_touch,report_.touch);
             switch(outcome) {
             case GameEntsTouchEntryStatus::Completed:
                 report_.status=GameEntsDispatchResult::Completed;break;
@@ -116,11 +128,13 @@ public:
     void __thiscall FreeContainingEntity(edict_t* edict) noexcept override {
         const auto gate=Begin(GameEntsDispatchSlot::FreeContainingEntity);
         if(gate!=GameEntsDispatchResult::Completed)return;
-        if(edict&&!owner_.valid_edict(owner_.context,edict)) {
+        if(edict&&(!owner_.valid_edict(owner_.context,edict)||
+                   !UnknownAuthorized(edict))) {
             report_.status=GameEntsDispatchResult::Unauthorized;
         } else {
             report_.release=TryReleaseContainingEntity(
-                conversion_,edict,owner_.release);
+                conversion_,edict,owner_.release,
+                owner_.valid_entity,owner_.context);
             switch(report_.release) {
             case EntityReleaseStatus::DetachedAndHooksInvoked:
                 report_.status=GameEntsDispatchResult::Completed;break;
@@ -128,6 +142,8 @@ public:
                 report_.status=GameEntsDispatchResult::NoEntity;break;
             case EntityReleaseStatus::MissingCleanupHooks:
                 report_.status=GameEntsDispatchResult::OperationRefused;break;
+            case EntityReleaseStatus::UnauthorizedEntity:
+                report_.status=GameEntsDispatchResult::Unauthorized;break;
             }
         }
         active_=false;
@@ -160,7 +176,8 @@ public:
         const auto gate=Begin(GameEntsDispatchSlot::EdictToBaseEntity);
         if(gate!=GameEntsDispatchResult::Completed)return nullptr;
         CBaseEntity* result=nullptr;
-        if(edict&&!owner_.valid_edict(owner_.context,edict)) {
+        if(edict&&(!owner_.valid_edict(owner_.context,edict)||
+                   !UnknownAuthorized(edict))) {
             report_.status=GameEntsDispatchResult::Unauthorized;
         } else {
             result=conversion_.EdictToBaseEntity(edict);
@@ -187,17 +204,22 @@ public:
         } else {
             static_assert(sizeof(unsigned short)==sizeof(std::uint16_t),
                           "original transmit index ABI is 16-bit");
+            auto bounded_transmit=owner_.transmit;
+            bounded_transmit.authorized_entity=owner_.valid_entity;
+            bounded_transmit.authorization_context=owner_.context;
             report_.transmit_status=CheckTransmitEntry(
                 reinterpret_cast<const unsigned char*>(info),info_extent,
                 reinterpret_cast<const std::uint16_t*>(indices),
-                index_capacity,count,owner_.transmit,report_.transmit);
+                index_capacity,count,bounded_transmit,report_.transmit);
             switch(report_.transmit_status) {
             case TransmitResult::Completed:
                 report_.status=GameEntsDispatchResult::Completed;break;
             case TransmitResult::MissingRecipient:
                 report_.status=GameEntsDispatchResult::NoEntity;break;
             case TransmitResult::HostFailure:
-                report_.status=GameEntsDispatchResult::HostFailure;break;
+                report_.status=report_.transmit.unauthorized_entity
+                    ?GameEntsDispatchResult::Unauthorized
+                    :GameEntsDispatchResult::HostFailure;break;
             default:
                 report_.status=GameEntsDispatchResult::InvalidInput;break;
             }
@@ -206,6 +228,17 @@ public:
     }
 
 private:
+    // edict +0x0c is a separate virtual dispatch target, not covered by
+    // attesting only the 0x10-byte edict prefix. Never call GetBaseEntity
+    // through an unknown interface the owner has not explicitly attested.
+    bool UnknownAuthorized(const edict_t* edict) const noexcept {
+        if(!edict)return true;
+        ServerUnknownAbi* unknown=nullptr;
+        const auto* bytes=reinterpret_cast<const unsigned char*>(edict);
+        std::memcpy(&unknown,bytes+kOriginalEdictUnknownOffset,sizeof(unknown));
+        return !unknown||owner_.valid_unknown(owner_.context,unknown);
+    }
+
     // The model's host services can call back into game interfaces. Do not
     // reenter a half-mutated synthetic contact/lifetime operation.
     GameEntsDispatchResult Begin(GameEntsDispatchSlot slot) noexcept {
