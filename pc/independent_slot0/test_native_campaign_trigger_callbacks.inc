@@ -1696,7 +1696,7 @@
     {
         namespace nw=sin_port::native_weapon_tables;
         struct TaskFixture {
-            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{},component[9]{};
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{},component[9]{},event_action[0x1c]{};
             bool component_handles=false;
             sin_independent::EntityHandleEntry entries[2]{};
             float now=12.f;std::string calls;
@@ -1795,6 +1795,38 @@
         assert(interrupt->suppress(f.seq,sizeof(f.seq),&ib,&ir)&&ir.non_npc&&!ir.condition16);
         put(f.npc,0x970,0x5000u);
         assert(interrupt->npc_gate(f.npc,sizeof(f.npc),&ib,&ir)&&ir.permitted&&!ir.script_live);
+        const auto event_handle=reinterpret_cast<HandleScriptedNpcAnimationEvent>(GetProcAddress(server,scripted_npc_animation_event_export));
+        const auto snapshot=reinterpret_cast<SnapshotScriptedNpcConditions>(GetProcAddress(server,scripted_npc_condition_snapshot_export));
+        assert(event_handle&&snapshot&&!GetProcAddress(client,scripted_npc_animation_event_export)&&!GetProcAddress(client,scripted_npc_condition_snapshot_export));
+        nw::ServerEntityVoidOutputBindings event_fire{};event_fire.context=&f;
+        event_fire.resolve=[](void* p,unsigned token,void** row,unsigned* bytes) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);if(token!=1)return 0;*row=f.event_action;*bytes=sizeof(f.event_action);return 1;
+        };
+        event_fire.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* a) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(activator==f.seq&&caller==f.seq&&a->target==51&&a->input==52);f.calls+='O';return 1;
+        };
+        ScriptedSequenceEventBindings outputs{&event_fire,nullptr};ScriptedNpcAnimationEventBindings eb{&ib,&outputs};
+        ScriptedNpcAnimationEventResult er{};ScriptedNpcConditionSnapshotResult sr{};
+        put(f.npc,0x970,0x3000u);put(f.seq,0x3d0,0x4001u);put(f.seq,0xb4,0u);
+        assert(event_handle(f.npc,sizeof(f.npc),1002,nullptr,0,&eb,&er)&&er.handled&&er.script_live&&er.interrupt.changed&&f.seq[0x3cc]);
+        put(f.seq,0xb4,0x20u);
+        assert(event_handle(f.npc,sizeof(f.npc),1001,nullptr,0,&eb,&er)&&er.interrupt.flag_protected&&f.seq[0x3cc]);
+        put(f.seq,0xb4,0u);
+        assert(event_handle(f.npc,sizeof(f.npc),1001,nullptr,0,&eb,&er)&&er.interrupt.changed&&!f.seq[0x3cc]);
+        put(f.event_action,0,51u);put(f.event_action,4,52u);put(f.event_action,0x10,0xffffffffu);put(f.seq,0x3f8+3*0x18+0x14,1u);f.calls.clear();
+        assert(event_handle(f.npc,sizeof(f.npc),1003," \t+3suffix",11,&eb,&er)&&er.parsed&&er.index==3&&er.output.queued==1&&f.calls=="O");
+        assert(event_handle(f.npc,sizeof(f.npc),1003,"-3",3,&eb,&er)&&er.parsed&&er.index==-3&&!er.output.output_called&&f.calls=="O");
+        assert(event_handle(f.npc,sizeof(f.npc),1003,"4294967299",11,&eb,&er)&&er.index==3&&er.output.queued==1&&f.calls=="OO");
+        assert(!event_handle(f.npc,sizeof(f.npc),1003,"3",1,&eb,&er)&&!er.parsed);
+        assert(event_handle(f.npc,sizeof(f.npc),1004,nullptr,0,nullptr,&er)&&!er.handled);
+        put(f.npc,0x7cc,0x70000u);put(f.npc,0x82c,0x50000u);
+        assert(snapshot(f.npc,sizeof(f.npc),&ib,&sr)&&sr.snapshot&&sr.script_live&&sr.suppressed&&sr.interrupt.cleared16&&!sr.interrupt.cleared17&&word(f.npc,0x80c)==0x70000u&&word(f.npc,0x7cc)==0x40000u);
+        assert(event_handle(f.npc,sizeof(f.npc),1002,nullptr,0,&eb,&er)&&er.interrupt.changed);
+        put(f.npc,0x7cc,0x70000u);
+        assert(snapshot(f.npc,sizeof(f.npc),&ib,&sr)&&sr.snapshot&&sr.script_live&&!sr.suppressed&&word(f.npc,0x7cc)==0x50000u);
+        put(f.npc,0x970,0x5000u);put(f.npc,0x7cc,0x70000u);
+        assert(event_handle(f.npc,sizeof(f.npc),1003,nullptr,0,&eb,&er)&&er.handled&&!er.script_live&&!er.parsed);
+        assert(snapshot(f.npc,sizeof(f.npc),&ib,&sr)&&sr.snapshot&&!sr.script_live&&!sr.suppressed&&word(f.npc,0x7cc)==0x50000u);
         const auto cleanup=reinterpret_cast<CleanupScriptedNpc>(GetProcAddress(server,scripted_npc_cleanup_export));
         assert(cleanup&&!GetProcAddress(client,scripted_npc_cleanup_export));
         ScriptedNpcCleanupBindings cb{&c,&life.conditions,&f};
