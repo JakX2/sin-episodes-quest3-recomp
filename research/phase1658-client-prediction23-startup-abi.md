@@ -96,11 +96,41 @@ relocation and targets the original SHA-pinned client's `.text`.
 Original full 16-byte slot1 method SHA-256:
 `7829179302e1698746d72b1e4bdfdc51704ef8c90bd8d25ea03e6b54331eab11`.
 
-Its instructions (1) read a pointer from client global `0x24374540`,
-(2) compare the DWORD at that pointer `+0x2C` against zero,
-(3) write the resulting 0/1 byte at prediction `this+0x10`,
-and (4) `RET` with no stack arguments. The method has **no null guard**,
-so its service dependency must be satisfied by the actual engine.
+The former anonymous dependency is now **identified directly from
+the original retail client as the `cl_predict` ConVar**, not an external
+engine-provided service.
+
+Original `cl_predict` constructor wrapper `0x2426C550` registers
+a ConVar at `0x24374528`, passing string `cl_predict` at
+`0x242A3A04`, **default value `1`** at `0x242D6CCC`,
+flags `0x200` and help string `Perform client side prediction.`.
+It calls the original delegating ConVar constructor `0x241216C0`,
+which invokes the base constructor `0x241212E0`.
+
+The base ConVar constructor stores `this` at **ConVar+0x18**
+(its `m_pParent` pointer) and converts/stores the numeric integer
+at **ConVar+0x2C** (its `m_nValue`). Because the ConVar lives at
+`0x24374528`, the absolute ConVar parent-pointer field address is
+**`0x24374540`**, exactly the value loaded by prediction slot 1.
+
+Therefore prediction slot 1 performs:
+(1) load `cl_predict.m_pParent` from `0x24374540`,
+(2) compare `m_pParent->m_nValue` at offset `+0x2C` to zero,
+(3) write the 0/1 byte to prediction `this+0x10`, and
+(4) `RET`, no stack arguments.
+
+Original `cl_predict` wrapper full 42-byte SHA-256:
+`17281254628e8b8b69d1def3b311502cc351d08583b5c92b977fc74357ad6858`.
+Original 64-byte delegating ConVar constructor full SHA-256:
+`e1ddea23dbd98b86e8a02f0b56494b364e1a9102e4824f466b51f1a0bcbd5196`.
+Original 244-byte base ConVar constructor full SHA-256:
+`510247221f012afd3817fb65b99122d8907e752d7d472ad46cf6d0a93d3ab761`.
+
+The original prediction method itself **does not check** the ConVar
+parent pointer before dereferencing it. The standalone host fixture
+therefore refuses missing ConVar metadata. A live DLL bootstrap still
+requires native ConVar registration and lifetime; this static evidence
+does not prove an original-game runtime startup.
 
 The native constructor (50 bytes) has SHA-256
 `9b0b5c77c72ae369a286600971788b3820d79ffff740fc6c7721b3fc5277f8a7`.
@@ -127,18 +157,22 @@ The read-only `research/tools/audit_sin_original_client_prediction23_abi.py`
 requires BOTH complete original client and engine SHA matches.
 It verifies the registration, singleton factory, constructor, vtable
 and every cell's PE32 relocation, slot0 and slot1 complete method
-hashes, RTTI COL/hierarchy/base descriptors, and original engine
+hashes, original `cl_predict` registration and **both original
+ConVar constructors**, including self-parent and +`0x2C` integer field
+stores, RTTI COL/hierarchy/base descriptors, and original engine
 callsite ordering. Public `--self-test` constructs invented windows,
 mutates each byte and rejects fabricated original hashes.
 
 `native_client_prediction23_init_probe.h` is an intentionally separate
 host-owned MSVC Win32 x86 synthetic 23-slot object with a deleting
 destructor in slot0 and a parameterless Init in slot1. It checks
-ECX/ESP invariants and transforms the invented service word at +`0x2C`
-into a byte at `this+0x10`. Slots 2 through 22 are **inert sentinels**,
-not guesses of original method signatures. Missing service pointers
-are refused by this synthetic test model, unlike the original native
-unguarded dereference.
+ECX/ESP invariants and transforms an invented **cl_predict
+ConVar** `m_pParent->m_nValue` at +`0x2C` into a byte at
+`this+0x10`. Synthetic `ConVarView` separately authenticates the
++0x18 parent pointer and +0x2C integer offset and tests a distinct
+parent alias. Slots 2 through 22 are **inert sentinels**, not guesses
+of original method signatures. Missing ConVar parent pointers are
+refused in this fixture, unlike the original unguarded dereference.
 
 A second native test exercises 24 exact fake-memory DWORD reads:
 one prediction singleton vptr plus 23 method targets. The same
@@ -156,8 +190,10 @@ GitHub Actions result before claiming a pass.
 - `VClientPrediction001` stays **unregistered** in the independent
   replacement DLL; all original prediction method signatures and
   lifecycle remain incomplete.
-- Identify the engine-provided service behind `0x24374540` before
-  attempting to run any equivalent prediction initialization.
+- The `0x24374540` dependency is now identified as
+  `cl_predict.m_pParent`. Independently establish native ConVar
+  registration/ownership and preserve its effective numeric value
+  before implementing safe prediction initialization in the game host.
 - No original DLL code or byte resources were committed.
 - No retail Windows gameplay boot, Android native startup, Quest 3
   execution, physics, surface, prop or model implementation is claimed.
