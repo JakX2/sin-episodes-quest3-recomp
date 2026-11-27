@@ -135,9 +135,44 @@ int __cdecl gather(void* a,unsigned n,const ServerRecombinantMinorBindings* b,Se
     Call c{a,n,*b,*o,*b->damage,*b->damage->policy};o->completed=c.gather();return o->completed;
 }
 const ServerRecombinantMinorApi api{1,sizeof(ServerRecombinantMinorApi),&damage,&detach,&gather};
+
+int __cdecl minor_origin_point(void* actor,unsigned bytes,float point[3],
+    const ServerRecombinantMinorOriginPointBindings* b,
+    ServerRecombinantMinorOriginPointResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0x2c8u||rd<unsigned>(actor,0)!=recombinant_minor_vtable||!point)return 0;
+    // Original code tests +b8 bit 11 and calls inherited 2213fa60
+    // before reading the three world-origin floats at +2bc.
+    if(rd<unsigned>(actor,0xb8)&0x800u){
+        ++out->refresh_calls;
+        if(!b||!b->refresh_origin||!b->refresh_origin(b->context,actor))return 0;
+    }
+    const float x=rd<float>(actor,0x2bc),y=rd<float>(actor,0x2c0),
+        z=rd<float>(actor,0x2c4);
+    if(!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(z))return 0;
+    const float shifted=static_cast<float>(double(z)+6.0);
+    if(!std::isfinite(shifted))return 0;
+    const float values[]{x,y,shifted};
+    std::memcpy(point,values,sizeof(values));
+    out->origin[0]=x;out->origin[1]=y;out->origin[2]=z;
+    std::memcpy(out->point,values,sizeof(values));
+    out->completed=1;
+    return 1;
+}
+const ServerRecombinantMinorOriginPointApi origin_point_api{
+    1,sizeof(ServerRecombinantMinorOriginPointApi),&minor_origin_point
+};
+
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantMinorApi=_SiN_GetServerRecombinantMinorApi")
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantMinorApi* __cdecl SiN_GetServerRecombinantMinorApi(unsigned v,unsigned n) noexcept{
     using namespace sin_port::native_weapon_tables;return v==1&&n==sizeof(ServerRecombinantMinorApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantMinorOriginPointApi=_SiN_GetServerRecombinantMinorOriginPointApi")
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantMinorOriginPointApi* __cdecl
+SiN_GetServerRecombinantMinorOriginPointApi(unsigned version,unsigned size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerRecombinantMinorOriginPointApi)?&origin_point_api:nullptr;
 }
