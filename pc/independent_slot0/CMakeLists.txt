@@ -157,6 +157,14 @@ target_compile_features(sin_server_gameents_touch_entry_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_gameents_touch_entry_native
   COMMAND sin_server_gameents_touch_entry_test)
 
+# Original ServerGameEnts001::CheckTransmit entry owns manager, recipient and
+# bitset acquisition; delegate candidate decisions to existing native policy.
+add_executable(sin_server_gameents_transmit_entry_test
+  test_server_gameents_transmit_entry_core.cpp)
+target_compile_features(sin_server_gameents_transmit_entry_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_transmit_entry_native
+  COMMAND sin_server_gameents_transmit_entry_test)
+
 # The first independently reconstructed real server entity-method behavior,
 # validated against synthetic x86 Source object layouts. Not exported yet:
 # MarkEntitiesAsTouching, FreeContainingEntity and CheckTransmit still need
