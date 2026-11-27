@@ -31,6 +31,7 @@ on:
       - 'research/tools/audit_sin_original_servergameents_factory.py'
       - 'research/tools/audit_sin_original_servergameents_methods.py'
       - 'research/tools/audit_sin_original_gameents_release_chain.py'
+      - 'research/tools/audit_sin_original_gameents_entity_unknown_alias.py'
       - 'research/tools/audit_sin_original_engine_gameents_consumer.py'
       - 'research/tools/audit_sin_original_engine_gameents_edict_retire.py'
       - 'research/tools/audit_sin_original_engine_gameents_edict_reuse.py'
@@ -91,6 +92,7 @@ on:
       - 'research/tools/audit_sin_original_servergameents_factory.py'
       - 'research/tools/audit_sin_original_servergameents_methods.py'
       - 'research/tools/audit_sin_original_gameents_release_chain.py'
+      - 'research/tools/audit_sin_original_gameents_entity_unknown_alias.py'
       - 'research/tools/audit_sin_original_engine_gameents_consumer.py'
       - 'research/tools/audit_sin_original_engine_gameents_edict_retire.py'
       - 'research/tools/audit_sin_original_engine_gameents_edict_reuse.py'
@@ -195,6 +197,9 @@ jobs:
 
       - name: Authenticate original GameEnts FreeContainingEntity path (synthetic only)
         run: python research/tools/audit_sin_original_gameents_release_chain.py --self-test
+
+      - name: Authenticate original CBaseEntity-to-IServerUnknown source-backed alias (synthetic only)
+        run: python research/tools/audit_sin_original_gameents_entity_unknown_alias.py --self-test
 
       - name: Authenticate original 2006 engine GameEnts consumer (synthetic only)
         run: python research/tools/audit_sin_original_engine_gameents_consumer.py --self-test

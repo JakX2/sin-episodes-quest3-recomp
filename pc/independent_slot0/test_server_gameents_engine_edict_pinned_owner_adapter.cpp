@@ -1,5 +1,6 @@
 // Original-free host-lifetime / owner-pinned engine allocation integration.
 #include "server_gameents_engine_edict_pinned_owner_adapter.h"
+#include "server_gameents_owner_lifetime_registry.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -143,6 +144,31 @@ int main() {
        second.owner_epoch!=1002||o.count!=4||o.cleanup_calls!=4||
        o.begin_count!=2||o.end_count!=2||o.mutate_refusals!=4)
         return Fail(2,"returned active edict immediately reselected");
+    // Bridge the independently pinned allocator's owner epochs into the
+    // authentic exact-base CBaseEntity/IServerUnknown lifetime registry.
+    // This is synthetic enrollment AFTER committed allocation, not a live
+    // retail game factory. Edicts 2 and 3 are adjacent, non-overlapping 0x14
+    // records; each unknown points to the same base as its owning entity.
+    GameEntsOwnerLifetimeRegistry<2,2> registry;
+    std::array<unsigned char,0x180> entity_a{},entity_b{};
+    std::array<unsigned char,0x90> touch_a{},touch_b{};
+    const GameEntsOwnerIdentity ia{
+        &o.slots[first.index],sizeof(Edict),entity_a.data(),entity_a.size(),
+        entity_a.data(),sizeof(void*),touch_a.data(),touch_a.size(),
+        first.owner_epoch};
+    const GameEntsOwnerIdentity ib{
+        &o.slots[second.index],sizeof(Edict),entity_b.data(),entity_b.size(),
+        entity_b.data(),sizeof(void*),touch_b.data(),touch_b.size(),
+        second.owner_epoch};
+    std::uint64_t registry_token=0;
+    if(!registry.Enroll(0,ia)||!registry.Enroll(1,ib)||
+       !registry.Begin(5,&registry_token)||
+       !registry.ValidUnknownPair(ia.edict,ia.entity)||
+       !registry.ValidUnknownPair(ib.edict,ib.entity)||
+       registry.ValidUnknownPair(ia.edict,ib.entity)||
+       !registry.ValidPair(ia.edict,ia.entity)||
+       !registry.End(5,registry_token))
+        return Fail(15,"real allocator epoch to original unknown alias registry");
     Owner parallel{};
     EnginePinnedEdictAllocatorAdapter parallel_adapter(1000);
     parallel.adapter=&parallel_adapter;
