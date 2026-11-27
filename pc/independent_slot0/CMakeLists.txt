@@ -175,6 +175,15 @@ target_compile_features(sin_server_gameents_touch_release_lifecycle_test PRIVATE
 add_test(NAME independent_server_gameents_touch_release_lifecycle_native
   COMMAND sin_server_gameents_touch_release_lifecycle_test)
 
+# Original ServerGameEnts001 seven-slot concrete x86 vtable, with host-owned
+# bounded edicts/entities, touch graph, transmit policy, and removal callbacks.
+# Diagnostic object ONLY: never registered with retail CreateInterface.
+add_executable(sin_server_gameents_bounded_dispatch_test
+  test_server_gameents_bounded_dispatch.cpp)
+target_compile_features(sin_server_gameents_bounded_dispatch_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_bounded_dispatch_native
+  COMMAND sin_server_gameents_bounded_dispatch_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
