@@ -31,6 +31,20 @@ The constructor stores the two user-provided arguments, links `next` to the prio
 
 These original references were checked against the full original private 2006 `server.dll` bytes: all three registration wrappers, the 32-byte constructor, the complete 114-byte exported factory body, three singleton return thunks and three first-vtable-pointer DWORDs.
 
+**Additional exact vtable proof:** The original `ServerGameEnts001` singleton at `0x22510654` has vptr `0x22443030`, and the original source-authenticated PE32 vtable contains **seven** virtual targets:
+
+| Slot / original byte offset | Original method VA |
+| --- | --- |
+| 0 / `+0x00` | `0x221E9360` |
+| 1 / `+0x04` | `0x221E82D0` |
+| 2 / `+0x08` | `0x221E9380` |
+| 3 / `+0x0C` | `0x221E82E0` |
+| 4 / `+0x10` | `0x221E94B0` |
+| 5 / `+0x14` | `0x221E82F0` |
+| 6 / `+0x18` | `0x221E94D0` |
+
+The next DWORD at `vptr+0x1C` is zero, separating this table from the adjacent MSVC RTTI/vtable region. The audit checks all seven entries and this boundary, with per-byte corruption cases. **The precise method names remain governed by separately authenticated game/engine callsite research, not guessed from these pointer values.**
+
 ## Reproducible owner-private audit
 
 ```powershell
@@ -43,7 +57,7 @@ The original server export table contains five named symbols: `CreateInterface` 
 
 ## Native/regression evidence
 
-`--self-test` uses invented x86 21-byte registration wrappers, 32-byte record constructor patterns and six-byte static singleton thunks. It mutates every constructor byte and each registration wrapper byte, checks exact address/call targets, wrong creators/record pointers, and fake original-SHA rejection. The synthetic fixture does not load proprietary game code. The regression is registered in the Linux original-free decomp audit and Windows MSVC Win32 CTest, expected total **250** if Phase 1650's 249-case baseline is green.
+`--self-test` uses invented x86 21-byte registration wrappers, 32-byte record constructor patterns and six-byte static singleton thunks. It mutates every constructor byte and each registration wrapper byte, verifies all seven original GameEnts virtual targets and the next-vtable delimiter byte-for-byte, checks exact address/call targets, wrong creators/record pointers, and fake original-SHA rejection. The synthetic fixture does not load proprietary game code. The regression is registered in the Linux original-free decomp audit and Windows MSVC Win32 CTest, expected total **250** if Phase 1650's 249-case baseline is green.
 
 ## Limits
 
