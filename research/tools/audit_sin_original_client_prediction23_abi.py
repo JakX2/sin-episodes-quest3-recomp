@@ -122,6 +122,12 @@ CLIENT_SHUTDOWN_SHA = "ae3f4619b0413d70d3004b9131c3752153074e45725be13b9a1489788
 CLIENT_RESET_VA = CLIENT_VIRTUAL_TARGETS[7]
 CLIENT_RESET_BYTES = 16
 CLIENT_RESET_SHA = "a6da88d507f80f25c7ebde380cf57df4b325e3acaba22aef172d84d6082733b2"
+# All three are four-byte complete original native __thiscall getters, RET0.
+CLIENT_TINY_GETTERS = (
+    (15, 0x24195970, 0x08, 1, "8a905797df24e4a1fe68a2f630971aa55b606cd6a92fed57303379d0f93a7a2d"),
+    (16, 0x24195980, 0x09, 1, "d577cc6b1b05cb0c2be7f658f60d7baf98684eeaad579cd874c21150f6dd70ab"),
+    (17, 0x24195990, 0x0C, 4, "2e339cdc5de837ec151dbde90057caeabba18ac3ea32e7c2cffc8f95df41a6ff"),
+)
 ENGINE_PREDICTION_SHUTDOWN_VA = 0x20023DEF
 ENGINE_PREDICTION_SHUTDOWN_BYTES = 11
 ENGINE_PREDICTION_SHUTDOWN_SHA = "4495aebe5d5ab5d1808a077cd1993f35112fc2a0be1388c1bff2ef5491b7438d"
@@ -284,6 +290,19 @@ def verify_prediction_slot7_reset(blob: bytes) -> None:
           "original prediction slot7 noarg field-reset form differs")
 
 
+def verify_prediction_tiny_getter(blob: bytes,
+                                  member_offset: int,
+                                  data_width: int) -> None:
+    check(data_width in (1,4) and member_offset in (8,9,12),
+          "unexpected original prediction getter member")
+    # MOV AL, [ECX+disp8] or MOV EAX, [ECX+disp8], then RET.
+    first_opcode=(0x8A if data_width==1 else 0x8B)
+    check(len(blob)==4 and
+          blob[0]==first_opcode and blob[1]==0x41 and
+          blob[2]==member_offset and blob[3]==0xC3,
+          "prediction native getter member width/offset or RET differs")
+
+
 def verify_engine_prediction_shutdown(blob: bytes,
                                       global_address: int) -> None:
     check(len(blob)==11 and blob[:2]==b"\x8B\x0D" and
@@ -425,6 +444,13 @@ def verify_original(client_bytes: bytes, engine_bytes: bytes) -> dict:
     check(hashlib.sha256(reset).hexdigest()==CLIENT_RESET_SHA,
           "original prediction slot7 reset whole SHA changed")
     verify_prediction_slot7_reset(reset)
+    for slot,method_va,member,width,digest in CLIENT_TINY_GETTERS:
+        check(CLIENT_VIRTUAL_TARGETS[slot]==method_va,
+              "native prediction tiny getter virtual order drifted")
+        getter=section_read(client,method_va,4,".text")
+        check(hashlib.sha256(getter).hexdigest()==digest,
+              "original prediction tiny getter complete SHA changed: "+str(slot))
+        verify_prediction_tiny_getter(getter,member,width)
 
     # Resolve the previously ambiguous +0x2C dependency to the ACTUAL
     # original cl_predict ConVar registration and its m_pParent->m_nValue.
@@ -569,6 +595,9 @@ def verify_original(client_bytes: bytes, engine_bytes: bytes) -> dict:
         "slot2_engine_shutdown_caller_va": hex(ENGINE_PREDICTION_SHUTDOWN_VA),
         "slot7_parameterless_reset_ret0": True,
         "slot7_reset_fields": {"0x24": -1, "0x28": 0, "0x2c": 0},
+        "native_tiny_getter_slots_verified": [row[0] for row in CLIENT_TINY_GETTERS],
+        "native_tiny_getter_member_offsets": [hex(row[2]) for row in CLIENT_TINY_GETTERS],
+        "native_tiny_getter_member_widths": [row[3] for row in CLIENT_TINY_GETTERS],
         "original_RTTI_primary_class": "CPrediction",
         "original_RTTI_base_class": "IPrediction",
         "original_engine_prediction_callsite_va": hex(ENGINE_FACTORY_CALL_VA),
@@ -713,6 +742,15 @@ def self_test() -> None:
         corrupt=bytearray(invented_reset);corrupt[i]^=1
         reject(lambda data=bytes(corrupt):verify_prediction_slot7_reset(data),
                "synthetic prediction slot7 reset byte "+str(i))
+    for slot,_,member,width,_ in CLIENT_TINY_GETTERS:
+        invented_getter=bytes((0x8A if width==1 else 0x8B,
+                               0x41,member,0xC3))
+        verify_prediction_tiny_getter(invented_getter,member,width)
+        for i in range(len(invented_getter)):
+            broken=bytearray(invented_getter);broken[i]^=1
+            reject(lambda data=bytes(broken),m=member,w=width:
+                   verify_prediction_tiny_getter(data,m,w),
+                   "original-free getter slot "+str(slot)+" byte "+str(i))
     invented_shutdown_global=0x45630000
     invented_engine_shutdown=b"\x8B\x0D"+pack(invented_shutdown_global)+bytes.fromhex(
         "8b11ff5208")
@@ -787,7 +825,7 @@ def self_test() -> None:
           "constructor, deleting destructor RET4 and slot1 RET0/service "
           "dependency through cl_predict ConVar parent/nValue; "
           "engine slot1 before entity-list and prediction slot2 shutdown; "
-          "slot7 noarg field reset; RTTI two-base class "
+          "slot7 reset, slots15-17 tiny field getters; RTTI two-base class "
           "metadata; mutation and fake original-SHA rejection")
 
 def main() -> int:
