@@ -413,6 +413,14 @@ struct NativeRequestSession {
 };
 int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr,const ServerNpcSharedTargetAnimationBindings* target_animation=nullptr,ServerNpcSharedTargetAnimationStats* target_animation_stats=nullptr,const ServerNpcSharedMovementBindings* movement=nullptr,ServerNpcSharedMovementStats* movement_stats=nullptr,const ServerNpcSharedCueBindings* cue=nullptr,ServerNpcSharedCueStats* cue_stats=nullptr,const ServerNpcSharedObservationBindings* observe=nullptr,ServerNpcSharedObservationStats* observe_stats=nullptr,const ServerNpcSharedSoundCoverBindings* sound_cover=nullptr,ServerNpcSharedSoundCoverStats* sound_cover_stats=nullptr,const ServerNpcSharedTacticalCoverBindings* tactical=nullptr,ServerNpcSharedTacticalCoverStats* tactical_stats=nullptr,const GatherRoute* gather=nullptr,const ServerNpcNativeGatherRoute* native_gather=nullptr,const NativeRequestRoute* request=nullptr,const ServerNpcScriptedSchedulerBindings* script=nullptr,ServerNpcScriptedSchedulerStats* script_stats=nullptr,const native_map::ScriptedNpcStartMotionBindings* motion=nullptr,ServerNpcScriptedMotionSchedulerStats* motion_stats=nullptr,const native_map::ScriptedNpcCleanupBindings* cleanup=nullptr,
     native_map::ScriptedNpcCleanupResult* cleaned=nullptr) noexcept {
+    ServerNpcScriptedSchedulerBindings from_think{};
+    if(native_gather&&native_gather->scripted){
+        const auto* route=native_gather->scripted;
+        if(script||!valid_scripted_think_services(route)||!shared)return 0;
+        from_think={b,shared,route->run,route->start};
+        script=&from_think;script_stats=route->stats;motion=route->motion;motion_stats=route->motion_stats;
+        cleanup=route->cleanup;cleaned=route->cleaned;
+    }
     if(cleaned)*cleaned={};
     if(cleanup&&(!script||!cleaned))return 0;
     if(!out)return 0;*out={};
