@@ -251,6 +251,75 @@ public:
         }
         return false;
     }
+    // Phase 1646: pointer-only authorizers above remain for legacy fixtures.
+    // They cannot distinguish an address ABA after the engine reuses an
+    // edict and the game constructs an entity at the SAME address. A caller
+    // retaining a pointer beyond a physical owner pin MUST also retain
+    // the monotonic uint64 ownership epoch and use one of these methods.
+    // This is a host safety rule, not an original 2006 ABI extension.
+    bool ValidEdictAtEpoch(const void* ptr,
+                           std::uint64_t expected_epoch) const noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(!OwnedLease()||!ptr||!expected_epoch)return false;
+        for(const auto& item:slots_)
+            if(item.edict_owned&&item.value.edict==ptr&&
+               item.value.generation==expected_epoch)return true;
+        return false;
+    }
+    bool ValidEntityAtEpoch(const void* ptr,
+                            std::uint64_t expected_epoch) const noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(!OwnedLease()||!ptr||!expected_epoch)return false;
+        for(const auto& item:slots_)
+            if(item.entity_live&&item.value.entity==ptr&&
+               item.value.generation==expected_epoch)return true;
+        return false;
+    }
+    bool ValidUnknownPairAtEpoch(const void* edict,const void* unknown,
+                                  std::uint64_t expected_epoch) const noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(!OwnedLease()||!edict||!unknown||!expected_epoch)return false;
+        for(const auto& item:slots_)
+            if(item.edict_owned&&item.entity_live&&
+               item.value.edict==edict&&item.value.unknown==unknown&&
+               item.value.generation==expected_epoch)return true;
+        return false;
+    }
+    bool ValidPairAtEpoch(const void* edict,const void* entity,
+                           std::uint64_t expected_epoch) const noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(!OwnedLease()||!edict||!entity||!expected_epoch)return false;
+        for(const auto& item:slots_)
+            if(item.edict_owned&&item.entity_live&&
+               item.value.edict==edict&&item.value.entity==entity&&
+               item.value.generation==expected_epoch)return true;
+        return false;
+    }
+    bool ValidTouchAtEpoch(const void* ptr,std::size_t required_bytes,
+                            std::uint64_t expected_epoch) const noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(!OwnedLease()||!ptr||!required_bytes||!expected_epoch)return false;
+        for(const auto& item:slots_)
+            if(item.entity_live&&item.value.touch==ptr&&
+               item.value.touch_bytes>=required_bytes&&
+               item.value.generation==expected_epoch)return true;
+        return false;
+    }
+    bool ValidCandidateAtEpoch(std::uint32_t table,std::size_t index,
+                               const void* entity,
+                               std::uint64_t expected_epoch) const noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(!OwnedLease()||!table||!entity||!expected_epoch)return false;
+        for(const auto& row:candidates_) {
+            if(!row.used||row.table!=table||row.index!=index)continue;
+            const auto& item=slots_[row.slot];
+            return item.entity_live&&item.edict_owned&&
+                row.generation==expected_epoch&&
+                item.value.generation==expected_epoch&&
+                item.value.entity==entity;
+        }
+        return false;
+    }
     bool HasLease() const noexcept {
         std::lock_guard<std::mutex> guard(mu_);
         return leased_;

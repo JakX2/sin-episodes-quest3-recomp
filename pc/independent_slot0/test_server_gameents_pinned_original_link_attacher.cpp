@@ -129,6 +129,12 @@ int main() {
        !good_registry.ValidEdict(good.edict.data())||
        !good_registry.ValidUnknownPair(good.edict.data(),
                                        good.entity.data())||
+       !good_registry.ValidUnknownPairAtEpoch(good.edict.data(),
+                                              good.entity.data(),good.epoch)||
+       good_registry.ValidUnknownPairAtEpoch(good.edict.data(),
+                                             good.entity.data(),good.epoch+1)||
+       !good_registry.ValidPairAtEpoch(good.edict.data(),
+                                       good.entity.data(),good.epoch)||
        !good_registry.End(5,lease))
         return Fail(3,"attached source-backed alias not visible to lease");
     Attacher duplicate_attacher;
