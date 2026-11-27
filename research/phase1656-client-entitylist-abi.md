@@ -52,6 +52,28 @@ HIGHLOW relocations. These findings were checked against the exact
 SHA-matched owner originals from the Drive `SE1/bin.zip` archive,
 without executing any original code.
 
+**Additional original MSVC class hierarchy evidence:** the shared
+ClassHierarchyDescriptor at `0x242E5A40` is the complete four-DWORD record
+`(signature=0, attributes=1, numBaseClasses=3, pBaseClassArray=0x242E5A30)`.
+The `attributes=1` bit identifies **multiple inheritance** in MSVC RTTI.
+The array at `0x242E5A30` contains three relocated descriptor pointers:
+
+| Original BaseClassDescriptor | RTTI type name | PMD member displacement |
+|---|---|---:|
+| `0x242E5A18` | `CClientEntityList` | `0` |
+| `0x242E5A00` | `CBaseEntityList` | `0` |
+| `0x242E59E8` | `IClientEntityList` | `0x10014` |
+
+All three 24-byte BaseClassDescriptors have `pdisp=-1`, `vdisp=0`,
+and `attributes=0`. Their TypeDescriptors are respectively
+`0x242FA77C`, `0x242FA75C`, `0x242FA73C`.
+The containing class reports two contained bases; each base reports zero.
+Each class-array element and base-descriptor type pointer is a genuine
+PE32 HIGHLOW relocation. The `IClientEntityList` PMD independently
+matches the factory's secondary address and the constructor's offset.
+**This is direct original native RTTI verification, not the SDK's inferred
+class layout.**
+
 Original whole 36-byte secondary vtable SHA-256:
 `85b1a89b4c59052c027286beed20e00242cbdf428fa1559dbd666a51fe18be75`.
 Original whole 12-byte primary vtable SHA-256:
@@ -82,14 +104,14 @@ deleting destructor, **not** secondary slot 0.
    refuses files with either wrong entire SHA; checks all nine secondary and
    all three parent pointers against previous independently authenticated
    phases, relocated factory and constructor pointer operands, both
-   original 20-byte RTTI Complete Object Locators, the shared descriptor
-   name, two whole vtable SHA-256s, and separate runtime virtual `.data`
-   objects. Reuses all earlier whole-method hash audits. Does not execute
+   original 20-byte RTTI Complete Object Locators, three exact
+   BaseClassDescriptors and hierarchy flags, shared descriptor names,
+   two whole vtable SHA-256s, and separate runtime virtual `.data` objects. Reuses all earlier whole-method hash audits. Does not execute
    original game code.
 2. **Portable original-free mutation self-test**:
    invented pointer windows, one-byte corruption of all 12 table cells,
    swap/truncation/extra-slot errors, forged factory return, constructor
-   and RTTI COL mutations, and fake original-SHA refusal.
+   RTTI COL, hierarchy and base-descriptor mutations, and fake original-SHA refusal.
 3. **Native MSVC x86 ABI fixture**:
    compiler-generated, independently owned primary and secondary objects;
    verifies +`0x10014` identity, all nine actual vtable positions,
