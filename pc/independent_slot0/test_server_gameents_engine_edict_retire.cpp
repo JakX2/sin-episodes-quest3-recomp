@@ -15,12 +15,12 @@ static_assert(offsetof(EngineEdict,next)==0x10,"free-link offset");
 struct Fixture {
     EngineEdict elements[3]{};
     unsigned authorized=0,freed=0;
-    bool refuse=false,valid=true;
+    bool refuse=false,valid=true,revoke_after_callback=false;
 };
 static bool Authorized(void* context,const void* edict,std::size_t count) noexcept {
     auto& f=*static_cast<Fixture*>(context);
     ++f.authorized;
-    if(count!=0x14)return false;
+    if(count!=0x14||f.revoke_after_callback&&f.freed!=0)return false;
     for(const auto& item:f.elements)if(edict==&item)return true;
     return false;
 }
@@ -98,6 +98,19 @@ int main() {
        f.elements[0].serial!=0xffffffffu||
        f.elements[0].next!=0||!f.valid)
         return Fail(7,"direct engine release not supported");
-    std::puts("PASS engine original 0x14 edict stride, index gate, before/after GameEnts release writes and refusal boundary");
+    // A server-side callback can succeed and then revoke owner storage.
+    // Never use stale edict backing for the engine's two final dword writes.
+    Fixture revoked{};
+    revoked.revoke_after_callback=true;
+    const EngineEdictRetireHooks revoked_hooks{
+        &revoked,&Authorized,&AuthorizedArray,&FreeEntity};
+    auto& test=revoked.elements[1];
+    if(RetireEngineEdict(&test,sizeof(test),revoked_hooks)!=
+       EngineEdictRetireResult::PostCallbackUnauthorized||
+       revoked.freed!=1||!revoked.valid||
+       test.serial!=43||test.next!=0x12345678||
+       test.flags!=0||test.unknown!=0)
+        return Fail(10,"post-callback owner revocation must block engine epilogue");
+    std::puts("PASS engine original 0x14 edict stride, indexed and direct retire, post-callback owner reauthorization and refusal boundary");
     return 0;
 }

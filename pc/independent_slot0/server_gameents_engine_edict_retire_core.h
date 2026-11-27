@@ -38,7 +38,8 @@ struct EngineEdictRetireHooks {
 };
 
 enum class EngineEdictRetireResult : unsigned char {
-    InvalidInput, Unauthorized, Inactive, CallbackRefused, Retired
+    InvalidInput, Unauthorized, Inactive, CallbackRefused,
+    PostCallbackUnauthorized, Retired
 };
 
 inline std::uint32_t ReadEngineEdictDword(
@@ -55,8 +56,9 @@ inline void WriteEngineEdictDword(
 // Direct engine route: clear state flag bit 1 BEFORE server-side release;
 // only AFTER the callback writes edict+0x10=0, edict+0x04=-1.
 // The server callback may additionally clear flags and unknown +0x0C.
-// An explicit callback refusal is not transactional: the flag is already
-// cleared; the serial/free-link remain unchanged to expose incomplete work.
+// A callback refusal or later post-callback ownership denial is not
+// transactional. The flag (and possibly the entity cleanup) has already
+// changed; the serial/free-link remain untouched to expose incomplete work.
 inline EngineEdictRetireResult RetireEngineEdict(
     void* edict,std::size_t bytes,const EngineEdictRetireHooks& h) noexcept {
     if(!edict||bytes<kEngineOriginalEdictStride||!h.Complete())
@@ -69,6 +71,14 @@ inline EngineEdictRetireResult RetireEngineEdict(
                          flags&~kEngineOriginalEdictFreeBit);
     if(!h.free_containing_entity(h.context,edict))
         return EngineEdictRetireResult::CallbackRefused;
+    // The engine's *own* epilogue still writes to this edict after the
+    // external game-server callback. Its owner may have retired/recycled
+    // this allocation during that callback. Revalidate physical backing
+    // and ownership WITHOUT dereferencing before the epilogue writes.
+    // The original routine has no such error status; this is a deliberate
+    // independent fail-closed boundary and does not roll back callbacks.
+    if(!h.authorized(h.context,edict,kEngineOriginalEdictStride))
+        return EngineEdictRetireResult::PostCallbackUnauthorized;
     WriteEngineEdictDword(raw,kEngineOriginalEdictNext,0u);
     WriteEngineEdictDword(raw,kEngineOriginalEdictSerial,
                          kEngineOriginalEdictRetiredSerial);

@@ -2,6 +2,7 @@
 // Each typed virtual slot is called through the same complete concrete object.
 // Source pointers/handles and networking are deliberately synthetic.
 #include "server_gameents_bounded_dispatch.h"
+#include "server_gameents_engine_edict_retire_core.h"
 #include "server_gameents_owner_lifetime_registry.h"
 #include "server_entity_immediate_removal_core.h"
 #include <array>
@@ -372,6 +373,26 @@ static void Set(CBaseEntity* e,std::size_t index,TransmitContext& ctx,
     if(e!=&f.second||index!=2||!forced)f.valid=false;
     ctx.selected.Set(index);
 }
+// Engine-side read authority is a short owner lease. It must end BEFORE
+// the game-server FreeContainingEntity callback obtains its own slot-3 lease.
+static bool EngineOwnedEdict(void* p,const void* edict,
+                             std::size_t extent) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(extent!=kEngineOriginalEdictStride)return false;
+    std::uint64_t token=0;
+    if(!f.owner_registry.Begin(5,&token))return false;
+    const bool authorized=f.owner_registry.ValidEdict(edict)&&
+        (edict==&f.ea||edict==&f.eb);
+    if(!f.owner_registry.End(5,token))f.valid=false;
+    return authorized;
+}
+static bool EngineReleaseEntity(void* p,void* edict) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(!f.bridge||!edict)return false;
+    auto* v=static_cast<ServerGameEntsAbi*>(f.bridge);
+    v->FreeContainingEntity(static_cast<edict_t*>(edict));
+    return f.bridge->Report().status==GameEntsDispatchResult::Completed;
+}
 static GameEntsBoundedOwner Hooks(Fixture& f) noexcept {
     GameEntsBoundedOwner h{};
     h.context=&f;
@@ -711,11 +732,22 @@ int main() {
        !f.calls.empty()||f.ea.unknown==nullptr)
         return Fail(17,"slot 3 refuses foreign edict without touching memory");
     f.calls.clear();
-    CHECK_X86_STACK(freeSlot(game,&f.ea),30);
-    if(game->Report().status!=GameEntsDispatchResult::Completed||
+    // An original engine-owned edict retirement call crosses the same
+    // registered seven-slot vtable used for all preceding operations.
+    // The server tombstones the entity under slot 3, then the engine
+    // reattests the still-owned edict and poisons serial+0x04 and free
+    // link+0x10. The full sequence occurs in one native x86 test.
+    const EngineEdictRetireHooks engine_hooks{
+        &f,&EngineOwnedEdict,nullptr,&EngineReleaseEntity};
+    EngineEdictRetireResult retired=EngineEdictRetireResult::InvalidInput;
+    CHECK_X86_STACK(retired=RetireEngineEdict(
+        &f.ea,sizeof(f.ea),engine_hooks),30);
+    if(retired!=EngineEdictRetireResult::Retired||
+       game->Report().status!=GameEntsDispatchResult::Completed||
        game->Report().release!=EntityReleaseStatus::DetachedAndHooksInvoked||
-       f.calls!="LEFFDGMUX")
-        return Fail(18,"slot 3 complete detachment and ordered owned cleanup");
+       f.ea.serial!=kEngineOriginalEdictRetiredSerial||
+       f.ea.next_free!=0||f.calls!="LEFFDGMUX")
+        return Fail(18,"engine-to-server slot 3 release, owner retirement, and engine epilogue");
     // The test checks mutation and cleanup separately so no original
     // entity pointer is dereferenced after synthetic immediate removal.
     if(!f.valid||f.first_alive||f.ea.unknown||f.ea.flags||
@@ -772,6 +804,13 @@ int main() {
        f.owner_registry.ValidEdict(&f.ea)||
        !f.owner_registry.End(5,verify_token))
         return Fail(64,"forgotten edict still passed owner allocation validator");
+    // A second original engine call at the poisoned address cannot mutate
+    // the already retired edict after the owner forgets the allocation.
+    const std::uint32_t poisoned_serial=f.ea.serial;
+    if(RetireEngineEdict(&f.ea,sizeof(f.ea),engine_hooks)!=
+       EngineEdictRetireResult::Unauthorized||
+       f.ea.serial!=poisoned_serial||f.deleted!=1)
+        return Fail(65,"engine may not free a forgotten stale-generation edict");
     delete v;
     std::puts("PASS ServerGameEnts001 concrete seven-slot Win32 vtable: concrete owner registry, leases, generation-aware associations, conversions, edict touch, transmit, release and reentrant refusal");
     return 0;
