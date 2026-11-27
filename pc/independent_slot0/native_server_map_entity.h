@@ -795,7 +795,7 @@ struct ScriptedNpcMoveBindings {
     void (__cdecl *near_notice)(void*,void*) noexcept; // optional print
 };
 struct ScriptedNpcMoveResult {
-    unsigned completed,goal_handle,goal_live,refreshes,near,custom_token,activity_lookups,sequence_lookups,
+    unsigned completed,goal_handle,goal_live,refreshes,within_threshold,custom_token,activity_lookups,sequence_lookups,
         translated,goal_requested,goal_accepted,angles_written,arrival_cleared,completion_calls,task_completed,task_failed;
     int task,activity,translated_activity,failed_code,status;
     float distance;

@@ -4177,7 +4177,7 @@ int start_scripted_npc_move(void* npc,unsigned bytes,int task,const ScriptedNpcM
     const float squared=static_cast<float>(double(d[2])*d[2]+double(d[1])*d[1]+double(d[0])*d[0]);
     if(!std::isfinite(squared))return 0;o->distance=std::sqrt(squared);
     if(o->distance<32.f){
-        o->near=1;if(b->near_notice)b->near_notice(b->context,npc);
+        o->within_threshold=1;if(b->near_notice)b->near_notice(b->context,npc);
         // Original 22050021 calls TaskComplete before the common epilogue.
         if(!complete())return 0;return finish();
     }
