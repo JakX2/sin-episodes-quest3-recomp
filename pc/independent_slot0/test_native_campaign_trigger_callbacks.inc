@@ -1451,6 +1451,28 @@
         put(f.seq,0xb4,4u);put(f.seq,0x398,0u);put(f.seq,0x39c,0u);
         put(f.npc,0x3c0,.25f);f.npc[0x200]=0;put(f.npc,0x7a4,1);
         assert(run(f.npc,sizeof(f.npc),106,&task,&tr)&&tr.task_completed&&tr.animation.empty_completed&&tr.terminal.cleanup_called&&tr.animation.output_called&&tr.schedule_cleared&&tr.rate_changed&&word(f.npc,0x970)==0xffffffffu&&word(f.npc,0x3c0)==0x3f800000u&&f.npc[0x200]&&f.order=="BAUMRAOABCXOX");
+        // StartTask110 pre-idle vs RunTask110 synchronization.
+        const auto start_task=reinterpret_cast<StartScriptedNpcTask>(GetProcAddress(server,scripted_npc_start_task_export));
+        assert(start_task&&!GetProcAddress(client,scripted_npc_start_task_export));
+        ScriptedNpcStartTaskBindings pre{&task,&f};
+        pre.equal_names=[](void* p,unsigned idle,unsigned play,bool* same) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(idle==21);f.order+='E';*same=idle==play;return 1;
+        };
+        pre.request_activity=[](void* p,void* a,int activity) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc&&activity==1);f.order+='I';return 1;
+        };
+        ScriptedNpcStartTaskResult sr{};
+        put(f.npc,0x970,0x3000u);put(f.seq,0x394,21u);put(f.seq,0x398,21u);put(f.npc,0x7a4,1);f.order.clear();
+        assert(start_task(f.npc,sizeof(f.npc),106,&pre,&sr)&&sr.completed&&word(f.npc,0x7a4)==1&&f.order.empty());
+        assert(start_task(f.npc,sizeof(f.npc),110,&pre,&sr)&&sr.pre_idle&&sr.same_name&&sr.rate_changed&&word(f.npc,0x3c0)==0&&f.order=="AE");
+        put(f.seq,0x398,22u);
+        assert(start_task(f.npc,sizeof(f.npc),110,&pre,&sr)&&sr.pre_idle&&sr.compared&&!sr.same_name&&!sr.rate_changed&&word(f.npc,0x3c0)==0x3f800000u&&f.order=="AEAE");
+        put(f.seq,0x394,0u);put(f.npc,0x880,7);put(f.npc,0x96c,6);
+        assert(start_task(f.npc,sizeof(f.npc),110,&pre,&sr)&&!sr.requested_idle&&f.order=="AEAE");
+        assert(start_task(f.npc,sizeof(f.npc),109,&pre,&sr)&&sr.state_written&&word(f.npc,0x96c)==2);
+        assert(start_task(f.npc,sizeof(f.npc),110,&pre,&sr)&&sr.requested_idle&&f.order=="AEAEI");
+        put(f.npc,0x970,0x5000u);
+        assert(!start_task(f.npc,sizeof(f.npc),110,&pre,&sr)&&sr.missing);
     }
 
 
