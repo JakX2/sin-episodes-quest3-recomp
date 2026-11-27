@@ -64,6 +64,7 @@ on:
       - 'research/tools/audit_sin_original_vclient011_complete_vtable.py'
       - 'research/tools/audit_sin_original_gameclientexports_abi.py'
       - 'research/tools/audit_sin_original_server_gameclients_playerlimits.py'
+      - 'research/tools/audit_sin_original_client_entitylist_secondary_abi.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -237,3 +238,6 @@ jobs:
 
       - name: Authenticate full original ServerGameClients003 vtable and GetPlayerLimits ret12 ABI
         run: python research/tools/audit_sin_original_server_gameclients_playerlimits.py --self-test
+
+      - name: Cross-authenticate original VClientEntityList003 nine-slot embedded ABI (synthetic only)
+        run: python research/tools/audit_sin_original_client_entitylist_secondary_abi.py --self-test
