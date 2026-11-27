@@ -15,8 +15,18 @@
 
 namespace sin_independent {
 
+// Forward declaration permits typed owner callbacks without changing the
+// original ServerGameEnts001 x86 virtual ABI or slot numbering.
+enum class GameEntsDispatchSlot : unsigned char;
+
 struct GameEntsBoundedOwner {
     void* context=nullptr;
+    // These callbacks grant and release a stable owner-side access lease
+    // covering all original-layout pointers and nested owner callbacks.
+    // The returned token is opaque and must be released exactly once with
+    // the same slot. Failed acquire MUST NOT leave a lease held.
+    bool (*begin_access)(void*,GameEntsDispatchSlot,std::uint64_t*) noexcept=nullptr;
+    void (*end_access)(void*,GameEntsDispatchSlot,std::uint64_t) noexcept=nullptr;
     // Must authenticate an owner-live PE32 edict prefix of at least 0x10,
     // including the original unknown pointer at +0x0c, without dereference.
     bool (*valid_edict)(void*,const edict_t*) noexcept=nullptr;
@@ -36,7 +46,8 @@ struct GameEntsBoundedOwner {
     EntityReleaseHooks release{};
     GameEntsTransmitEntryHooks transmit{};
     bool Complete() const noexcept {
-        return valid_edict&&valid_entity&&valid_unknown&&valid_touch&&
+        return begin_access&&end_access&&
+            valid_edict&&valid_entity&&valid_unknown&&valid_touch&&
             transmit_extent&&
             touch.resolve&&touch.init_trace&&touch.publish_trace&&
             touch.contacts&&touch.entries&&touch.entry_count&&
@@ -48,7 +59,7 @@ struct GameEntsBoundedOwner {
 
 enum class GameEntsDispatchResult : unsigned char {
     NotCalled, Completed, NoEntity, Unauthorized, Unbound, Reentrant,
-    InvalidInput, HostFailure, OperationRefused
+    InvalidInput, HostFailure, OperationRefused, LeaseDenied
 };
 enum class GameEntsDispatchSlot : unsigned char {
     SetDebugEdictBase=1, MarkEntitiesAsTouching=2,
@@ -59,6 +70,8 @@ struct GameEntsDispatchReport {
     GameEntsDispatchSlot slot=GameEntsDispatchSlot::SetDebugEdictBase;
     GameEntsDispatchResult status=GameEntsDispatchResult::NotCalled;
     unsigned invocations[7]{};
+    unsigned lease_attempts=0,lease_acquisitions=0,
+             lease_releases=0,lease_denials=0;
     GameEntsContactBridgeResult touch{};
     EntityReleaseStatus release=EntityReleaseStatus::NoAssociatedEntity;
     GameEntsTransmitEntryResult transmit{};
@@ -91,7 +104,7 @@ public:
             conversion_.SetDebugEdictBase(base);
             report_.status=GameEntsDispatchResult::Completed;
         }
-        active_=false;
+        End();
     }
 
     void __thiscall MarkEntitiesAsTouching(
@@ -122,7 +135,7 @@ public:
                 report_.status=GameEntsDispatchResult::HostFailure;break;
             }
         }
-        active_=false;
+        End();
     }
 
     void __thiscall FreeContainingEntity(edict_t* edict) noexcept override {
@@ -146,7 +159,7 @@ public:
                 report_.status=GameEntsDispatchResult::Unauthorized;break;
             }
         }
-        active_=false;
+        End();
     }
 
     edict_t* __thiscall BaseEntityToEdict(
@@ -167,7 +180,7 @@ public:
                 ?GameEntsDispatchResult::Completed
                 :GameEntsDispatchResult::NoEntity;
         }
-        active_=false;
+        End();
         return result;
     }
 
@@ -188,7 +201,7 @@ public:
                 ?GameEntsDispatchResult::Completed
                 :GameEntsDispatchResult::NoEntity;
         }
-        active_=false;
+        End();
         return result;
     }
 
@@ -224,10 +237,19 @@ public:
                 report_.status=GameEntsDispatchResult::InvalidInput;break;
             }
         }
-        active_=false;
+        End();
     }
 
 private:
+    // Release while active_ is still set, so a host release callback cannot
+    // reenter the same object between the last operation and lease unlock.
+    void End() noexcept {
+        owner_.end_access(owner_.context,report_.slot,lease_token_);
+        ++report_.lease_releases;
+        lease_token_=0;
+        active_=false;
+    }
+
     // edict +0x0c is a separate virtual dispatch target, not covered by
     // attesting only the 0x10-byte edict prefix. Never call GetBaseEntity
     // through an unknown interface the owner has not explicitly attested.
@@ -250,14 +272,27 @@ private:
             report_.status=GameEntsDispatchResult::Unbound;
             return report_.status;
         }
+        // Mark active BEFORE entering the owner's lease callback: acquiring
+        // a lease can pump host callbacks that attempt nested vtable entry.
         active_=true;
         report_.status=GameEntsDispatchResult::NotCalled;
+        ++report_.lease_attempts;
+        std::uint64_t token=0;
+        if(!owner_.begin_access(owner_.context,slot,&token)) {
+            ++report_.lease_denials;
+            report_.status=GameEntsDispatchResult::LeaseDenied;
+            active_=false;
+            return report_.status;
+        }
+        lease_token_=token;
+        ++report_.lease_acquisitions;
         return GameEntsDispatchResult::Completed;
     }
 
     const GameEntsBoundedOwner owner_;
     const bool ready_;
     bool active_=false;
+    std::uint64_t lease_token_=0;
     ServerGameEntsConversionCore conversion_{};
     GameEntsDispatchReport report_{};
 };

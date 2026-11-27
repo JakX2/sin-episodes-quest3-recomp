@@ -67,6 +67,12 @@ struct Fixture {
     std::size_t index_extent=2;
     bool first_alive=true,valid=true,fail_publish=false,reenter=false,
          reentrancy_refused=false,foreign_touch=false,foreign_transmit=false;
+    bool lease_active=false,deny_next_lease=false,
+         reenter_lease_begin=false,reenter_lease_end=false;
+    std::uint64_t owner_epoch=77,held_epoch=0;
+    GameEntsDispatchSlot held_slot=GameEntsDispatchSlot::SetDebugEdictBase;
+    unsigned lease_attempts=0,lease_granted=0,lease_released=0,
+             lease_denied=0;
     Fixture() {
         ea.serial=1;eb.serial=2;
         ea.unknown=&first_unknown;eb.unknown=&second_unknown;
@@ -92,26 +98,63 @@ struct Fixture {
         }
     }
 };
+static bool BeginOwnerAccess(void* p,GameEntsDispatchSlot slot,
+                             std::uint64_t* token) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    ++f.lease_attempts;
+    if(f.deny_next_lease){
+        f.deny_next_lease=false;++f.lease_denied;
+        return false;
+    }
+    if(f.lease_active||!token){f.valid=false;return false;}
+    f.lease_active=true;
+    f.held_epoch=f.owner_epoch++;
+    f.held_slot=slot;
+    *token=f.held_epoch;
+    ++f.lease_granted;
+    if(f.reenter_lease_begin&&f.bridge){
+        auto* v=static_cast<ServerGameEntsAbi*>(f.bridge);
+        f.reentrancy_refused=v->BaseEntityToEdict(&f.first)==nullptr;
+    }
+    return true;
+}
+static void EndOwnerAccess(void* p,GameEntsDispatchSlot slot,
+                           std::uint64_t token) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active||slot!=f.held_slot||token!=f.held_epoch)
+        f.valid=false;
+    if(f.reenter_lease_end&&f.bridge){
+        auto* v=static_cast<ServerGameEntsAbi*>(f.bridge);
+        f.reentrancy_refused=v->EdictToBaseEntity(&f.eb)==nullptr;
+    }
+    ++f.lease_released;
+    f.held_epoch=0;f.lease_active=false;
+}
 static bool ValidEdict(void* p,const edict_t* edict) noexcept {
     auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
     return edict==&f.ea||edict==&f.eb;
 }
 static bool ValidEntity(void* p,const CBaseEntity* entity) noexcept {
     auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
     return (entity==&f.first&&f.first_alive)||entity==&f.second;
 }
 static bool ValidUnknown(void* p,const ServerUnknownAbi* unknown) noexcept {
     auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
     return unknown==&f.first_unknown||unknown==&f.second_unknown;
 }
 static bool ValidTouch(void* p,const TouchEntity* touch) noexcept {
     auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
     return touch==&f.ta||touch==&f.tb;
 }
 static bool Extent(void* p,const CCheckTransmitInfo* info,
                    const unsigned short* indices,int,
                    std::size_t* out_info,std::size_t* out_indices) noexcept {
     auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
     if(info!=&f.info||indices!=f.indices||!out_info||!out_indices)
         return false;
     *out_info=sizeof(f.info);*out_indices=f.index_extent;
@@ -270,6 +313,7 @@ static void Set(CBaseEntity* e,std::size_t index,TransmitContext& ctx,
 static GameEntsBoundedOwner Hooks(Fixture& f) noexcept {
     GameEntsBoundedOwner h{};
     h.context=&f;
+    h.begin_access=&BeginOwnerAccess;h.end_access=&EndOwnerAccess;
     h.valid_edict=&ValidEdict;h.valid_entity=&ValidEntity;
     h.valid_unknown=&ValidUnknown;h.valid_touch=&ValidTouch;
     h.transmit_extent=&Extent;
@@ -310,6 +354,14 @@ int main() {
         return Fail(3,"unbound vtable never reads entity");
     // Incomplete nested-pointer attestation must prevent readiness even
     // when the outer edict and buffer validators are present.
+    GameEntsBoundedOwner no_lease_begin=Hooks(f);
+    no_lease_begin.begin_access=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_lease_begin).Ready())
+        return Fail(40,"missing owner access lease acquisition gate");
+    GameEntsBoundedOwner no_lease_end=Hooks(f);
+    no_lease_end.end_access=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_lease_end).Ready())
+        return Fail(41,"missing owner access lease release gate");
     GameEntsBoundedOwner no_unknown=Hooks(f);
     no_unknown.valid_unknown=nullptr;
     if(ServerGameEntsBoundedDispatch(no_unknown).Ready())
@@ -339,8 +391,34 @@ int main() {
     CHECK_X86_STACK(debugSlot(game,&f.ea),25);
     if(game->DebugEdictBase()!=&f.ea||
        game->Report().status!=GameEntsDispatchResult::Completed||
-       game->Report().invocations[1]!=1)
+       game->Report().invocations[1]!=1||
+       f.lease_active||f.lease_granted!=1||f.lease_released!=1)
         return Fail(7,"vtable slot 1 debug-edict owner state");
+    // A denied lease must block every class of engine-facing operation
+    // before dereferencing even an otherwise valid original pointer.
+    f.deny_next_lease=true;f.calls.clear();
+    v->SetDebugEdictBase(&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::LeaseDenied||
+       game->DebugEdictBase()!=&f.ea||f.lease_active||
+       f.lease_granted!=1||f.lease_released!=1||!f.calls.empty())
+        return Fail(42,"denied lease cannot change debug edict base");
+    f.deny_next_lease=true;
+    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::LeaseDenied||
+       !f.calls.empty()||f.allocated||f.ta.dirtyOrigin!=true)
+        return Fail(43,"denied lease cannot resolve or create contacts");
+    f.deny_next_lease=true;
+    v->FreeContainingEntity(&f.ea);
+    if(game->Report().status!=GameEntsDispatchResult::LeaseDenied||
+       f.ea.unknown!=&f.first_unknown||f.ea.flags!=0x65||
+       !f.calls.empty())
+        return Fail(44,"denied lease cannot detach original edict");
+    f.deny_next_lease=true;
+    v->CheckTransmit(&f.info,f.indices,2);
+    if(game->Report().status!=GameEntsDispatchResult::LeaseDenied||
+       f.selected[0]!=0||!f.calls.empty()||f.lease_denied!=4||
+       f.lease_granted!=f.lease_released)
+        return Fail(45,"denied lease cannot enter transmit callbacks");
     edict_t* fromBase=nullptr;
     CBaseEntity* fromEdict=nullptr;
     CHECK_X86_STACK(fromBase=baseSlot(game,&f.first),26);
@@ -348,6 +426,18 @@ int main() {
     if(fromBase!=&f.ea||fromEdict!=&f.second||
        game->Report().status!=GameEntsDispatchResult::Completed)
         return Fail(8,"slots 4 and 5 original byte offsets and unknown vtable");
+    // The host may invoke game interfaces while acquiring or releasing its
+    // lease. In both cases the outer call owns the active reentrancy guard.
+    f.reenter_lease_begin=true;f.reentrancy_refused=false;
+    if(v->BaseEntityToEdict(&f.first)!=&f.ea||
+       !f.reentrancy_refused||f.lease_active||!f.valid)
+        return Fail(46,"reentry during owner lease acquire was not refused");
+    f.reenter_lease_begin=false;
+    f.reenter_lease_end=true;f.reentrancy_refused=false;
+    if(v->EdictToBaseEntity(&f.eb)!=&f.second||
+       !f.reentrancy_refused||f.lease_active||!f.valid)
+        return Fail(47,"reentry during owner lease release was not refused");
+    f.reenter_lease_end=false;
 
     // Unauthorized tokens are tested without ever dereferencing memory.
     edict_t rogue{};
@@ -501,7 +591,16 @@ int main() {
        game->Report().invocations[5]<3||
        game->Report().invocations[6]<3)
         return Fail(24,"all six non-destructor virtual slots invoked");
+    // Every successful virtual call releases precisely the owner token it
+    // acquired, including failed authorization, no-entity and host failures.
+    if(!f.valid||f.lease_active||f.lease_granted!=f.lease_released||
+       f.lease_attempts!=f.lease_granted+f.lease_denied||
+       game->Report().lease_attempts!=f.lease_attempts||
+       game->Report().lease_acquisitions!=f.lease_granted||
+       game->Report().lease_releases!=f.lease_released||
+       game->Report().lease_denials!=f.lease_denied)
+        return Fail(48,"owner leases must balance on every successful/failed ABI call");
     delete v;
-    std::puts("PASS ServerGameEnts001 concrete seven-slot Win32 vtable: bounded conversions, edict touch, transmit, release, invalid extents and reentrant refusal");
+    std::puts("PASS ServerGameEnts001 concrete seven-slot Win32 vtable: owner leases, bounded conversions, edict touch, transmit, release, invalid extents and reentrant refusal");
     return 0;
 }
