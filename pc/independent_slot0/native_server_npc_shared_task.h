@@ -63,6 +63,12 @@ struct ServerNpcScriptedMotionSchedulerStats {
     ServerNpcSharedTaskResult shared;
     native_map::ScriptedNpcStartMotionResult last;
 };
+struct ServerNpcScriptedNavigationStats {
+    unsigned move_starts,arrival_starts,native_starts,component_handled;
+    ServerNpcSharedTaskResult shared;
+    native_map::ScriptedNpcMoveResult move;
+    native_map::ScriptedNpcArrivalResult arrival;
+};
 // Facing service extends the shared dispatcher without altering the v1 ABI.
 inline constexpr char server_npc_shared_facing_export[]="SiN_GetServerNpcSharedFacingApi";
 struct ServerNpcSharedFacingBindings {
@@ -332,6 +338,9 @@ struct ServerNpcSharedParentSession {
     ServerNpcScriptedMotionSchedulerStats* script_motion_stats=nullptr;
     const native_map::ScriptedNpcCleanupBindings* script_cleanup=nullptr;
     native_map::ScriptedNpcCleanupResult* script_cleaned=nullptr;
+    const native_map::ScriptedNpcMoveBindings* script_move=nullptr;
+    const native_map::ScriptedNpcArrivalBindings* script_arrival=nullptr;
+    ServerNpcScriptedNavigationStats* script_navigation_stats=nullptr;
 };
 int bind_shared_parent_internal(void*,unsigned,float,const ServerGruntTaskBindings*,const ServerNpcScheduleResolutionBindings*,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskStats*,ServerNpcSharedParentSession*,ServerGruntTaskBindings*,const ServerNpcSharedAttackBindings* = nullptr,ServerNpcSharedAttackStats* = nullptr,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingStats* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationStats* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementStats* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueStats* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationStats* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverStats* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverStats* = nullptr) noexcept;
 }

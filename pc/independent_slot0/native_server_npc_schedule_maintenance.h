@@ -107,6 +107,26 @@ inline constexpr char server_npc_scripted_cleanup_scheduler_export[]="SiN_RunSer
 using RunServerNpcScriptedSchedulerWithCleanup=int (__cdecl *)(void*,unsigned,float,const ServerNpcScriptedSchedulerBindings*,
     ServerNpcSubclassSchedulerResult*,ServerNpcScriptedSchedulerStats*,const native_map::ScriptedNpcStartMotionBindings*,
     ServerNpcScriptedMotionSchedulerStats*,const native_map::ScriptedNpcCleanupBindings*,native_map::ScriptedNpcCleanupResult*) noexcept;
+// Opt-in explicit navigation sidecar; no previous binding layout changes.
+struct ServerNpcSharedFacingBindings;
+struct ServerNpcSharedFacingStats;
+struct ServerNpcSharedMovementBindings;
+struct ServerNpcSharedMovementStats;
+struct ServerNpcScriptedNavigationStats;
+struct ServerNpcScriptedNavigationServices {
+    const native_map::ScriptedNpcMoveBindings* move;
+    const native_map::ScriptedNpcArrivalBindings* arrival;
+    const ServerNpcSharedFacingBindings* facing;
+    const ServerNpcSharedMovementBindings* movement;
+    ServerNpcSharedFacingStats* facing_stats;
+    ServerNpcSharedMovementStats* movement_stats;
+    ServerNpcScriptedNavigationStats* stats;
+};
+inline constexpr char server_npc_scripted_navigation_scheduler_export[]="SiN_RunServerNpcScriptedSchedulerWithNavigation";
+using RunServerNpcScriptedSchedulerWithNavigation=int (__cdecl *)(void*,unsigned,float,const ServerNpcScriptedSchedulerBindings*,
+    ServerNpcSubclassSchedulerResult*,ServerNpcScriptedSchedulerStats*,const native_map::ScriptedNpcStartMotionBindings*,
+    ServerNpcScriptedMotionSchedulerStats*,const native_map::ScriptedNpcCleanupBindings*,native_map::ScriptedNpcCleanupResult*,
+    const ServerNpcScriptedNavigationServices*) noexcept;
 // New ground-Grunt path connecting original +494/+498 requests to actual task maintenance.
 inline constexpr char server_npc_native_request_scheduler_export[]="SiN_GetServerNpcNativeRequestSchedulerApi";
 struct ServerGruntHelperTaskBindings;
