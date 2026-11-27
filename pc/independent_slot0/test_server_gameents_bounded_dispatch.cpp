@@ -271,6 +271,15 @@ static int Fail(int n,const char* why) {
     std::fprintf(stderr,"FAIL GameEnts complete virtual dispatch %d: %s\n",n,why);
     return n;
 }
+// Real MSVC x86 vtable entry calls must not shift ESP. C++ source-level
+// virtual calls can be devirtualized, so exercise actual function pointers.
+#define CHECK_X86_STACK(call, code) do { \
+    std::uintptr_t before=0,after=0; \
+    __asm { mov before, esp } \
+    call; \
+    __asm { mov after, esp } \
+    if(before!=after)return Fail(code,"original x86 vtable stack imbalance"); \
+} while(false)
 int main() {
     Fixture f;
     // A partially injected bridge must NEVER be passed to any engine.
@@ -296,14 +305,23 @@ int main() {
     ServerGameEntsAbi* v=game;
     void** slots=*reinterpret_cast<void***>(game);
     for(int i=0;i<7;++i)if(!slots[i])return Fail(6,"missing one of seven x86 slots");
-    v->SetDebugEdictBase(&f.ea);
+    const auto debugSlot=reinterpret_cast<void (__thiscall *)(void*,edict_t*)>(slots[1]);
+    const auto touchSlot=reinterpret_cast<void (__thiscall *)(void*,edict_t*,edict_t*)>(slots[2]);
+    const auto freeSlot=reinterpret_cast<void (__thiscall *)(void*,edict_t*)>(slots[3]);
+    const auto baseSlot=reinterpret_cast<edict_t* (__thiscall *)(void*,CBaseEntity*)>(slots[4]);
+    const auto edictSlot=reinterpret_cast<CBaseEntity* (__thiscall *)(void*,edict_t*)>(slots[5]);
+    const auto transmitSlot=reinterpret_cast<void (__thiscall *)(
+        void*,CCheckTransmitInfo*,const unsigned short*,int)>(slots[6]);
+    CHECK_X86_STACK(debugSlot(game,&f.ea),25);
     if(game->DebugEdictBase()!=&f.ea||
        game->Report().status!=GameEntsDispatchResult::Completed||
        game->Report().invocations[1]!=1)
         return Fail(7,"vtable slot 1 debug-edict owner state");
-    if(v->BaseEntityToEdict(&f.first)!=&f.ea||
-       game->Report().status!=GameEntsDispatchResult::Completed||
-       v->EdictToBaseEntity(&f.eb)!=&f.second||
+    edict_t* fromBase=nullptr;
+    CBaseEntity* fromEdict=nullptr;
+    CHECK_X86_STACK(fromBase=baseSlot(game,&f.first),26);
+    CHECK_X86_STACK(fromEdict=edictSlot(game,&f.eb),27);
+    if(fromBase!=&f.ea||fromEdict!=&f.second||
        game->Report().status!=GameEntsDispatchResult::Completed)
         return Fail(8,"slots 4 and 5 original byte offsets and unknown vtable");
 
@@ -328,7 +346,7 @@ int main() {
         return Fail(11,"original trace publish refusal before contact link allocation");
     f.fail_publish=false;f.ta.dirtyOrigin=true;f.tb.dirtyOrigin=true;
     f.ta.origin={0,0,0};f.tb.origin={0,0,0};f.calls.clear();
-    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    CHECK_X86_STACK(touchSlot(game,&f.ea,&f.eb),28);
     if(game->Report().status!=GameEntsDispatchResult::Completed||
        f.calls!="ABI21PNNSS"||!f.valid||f.allocated!=2||
        f.contacts.touchAllocated!=2||f.starts!=2||
@@ -343,7 +361,7 @@ int main() {
     // Original CheckTransmit slot 6 calls the existing source-owned
     // policy using the complete host-bounded table, recipient and bitsets.
     f.calls.clear();
-    v->CheckTransmit(&f.info,f.indices,2);
+    CHECK_X86_STACK(transmitSlot(game,&f.info,f.indices,2),29);
     if(game->Report().status!=GameEntsDispatchResult::Completed||
        game->Report().transmit_status!=TransmitResult::Completed||
        f.calls!="QRBEWS"||f.selected[0]!=6u||f.should!=1||
@@ -367,7 +385,8 @@ int main() {
     if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
        !f.calls.empty()||f.ea.unknown==nullptr)
         return Fail(17,"slot 3 refuses foreign edict without touching memory");
-    f.calls.clear();v->FreeContainingEntity(&f.ea);
+    f.calls.clear();
+    CHECK_X86_STACK(freeSlot(game,&f.ea),30);
     if(game->Report().status!=GameEntsDispatchResult::Completed||
        game->Report().release!=EntityReleaseStatus::DetachedAndHooksInvoked||
        f.calls!="LEFFDGMUX")
