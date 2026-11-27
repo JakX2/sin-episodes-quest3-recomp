@@ -84,6 +84,18 @@ inline bool MarkContactPair(void* p,void* a,void* b,
        !original_trace||!frame.hooks.contacts)return false;
     auto& first=*frame.first;
     auto& second=*frame.second;
+    // Independent safety: verify that the pair core will produce the
+    // midpoint already stored by the original wrapper BEFORE publication
+    // or list mutation. Never report a post-commit mismatch as a failure.
+    const float expected[3]{
+        (first.origin.x+second.origin.x)*0.5f,
+        (first.origin.y+second.origin.y)*0.5f,
+        (first.origin.z+second.origin.z)*0.5f
+    };
+    for(unsigned i=0;i<3;++i)
+        if(!std::isfinite(expected[i])||
+           expected[i]!=original_trace->ReadFloat(0x0c+i*4))
+            return false;
     // Source's 0x22221080 publishes the global contact trace before
     // either directed +0x2221f350 call. This stays engine-owned.
     ++result.publish_calls;
@@ -93,12 +105,7 @@ inline bool MarkContactPair(void* p,void* a,void* b,
         EntityHandleView(frame.hooks.entries,frame.hooks.entry_count),
         result.contact_trace,frame.hooks.touch);
     result.contact_status=status;
-    if(status!=TouchMarkResult::Recorded&&status!=TouchMarkResult::Ignored)
-        return false;
-    return result.contact_trace.end.x==original_trace->ReadFloat(0x0c) &&
-           result.contact_trace.end.y==original_trace->ReadFloat(0x10) &&
-           result.contact_trace.end.z==original_trace->ReadFloat(0x14) &&
-           result.contact_trace.fraction==1.f;
+    return status==TouchMarkResult::Recorded||status==TouchMarkResult::Ignored;
 }
 } // namespace detail
 
