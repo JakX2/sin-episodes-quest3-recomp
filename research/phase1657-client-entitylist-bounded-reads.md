@@ -28,7 +28,11 @@ Original secondary `this`-relative field identities:
 | Raw entity record #0 | `-0x10010` | `+0x04` |
 
 The parent raw table has **4096 records** of **16 bytes** each. The
-secondary mirror is **2048 records** of **8 bytes** each. A raw entry's
+secondary mirror is **4096 records** of **8 bytes** each, spanning owner
+`+0x10028` through the next region at owner `+0x18028`.
+**Only the original networked live-count/highest-index accounting uses a
+separate 2048-entity guard.** That limit must NOT be applied to the
+networkable mirror's total indexable storage. A raw entry's
 first two DWORDs hold the original unknown pointer and the serial.
 The remaining raw-entry fields are not reconstructed by this diagnostic.
 
@@ -103,7 +107,7 @@ fabricated as a successful boot.
 `test_original_client_entitylist_state_snapshot.cpp` uses only fabricated
 memory to exercise initial zero counters/highwater -1, a valid populated
 snapshot, each unreadable field, overflow, and corrupt-count cases.
-The prior four-figure owner package still requires explicit confirmation
+The prior existing owner factory package still requires explicit confirmation
 that the original files are in a disposable copy. No actual owner-original
 DLL was loaded by public CI.
 
