@@ -751,6 +751,25 @@ struct ScriptedNpcStartMotionResult {
 };
 inline constexpr char scripted_npc_start_motion_export[]="SiN_StartScriptedNpcMotionTask";
 using StartScriptedNpcMotionTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcStartMotionBindings*,ScriptedNpcStartMotionResult*) noexcept;
+// Original Start111 (plant on script) and Start112 (face script).
+// Only engine origin, turn and path operations are owner callbacks.
+struct ScriptedNpcArrivalBindings {
+    const ScriptedSequenceControlBindings* control;
+    const native_weapon_tables::ServerNpcTaskLifecycleBindings* lifecycle;
+    void* context;
+    int (__cdecl *absolute_origin)(void*,void*,float[3]) noexcept; // 220092d0
+    int (__cdecl *set_origin)(void*,void*,const float[3]) noexcept; // 22143b60
+    int (__cdecl *storage)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *begin_turn)(void*,void*) noexcept; // +71c
+    int (__cdecl *stop_path)(void*,void*,bool) noexcept; // 22079250
+};
+struct ScriptedNpcArrivalResult {
+    unsigned completed,goal_handle,goal_live,origin_read,origin_set,yaw_written,turn_started,path_stopped,task_completed;
+    int task,status;
+    float origin[3],yaw;
+};
+inline constexpr char scripted_npc_arrival_export[]="SiN_StartScriptedNpcArrivalTask";
+using StartScriptedNpcArrivalTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcArrivalBindings*,ScriptedNpcArrivalResult*) noexcept;
 // Original sequence interruptibility setter, query, condition suppression,
 // and the NPC's state-sensitive gate. Not a generic combat policy.
 struct ScriptedSequenceInterruptBindings {

@@ -1691,6 +1691,68 @@
     }
 
 
+    // Authenticated Start111/112: plant at the live goal and face its
+    // quantized yaw, preserving missing-goal and special-state behavior.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct ArrivalFixture {
+            alignas(4) unsigned char npc[0x1028]{},goal[0x380]{},motor[0x18]{},nav[0x50]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[2]{};
+            float now=26.f;unsigned goal_extent=sizeof(goal);
+            std::string calls;
+        } f;
+        const auto start=reinterpret_cast<StartScriptedNpcArrivalTask>(GetProcAddress(server,scripted_npc_arrival_export));
+        assert(start&&!GetProcAddress(client,scripted_npc_arrival_export));
+        put(f.npc,0,0x2249aaa4u);put(f.npc,0x8a8,0x4001u);put(f.npc,0x908,9u);put(f.npc,0x8f8,10u);
+        put(f.goal,0x370,0xc2b40000u); // -90 degrees -> 270
+        f.entries[0].entity=reinterpret_cast<CBaseEntity*>(f.npc);f.entries[0].serial=3;
+        f.entries[1].entity=reinterpret_cast<CBaseEntity*>(f.goal);f.entries[1].serial=4;
+        put(f.desc,0x34,nw::npc_global_condition_base);put(f.desc,0x38,0);put(f.desc,0x3c,127);
+        nw::ServerNpcTaskLifecycleBindings life{};life.conditions.context=&f;
+        life.conditions.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<ArrivalFixture*>(p);*out=f.desc;*n=sizeof(f.desc);return 1;
+        };
+        ScriptedSequenceControlBindings c{};c.context=&f;c.entries=f.entries;c.entry_count=2;c.now=&f.now;
+        c.extent=[](void* p,void* a,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<ArrivalFixture*>(p);*n=a==f.npc?sizeof(f.npc):a==f.goal?f.goal_extent:0;return *n!=0;
+        };
+        ScriptedNpcArrivalBindings b{&c,&life,&f};
+        b.absolute_origin=[](void* p,void* a,float v[3]) noexcept ->int{
+            auto& f=*static_cast<ArrivalFixture*>(p);assert(a==f.goal);v[0]=10;v[1]=20;v[2]=30;f.calls+='O';return 1;
+        };
+        b.set_origin=[](void* p,void* a,const float v[3]) noexcept ->int{
+            auto& f=*static_cast<ArrivalFixture*>(p);assert(a==f.npc&&v[0]==10&&v[1]==20&&v[2]==30);
+            std::memcpy(f.npc+0x360,v,12);f.calls+='P';return 1;
+        };
+        b.storage=[](void* p,unsigned token,void** out,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<ArrivalFixture*>(p);
+            if(token==9){*out=f.motor;*n=sizeof(f.motor);return 1;}
+            if(token==10){*out=f.nav;*n=sizeof(f.nav);return 1;}return 0;
+        };
+        b.begin_turn=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<ArrivalFixture*>(p);assert(a==f.npc);float yaw=0;std::memcpy(&yaw,f.motor+0x14,4);assert(yaw==270.f);
+            f.calls+='T';return 1;
+        };
+        b.stop_path=[](void* p,void* nav,bool finished) noexcept ->int{
+            auto& f=*static_cast<ArrivalFixture*>(p);assert(nav==f.nav&&finished);f.calls+='S';return 1;
+        };
+        ScriptedNpcArrivalResult o{};
+        put(f.npc,0x7a4,1);
+        assert(start(f.npc,sizeof(f.npc),111,&b,&o)&&o.completed&&o.goal_live&&o.origin_read&&o.origin_set&&o.task_completed&&o.status==4&&f.calls=="OP");
+        assert(word(f.npc,0x360)==0x41200000u&&word(f.npc,0x364)==0x41a00000u&&word(f.npc,0x368)==0x41f00000u);
+        put(f.npc,0x7a4,1);put(f.npc,0x8a8,0x5001u);
+        assert(start(f.npc,sizeof(f.npc),111,&b,&o)&&!o.goal_live&&!o.origin_read&&o.task_completed&&f.calls=="OP");
+        put(f.npc,0x8a8,0x4001u);put(f.npc,0x7a4,1);
+        assert(start(f.npc,sizeof(f.npc),112,&b,&o)&&o.goal_live&&o.yaw_written&&o.yaw==270.f&&o.turn_started&&o.path_stopped&&!o.task_completed&&o.status==1&&f.calls=="OPTS");
+        put(f.npc,0x96c,6);
+        assert(start(f.npc,sizeof(f.npc),112,&b,&o)&&o.yaw_written&&!o.turn_started&&o.path_stopped&&f.calls=="OPTSS");
+        put(f.npc,0x8a8,0xffffffffu);put(f.npc,0x96c,1);
+        assert(start(f.npc,sizeof(f.npc),112,&b,&o)&&!o.goal_live&&!o.yaw_written&&o.turn_started&&o.path_stopped&&f.calls=="OPTSSTS");
+        put(f.npc,0x8a8,0x4001u);f.goal_extent=0x370;
+        assert(!start(f.npc,sizeof(f.npc),112,&b,&o)&&o.goal_live&&!o.yaw_written&&f.calls=="OPTSSTS");
+        assert(!start(f.npc,sizeof(f.npc),113,&b,&o)&&!o.completed);
+    }
+
     // Original scripted RunTask cases, with real lifecycle completion,
     // group synchronization and terminal cleanup.
     {
