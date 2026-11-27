@@ -1753,6 +1753,87 @@
         assert(!start(f.npc,sizeof(f.npc),113,&b,&o)&&!o.completed);
     }
 
+    // Start9/10/11 share the original distance gate and request builder.
+    {
+        namespace nw=sin_port::native_weapon_tables;
+        struct MoveFixture {
+            alignas(4) unsigned char npc[0x1028]{},goal[0x380]{},seq[scripted_sequence_extent]{},nav[0x50]{},desc[0x48]{};
+            sin_independent::EntityHandleEntry entries[3]{};
+            float now=26.f;
+            int named_activity=-1,named_sequence=7;
+            bool accepted=true;
+            unsigned notices=0;
+            std::string calls;
+        } f;
+        const auto start=reinterpret_cast<StartScriptedNpcMoveTask>(GetProcAddress(server,scripted_npc_move_export));
+        assert(start&&!GetProcAddress(client,scripted_npc_move_export));
+        put(f.npc,0,0x2249aaa4u);put(f.npc,0x8a8,0x4001u);put(f.npc,0x970,0x5002u);put(f.npc,0x8f8,10u);put(f.npc,0x850,4);
+        put(f.seq,0,scripted_sequence_vtable);put(f.goal,0x358,0x42b40000u);
+        void* entities[]{f.npc,f.goal,f.seq};
+        for(unsigned i=0;i<3;++i){f.entries[i].entity=reinterpret_cast<CBaseEntity*>(entities[i]);f.entries[i].serial=3+i;}
+        put(f.desc,0x34,nw::npc_global_condition_base);put(f.desc,0x38,0);put(f.desc,0x3c,127);
+        nw::ServerNpcTaskLifecycleBindings life{};life.conditions.context=&f;
+        life.conditions.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<MoveFixture*>(p);*out=f.desc;*n=sizeof(f.desc);return 1;
+        };
+        ScriptedSequenceControlBindings c{};c.context=&f;c.entries=f.entries;c.entry_count=3;c.now=&f.now;
+        c.extent=[](void* p,void* a,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<MoveFixture*>(p);*n=a==f.npc?sizeof(f.npc):a==f.goal?sizeof(f.goal):a==f.seq?sizeof(f.seq):0;return *n!=0;
+        };
+        nw::ServerActivityDictionary activities{};nw::ServerEventDictionary events{};
+        nw::ServerNpcActivityTranslateBindings tr{};tr.context=&f;tr.actor_class=nw::NpcActivityHosted;tr.activities=&activities;tr.events=&events;
+        tr.weapon=[](void*,void*,int in,bool* required,int* out) noexcept ->int{*required=false;*out=in;return 1;};
+        tr.other=[](void*,void*,int in,int* out) noexcept ->int{*out=in;return 1;};
+        tr.metadata=[](void*,void*,const nw::ServerActivityCompositeView** view) noexcept ->int{*view=nullptr;return 0;};
+        ScriptedNpcMoveBindings b{&c,&life,&tr,&f,916u};
+        b.refresh_transform=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<MoveFixture*>(p);assert(a==f.goal);f.goal[0xb9]&=~8u;f.calls+='R';return 1;
+        };
+        b.activity_lookup=[](void* p,void* a,unsigned token,int* out) noexcept ->int{
+            auto& f=*static_cast<MoveFixture*>(p);assert(a==f.npc&&token==21);*out=f.named_activity;f.calls+='A';return 1;
+        };
+        b.sequence_lookup=[](void* p,void* a,unsigned token,int* out) noexcept ->int{
+            auto& f=*static_cast<MoveFixture*>(p);assert(a==f.npc&&(token==21||token==22));*out=token==21?f.named_sequence:8;f.calls+='Q';return 1;
+        };
+        b.storage=[](void* p,unsigned token,void** out,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<MoveFixture*>(p);if(token!=10)return 0;*out=f.nav;*n=sizeof(f.nav);return 1;
+        };
+        b.set_goal=[](void* p,void* nav,const ScriptedNpcMoveGoal* goal,int mode,bool* out) noexcept ->int{
+            auto& f=*static_cast<MoveFixture*>(p);assert(nav==f.nav&&mode==4&&goal->kind==1&&goal->target==-1&&goal->flags==0&&goal->owner_word==916&&goal->position[0]==std::numeric_limits<float>::max()&&goal->distance==-1.f&&goal->tolerance==-1.f);
+            *out=f.accepted;f.calls+='G';return 1;
+        };
+        b.arrival_angles=[](void* p,void* nav,const float angles[3]) noexcept ->int{
+            auto& f=*static_cast<MoveFixture*>(p);assert(nav==f.nav&&angles[0]==0&&angles[1]==90&&angles[2]==0);
+            f.calls+='Y';return 1;
+        };
+        b.near_notice=[](void* p,void*) noexcept{++static_cast<MoveFixture*>(p)->notices;};
+        auto seed=[&](unsigned x,int arrival,unsigned token){
+            put(f.goal,0x2bc,x);put(f.npc,0x7a4,1);put(f.npc,0x974,arrival);put(f.npc,0x978,token);
+            std::memset(f.npc+0x7cc,0,16);f.calls.clear();
+        };
+        ScriptedNpcMoveResult o{};
+        seed(0x41f80000u,17,0); // 31
+        assert(start(f.npc,sizeof(f.npc),9,&b,&o)&&o.near&&o.distance==31.f&&o.completion_calls==2&&o.task_completed&&o.arrival_cleared&&!o.goal_requested&&f.notices==1);
+        assert(word(f.npc,0x974)==0xffffffffu&&!word(f.npc,0x978));
+        seed(0x42000000u,17,0);put(f.goal,0xb8,0x800u); // exactly 32: request
+        assert(start(f.npc,sizeof(f.npc),9,&b,&o)&&!o.near&&o.distance==32.f&&o.refreshes==1&&o.activity==6&&o.translated_activity==10&&o.goal.activity==6&&o.goal.arrival_activity==17&&o.goal.arrival_sequence==-1&&o.goal_accepted&&o.angles_written&&o.task_completed&&f.calls=="RGY");
+        seed(0x42800000u,-1,22); // 64
+        assert(start(f.npc,sizeof(f.npc),10,&b,&o)&&o.activity==10&&o.translated_activity==6&&o.goal.activity==10&&o.goal.arrival_activity==-1&&o.goal.arrival_sequence==8&&f.calls=="QGY");
+        put(f.seq,0x3a0,21u);f.named_activity=33;seed(0x42800000u,-1,0);
+        assert(start(f.npc,sizeof(f.npc),11,&b,&o)&&o.activity==33&&o.activity_lookups==1&&!o.sequence_lookups&&o.goal.activity==33&&f.calls=="AGY");
+        f.named_activity=-1;seed(0x42800000u,-1,22);
+        assert(start(f.npc,sizeof(f.npc),11,&b,&o)&&o.activity==15&&!o.translated&&o.sequence_lookups==2&&o.goal.arrival_sequence==8&&f.calls=="AQQGY");
+        f.named_sequence=-1;seed(0x42800000u,-1,0);
+        assert(start(f.npc,sizeof(f.npc),11,&b,&o)&&o.activity==6&&o.translated&&f.calls=="AQGY");
+        put(f.seq,0x3a0,0u);put(f.npc,0x980,1u);seed(0x42800000u,-1,0);
+        assert(start(f.npc,sizeof(f.npc),11,&b,&o)&&o.activity==15&&!o.translated&&f.calls=="GY");
+        f.accepted=false;seed(0x42800000u,-1,0);
+        assert(start(f.npc,sizeof(f.npc),10,&b,&o)&&o.goal_requested&&!o.goal_accepted&&o.task_failed&&o.failed_code==11&&!o.task_completed&&o.arrival_cleared&&f.calls=="G");
+        seed(0x42800000u,17,0);put(f.npc,0x8a8,0x6001u);
+        assert(start(f.npc,sizeof(f.npc),9,&b,&o)&&!o.goal_live&&o.task_failed&&o.failed_code==1&&!o.task_completed&&o.arrival_cleared&&f.calls.empty());
+        assert(!start(f.npc,sizeof(f.npc),12,&b,&o)&&!o.completed);
+    }
+
     // Original scripted RunTask cases, with real lifecycle completion,
     // group synchronization and terminal cleanup.
     {
