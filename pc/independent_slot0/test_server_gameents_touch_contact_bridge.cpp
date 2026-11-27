@@ -188,6 +188,28 @@ int main() {
        failed_nodes.ra.next!=&failed_nodes.ra||
        failed_nodes.rb.next!=&failed_nodes.rb)
         return Fail(11,"second node failure rolls back first unlinked node");
+    // Exercise the bridge callback directly with a divergent caller-
+    // supplied trace. The mismatch must be caught before a published
+    // global trace or a unilateral contact link can be created.
+    Fixture mismatched;
+    mismatched.first.origin={2.f,4.f,6.f};
+    mismatched.second.origin={8.f,10.f,12.f};
+    mismatched.first.dirtyOrigin=mismatched.second.dirtyOrigin=false;
+    auto mh=Hooks(mismatched);
+    GameEntsContactBridgeResult mr{};
+    detail::GameEntsContactFrame frame{mh,mr};
+    frame.first=&mismatched.first;frame.second=&mismatched.second;
+    GameEntsTouchTrace wrong{};
+    wrong.WriteFloat(0x0c,999.f);
+    wrong.WriteFloat(0x10,7.f);
+    wrong.WriteFloat(0x14,9.f);
+    if(detail::MarkContactPair(&frame,&mismatched.first,&mismatched.second,
+           &wrong)||
+       mr.contact_calls!=1||mr.publish_calls!=0||
+       mr.contact_status!=TouchMarkResult::InvalidInput||
+       mismatched.published||!mismatched.calls.empty()||
+       mismatched.allocations||mismatched.state.touchAllocated)
+        return Fail(17,"mismatched midpoint refuses before trace or links");
     Fixture publish;publish.fail_publish=true;
     if(Run(publish,out)!=GameEntsTouchEntryStatus::HostFailure||
        publish.calls!="ABI21P"||out.publish_calls!=1||
