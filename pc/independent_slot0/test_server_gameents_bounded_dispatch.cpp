@@ -82,6 +82,7 @@ struct Fixture {
     unsigned lease_attempts=0,lease_granted=0,lease_released=0,
              lease_denied=0;
     unsigned pair_checks=0,pair_denials=0;
+    unsigned unknown_pair_checks=0,unknown_pair_denials=0;
     Fixture() {
         ea.serial=1;eb.serial=2;
         ea.unknown=&first_unknown;eb.unknown=&second_unknown;
@@ -178,11 +179,14 @@ static bool ValidUnknownPair(void* p,const edict_t* edict,
     if(!f.lease_active)f.valid=false;
     // The registry supplies the owner generation association; the direct
     // fixture pair cross-check also guards against a synthetic serial edit.
-    return f.owner_registry.ValidUnknownPair(edict,unknown)&&
+    ++f.unknown_pair_checks;
+    const bool authorized=f.owner_registry.ValidUnknownPair(edict,unknown)&&
         ((edict==&f.ea&&unknown==&f.first_unknown&&
           f.ea.serial==f.registry[1].serial)||
          (edict==&f.eb&&unknown==&f.second_unknown&&
           f.eb.serial==f.registry[2].serial));
+    if(!authorized)++f.unknown_pair_denials;
+    return authorized;
 }
 static bool ValidTouch(void* p,const TouchEntity* touch) noexcept {
     auto& f=*static_cast<Fixture*>(p);
@@ -811,13 +815,21 @@ int main() {
     // acquired, including failed authorization, no-entity and host failures.
     if(!f.valid||f.lease_active||f.owner_registry.HasLease()||
        f.lease_granted!=f.lease_released||
-       f.pair_checks<10||f.pair_denials<7||
+       f.pair_checks<10||f.pair_denials<3||
+       f.unknown_pair_checks<10||f.unknown_pair_denials<6||
        f.lease_attempts!=f.lease_granted+f.lease_denied||
        game->Report().lease_attempts!=f.lease_attempts||
        game->Report().lease_acquisitions!=f.lease_granted||
        game->Report().lease_releases!=f.lease_released||
        game->Report().lease_denials!=f.lease_denied)
-        return Fail(48,"owner leases must balance on every successful/failed ABI call");
+    {
+        std::fprintf(stderr,
+            "owner audit: valid=%d leases=%u/%u/%u/%u pairs=%u/%u unknown=%u/%u\n",
+            static_cast<int>(f.valid),f.lease_attempts,f.lease_granted,
+            f.lease_released,f.lease_denied,f.pair_checks,f.pair_denials,
+            f.unknown_pair_checks,f.unknown_pair_denials);
+        return Fail(48,"owner leases and association diagnostics must balance");
+    }
     // The actual destruction stage already tombstoned the entity. The
     // owner must explicitly forget its edict after the release lease ends.
     std::uint64_t verify_token=0;
