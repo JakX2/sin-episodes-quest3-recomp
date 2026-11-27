@@ -69,6 +69,82 @@ int main(int argc,char** argv){
     assert(api->ignite_major(f.actor,sizeof(f.actor),&req,&b,&ir)&&!ir.pending_called&&ir.activity==-1&&f.calls=="IR");
     f.put(f.actor,0xc40,0.f);f.put(f.actor,0xc3c,12.f);
     assert(api->expire_major(f.actor,sizeof(f.actor),99.f,&ex)&&!ex.cleared&&ex.prior==12.f);
+    // Phase 1618: the native Major damage/ignition path must request a
+    // pending activity through the existing Phase 1617 lifecycle, not
+    // through the former stand-alone host +4dc callback.
+    const auto get_composed=reinterpret_cast<GetServerRecombinantDamagePendingApi>(
+        GetProcAddress(server,server_recombinant_damage_pending_export));
+    assert(get_composed&&!GetProcAddress(client,server_recombinant_damage_pending_export)&&
+        !get_composed(0,sizeof(ServerRecombinantDamagePendingApi))&&
+        !get_composed(1,0));
+    const auto* composed=get_composed(1,sizeof(ServerRecombinantDamagePendingApi));
+    assert(composed);
+    const auto get_registration=reinterpret_cast<GetServerRecombinantRegistrationApi>(
+        GetProcAddress(server,server_recombinant_registration_export));
+    assert(get_registration);
+    const auto* registration=get_registration(1,sizeof(ServerRecombinantRegistrationApi));
+    assert(registration);
+    ServerEventDictionaryEntry major_names[16]{};
+    ServerActivityDictionary major_dictionary{{major_names,16,0,1,920},0};
+    ServerRecombinantActivityRegistration major_ids{};
+    assert(registration->register_activities(RecombinantMajor,&major_dictionary,nullptr,&major_ids));
+    assert(registration->valid(&major_ids));
+    policy.activities=&major_dictionary;
+    ServerRecombinantActivityTransitionBindings activity{};
+    activity.policy=&policy;activity.major_activities=&major_ids;
+    ServerNpcTransitionBindings pending{};
+    pending.assignment.translation.actor_class=NpcActivityHosted;
+    pending.assignment.translation.metadata=[](void*,void*,const ServerActivityCompositeView** view) noexcept ->int{
+        *view=nullptr;return 0;
+    };
+    ServerRecombinantPendingActivityBindings pending_bindings{&pending,&activity};
+    ServerRecombinantDamagePendingBindings combined{&b,&pending_bindings};
+    ServerRecombinantDamagePendingResult session{};
+    f.put(f.actor,0,recombinant_major_vtable);
+    f.put(f.actor,0x878,10);f.put(f.actor,0x880,10);f.put(f.actor,0x9c,35);
+    f.put(f.actor,0x98,100);f.expected_health=35;
+    f.used=0;f.draws[0]=-2.f;f.calls.clear();
+    assert(composed->ignite_major(f.actor,sizeof(f.actor),&req,&combined,&session));
+    assert(session.ignition.completed&&session.ignition.pending_called&&session.ignition.activity==113&&
+        session.ignition.random_calls==1&&!session.ignition.health_written&&
+        session.pending_calls==1&&session.requested_activity==113&&
+        session.pending.pending.skipped&&!session.pending.transition_calls&&
+        f.get<int>(f.actor,0x880)==113&&f.get<int>(f.actor,0x878)==10&&f.calls=="IR");
+
+    // A real threshold-crossing Major damage call must propagate the
+    // private Ignite request, then return to the inherited damage owner.
+    f.actor[0xbf]=0;f.put(f.actor,0xc3c,9.f);
+    f.put(f.actor,0x880,10);f.put(f.info,0x24,0x8001u);
+    f.put(f.info,0x38,8u);f.put(f.info,0x2c,1.f);
+    f.used=0;f.calls.clear();
+    assert(composed->damage_major(f.actor,sizeof(f.actor),f.info,sizeof(f.info),20.f,&combined,&session));
+    assert(session.damage.completed&&session.damage.ignited&&session.damage.threshold_reached&&
+        session.damage.parent_called&&session.damage.damage_result==7&&
+        session.damage.ignition.activity==113&&session.pending_calls==1&&
+        session.requested_activity==113&&session.pending.pending.skipped&&
+        f.get<int>(f.actor,0x880)==113&&f.get<int>(f.actor,0x878)==10&&f.calls=="FIRD");
+    f.calls.clear();
+    assert(composed->damage_major(f.actor,sizeof(f.actor),f.info,sizeof(f.info),21.f,&combined,&session));
+    assert(session.damage.immune&&!session.damage.ignited&&!session.pending_calls&&f.calls.empty());
+
+    // Invalid registration and actor identity must fail before Ignite
+    // mutates health, fire state, animation or calls any host service.
+    f.calls.clear();f.actor[0xbf]=0;f.put(f.actor,0x880,10);
+    ++major_dictionary.names.generation;
+    assert(!composed->ignite_major(f.actor,sizeof(f.actor),&req,&combined,&session)&&
+        !session.pending_calls&&f.get<int>(f.actor,0x880)==10&&f.calls.empty());
+    --major_dictionary.names.generation;
+    f.put(f.actor,0,recombinant_minor_vtable);
+    assert(!composed->ignite_major(f.actor,sizeof(f.actor),&req,&combined,&session)&&
+        !session.pending_calls&&f.calls.empty());
+    f.put(f.actor,0,recombinant_major_vtable);
+    pending.assignment.translation.actor_class=NpcActivityGrunt;
+    assert(!composed->ignite_major(f.actor,sizeof(f.actor),&req,&combined,&session)&&
+        !session.pending_calls&&f.calls.empty());
+    pending.assignment.translation.actor_class=NpcActivityHosted;
+    assert(!composed->ignite_major(f.actor,0xc15,&req,&combined,&session)&&
+        !session.pending_calls&&f.calls.empty());
+    assert(!composed->ignite_major(f.actor,sizeof(f.actor),&req,&combined,nullptr)&&f.calls.empty());
     f.put(f.actor,0,recombinant_minor_vtable);
     assert(!api->damage_major(f.actor,sizeof(f.actor),f.info,sizeof(f.info),20.f,&b,&o)&&!o.completed);
     FreeLibrary(server);FreeLibrary(client);return 0;
