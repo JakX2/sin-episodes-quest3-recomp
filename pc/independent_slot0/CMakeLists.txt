@@ -287,6 +287,16 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Original 2006 PE32 VClient011 singleton factory and ALL 48 ABI slots.
+# Owner-only SHA-pinned mode inspects original client.dll off-CI; public CI
+# exercises invented full-pointer tables and corruption/fail-closed cases.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_vclient011_complete_vtable_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_vclient011_complete_vtable.py"
+      --self-test)
+endif()
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test

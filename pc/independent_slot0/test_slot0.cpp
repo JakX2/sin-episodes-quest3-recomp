@@ -290,6 +290,31 @@ int main(int argc, char** argv) {
         return fail(7, "two DLL-owned native virtual methods");
 
 #if defined(SIN_ROLE_client)
+    // Source-authenticated complete original VClient011 vtable has 48
+    // contiguous slots, original 0x24296C6C through +0xBC. Validate that
+    // ALL compiled replacement entries reside in the independently loaded
+    // client.dll before exposing this object to the original engine.
+    // These are only ownership checks: unknown slots must still terminate.
+    for (unsigned slot = 0; slot < 48u; ++slot) {
+        if (!slots[slot] || !owned(dll, slots[slot])) {
+            std::fprintf(stderr,
+                         "replacement VClient011 slot %u not DLL-owned\n",
+                         slot);
+            return fail(79, "VClient011 complete 48-slot owner boundary");
+        }
+    }
+    // The following original client-facing public interfaces have real
+    // static original registrations, but they are NOT fully reconstructed
+    // in the replacement. Do not invent fake successes.
+    constexpr const char* kNotYetImplementedClientInterfaces[]={
+        "VClientEntityList003", "VClientPrediction001",
+        "GameClientExports001", "ClientLeafSystem001"
+    };
+    for (const char* requested : kNotYetImplementedClientInterfaces) {
+        status = -1;
+        if (create(requested, &status) != nullptr || status != 1)
+            return fail(80, "incomplete original client interface advertised");
+    }
     // Exercise the exact actual vtable entry, not a separately invoked
     // helper. An uninitialized network callback must never be forwarded
     // to original DLL code or claim that a message was delivered.
