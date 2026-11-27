@@ -1,4 +1,5 @@
 #include "native_server_npc_state_reconsider.h"
+#include "native_server_map_entity.h"
 #include "native_server_weapon_script_view.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -941,6 +942,18 @@ int main(int argc,char** argv){
         f.put(f.enemy,0x8c,1);
         assert(aux->snapshot(f.actor,sizeof(f.actor),&aux_bindings,&aux_result)&&aux_result.script_clear==2);
         unsigned script_conditions=0;std::memcpy(&script_conditions,f.enemy+0x7cc,4);assert(script_conditions==0);
+        // Authenticated primary vtables take the same native suppression
+        // leaf as scripted animation events; no owner RTTI cast needed.
+        unsigned prior_script_marker=0,prior_actor_marker=0;
+        std::memcpy(&prior_script_marker,f.replacement,4);std::memcpy(&prior_actor_marker,f.enemy,4);
+        f.put(f.replacement,0,sin_port::native_map::scripted_sequence_vtable);f.put(f.enemy,0,0x2249aaa4u);
+        auto native_aux=aux_bindings;native_aux.as_npc=nullptr;
+        f.put(f.enemy,0x8c,0);f.put(f.enemy,0x7cc,0x70000u);f.put(f.actor,0x7cc,0x700ffu);f.put(f.actor,0x82c,0x5000fu);
+        assert(aux->snapshot(f.actor,sizeof(f.actor),&native_aux,&aux_result)&&aux_result.snapshot&&aux_result.script_live&&!aux_result.script_clear&&f.get<unsigned>(0x80c)==0x700ffu&&f.get<unsigned>(0x7cc)==0x5000fu);
+        f.replacement[0x3cc]=0;
+        assert(aux->snapshot(f.actor,sizeof(f.actor),&native_aux,&aux_result)&&aux_result.script_clear==2);
+        std::memcpy(&script_conditions,f.enemy+0x7cc,4);assert(script_conditions==0x40000u);
+        f.put(f.replacement,0,prior_script_marker);f.put(f.enemy,0,prior_actor_marker);
     }
     {
         auto get_post=reinterpret_cast<GetServerNpcGruntPostUpdateApi>(GetProcAddress(s,server_npc_grunt_post_update_export));

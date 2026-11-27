@@ -1,5 +1,7 @@
 #include "native_server_combat_owner.h"
 #include "native_server_npc_state_reconsider.h"
+#include "native_server_map_entity.h"
+extern "C" const sin_port::native_map::ScriptedSequenceInterruptApi* __cdecl SiN_GetScriptedSequenceInterruptApi(std::uint32_t,std::uint32_t) noexcept;
 #include "native_server_npc_weapon_range_math.h"
 #include "native_server_npc_cone_distance_math.h"
 #include "native_server_npc_cone_angle_table.h"
@@ -2169,6 +2171,23 @@ int __cdecl grunt_snapshot_conditions(void* actor,unsigned bytes,const ServerNpc
     void* script=registry.Resolve(read<unsigned>(actor,0x970));if(!script)return 1;out->script_live=1;
     unsigned n=0;if(!b->visibility.extent||!b->visibility.extent(b->visibility.context,script,&n)||n<0x3d4)return 0;
     void* e=registry.Resolve(read<unsigned>(script,0x3d0));if(!e)return 1;
+    // At the original 2203b110 -> 221aecf0 call site, share the
+    // authenticated native sequence policy. Unknown RTTI stays on the
+    // explicit legacy cast boundary, not on a guessed native identity.
+    if(n>=native_map::scripted_sequence_extent&&read<unsigned>(script,0)==native_map::scripted_sequence_vtable){
+        unsigned target_bytes=0;
+        if(!b->visibility.extent(b->visibility.context,e,&target_bytes)||target_bytes<4)return 0;
+        if(relation_grunt_class(read<unsigned>(e,0))){
+            native_map::ScriptedSequenceControlBindings control{};
+            control.context=b->visibility.context;control.extent=b->visibility.extent;
+            control.entries=mb.entries;control.entry_count=mb.count;
+            native_map::ScriptedSequenceInterruptBindings bound{&control,&b->visibility.conditions};
+            const auto* interrupt=SiN_GetScriptedSequenceInterruptApi(1,sizeof(native_map::ScriptedSequenceInterruptApi));
+            native_map::ScriptedSequenceInterruptResult result{};
+            if(!interrupt||!interrupt->suppress(script,n,&bound,&result))return 0;
+            out->script_clear=result.cleared16+result.cleared17;return 1;
+        }
+    }
     if(read<std::uint8_t>(script,0x3cc)){
         if(!b->visibility.extent(b->visibility.context,e,&n)||n<0x90)return 0;
         if(!read<int>(e,0x8c))return 1;

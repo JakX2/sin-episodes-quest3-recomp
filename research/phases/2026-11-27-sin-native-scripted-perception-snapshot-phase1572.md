@@ -1,0 +1,3 @@
+# Phase 1572: original perception snapshot calls shared native script policy
+
+The existing 2203b110 snapshot/mask path was already in the original post-perception route. At the authenticated scripted-sequence + NPC primary-vtable branch, call the verified phase1559 221aecf0 suppression API directly, with the perception registry and condition namespace, after the existing snapshot and mask. Unknown RTTI stays with the existing cast boundary. Native failure does not retry through the legacy path. No new public ABI or duplicated snapshot. Loaded aux regression covers a live interruptible NPC and then a disabled latch with native condition clearing, without any hosted NPC cast. Existing compatibility tests retained. No generic physics. CI pending.
