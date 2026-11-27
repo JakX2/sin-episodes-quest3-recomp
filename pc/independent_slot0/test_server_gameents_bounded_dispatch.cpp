@@ -413,7 +413,9 @@ int main() {
        !game->Report().transmit.unauthorized_entity||
        f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
         return Fail(38,"foreign transmit entity rejected before policy");
-    f.foreign_transmit=false;f.indices[0]=1;
+    // The negative fixture intentionally performs one entity lookup;
+    // reset this counter before the established successful-transmit probe.
+    f.foreign_transmit=false;f.indices[0]=1;f.ent_reads=0;
 
     f.calls.clear();f.fail_publish=true;
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);
