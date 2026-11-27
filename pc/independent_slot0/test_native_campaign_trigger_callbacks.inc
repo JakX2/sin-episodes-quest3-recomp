@@ -1696,7 +1696,8 @@
     {
         namespace nw=sin_port::native_weapon_tables;
         struct TaskFixture {
-            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{},component[9]{},event_action[0x1c]{};
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{},component[9]{},event_action[0x1c]{},event_layer[0x40]{};
+            nw::ServerStudioEvent studio[4]{{.1f,1001,0,"",0},{.2f,1003,0,"3",0},{.3f,1002,0,"",0},{.4f,17,0,"fallback",0}};
             bool component_handles=false;
             sin_independent::EntityHandleEntry entries[2]{};
             float now=12.f;std::string calls;
@@ -1827,6 +1828,33 @@
         put(f.npc,0x970,0x5000u);put(f.npc,0x7cc,0x70000u);
         assert(event_handle(f.npc,sizeof(f.npc),1003,nullptr,0,&eb,&er)&&er.handled&&!er.script_live&&!er.parsed);
         assert(snapshot(f.npc,sizeof(f.npc),&ib,&sr)&&sr.snapshot&&!sr.script_live&&!sr.suppressed&&word(f.npc,0x7cc)==0x50000u);
+        // Original studio traversal delivers base and overlay animation
+        // events in order, without calling the hosted virtual twice.
+        const auto dispatch=reinterpret_cast<nw::DispatchScriptedNpcAnimationEvents>(GetProcAddress(server,nw::server_scripted_animation_dispatch_export));
+        assert(dispatch&&!GetProcAddress(client,nw::server_scripted_animation_dispatch_export));
+        nw::ServerAnimationEventBindings studio{};studio.context=&f;
+        studio.sequence=[](void* p,void* a,int seq,nw::ServerAnimationEventSequence* view) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(a==f.npc&&(seq==1||seq==2));
+            *view={f.studio,4,0,.1f};return 1;
+        };
+        studio.cycle_rate=[](void*,void*,int,double* rate) noexcept ->int{*rate=1.;return 1;};
+        studio.storage=[](void* p,unsigned token,void** out,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);if(token!=77)return 0;*out=f.event_layer;*n=sizeof(f.event_layer);return 1;
+        };
+        studio.emit=[](void* p,void* receiver,int layer,const nw::ServerAnimationEvent* e) noexcept{
+            auto& f=*static_cast<TaskFixture*>(p);assert(receiver==f.npc&&layer==0&&e->event==17&&e->source==f.npc&&f.seq[0x3cc]);f.calls+='V';
+        };
+        nw::ServerScriptedAnimationDispatchBindings db{&studio,&eb};
+        nw::ServerScriptedAnimationDispatchResult dr{};
+        put(f.npc,0x970,0x3000u);put(f.npc,0x3ec,1);put(f.npc,0x3c0,0x3f800000u);put(f.npc,0x398,0u);put(f.npc,0x3e8,0x3e800000u);
+        put(f.npc,0x494,77u);put(f.npc,0x498,1u);put(f.npc,0x4a0,1u);
+        put(f.event_layer,0,1u);f.event_layer[5]=1;put(f.event_layer,8,2);put(f.event_layer,0xc,0x3f000000u);put(f.event_layer,0x14,0x3f800000u);put(f.event_layer,0x38,0x3e800000u);
+        f.calls.clear();f.seq[0x3cc]=1;
+        assert(dispatch(f.npc,sizeof(f.npc),f.npc,sizeof(f.npc),f.now,&db,&dr)&&dr.completed&&dr.animation.layers==1&&dr.animation.emitted==4&&dr.script_events==3&&dr.fallback_events==1&&dr.last.event==1002&&f.seq[0x3cc]&&f.calls=="OV");
+        assert(dispatch(f.npc,sizeof(f.npc),f.npc,sizeof(f.npc),f.now,&db,&dr)&&!dr.animation.emitted&&!dr.script_events&&!dr.fallback_events&&f.calls=="OV");
+        assert(!dispatch(f.npc,sizeof(f.npc),f.npc,sizeof(f.npc)+4,f.now,&db,&dr)&&!dr.completed);
+        // Restore the script handle expected by the following cleanup test.
+        put(f.npc,0x970,0x5000u);
         const auto cleanup=reinterpret_cast<CleanupScriptedNpc>(GetProcAddress(server,scripted_npc_cleanup_export));
         assert(cleanup&&!GetProcAddress(client,scripted_npc_cleanup_export));
         ScriptedNpcCleanupBindings cb{&c,&life.conditions,&f};
