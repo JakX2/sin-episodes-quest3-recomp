@@ -36,6 +36,24 @@ The existing SHA-gated `sin_original_interfacereg_owner_probe.exe` also now read
 
 - Owner-private `--server <unmodified-original-server.dll>` mode validates the exact complete original file SHA, 21-byte static registration, original version string, six-byte singleton thunk, static vptr, every original method pointer/section, the whole vtable digest and its precise boundary marker, and whole original `GetPlayerLimits` digest. Emits only derived metadata.
 - Original-free `--self-test` constructs fake PE32 pointer DWORDs and **invented different limit values** (4, 64, 5) for its x86 method fixture, tests all bytes of the synthetic 15-pointer table, static wrapper and 33-byte outparam/RET12 instruction sequence against corruption, and rejects fabricated original-server SHA.
-- Linux decomp synthetic audit runs `--self-test`. Windows MSVC Win32 x86 CMake adds one new CTest and recompiles the existing native server factory probe with its new explicit raw calling-convention check. Expected Windows native regression count: **255** once Phase 1654's 254-case suite is green.
+- Linux decomp synthetic audit runs `--self-test`. Windows MSVC Win32 x86 CMake adds the Python original ABI CTest and a **no-original-file owner package guardrail CTest**, and recompiles the existing native server factory probe with its new explicit raw calling-convention check. Expected Windows native regression count: **256** once Phase 1654's 254-case suite is green.
+
+### New downloadable original-owner Windows diagnostic package
+
+Phase 1653 already compiled the SHA-gated `sin_original_interfacereg_owner_probe.exe`, but did not ship that executable to the owner in a stand-alone artifact. This phase sets its CMake `RUNTIME_OUTPUT_DIRECTORY` to the independent `bin/Release` output and adds the `SiN-Owner-Original-InterfaceFactory-Probe-Win32-NO-GAME-DLLs` GitHub Actions artifact, which contains exactly:
+
+- `sin_original_interfacereg_owner_probe.exe` (native MSVC x86)
+- `Run-OwnerOriginalInterfaceFactoryProbe.ps1`
+- `OwnerOriginalInterfaceFactoryProbe-README.txt`
+
+The package deliberately includes **no proprietary original DLLs**, maps, engine files or game content. Its PowerShell runner has a completely original-free `-SelfTest` validating path types, distinct client/server names, exact `bin` parent folders and the required `-OwnerDisposableCopyConfirmed` switch. Public CI both runs the synthetic CTest and parses/self-tests the packaged copy before uploading, with a three-file allowlist.
+
+The explicit owner-only invocation, from an unmodified disposable game copy with its correct dependencies installed, is:
+
+```powershell
+.\Run-OwnerOriginalInterfaceFactoryProbe.ps1 -ClientDll 'C:\SiN-Test-Copy\bin\client.dll' -ServerDll 'C:\SiN-Test-Copy\SE1\bin\server.dll' -OwnerDisposableCopyConfirmed
+```
+
+This invokes the SHA-pinned C++ factory executable, which **loads the original DLLs and executes their real static initializers and selected creator thunks**. The C++ observer then reads the 55/10 original post-DllMain registry nodes, 4-slot client `GameClientExports001` vtable and 15-slot server `ServerGameClients003` vtable without virtual calls. The wrapper does not edit original game files. A successful result is still **only original-DLL factory ABI verification**, not proof that replacement client/server boot in the engine.
 
 These are ABI and test advances, **not retail engine compatible original ServerGameClients behavior**. Client/Server complete initialization, physical engine ownership, gameplay on Windows and Android/Quest 3 startup all remain unverified. Under the user's explicit priority override, no generic physics, surfaces, props or model loading is added.
