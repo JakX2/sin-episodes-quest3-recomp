@@ -135,6 +135,26 @@ int main(int argc,char** argv){
     selection.grunt.schedule.storage=nullptr;
     selection.state.state_query=[](void*,void*,int,int* out) noexcept -> int{*out=-1;return 1;};
     scheduler.grunt.registration=&ids;
+    {
+        const auto chain_bind=reinterpret_cast<BindServerNpcScriptedScheduleChain>(GetProcAddress(s,server_npc_scripted_schedule_chain_export));
+        assert(chain_bind&&!GetProcAddress(c,server_npc_scripted_schedule_chain_export));
+        ServerScheduleImage scripts{},derived{};ServerScheduleImageResult er{};
+        assert(scripts_image->build(f.actor,NpcSubclassJetpack,8000,99,&b,&scripts,&er));
+        assert(f.api->build(f.actor,NpcSubclassJetpack,9000,scripts.head,&b,&derived,&er));
+        ServerNpcScriptedScheduleChain chain{};
+        assert(chain_bind(f.actor,&scripts,&derived,&runtime,&chain)&&chain.bound.scheduler.maintenance.selection.head==8015&&selection.head==99&&!selection.grunt.schedule.storage);
+        auto& chain_schedule=chain.bound.scheduler.maintenance.selection.grunt.schedule;
+        assert(chain_schedule.storage(chain_schedule.context,8014,&p,&n)&&n==6*sizeof(ServerNpcScheduleTask));
+        assert(chain_schedule.storage(chain_schedule.context,derived.head+2,&p,&n)&&!std::strcmp(static_cast<const char*>(p),derived.rows[derived.row_count-1].source->name));
+        assert(!chain_schedule.storage(chain_schedule.context,8018,&p,&n));
+        assert(state->install(f.actor,sizeof(f.actor),8012,9.f,&chain_schedule,&sr)&&sr.global==global+158);
+        assert(state->advance(f.actor,sizeof(f.actor),&chain_schedule,&sr)&&state->inspect(f.actor,sizeof(f.actor),&chain_schedule,&sr)&&sr.task.id==110);
+        scripts.tasks[0].id=0;
+        assert(!chain_bind(f.actor,&scripts,&derived,&runtime,&chain)&&chain.bound.scheduler.maintenance.selection.head==8015);
+        scripts.tasks[0].id=116;
+        assert(chain_bind(f.actor,&scripts,&derived,&runtime,&chain));
+        assert(!chain_bind(f.actor,&scripts,&derived,&chain.bound,&chain));
+    }
     scheduler.grunt.parent=[](void*,void* actor,const ServerNpcScheduleTask* task,bool running) noexcept -> int{
         assert(!running&&task->id==89&&task->parameter==32.f);
         int status=2;std::memcpy(static_cast<unsigned char*>(actor)+0x7a4,&status,4);return 1;};

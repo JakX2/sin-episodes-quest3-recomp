@@ -1,0 +1,3 @@
+# Phase 1574: chain original inherited script schedules under derived catalog
+
+Separate nonmoving owner session scopes schedule storage and head. Validate family, disjoint reserved token ranges, fallback linkage, current namespace and exact six-row/43-task script image rebuilt from authenticated source. Derived catalog continues using its original validation; all derived and scripted tokens route to native storage, unrelated tokens to original owner. Preserve reset callback/context; no existing ABI changes. Loaded fixture verifies Jetpack derived+script descriptor resolution, task install and advance on original SCHED_SCRIPTED_WAIT, invalid image rejection and no mutation of original owner. Full outer test with script tasks next. CI pending.

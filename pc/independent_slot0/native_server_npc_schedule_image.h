@@ -43,6 +43,17 @@ using GetServerNpcReloadScheduleImageApi=GetServerNpcScheduleImageApi;
 // Chain this image below a derived schedule image; no ABI capacity change.
 inline constexpr char server_npc_scripted_schedule_image_export[]="SiN_GetServerNpcScriptedScheduleImageApi";
 using GetServerNpcScriptedScheduleImageApi=GetServerNpcScheduleImageApi;
+// Caller-owned, nonmoving session. Both schedule images must remain live
+// while actors retain their tokens. Only storage and head are rebound.
+struct ServerNpcScriptedScheduleChain {
+    ServerNpcScheduleServicesBindings bound;
+    ServerNpcScheduleBindings original;
+    const ServerScheduleImage* scripts;
+    const ServerScheduleImage* derived;
+};
+inline constexpr char server_npc_scripted_schedule_chain_export[]="SiN_BindServerNpcScriptedScheduleChain";
+using BindServerNpcScriptedScheduleChain=int (__cdecl *)(void*,const ServerScheduleImage*,const ServerScheduleImage*,
+    const ServerNpcScheduleServicesBindings*,ServerNpcScriptedScheduleChain*) noexcept;
 inline constexpr char server_npc_catalog_scheduler_export[]="SiN_GetServerNpcCatalogSchedulerApi";
 struct ServerNpcCatalogSchedulerResult {
     ServerNpcScheduleServicesResult runtime;
