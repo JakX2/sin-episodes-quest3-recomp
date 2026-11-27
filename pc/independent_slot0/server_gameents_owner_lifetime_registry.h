@@ -38,15 +38,23 @@ public:
         if(leased_||slot>=Slots||!WellFormed(value))return false;
         const auto& prior=slots_[slot];
         if(prior.edict_owned||prior.entity_live||
-           (prior.seen&&value.generation<=prior.value.generation))return false;
+           value.generation<=latest_generation_)return false;
         for(std::size_t i=0;i<Slots;++i) {
-            if(i==slot||!slots_[i].seen)continue;
+            if(i==slot)continue;
             const auto& old=slots_[i];
-            if(SharesAddress(value,old.value)&&
-               (old.edict_owned||value.generation<=old.value.generation))
+            // Retiring the entity frees its entity/unknown/touch ranges,
+            // but its edict prefix remains owner-owned until ForgetEdict.
+            if(old.edict_owned&&
+               OverlapAny(value,old.value.edict,old.value.edict_bytes))
+                return false;
+            if(old.entity_live&&
+               (OverlapAny(value,old.value.entity,old.value.entity_bytes)||
+                OverlapAny(value,old.value.unknown,old.value.unknown_bytes)||
+                OverlapAny(value,old.value.touch,old.value.touch_bytes)))
                 return false;
         }
         slots_[slot]={value,true,true,true};
+        latest_generation_=value.generation;
         return true;
     }
 
@@ -137,6 +145,15 @@ public:
             if(item.entity_live&&item.value.unknown==ptr)return true;
         return false;
     }
+    bool ValidUnknownPair(const void* edict,
+                          const void* unknown) const noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(!OwnedLease()||!edict||!unknown)return false;
+        for(const auto& item:slots_)
+            if(item.edict_owned&&item.entity_live&&
+               item.value.edict==edict&&item.value.unknown==unknown)return true;
+        return false;
+    }
     bool ValidTouch(const void* ptr,std::size_t required_bytes) const noexcept {
         std::lock_guard<std::mutex> guard(mu_);
         if(!OwnedLease()||!ptr||!required_bytes)return false;
@@ -181,15 +198,41 @@ private:
         std::uint64_t generation=0;
         bool used=false;
     };
-    static bool WellFormed(const GameEntsOwnerIdentity& v) noexcept {
-        return v.edict&&v.entity&&v.unknown&&v.touch&&v.generation!=0&&
-            v.edict_bytes>=0x14&&v.entity_bytes>=0x170&&
-            v.unknown_bytes>=sizeof(void*)&&v.touch_bytes>0;
+    // All intervals are half-open [base,base+bytes); adjacent original
+    // 0x14-byte edict records are allowed. Never form an overflowed end.
+    static bool RangeValid(const void* ptr,std::size_t bytes) noexcept {
+        if(!ptr||!bytes||bytes>
+           (std::numeric_limits<std::uintptr_t>::max)())return false;
+        const auto start=reinterpret_cast<std::uintptr_t>(ptr);
+        return start!=0&&start<=
+            (std::numeric_limits<std::uintptr_t>::max)()-bytes;
     }
-    static bool SharesAddress(const GameEntsOwnerIdentity& a,
-                              const GameEntsOwnerIdentity& b) noexcept {
-        return a.edict==b.edict||a.entity==b.entity||
-               a.unknown==b.unknown||a.touch==b.touch;
+    static bool Overlap(const void* a,std::size_t asz,
+                        const void* b,std::size_t bsz) noexcept {
+        const auto aa=reinterpret_cast<std::uintptr_t>(a);
+        const auto bb=reinterpret_cast<std::uintptr_t>(b);
+        return aa<bb+bsz&&bb<aa+asz;
+    }
+    static bool OverlapAny(const GameEntsOwnerIdentity& v,
+                           const void* base,std::size_t bytes) noexcept {
+        return Overlap(v.edict,v.edict_bytes,base,bytes)||
+               Overlap(v.entity,v.entity_bytes,base,bytes)||
+               Overlap(v.unknown,v.unknown_bytes,base,bytes)||
+               Overlap(v.touch,v.touch_bytes,base,bytes);
+    }
+    static bool WellFormed(const GameEntsOwnerIdentity& v) noexcept {
+        if(!v.generation||v.edict_bytes<0x14||v.entity_bytes<0x170||
+           v.unknown_bytes<sizeof(void*)||!v.touch_bytes||
+           !RangeValid(v.edict,v.edict_bytes)||
+           !RangeValid(v.entity,v.entity_bytes)||
+           !RangeValid(v.unknown,v.unknown_bytes)||
+           !RangeValid(v.touch,v.touch_bytes))return false;
+        return !Overlap(v.edict,v.edict_bytes,v.entity,v.entity_bytes)&&
+            !Overlap(v.edict,v.edict_bytes,v.unknown,v.unknown_bytes)&&
+            !Overlap(v.edict,v.edict_bytes,v.touch,v.touch_bytes)&&
+            !Overlap(v.entity,v.entity_bytes,v.unknown,v.unknown_bytes)&&
+            !Overlap(v.entity,v.entity_bytes,v.touch,v.touch_bytes)&&
+            !Overlap(v.unknown,v.unknown_bytes,v.touch,v.touch_bytes);
     }
     bool OwnedLease() const noexcept {
         return leased_&&lease_thread_==std::this_thread::get_id();
@@ -198,7 +241,7 @@ private:
     mutable std::mutex mu_{};
     std::array<Item,Slots> slots_{};
     std::array<Candidate,Candidates> candidates_{};
-    std::uint64_t nonce_=0,lease_token_=0;
+    std::uint64_t nonce_=0,lease_token_=0,latest_generation_=0;
     std::thread::id lease_thread_{};
     unsigned lease_slot_=0;
     bool leased_=false;

@@ -7,20 +7,20 @@
 using namespace sin_independent;
 struct EngineEdict {
     std::uint32_t flags=0x67,serial=43,networkable=0xabc,
-                  unknown=0xdef,next=0x12345678;
+                  unknown=0xdef,reuse_time_bits=0x12345678;
 };
 static_assert(sizeof(EngineEdict)==0x14,"original engine edict stride");
 static_assert(offsetof(EngineEdict,unknown)==0x0c,"unknown offset");
-static_assert(offsetof(EngineEdict,next)==0x10,"free-link offset");
+static_assert(offsetof(EngineEdict,reuse_time_bits)==0x10,"x87 reuse-time offset");
 struct Fixture {
     EngineEdict elements[3]{};
     unsigned authorized=0,freed=0;
-    bool refuse=false,valid=true;
+    bool refuse=false,valid=true,revoke_after_callback=false;
 };
 static bool Authorized(void* context,const void* edict,std::size_t count) noexcept {
     auto& f=*static_cast<Fixture*>(context);
     ++f.authorized;
-    if(count!=0x14)return false;
+    if(count!=0x14||f.revoke_after_callback&&f.freed!=0)return false;
     for(const auto& item:f.elements)if(edict==&item)return true;
     return false;
 }
@@ -35,9 +35,9 @@ static bool FreeEntity(void* context,void* edict) noexcept {
     ++f.freed;
     auto* raw=static_cast<EngineEdict*>(edict);
     // Source owner must be invoked after clearing bit 0x02, but BEFORE
-    // engine clears the trailing pointer and poisons serial+0x04.
+    // engine clears the reuse-time dword and poisons serial+0x04.
     if((raw->flags&2u)!=0||raw->serial!=43||
-       raw->next!=0x12345678)f.valid=false;
+       raw->reuse_time_bits!=0x12345678)f.valid=false;
     if(f.refuse)return false;
     // Independently model server.dll's separate clearing of flags+unknown.
     raw->flags=0;
@@ -53,7 +53,7 @@ int main() {
     auto& target=f.elements[1];
     if(RetireEngineEdictAt(f.elements,sizeof(f.elements),1,h)!=
        EngineEdictRetireResult::Retired||!f.valid||f.freed!=1||
-       target.flags!=0||target.unknown!=0||target.next!=0||
+       target.flags!=0||target.unknown!=0||target.reuse_time_bits!=0||
        target.serial!=0xffffffffu)
         return Fail(1,"original indexed release ordering/fields changed");
     const auto earlier_freed=f.freed;
@@ -89,15 +89,28 @@ int main() {
     if(RetireEngineEdictAt(f.elements,sizeof(f.elements),2,h)!=
        EngineEdictRetireResult::CallbackRefused||
        incomplete.flags!=(0x67u&~2u)||
-       incomplete.serial!=43||incomplete.next!=0x12345678||
+       incomplete.serial!=43||incomplete.reuse_time_bits!=0x12345678||
        f.freed!=earlier_freed+1)
         return Fail(6,"callback refusal incorrectly finalized edict");
     f.refuse=false;
     if(RetireEngineEdict(&f.elements[0],sizeof(EngineEdict),h)!=
        EngineEdictRetireResult::Retired||
        f.elements[0].serial!=0xffffffffu||
-       f.elements[0].next!=0||!f.valid)
+       f.elements[0].reuse_time_bits!=0||!f.valid)
         return Fail(7,"direct engine release not supported");
-    std::puts("PASS engine original 0x14 edict stride, index gate, before/after GameEnts release writes and refusal boundary");
+    // A server-side callback can succeed and then revoke owner storage.
+    // Never use stale edict backing for the engine's two final dword writes.
+    Fixture revoked{};
+    revoked.revoke_after_callback=true;
+    const EngineEdictRetireHooks revoked_hooks{
+        &revoked,&Authorized,&AuthorizedArray,&FreeEntity};
+    auto& test=revoked.elements[1];
+    if(RetireEngineEdict(&test,sizeof(test),revoked_hooks)!=
+       EngineEdictRetireResult::PostCallbackUnauthorized||
+       revoked.freed!=1||!revoked.valid||
+       test.serial!=43||test.reuse_time_bits!=0x12345678||
+       test.flags!=0||test.unknown!=0)
+        return Fail(10,"post-callback owner revocation must block engine epilogue");
+    std::puts("PASS engine original 0x14 edict stride, indexed and direct retire, post-callback owner reauthorization and refusal boundary");
     return 0;
 }

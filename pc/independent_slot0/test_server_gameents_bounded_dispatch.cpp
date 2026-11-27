@@ -2,6 +2,7 @@
 // Each typed virtual slot is called through the same complete concrete object.
 // Source pointers/handles and networking are deliberately synthetic.
 #include "server_gameents_bounded_dispatch.h"
+#include "server_gameents_engine_edict_retire_core.h"
 #include "server_gameents_owner_lifetime_registry.h"
 #include "server_entity_immediate_removal_core.h"
 #include <array>
@@ -16,7 +17,7 @@ struct edict_t {
     std::uint32_t flags=0x65, serial=0;
     IServerNetworkable* networkable=nullptr;
     sin_independent::ServerUnknownAbi* unknown=nullptr;
-    std::uint32_t next_free=0x12345678;
+    std::uint32_t reuse_time_bits=0x12345678;
 };
 class CBaseEntity {
 public:
@@ -26,7 +27,7 @@ public:
 };
 struct CCheckTransmitInfo {unsigned char bytes[0x2010]{};};
 static_assert(offsetof(edict_t,unknown)==0x0c,"retail edict unknown offset");
-static_assert(offsetof(edict_t,next_free)==0x10,"retail engine edict free-link offset");
+static_assert(offsetof(edict_t,reuse_time_bits)==0x10,"retail engine x87 reuse-time offset");
 static_assert(sizeof(edict_t)==0x14,"retail engine 20-byte edict array stride");
 static_assert(offsetof(CBaseEntity,edict)==0x16c,"retail entity edict offset");
 static_assert(sizeof(void*)==4,"original PE32 only");
@@ -81,6 +82,7 @@ struct Fixture {
     unsigned lease_attempts=0,lease_granted=0,lease_released=0,
              lease_denied=0;
     unsigned pair_checks=0,pair_denials=0;
+    unsigned unknown_pair_checks=0,unknown_pair_denials=0;
     Fixture() {
         ea.serial=1;eb.serial=2;
         ea.unknown=&first_unknown;eb.unknown=&second_unknown;
@@ -170,6 +172,21 @@ static bool ValidUnknown(void* p,const ServerUnknownAbi* unknown) noexcept {
     if(!f.lease_active)f.valid=false;
     return f.owner_registry.ValidUnknown(unknown)&&
         (unknown==&f.first_unknown||unknown==&f.second_unknown);
+}
+static bool ValidUnknownPair(void* p,const edict_t* edict,
+                             const ServerUnknownAbi* unknown) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
+    // The registry supplies the owner generation association; the direct
+    // fixture pair cross-check also guards against a synthetic serial edit.
+    ++f.unknown_pair_checks;
+    const bool authorized=f.owner_registry.ValidUnknownPair(edict,unknown)&&
+        ((edict==&f.ea&&unknown==&f.first_unknown&&
+          f.ea.serial==f.registry[1].serial)||
+         (edict==&f.eb&&unknown==&f.second_unknown&&
+          f.eb.serial==f.registry[2].serial));
+    if(!authorized)++f.unknown_pair_denials;
+    return authorized;
 }
 static bool ValidTouch(void* p,const TouchEntity* touch) noexcept {
     auto& f=*static_cast<Fixture*>(p);
@@ -372,12 +389,39 @@ static void Set(CBaseEntity* e,std::size_t index,TransmitContext& ctx,
     if(e!=&f.second||index!=2||!forced)f.valid=false;
     ctx.selected.Set(index);
 }
+// Engine-side read authority is a short owner lease. It must end BEFORE
+// the game-server FreeContainingEntity callback obtains its own slot-3 lease.
+static bool EngineOwnedEdict(void* p,const void* edict,
+                             std::size_t extent) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(extent!=kEngineOriginalEdictStride)return false;
+    std::uint64_t token=0;
+    if(!f.owner_registry.Begin(5,&token))return false;
+    const bool authorized=f.owner_registry.ValidEdict(edict)&&
+        (edict==&f.ea||edict==&f.eb);
+    if(!f.owner_registry.End(5,token))f.valid=false;
+    return authorized;
+}
+static bool EngineReleaseEntity(void* p,void* edict) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(!f.bridge||!edict)return false;
+    // Force the actual seventh-slot-compatible MSVC x86 vtable entry.
+    // Avoid a compiler devirtualizing this synthetic dispatch through
+    // the statically known final class and silently bypassing the ABI test.
+    auto** slots=*reinterpret_cast<void***>(f.bridge);
+    if(!slots||!slots[3])return false;
+    auto free_slot=reinterpret_cast<void (__thiscall *)(void*,edict_t*)>(
+        slots[3]);
+    free_slot(f.bridge,static_cast<edict_t*>(edict));
+    return f.bridge->Report().status==GameEntsDispatchResult::Completed;
+}
 static GameEntsBoundedOwner Hooks(Fixture& f) noexcept {
     GameEntsBoundedOwner h{};
     h.context=&f;
     h.begin_access=&BeginOwnerAccess;h.end_access=&EndOwnerAccess;
     h.valid_edict=&ValidEdict;h.valid_entity=&ValidEntity;
-    h.valid_unknown=&ValidUnknown;h.valid_touch=&ValidTouch;
+    h.valid_unknown=&ValidUnknown;
+    h.valid_unknown_pair=&ValidUnknownPair;h.valid_touch=&ValidTouch;
     h.valid_pair=&ValidPair;h.valid_candidate=&ValidCandidate;
     h.transmit_extent=&Extent;
     h.touch={&f,&ResolveTouch,&Init,&Publish,&f.contacts,
@@ -437,6 +481,10 @@ int main() {
     no_unknown.valid_unknown=nullptr;
     if(ServerGameEntsBoundedDispatch(no_unknown).Ready())
         return Fail(31,"missing unknown-interface ownership gate");
+    GameEntsBoundedOwner no_unknown_pair=Hooks(f);
+    no_unknown_pair.valid_unknown_pair=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_unknown_pair).Ready())
+        return Fail(66,"missing edict/unknown association callback was accepted");
     GameEntsBoundedOwner no_touch=Hooks(f);
     no_touch.valid_touch=nullptr;
     if(ServerGameEntsBoundedDispatch(no_touch).Ready())
@@ -523,18 +571,22 @@ int main() {
     // A trusted *other* unknown can return a trusted *other* entity.
     // Neither identity may authorize release or touch for the wrong edict.
     f.ea.unknown=&f.second_unknown;
+    const unsigned foreign_calls_before=f.second_unknown.calls;
     if(v->EdictToBaseEntity(&f.ea)!=nullptr||
-       game->Report().status!=GameEntsDispatchResult::Unauthorized)
-        return Fail(51,"foreign mapping through owned unknown rejected");
+       game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       f.second_unknown.calls!=foreign_calls_before)
+        return Fail(51,"owned but crosswired unknown must not be dispatched");
     v->FreeContainingEntity(&f.ea);
     if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
        f.ea.unknown!=&f.second_unknown||f.ea.flags!=0x65||
+       f.second_unknown.calls!=foreign_calls_before||
        !f.calls.empty()||f.deleted)
         return Fail(52,"cross-wired unknown cannot free another owned entity");
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);
-    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
-       f.calls!="A"||f.allocated||f.starts)
-        return Fail(53,"cross-wired unknown must fail before contact mutation");
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       f.second_unknown.calls!=foreign_calls_before||
+       !f.calls.empty()||f.allocated||f.starts)
+        return Fail(53,"cross-wired unknown must fail before touch resolution");
     f.ea.unknown=&f.first_unknown;
     f.calls.clear();
     // Simulate retirement and reuse of the same memory at a new generation
@@ -552,9 +604,9 @@ int main() {
        !f.calls.empty()||f.deleted)
         return Fail(55,"stale-generation pair cannot free entity");
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);
-    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
-       f.calls!="A"||f.allocated)
-        return Fail(56,"stale-generation pair cannot enter contact publication");
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       !f.calls.empty()||f.allocated)
+        return Fail(56,"stale-generation unknown rejected before contact resolution");
     f.registry[1].serial=serial;
     f.calls.clear();
     // A perfectly valid TouchEntity object may embed a different, owned
@@ -711,11 +763,22 @@ int main() {
        !f.calls.empty()||f.ea.unknown==nullptr)
         return Fail(17,"slot 3 refuses foreign edict without touching memory");
     f.calls.clear();
-    CHECK_X86_STACK(freeSlot(game,&f.ea),30);
-    if(game->Report().status!=GameEntsDispatchResult::Completed||
+    // An original engine-owned edict retirement call crosses the same
+    // registered seven-slot vtable used for all preceding operations.
+    // The server tombstones the entity under slot 3, then the engine
+    // reattests the still-owned edict and poisons serial+0x04 and free
+    // link+0x10. The full sequence occurs in one native x86 test.
+    const EngineEdictRetireHooks engine_hooks{
+        &f,&EngineOwnedEdict,nullptr,&EngineReleaseEntity};
+    EngineEdictRetireResult retired=EngineEdictRetireResult::InvalidInput;
+    CHECK_X86_STACK(retired=RetireEngineEdict(
+        &f.ea,sizeof(f.ea),engine_hooks),30);
+    if(retired!=EngineEdictRetireResult::Retired||
+       game->Report().status!=GameEntsDispatchResult::Completed||
        game->Report().release!=EntityReleaseStatus::DetachedAndHooksInvoked||
-       f.calls!="LEFFDGMUX")
-        return Fail(18,"slot 3 complete detachment and ordered owned cleanup");
+       f.ea.serial!=kEngineOriginalEdictRetiredSerial||
+       f.ea.reuse_time_bits!=0||f.calls!="LEFFDGMUX")
+        return Fail(18,"engine-to-server slot 3 release, owner retirement, and engine epilogue");
     // The test checks mutation and cleanup separately so no original
     // entity pointer is dereferenced after synthetic immediate removal.
     if(!f.valid||f.first_alive||f.ea.unknown||f.ea.flags||
@@ -752,13 +815,21 @@ int main() {
     // acquired, including failed authorization, no-entity and host failures.
     if(!f.valid||f.lease_active||f.owner_registry.HasLease()||
        f.lease_granted!=f.lease_released||
-       f.pair_checks<10||f.pair_denials<7||
+       f.pair_checks<10||f.pair_denials<3||
+       f.unknown_pair_checks<10||f.unknown_pair_denials<6||
        f.lease_attempts!=f.lease_granted+f.lease_denied||
        game->Report().lease_attempts!=f.lease_attempts||
        game->Report().lease_acquisitions!=f.lease_granted||
        game->Report().lease_releases!=f.lease_released||
        game->Report().lease_denials!=f.lease_denied)
-        return Fail(48,"owner leases must balance on every successful/failed ABI call");
+    {
+        std::fprintf(stderr,
+            "owner audit: valid=%d leases=%u/%u/%u/%u pairs=%u/%u unknown=%u/%u\n",
+            static_cast<int>(f.valid),f.lease_attempts,f.lease_granted,
+            f.lease_released,f.lease_denied,f.pair_checks,f.pair_denials,
+            f.unknown_pair_checks,f.unknown_pair_denials);
+        return Fail(48,"owner leases and association diagnostics must balance");
+    }
     // The actual destruction stage already tombstoned the entity. The
     // owner must explicitly forget its edict after the release lease ends.
     std::uint64_t verify_token=0;
@@ -772,6 +843,13 @@ int main() {
        f.owner_registry.ValidEdict(&f.ea)||
        !f.owner_registry.End(5,verify_token))
         return Fail(64,"forgotten edict still passed owner allocation validator");
+    // A second original engine call at the poisoned address cannot mutate
+    // the already retired edict after the owner forgets the allocation.
+    const std::uint32_t poisoned_serial=f.ea.serial;
+    if(RetireEngineEdict(&f.ea,sizeof(f.ea),engine_hooks)!=
+       EngineEdictRetireResult::Unauthorized||
+       f.ea.serial!=poisoned_serial||f.deleted!=1)
+        return Fail(65,"engine may not free a forgotten stale-generation edict");
     delete v;
     std::puts("PASS ServerGameEnts001 concrete seven-slot Win32 vtable: concrete owner registry, leases, generation-aware associations, conversions, edict touch, transmit, release and reentrant refusal");
     return 0;
