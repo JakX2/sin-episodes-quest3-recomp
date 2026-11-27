@@ -411,9 +411,11 @@ struct NativeRequestSession {
         return true;
     }
 };
-int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr,const ServerNpcSharedTargetAnimationBindings* target_animation=nullptr,ServerNpcSharedTargetAnimationStats* target_animation_stats=nullptr,const ServerNpcSharedMovementBindings* movement=nullptr,ServerNpcSharedMovementStats* movement_stats=nullptr,const ServerNpcSharedCueBindings* cue=nullptr,ServerNpcSharedCueStats* cue_stats=nullptr,const ServerNpcSharedObservationBindings* observe=nullptr,ServerNpcSharedObservationStats* observe_stats=nullptr,const ServerNpcSharedSoundCoverBindings* sound_cover=nullptr,ServerNpcSharedSoundCoverStats* sound_cover_stats=nullptr,const ServerNpcSharedTacticalCoverBindings* tactical=nullptr,ServerNpcSharedTacticalCoverStats* tactical_stats=nullptr,const GatherRoute* gather=nullptr,const ServerNpcNativeGatherRoute* native_gather=nullptr,const NativeRequestRoute* request=nullptr,const ServerNpcScriptedSchedulerBindings* script=nullptr,ServerNpcScriptedSchedulerStats* script_stats=nullptr) noexcept {
+int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSchedulerBindings* b,ServerNpcSubclassSchedulerResult* out,const ServerGruntCombatTaskBindings* combat=nullptr,ServerGruntCombatSchedulerStats* stats=nullptr,const ServerGruntHelperTaskBindings* full=nullptr,ServerGruntFullTaskStats* full_stats=nullptr,const ServerNpcSharedTaskBindings* shared=nullptr,ServerNpcSharedTaskStats* shared_stats=nullptr,const ServerNpcSharedAttackBindings* attack=nullptr,ServerNpcSharedAttackStats* attack_stats=nullptr,const ServerNpcSharedFacingBindings* facing=nullptr,ServerNpcSharedFacingStats* facing_stats=nullptr,const ServerNpcSharedTargetAnimationBindings* target_animation=nullptr,ServerNpcSharedTargetAnimationStats* target_animation_stats=nullptr,const ServerNpcSharedMovementBindings* movement=nullptr,ServerNpcSharedMovementStats* movement_stats=nullptr,const ServerNpcSharedCueBindings* cue=nullptr,ServerNpcSharedCueStats* cue_stats=nullptr,const ServerNpcSharedObservationBindings* observe=nullptr,ServerNpcSharedObservationStats* observe_stats=nullptr,const ServerNpcSharedSoundCoverBindings* sound_cover=nullptr,ServerNpcSharedSoundCoverStats* sound_cover_stats=nullptr,const ServerNpcSharedTacticalCoverBindings* tactical=nullptr,ServerNpcSharedTacticalCoverStats* tactical_stats=nullptr,const GatherRoute* gather=nullptr,const ServerNpcNativeGatherRoute* native_gather=nullptr,const NativeRequestRoute* request=nullptr,const ServerNpcScriptedSchedulerBindings* script=nullptr,ServerNpcScriptedSchedulerStats* script_stats=nullptr,const native_map::ScriptedNpcStartMotionBindings* motion=nullptr,ServerNpcScriptedMotionSchedulerStats* motion_stats=nullptr) noexcept {
     if(!out)return 0;*out={};
     if(script_stats)*script_stats={};
+    if(motion_stats)*motion_stats={};
+    if(motion&&(!script||!motion_stats||!motion->base||motion->base!=script->start))return 0;
     if(script&&(!shared||!script_stats||!script->run||!script->start||script->start->task!=script->run))return 0;
     if(!a||!b||!classify(b->original_vtable,&out->subclass))return 0;
     const bool jet=out->subclass==NpcSubclassJetpack;
@@ -465,6 +467,7 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
     native_map::ScriptedSequenceFinishBindings script_finish{};
     native_map::ScriptedNpcTaskBindings script_run{};
     native_map::ScriptedNpcStartTaskBindings script_start{};
+    native_map::ScriptedNpcStartMotionBindings script_motion{};
     if(script){
         if(!script->run->finish||!script->run->finish->animation||!script->run->finish->animation->control||
            !script->run->finish->possession)return 0;
@@ -477,12 +480,14 @@ int run_subclass_impl(void* a,unsigned bytes,float now,const ServerNpcSubclassSc
         if(m.animation)script_animation.assignment=&session.bound;
         script_run=*script->run;script_run.finish=&script_finish;script_run.lifecycle=&binding.grunt.lifecycle;
         script_start=*script->start;script_start.task=&script_run;
+        if(motion){script_motion=*motion;script_motion.base=&script_start;}
     }
     if(shared){
         ServerGruntTaskBindings forwarded{};
         if(!shared_stats||!bind_shared_parent_internal(a,bytes,now,&binding.grunt,&m.selection,shared,shared_stats,&shared_session,&forwarded,attack,attack_stats,facing,facing_stats,target_animation,target_animation_stats,movement,movement_stats,cue,cue_stats,observe,observe_stats,sound_cover,sound_cover_stats,tactical,tactical_stats))return 0;
         if(script){
             shared_session.script_run=&script_run;shared_session.script_start=&script_start;shared_session.script_stats=script_stats;
+            if(motion){shared_session.script_motion=&script_motion;shared_session.script_motion_stats=motion_stats;}
         }
         if(request){
             shared_session.native_acquire=&request_session.acquire;
@@ -522,13 +527,15 @@ int __cdecl run_native_request(void* a,unsigned bytes,float now,const ServerNpcN
     return run_subclass_impl(a,bytes,now,&b->scheduler,&out->scheduler,b->full_tasks?&b->full_tasks->injury.combat:nullptr,combat_stats,b->full_tasks,full_stats,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,&route);
 }
 int run_scripted_scheduler(void* a,unsigned bytes,float now,const ServerNpcScriptedSchedulerBindings* b,
-    ServerNpcSubclassSchedulerResult* out,ServerNpcScriptedSchedulerStats* script_stats) noexcept {
+    ServerNpcSubclassSchedulerResult* out,ServerNpcScriptedSchedulerStats* script_stats,
+    const native_map::ScriptedNpcStartMotionBindings* motion=nullptr,ServerNpcScriptedMotionSchedulerStats* motion_stats=nullptr) noexcept {
+    if(motion_stats)*motion_stats={};
     if(out)*out={};if(script_stats)*script_stats={};
     if(!out||!b||!b->scheduler||!b->shared||!script_stats)return 0;
     ServerNpcSharedTaskStats shared_stats{};
     return run_subclass_impl(a,bytes,now,b->scheduler,out,nullptr,nullptr,nullptr,nullptr,b->shared,&shared_stats,
         nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,
-        nullptr,nullptr,nullptr,nullptr,nullptr,b,script_stats);
+        nullptr,nullptr,nullptr,nullptr,nullptr,b,script_stats,motion,motion_stats);
 }
 const ServerNpcNativeRequestSchedulerApi native_request_api{1,sizeof(ServerNpcNativeRequestSchedulerApi),&run_native_request};
 int __cdecl run_native_jet_request(void* a,unsigned bytes,float now,const ServerNpcNativeJetRequestSchedulerBindings* b,ServerNpcNativeJetRequestSchedulerResult* out,ServerGruntCombatSchedulerStats* combat_stats,ServerGruntFullTaskStats* full_stats) noexcept{
@@ -607,4 +614,13 @@ extern "C" int __cdecl SiN_RunServerNpcScriptedScheduler(void* a,unsigned bytes,
     const sin_port::native_weapon_tables::ServerNpcScriptedSchedulerBindings* b,sin_port::native_weapon_tables::ServerNpcSubclassSchedulerResult* out,
     sin_port::native_weapon_tables::ServerNpcScriptedSchedulerStats* stats) noexcept {
     return sin_port::native_weapon_tables::run_scripted_scheduler(a,bytes,now,b,out,stats);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_RunServerNpcScriptedSchedulerWithMotion=_SiN_RunServerNpcScriptedSchedulerWithMotion")
+extern "C" int __cdecl SiN_RunServerNpcScriptedSchedulerWithMotion(void* a,unsigned bytes,float now,
+    const sin_port::native_weapon_tables::ServerNpcScriptedSchedulerBindings* b,sin_port::native_weapon_tables::ServerNpcSubclassSchedulerResult* out,
+    sin_port::native_weapon_tables::ServerNpcScriptedSchedulerStats* stats,const sin_port::native_map::ScriptedNpcStartMotionBindings* motion,
+    sin_port::native_weapon_tables::ServerNpcScriptedMotionSchedulerStats* motion_stats) noexcept {
+    if(!motion||!motion_stats){if(out)*out={};if(stats)*stats={};if(motion_stats)*motion_stats={};return 0;}
+    return sin_port::native_weapon_tables::run_scripted_scheduler(a,bytes,now,b,out,stats,motion,motion_stats);
 }

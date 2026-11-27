@@ -23,6 +23,8 @@ extern "C" int __cdecl SiN_RunScriptedNpcTask(void*,unsigned,int,
     const sin_port::native_map::ScriptedNpcTaskBindings*,sin_port::native_map::ScriptedNpcTaskResult*) noexcept;
 extern "C" int __cdecl SiN_StartScriptedNpcTask(void*,unsigned,int,
     const sin_port::native_map::ScriptedNpcStartTaskBindings*,sin_port::native_map::ScriptedNpcStartTaskResult*) noexcept;
+extern "C" int __cdecl SiN_StartScriptedNpcMotionTask(void*,unsigned,int,
+    const sin_port::native_map::ScriptedNpcStartMotionBindings*,sin_port::native_map::ScriptedNpcStartMotionResult*) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 struct NativeSetScheduleRoute {
@@ -215,7 +217,7 @@ int target_animation(void* a,unsigned n,int task,float now,const ServerNpcShared
     if(!life||!life->animation_finished(a,n,&out.animation_finished))return 0;
     return !out.animation_finished||life->complete(a,n,now,false,&s.lifecycle,&out.shared.lifecycle);
 }
-int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverResult* = nullptr,const ServerNpcSharedEnemyRefreshBindings* = nullptr,ServerNpcSharedEnemyRefreshResult* = nullptr,const NativeSetScheduleRoute* = nullptr,const native_map::ScriptedNpcTaskBindings* = nullptr,native_map::ScriptedNpcTaskResult* = nullptr,const native_map::ScriptedNpcStartTaskBindings* = nullptr,native_map::ScriptedNpcStartTaskResult* = nullptr) noexcept;
+int execute_impl(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*,const ServerNpcSharedFacingBindings* = nullptr,ServerNpcSharedFacingResult* = nullptr,const ServerNpcSharedTargetAnimationBindings* = nullptr,ServerNpcSharedTargetAnimationResult* = nullptr,const ServerNpcSharedMovementBindings* = nullptr,ServerNpcSharedMovementResult* = nullptr,const float* = nullptr,const ServerNpcSharedCueBindings* = nullptr,ServerNpcSharedCueResult* = nullptr,const ServerNpcSharedObservationBindings* = nullptr,ServerNpcSharedObservationResult* = nullptr,const ServerNpcSharedSoundCoverBindings* = nullptr,ServerNpcSharedSoundCoverResult* = nullptr,const ServerNpcSharedTacticalCoverBindings* = nullptr,ServerNpcSharedTacticalCoverResult* = nullptr,const ServerNpcSharedEnemyRefreshBindings* = nullptr,ServerNpcSharedEnemyRefreshResult* = nullptr,const NativeSetScheduleRoute* = nullptr,const native_map::ScriptedNpcTaskBindings* = nullptr,native_map::ScriptedNpcTaskResult* = nullptr,const native_map::ScriptedNpcStartTaskBindings* = nullptr,native_map::ScriptedNpcStartTaskResult* = nullptr,const native_map::ScriptedNpcStartMotionBindings* = nullptr,native_map::ScriptedNpcStartMotionResult* = nullptr) noexcept;
 bool movement_supports(int id,bool running) noexcept{
     if(running)return id==116||id==121||id==122;
     return id==43||id==44||id==89||id==90||id==116||id==121||id==122;
@@ -585,7 +587,7 @@ int enemy_refresh135(void* a,unsigned n,float now,const ServerNpcSharedTaskBindi
     }
     return complete();
 }
-int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcSharedTacticalCoverResult* tactical_out,const ServerNpcSharedEnemyRefreshBindings* refresh,ServerNpcSharedEnemyRefreshResult* refresh_out,const NativeSetScheduleRoute* native_set,const native_map::ScriptedNpcTaskBindings* script,native_map::ScriptedNpcTaskResult* script_out,const native_map::ScriptedNpcStartTaskBindings* start_script,native_map::ScriptedNpcStartTaskResult* start_out) noexcept{
+int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,const ServerNpcSharedTaskBindings* b,ServerNpcSharedTaskResult* out,const ServerNpcSharedFacingBindings* facing,ServerNpcSharedFacingResult* facing_out,const ServerNpcSharedTargetAnimationBindings* target,ServerNpcSharedTargetAnimationResult* target_out,const ServerNpcSharedMovementBindings* move,ServerNpcSharedMovementResult* move_out,const float* shoot_metric,const ServerNpcSharedCueBindings* cue,ServerNpcSharedCueResult* cue_out,const ServerNpcSharedObservationBindings* observe,ServerNpcSharedObservationResult* observe_out,const ServerNpcSharedSoundCoverBindings* sound_cover,ServerNpcSharedSoundCoverResult* sound_cover_out,const ServerNpcSharedTacticalCoverBindings* tactical,ServerNpcSharedTacticalCoverResult* tactical_out,const ServerNpcSharedEnemyRefreshBindings* refresh,ServerNpcSharedEnemyRefreshResult* refresh_out,const NativeSetScheduleRoute* native_set,const native_map::ScriptedNpcTaskBindings* script,native_map::ScriptedNpcTaskResult* script_out,const native_map::ScriptedNpcStartTaskBindings* start_script,native_map::ScriptedNpcStartTaskResult* start_out,const native_map::ScriptedNpcStartMotionBindings* motion_script,native_map::ScriptedNpcStartMotionResult* motion_out) noexcept{
     if(!out)return 0;*out={};out->activity=-1;
     if(!a||n<0xc1c||!t||!b||!std::isfinite(now))return 0;
     // The existing class schedule resolver has a larger actor extent.
@@ -599,6 +601,18 @@ int execute_impl(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,
         wr<std::uint8_t>(component,8,1);out->component_called=1;
         if(!b->component_task(b->context,token,t,running))return 0;
         if(rd<std::uint8_t>(component,8)){out->component_handled=1;return 1;}
+    }
+    if(motion_script&&motion_out&&!running&&(t->id==107||t->id==108)){
+        if(!motion_script->base||!motion_script->base->task||!motion_script->base->task->finish||
+           !motion_script->base->task->finish->animation||!motion_script->base->task->finish->animation->control||
+           !motion_script->base->task->finish->animation->control->now||
+           *motion_script->base->task->finish->animation->control->now!=now)return 0;
+        auto task=*motion_script->base->task;task.lifecycle=&b->lifecycle;
+        auto base=*motion_script->base;base.task=&task;
+        auto bound=*motion_script;bound.base=&base;
+        out->native=1;const int ok=SiN_StartScriptedNpcMotionTask(a,n,t->id,&bound,motion_out);
+        out->lifecycle.completed=motion_out->task_completed;out->lifecycle.failed=motion_out->task_failed;
+        out->lifecycle.status=motion_out->status;return ok;
     }
     if(start_script&&start_out&&!running&&(t->id==106||t->id==109||t->id==110)){
         if(!start_script->task||!start_script->task->finish||!start_script->task->finish->animation||
@@ -818,6 +832,15 @@ int execute_scripted_start(void* a,unsigned n,const ServerNpcScheduleTask* t,flo
         nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,
         nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,script,&out->script);
 }
+int execute_scripted_motion(void* a,unsigned n,const ServerNpcScheduleTask* t,float now,
+    const ServerNpcSharedTaskBindings* b,const native_map::ScriptedNpcStartMotionBindings* motion,ServerNpcSharedTaskResult* out,
+    native_map::ScriptedNpcStartMotionResult* result) noexcept {
+    if(!out||!result)return 0;*out={};*result={};
+    if(!motion||!t)return 0;
+    return execute_impl(a,n,t,false,now,b,out,
+        nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,
+        nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,motion,result);
+}
 const ServerNpcSharedNativeSpeechApi native_speech_api{1,sizeof(ServerNpcSharedNativeSpeechApi),&execute_native_speech};
 const ServerNpcSharedCueApi cue_api{1,sizeof(ServerNpcSharedCueApi),&execute_cue};
 const ServerNpcDifficultyWaitApi difficulty_wait_api{1,sizeof(ServerNpcDifficultyWaitApi),&execute_difficulty_wait};
@@ -838,6 +861,11 @@ int bind_shared_parent_internal(void* actor,unsigned bytes,float now,const Serve
     bound->parent=[](void* p,void* a,const ServerNpcScheduleTask* t,bool running) noexcept -> int{
         auto& q=*static_cast<ServerNpcSharedParentSession*>(p);
         if(a!=q.actor||!t)return 0;
+        if(q.script_motion&&q.script_motion_stats&&!running&&(t->id==107||t->id==108)){
+            auto& st=*q.script_motion_stats;++st.starts;
+            const int ok=execute_scripted_motion(a,q.bytes,t,q.now,&q.shared,q.script_motion,&st.shared,&st.last);
+            st.native_starts+=st.shared.native;st.component_handled+=st.shared.component_handled;return ok;
+        }
         if(q.script_stats){
             auto& st=*q.script_stats;
             if(running&&q.script_run&&(t->id==106||t->id==108||t->id==109||t->id==110)){
