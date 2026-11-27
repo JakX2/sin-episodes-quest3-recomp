@@ -39,7 +39,13 @@ The remaining raw-entry fields are not reconstructed by this diagnostic.
 The original EHandle resolver at `0x241074D0` first rejects
 `0xFFFFFFFF`, masks the low 12 bits for the raw table index, shifts
 the handle right 12 for the serial and returns the raw unknown pointer
-only if the stored serial matches. Underlying native address arithmetic is
+only if the stored serial matches. The full upper 20 handle bits are
+compared in this resolver; however, the separately original-authenticated
+base constructor at `0x24127E80` initializes all 4096 slot serials through
+`vstdlib.dll!RandomInt(0,32767)` and masks them to `0x7FFF`. The real
+slot-generation domain is therefore **15 bits**, not an arbitrary 20-bit
+retail serial. The native fixture uses 15-bit serials and rejects handles
+with high serial bits set. Underlying native address arithmetic is
 equivalent to `parent + 0x04 + 16*(handle & 0xFFF)`; it is not the start
 of the secondary object's mirror table.
 
