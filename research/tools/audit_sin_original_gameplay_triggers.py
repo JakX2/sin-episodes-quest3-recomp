@@ -139,6 +139,20 @@ ORIGINAL_METHODS={
   "sequence_animation_event1003":(0x2204a4ec,59,"eeef3469cc079ed78a172a8753ed2675bf13bb88ef5517fce2dce247690569a9"),
   "sequence_animation_event_atoi":(0x223a5673,88,"4790129ae4d1dc86dcba5201e7c8d359f3ed4c8b657ff5dd2f9924e58d11da94"),
   "sequence_condition_snapshot":(0x2203b110,232,"eee6be6a992c87624488c9945a5de82c0b9b6311bf1a4a94294a9e4b5f4ad973"),
+  "sequence_schedule_face_text":(0x223e2f18,247,"5defc01150cc7bd73153201c0e5af36ab23a8bb25aaa72520eb232e374dd9744"),
+  "sequence_schedule_wait_text":(0x223e3010,223,"029039a513b09500e31696bdea5b1c1355d13f707b939918fd6689929202bc6f"),
+  "sequence_schedule_custom_text":(0x223e30f0,402,"bb8ee1070a2cf6ada4e256915b1e7b3ba2771666b27b2957786cb679514fb90b"),
+  "sequence_schedule_run_text":(0x223e3288,388,"0b7e84458b6d47d16db2b92560a6ce9bd6c82ca5de7f7a0b3f31e9ab7d528a91"),
+  "sequence_schedule_walk_text":(0x223e3410,390,"ac17b11a7df7c8cf9da581105831f66c1a2362b4bdab9778f97dcb769d39b76c"),
+  "sequence_schedule_wait_indefinite_text":(0x223e5c88,136,"e251db7192f81bbafd90fc7dc3a3060512fe8cfffca4e4b0474cacd9ac47d500"),
+  "sequence_schedule_registration":(0x2205e087,189,"224a3da6dbdef98c21c983b1a3b62e945353d3bd0ae030351c19cfb36c0001bb"),
+  "sequence_schedule_parse_order":(0x2205ea69,208,"4c3a6e24e8f391434c37784907f9b2fda00ab68e379653f43dc92f4533206c0b"),
+  "sequence_schedule_task_registration":(0x220ad6ae,189,"80fa49ffb0b020d7bc87d8c02d499292f4089374166c4a33382c3ada2e7b7810"),
+  "sequence_schedule_move_registration":(0x220acc73,81,"20f1755be25d32c6567a45d995880fa80d2b70af88a36fbcd2228d687e31e02e"),
+  "sequence_schedule_tolerance_registration":(0x220ad4e3,27,"ca56e7ff34fab40d4e120336fb7ac5735989cd13df9fb75f07f750b5dcb62edc"),
+  "sequence_schedule_stop_wait_registration":(0x220ad7a1,54,"80dc4d85e54f34fbd409077b8e189f6e6ce9db1b6abb9d4ebae86348f445c1d9"),
+  "sequence_schedule_wait_movement_registration":(0x220ad843,27,"da41dc2409a246c57d4b5864b77f032b769a0400062387d9767bf070c1f4abcb"),
+  "sequence_schedule_condition_registration":(0x2205a96b,54,"42ab100a49a7e990f698587b599c1884043d976e71ef9628fc68791de323cac4"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
@@ -358,6 +372,7 @@ def verify_filter_factory_keys(read_u32,read_text):
 FILTER_DESTRUCTORS={0x224149a4:0x2216bc40,0x22414c3c:0x2216bd00,0x22414ed4:0x2216be40,0x2241516c:0x2216bf20}
 FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x224,0x2214a060),(0x268,0x220019f0))
 SEQUENCE_WORDS={
+    0x224dedec:0x223e5c88,0x224dee8c:0x223e3410,0x224dee90:0x223e3288,0x224dee94:0x223e30f0,0x224dee98:0x223e3010,0x224dee9c:0x223e2f18,
     0x2204ab64:0x2204a527,0x2204ab68:0x2204a555,0x2204ab6c:0x2204a4ec,
     0x22052eb8:0x2205263b,0x22052ebc:0x22052675,0x223d9f88:0x33333333,0x223d9f8c:0x3fc33333,0x223d8f14:0x41200000,0x22052ec0:0x2205272a,0x22052ec4:0x22052788,0x22052ec8:0x2205279f,
     0x22052f24:0x2205281a,

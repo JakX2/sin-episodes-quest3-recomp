@@ -39,6 +39,10 @@ using GetServerNpcScheduleImageApi=const ServerNpcScheduleImageApi* (__cdecl *)(
 // Same structure/ABI, token interval, namespace checks and transactional build.
 inline constexpr char server_npc_reload_schedule_image_export[]="SiN_GetServerNpcReloadScheduleImageApi";
 using GetServerNpcReloadScheduleImageApi=GetServerNpcScheduleImageApi;
+// Separate inherited script schedule image: six original base schedules.
+// Chain this image below a derived schedule image; no ABI capacity change.
+inline constexpr char server_npc_scripted_schedule_image_export[]="SiN_GetServerNpcScriptedScheduleImageApi";
+using GetServerNpcScriptedScheduleImageApi=GetServerNpcScheduleImageApi;
 inline constexpr char server_npc_catalog_scheduler_export[]="SiN_GetServerNpcCatalogSchedulerApi";
 struct ServerNpcCatalogSchedulerResult {
     ServerNpcScheduleServicesResult runtime;
