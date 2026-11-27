@@ -184,6 +184,21 @@ target_compile_features(sin_server_gameents_bounded_dispatch_test PRIVATE cxx_st
 add_test(NAME independent_server_gameents_bounded_dispatch_native
   COMMAND sin_server_gameents_bounded_dispatch_test)
 
+# Host-owned generation and lease bookkeeping, without original game memory.
+add_executable(sin_server_gameents_owner_lifetime_registry_test
+  test_server_gameents_owner_registry.cpp)
+target_compile_features(sin_server_gameents_owner_lifetime_registry_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_owner_registry_native
+  COMMAND sin_server_gameents_owner_lifetime_registry_test)
+
+# Owner-authenticated engine.dll edict array layout and post-GameEnts cleanup
+# ordering: original-free synthetic 0x14-byte PE32 records only.
+add_executable(sin_server_gameents_engine_edict_retire_test
+  test_server_gameents_engine_edict_retire.cpp)
+target_compile_features(sin_server_gameents_engine_edict_retire_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_engine_edict_retire_native
+  COMMAND sin_server_gameents_engine_edict_retire_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
