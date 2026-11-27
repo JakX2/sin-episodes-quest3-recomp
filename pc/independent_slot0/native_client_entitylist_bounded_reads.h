@@ -33,7 +33,8 @@ namespace sin_independent {
 namespace client_entitylist_bounded {
 
 constexpr unsigned kNativeRawSlots=4096u;
-constexpr unsigned kNativeMirrorSlots=2048u;
+constexpr unsigned kNativeMirrorSlots=4096u;
+constexpr unsigned kNetworkedLiveLimit=2048u;
 constexpr std::uint32_t kEhandleIndexMask=0xFFFu;
 constexpr unsigned kEhandleSerialShift=12u;
 constexpr std::uint32_t kInvalidHandle=0xFFFFFFFFu;
@@ -137,7 +138,7 @@ public:
         // Host safety: count metadata is trusted only if within the
         // synthetic host's capacities. Original just adds two DWORDs.
         if(state_.networked_count<0 ||
-           state_.networked_count>static_cast<int>(kNativeMirrorSlots) ||
+           state_.networked_count>static_cast<int>(kNetworkedLiveLimit) ||
            state_.secondary_flagged_count<0 ||
            state_.secondary_flagged_count>static_cast<int>(kNativeRawSlots))
             return 0;
@@ -147,7 +148,7 @@ public:
     int __thiscall GetHighestEntityIndex() noexcept override {
         // Original returns a DWORD. The host can represent -1 for empty.
         const int hi=state_.highest_live_index;
-        return hi>=-1 && hi<static_cast<int>(kNativeMirrorSlots) ? hi:-1;
+        return hi>=-1 && hi<static_cast<int>(kNetworkedLiveLimit) ? hi:-1;
     }
     void __thiscall SetMaxEntities(int maximum) noexcept override {
         // Host safety: unlike the original raw DWORD write, refuse
