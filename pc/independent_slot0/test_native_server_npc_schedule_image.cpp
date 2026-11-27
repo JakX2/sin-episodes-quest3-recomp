@@ -1255,6 +1255,18 @@ int main(int argc,char** argv){
                 auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&elapsed>0.f&&elapsed<=.15f&&!x&&!y);++q.motion_ticks;return 1;
             };
             ServerNpcScriptedMotionSchedulerStats motion_stats{};services.motion=&motion;services.motion_stats=&motion_stats;
+            // Long playback also reaches the weapon's natural looping finish.
+            // Provide its native sequence-reset metadata instead of seeding
+            // the weapon cycle each frame (the short fixtures never needed it).
+            auto continuous_frame=frame;
+            auto& weapon_loop=continuous_frame.frame.frame.runtime.weapon.animation;
+            weapon_loop.reset.context=&meta;
+            weapon_loop.reset.duration=[](void*,void*,int,double* d) noexcept ->int{*d=4.;return 1;};
+            weapon_loop.reset.distance=[](void*,void*,int,double* d) noexcept ->int{*d=0.;return 1;};
+            weapon_loop.reset.flags=[](void*,void*,int,unsigned* flags) noexcept ->int{*flags=1;return 1;};
+            weapon_loop.dictionary.descriptor=[](void*,void*,int,void**,unsigned*,unsigned*) noexcept ->int{return 0;};
+            prefix_step.frame=&continuous_frame;
+            unsigned weapon_reselections=0;
             unsigned play_ticks=0,post_ticks=0,play_starts=0,post_starts=0,play_completions=0;
             bool terminated=false;
             for(unsigned tick=0;tick<64;++tick){
@@ -1262,7 +1274,13 @@ int main(int argc,char** argv){
                 const ServerNpcRunAnimationInput input{now,false,false};
                 const int ok=combined->ground(f.actor,sizeof(f.actor),&input,.05f,&prefix_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out);
                 if(!ok)std::fprintf(stderr,"script continuous tick=%u task=%d status=%d starts=%u/%u runs=%u assigned=%u end=%u cleaned=%u anim=%u\n",tick,step_result.think.requests.scheduler.maintenance.state.task.id,step_result.think.requests.scheduler.maintenance.state.status,script_stats.native_starts,motion_stats.native_starts,script_stats.native_runs,q.assignments,q.ends,cleaned.completed,step_result.animation_called);
+                const auto& animation_runtime=step_result.animation.frame.frame.runtime;
+                const auto& weapon_frame=animation_runtime.weapon_frame;
+                if(!ok)std::fprintf(stderr,"script continuous weapon frames=%u advanced=%u reselected=%u sequence_set=%u selected=%d owner=%u tail=%u\n",animation_runtime.weapon_frames,weapon_frame.advanced,weapon_frame.reselected,weapon_frame.sequence_set,weapon_frame.selected,weapon_frame.owner_live,tail_result.completed);
                 assert(ok&&outer_result.completed&&outer_result.think_called&&tail_result.completed);
+                if(weapon_frame.reselected){
+                    ++weapon_reselections;assert(weapon_frame.sequence_set&&weapon_frame.selected==0);
+                }
                 if(motion_stats.native_starts){
                     assert(motion_stats.native_starts==1&&motion_stats.last.task==108&&motion_stats.last.state_written&&motion_stats.last.duration_called);
                     ++play_starts;
@@ -1291,7 +1309,7 @@ int main(int argc,char** argv){
                 }
                 assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.schedule==8012&&(sr.index==3||sr.index==4));
             }
-            assert(terminated&&play_starts==1&&post_starts==1&&play_completions==1&&play_ticks>1&&post_ticks>1&&q.motion_ticks==1&&q.aims==play_ticks&&q.begins==1&&q.ends==1&&q.assignments==2&&q.lookups==2);
+            assert(terminated&&weapon_reselections>=1&&play_starts==1&&post_starts==1&&play_completions==1&&play_ticks>1&&post_ticks>1&&q.motion_ticks==1&&q.aims==play_ticks&&q.begins==1&&q.ends==1&&q.assignments==2&&q.lookups==2);
             // Fresh FACE descriptor: the original cursor enters Start112
             // after STOP_MOVING. Use the same native outer entry and clock.
             std::memset(q.seq,0,sizeof(q.seq));f.put(q.seq,0,nm::scripted_sequence_vtable);
