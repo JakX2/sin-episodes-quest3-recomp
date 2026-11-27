@@ -1,4 +1,4 @@
-#include "native_server_recombinant_damage.h"
+#include "native_server_recombinant_damage_pending.h"
 #include <cmath>
 #include <cstring>
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantPendingActivityApi* __cdecl SiN_GetServerRecombinantPendingActivityApi(unsigned,unsigned) noexcept;
