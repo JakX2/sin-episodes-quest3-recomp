@@ -34,6 +34,28 @@ struct ServerRecombinantMinorApi {
 };
 using GetServerRecombinantMinorApi=const ServerRecombinantMinorApi* (__cdecl *)(unsigned,unsigned) noexcept;
 
+inline constexpr char server_recombinant_minor_metric_gate_export[]="SiN_GetServerRecombinantMinorMetricGateApi";
+// Original Minor virtual +0x398 (2237e8c0). The global engine owner
+// decides whether to suppress the check; if not, candidate+2c > 10.f.
+// The meaning of the candidate's scalar is not yet authenticated.
+struct ServerRecombinantMinorMetricGateBindings {
+    void* context;
+    int (__cdecl *manager_suppresses)(void*,bool*) noexcept; // owner virtual +0x170
+};
+struct ServerRecombinantMinorMetricGateResult {
+    unsigned completed,manager_calls,suppressed,compared,allowed;
+    float observed,threshold;
+};
+struct ServerRecombinantMinorMetricGateApi {
+    unsigned version,size;
+    int (__cdecl *evaluate)(const void*,unsigned,const void*,unsigned,
+        const ServerRecombinantMinorMetricGateBindings*,
+        ServerRecombinantMinorMetricGateResult*) noexcept;
+};
+using GetServerRecombinantMinorMetricGateApi=
+    const ServerRecombinantMinorMetricGateApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+
 inline constexpr char server_recombinant_minor_origin_point_export[]="SiN_GetServerRecombinantMinorOriginPointApi";
 // Original Minor virtual +0x1d4 (2237b420) writes origin +(0,0,6).
 // Only the Source-owned dirty-origin refresh remains a host service.
