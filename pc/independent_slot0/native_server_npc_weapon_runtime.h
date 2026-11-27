@@ -2,6 +2,7 @@
 #include "native_server_native_activity_services.h"
 #include "native_server_animation_tick.h"
 #include "native_server_weapon_post_frame.h"
+#include "native_server_map_entity.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_weapon_runtime_export[]="SiN_GetServerNpcWeaponRuntimeApi";
 struct ServerNpcWeaponRuntimeBindings {
@@ -78,4 +79,14 @@ struct ServerNpcScriptWeaponEventFrameApi {
     int (__cdecl *run)(void*,unsigned,const ServerNpcRunAnimationInput*,const ServerNpcScriptWeaponEventFrameBindings*,ServerNpcScriptWeaponEventFrameResult*) noexcept;
 };
 using GetServerNpcScriptWeaponEventFrameApi=const ServerNpcScriptWeaponEventFrameApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Separate optional scripted NPC animation sidecar. Weapon-originated
+// events still use the existing registered weapon handler.
+struct ServerNpcScriptedWeaponFrameResult {
+    unsigned handled,failed;
+    native_map::ScriptedNpcAnimationEventResult last;
+};
+inline constexpr char server_npc_scripted_weapon_frame_export[]="SiN_RunServerNpcWeaponFrameWithScriptedEvents";
+using RunServerNpcWeaponFrameWithScriptedEvents=int (__cdecl *)(void*,unsigned,const ServerNpcRunAnimationInput*,
+    const ServerNpcScriptWeaponEventFrameBindings*,ServerNpcScriptWeaponEventFrameResult*,
+    const native_map::ScriptedNpcAnimationEventBindings*,ServerNpcScriptedWeaponFrameResult*) noexcept;
 }

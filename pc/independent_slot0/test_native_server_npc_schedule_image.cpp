@@ -834,7 +834,8 @@ int main(int argc,char** argv){
         struct FrameMeta {
             EquippedThinkFixture* q;
             ServerStudioEvent reload{.04f,2,0,"reload",0},shot{.04f,3002,0,"fire",0};
-            bool reloading=false,suppress=false;
+            bool reloading=false,suppress=false,scripted=false;
+            ServerStudioEvent script_events[2]{{.02f,1001,0,"",0},{.04f,1002,0,"",0}};
         } meta{&equipped};
         ServerNpcScriptWeaponEventFrameBindings frame{};
         frame.frame.events=event_bind.original;
@@ -863,7 +864,8 @@ int main(int argc,char** argv){
         nf.events.sequence=[](void* p,void* a,int,ServerAnimationEventSequence* seq) noexcept -> int{
             auto& q=*static_cast<FrameMeta*>(p);
             const bool npc=a==q.q->f->actor;assert(npc||a==q.q->weapon);
-            if(!q.suppress&&npc==q.reloading)*seq={npc?&q.reload:&q.shot,1,1,0};
+            if(!q.suppress&&npc&&q.scripted)*seq={q.script_events,2,1,0};
+            else if(!q.suppress&&npc==q.reloading)*seq={npc?&q.reload:&q.shot,1,1,0};
             else *seq={nullptr,0,1,0};
             return 1;
         };
@@ -962,6 +964,35 @@ int main(int argc,char** argv){
             else assert(step_result.outer_weapon.primary.clip==3-i&&step_result.outer_line.attack.conditions[0]==20);
         }
         assert(equipped.shots==3&&equipped.sounds==3&&equipped.prepares==3&&equipped.flashes==3);
+        // Loaded full NPC + weapon animation tick: script studio events
+        // coexist with the existing weapon event without duplicate emission.
+        {
+            const auto scripted_frame=reinterpret_cast<RunServerNpcWeaponFrameWithScriptedEvents>(GetProcAddress(s,server_npc_scripted_weapon_frame_export));
+            assert(scripted_frame&&!GetProcAddress(c,server_npc_scripted_weapon_frame_export));
+            struct SequenceFixture {F* f;alignas(4) unsigned char seq[nm::scripted_sequence_extent]{};} q{&f};
+            f.put(q.seq,0,nm::scripted_sequence_vtable);f.put(q.seq,0x378,0x9002u);
+            const auto prior_slot=equipped_entries[2];const auto prior_count=selection.state.entities.count;
+            equipped_entries[2].serial=9;equipped_entries[2].entity=reinterpret_cast<CBaseEntity*>(q.seq);
+            selection.state.entities.count=3;
+            nm::ScriptedSequenceControlBindings control{};control.context=&q;
+            control.extent=[](void* p,void* entity,unsigned* n) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);*n=entity==q.seq?sizeof(q.seq):entity==q.f->actor?sizeof(q.f->actor):0;return *n!=0;
+            };
+            nm::ScriptedSequenceInterruptBindings interrupt{&control,nullptr};
+            nm::ScriptedNpcAnimationEventBindings events{&interrupt,nullptr};
+            ServerNpcScriptedWeaponFrameResult seq_out{};
+            auto bound=frame;bound.frame.frame.runtime.inherited.weapons=selection.state.entities;
+            bound.scripts=*policy.ammo->scripts;bound.conditions=sb.conditions;
+            prepare_engaged(1,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+            f.put(f.actor,0,0x224954a4u);f.put(f.actor,0x970,0x9002u);f.put(q.seq,0x3d0,0x3000u);
+            stamp=0;equipped.shots=equipped.sounds=equipped.prepares=equipped.flashes=0;
+            meta.reloading=false;meta.scripted=true;seed_anim(76.f);
+            const ServerNpcRunAnimationInput input{76.f,false,false};
+            ServerNpcScriptWeaponEventFrameResult full_frame{};
+            assert(scripted_frame(f.actor,sizeof(f.actor),&input,&bound,&full_frame,&events,&seq_out)&&seq_out.handled==2&&!seq_out.failed&&seq_out.last.event==1002&&q.seq[0x3cc]);
+            assert(full_frame.frame.frame.npc_events==2&&full_frame.frame.frame.weapon_events==1&&full_frame.frame.frame.handled==3&&equipped.shots==1&&!control.entries&&!control.now);
+            meta.scripted=false;equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
+        }
         // Real due-think wake route, using the original proximity branch
         // with PVS false to retain the already verified combat fixture.
         auto get_wake_outer=reinterpret_cast<GetServerNpcOuterWakeUpdateApi>(GetProcAddress(s,server_npc_outer_wake_update_export));

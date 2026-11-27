@@ -1,5 +1,7 @@
 #include "native_server_npc_weapon_runtime.h"
 #include <cmath>
+extern "C" int __cdecl SiN_HandleScriptedNpcAnimationEvent(void*,unsigned,int,const char*,unsigned,
+    const sin_port::native_map::ScriptedNpcAnimationEventBindings*,sin_port::native_map::ScriptedNpcAnimationEventResult*) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNativeActivityServicesApi* __cdecl
 SiN_GetServerNativeActivityServicesApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpcActivityAssignmentApi* __cdecl
@@ -44,6 +46,8 @@ struct Call {
     ServerNpcNativeWeaponEventFrameResult* native_result;
     ServerNpcReloadSession* reload;
     ServerNpcScriptWeaponEventFrameResult* script_result;
+    const native_map::ScriptedNpcAnimationEventBindings* sequence_events;
+    ServerNpcScriptedWeaponFrameResult* sequence_result;
 };
 Call& self(void* p) noexcept {return *static_cast<Call*>(p);}
 bool prepare(Call& c) noexcept {
@@ -106,6 +110,13 @@ void bind_events(EventRoute& route,ServerAnimationEventBindings& target,Call& ca
         auto& route=*static_cast<EventRoute*>(p);auto& c=*route.call;auto& out=*c.grunt_result;
         if(out.failed_status)return;
         if(route.weapon)++out.weapon_events;else ++out.npc_events;
+        if(!route.weapon&&receiver==c.actor&&event&&event->event>=1001&&event->event<=1003&&c.sequence_events){
+            auto& seq=*c.sequence_result;
+            if(SiN_HandleScriptedNpcAnimationEvent(receiver,c.bytes,event->event,event->options,64,c.sequence_events,&seq.last)&&seq.last.handled){
+                ++seq.handled;++out.handled;return;
+            }
+            ++seq.failed;out.failed_status=-1;out.failed_event=event->event;out.failed_source=event->source;return;
+        }
         const auto* api=SiN_GetServerGruntRegistrationApi(1,sizeof(ServerGruntRegistrationApi));
         int status=-1;
         if(receiver==c.actor&&c.reload&&c.script_result&&c.native_result){
@@ -154,7 +165,7 @@ int __cdecl run(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,
     const auto* api=SiN_GetServerNpcAnimationTickApi(1,sizeof(ServerNpcAnimationTickApi));
     return api&&prepare(c)&&api->run(actor,bytes,in,&c.npc,&out->tick);
 }
-int run_grunt_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcWeaponGruntFrameBindings* b,ServerNpcWeaponGruntFrameResult* out,const ServerNpcParentWeaponEventBindings* native=nullptr,ServerNpcNativeWeaponEventFrameResult* result=nullptr,ServerNpcReloadSession* reload=nullptr,ServerNpcScriptWeaponEventFrameResult* script_result=nullptr) noexcept {
+int run_grunt_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcWeaponGruntFrameBindings* b,ServerNpcWeaponGruntFrameResult* out,const ServerNpcParentWeaponEventBindings* native=nullptr,ServerNpcNativeWeaponEventFrameResult* result=nullptr,ServerNpcReloadSession* reload=nullptr,ServerNpcScriptWeaponEventFrameResult* script_result=nullptr,const native_map::ScriptedNpcAnimationEventBindings* sequence_events=nullptr,ServerNpcScriptedWeaponFrameResult* sequence_result=nullptr) noexcept {
     if(!out)return 0;*out={};out->failed_event=-1;
     if(!b||!in||!std::isfinite(in->now)||!b->ids)return 0;
     const auto& t=b->runtime.npc.transition.assignment.translation;
@@ -167,6 +178,7 @@ int run_grunt_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* 
     Call c{};c.host=&b->runtime;c.result=&out->runtime;c.actor=actor;c.bytes=bytes;c.now=in->now;
     c.grunt=b;c.grunt_result=out;
     c.native_events=native;c.native_result=result;c.reload=reload;c.script_result=script_result;
+    c.sequence_events=sequence_events;c.sequence_result=sequence_result;
     const auto* api=SiN_GetServerNpcAnimationTickApi(1,sizeof(ServerNpcAnimationTickApi));
     if(!api||!prepare(c))return 0;
     bind_events(c.npc_route,c.npc.frame.frame.sequence.frame.events,c,false);
@@ -185,7 +197,8 @@ int __cdecl run_native(void* a,unsigned bytes,const ServerNpcRunAnimationInput* 
     events.weapon.weapons=b->frame.runtime.inherited.weapons;
     return run_grunt_impl(a,bytes,in,&b->frame,&out->frame,&events,out);
 }
-int __cdecl run_script(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcScriptWeaponEventFrameBindings* b,ServerNpcScriptWeaponEventFrameResult* out) noexcept {
+int run_script_impl(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcScriptWeaponEventFrameBindings* b,ServerNpcScriptWeaponEventFrameResult* out,
+    const native_map::ScriptedNpcAnimationEventBindings* sequence_events=nullptr,ServerNpcScriptedWeaponFrameResult* sequence_result=nullptr) noexcept {
     if(!out)return 0;*out={};
     if(!b||!in)return 0;
     const auto* api=SiN_GetServerNpcReloadServicesApi(1,sizeof(ServerNpcReloadServicesApi));
@@ -193,10 +206,24 @@ int __cdecl run_script(void* actor,unsigned bytes,const ServerNpcRunAnimationInp
     bindings.original.weapon.weapons=b->frame.frame.runtime.inherited.weapons;
     ServerNpcReloadSession reload{};
     if(!api||!api->prepare(actor,bytes,&bindings,&reload))return 0;
-    const int status=run_grunt_impl(actor,bytes,in,&b->frame.frame,&out->frame.frame,&reload.bound,&out->frame,&reload,out);
+    const int status=run_grunt_impl(actor,bytes,in,&b->frame.frame,&out->frame.frame,&reload.bound,&out->frame,&reload,out,sequence_events,sequence_result);
     out->script_lookups=reload.script_lookups;out->condition_calls=reload.condition_calls;
     out->sound_intervals=reload.sound_intervals;out->burst_queries=reload.burst_queries;
     return status;
+}
+int __cdecl run_script(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcScriptWeaponEventFrameBindings* b,ServerNpcScriptWeaponEventFrameResult* out) noexcept {
+    return run_script_impl(actor,bytes,in,b,out);
+}
+int run_sequence_frame(void* actor,unsigned bytes,const ServerNpcRunAnimationInput* in,const ServerNpcScriptWeaponEventFrameBindings* b,ServerNpcScriptWeaponEventFrameResult* out,
+    const native_map::ScriptedNpcAnimationEventBindings* events,ServerNpcScriptedWeaponFrameResult* sequence) noexcept {
+    if(out){*out={};out->frame.frame.failed_event=-1;}if(sequence)*sequence={};
+    if(!out||!sequence||!in||!b||!events||!events->interrupt||!events->interrupt->control||!events->interrupt->control->extent)return 0;
+    const auto& registry=b->frame.frame.runtime.inherited.weapons;
+    if(registry.count>sin_independent::kEntityHandleCapacity||(registry.count&&!registry.entries))return 0;
+    auto control=*events->interrupt->control;control.entries=registry.entries;control.entry_count=registry.count;control.now=&in->now;
+    auto interrupt=*events->interrupt;interrupt.control=&control;interrupt.conditions=&b->conditions;
+    auto bound=*events;bound.interrupt=&interrupt;
+    return run_script_impl(actor,bytes,in,b,out,&bound,sequence);
 }
 const ServerNpcScriptWeaponEventFrameApi script_frame_api{1,sizeof(ServerNpcScriptWeaponEventFrameApi),&run_script};
 const ServerNpcNativeWeaponEventFrameApi native_frame_api{1,sizeof(ServerNpcNativeWeaponEventFrameApi),&run_native};
@@ -230,4 +257,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerNpc
 SiN_GetServerNpcScriptWeaponEventFrameApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerNpcScriptWeaponEventFrameApi)?&script_frame_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_RunServerNpcWeaponFrameWithScriptedEvents=_SiN_RunServerNpcWeaponFrameWithScriptedEvents")
+extern "C" int __cdecl SiN_RunServerNpcWeaponFrameWithScriptedEvents(void* a,unsigned n,const sin_port::native_weapon_tables::ServerNpcRunAnimationInput* in,
+    const sin_port::native_weapon_tables::ServerNpcScriptWeaponEventFrameBindings* b,sin_port::native_weapon_tables::ServerNpcScriptWeaponEventFrameResult* out,
+    const sin_port::native_map::ScriptedNpcAnimationEventBindings* events,sin_port::native_weapon_tables::ServerNpcScriptedWeaponFrameResult* sequence) noexcept {
+    return sin_port::native_weapon_tables::run_sequence_frame(a,n,in,b,out,events,sequence);
 }
