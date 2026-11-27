@@ -2,6 +2,7 @@
 // Each typed virtual slot is called through the same complete concrete object.
 // Source pointers/handles and networking are deliberately synthetic.
 #include "server_gameents_bounded_dispatch.h"
+#include "server_gameents_owner_lifetime_registry.h"
 #include "server_entity_immediate_removal_core.h"
 #include <array>
 #include <cstddef>
@@ -54,6 +55,8 @@ struct Fixture {
     TouchEntity ta{},tb{};
     ContactCleanupState contacts{};
     ContactList ground{};
+    // Phase 1638: concrete owner-side generation and lease store.
+    GameEntsOwnerLifetimeRegistry<4,4> owner_registry{};
     EntityRemovalRecord removal_record{};
     EntityRemovalEnvironment removal_env{};
     CCheckTransmitInfo info{};
@@ -91,6 +94,15 @@ struct Fixture {
         Write32(table+20*1,kTransmitAlways);
         Write32(table+20*2,kTransmitFullCheck);
         Write32(table+20*2+0x0c,1002);
+        // Owner-owned descriptors are created from these real (synthetic)
+        // fixture allocations; no destination memory is read by registry.
+        if(!owner_registry.Enroll(1,{&ea,sizeof(ea),&first,sizeof(first),
+                                     &first_unknown,sizeof(first_unknown),
+                                     &ta,sizeof(ta),1})||
+           !owner_registry.Enroll(2,{&eb,sizeof(eb),&second,sizeof(second),
+                                     &second_unknown,sizeof(second_unknown),
+                                     &tb,sizeof(tb),2})||
+           !owner_registry.BindCandidate(91,2,2))valid=false;
     }
     Fixture(const Fixture&)=delete;
     ~Fixture(){
@@ -109,8 +121,12 @@ static bool BeginOwnerAccess(void* p,GameEntsDispatchSlot slot,
         return false;
     }
     if(f.lease_active||!token){f.valid=false;return false;}
+    std::uint64_t owner_token=0;
+    if(!f.owner_registry.Begin(static_cast<unsigned>(slot),&owner_token)) {
+        f.valid=false;return false;
+    }
     f.lease_active=true;
-    f.held_epoch=f.owner_epoch++;
+    f.held_epoch=owner_token;
     f.held_slot=slot;
     *token=f.held_epoch;
     ++f.lease_granted;
@@ -129,34 +145,43 @@ static void EndOwnerAccess(void* p,GameEntsDispatchSlot slot,
         auto* v=static_cast<ServerGameEntsAbi*>(f.bridge);
         f.reentrancy_refused=v->EdictToBaseEntity(&f.eb)==nullptr;
     }
+    if(!f.owner_registry.End(static_cast<unsigned>(slot),token))
+        f.valid=false;
     ++f.lease_released;
     f.held_epoch=0;f.lease_active=false;
 }
 static bool ValidEdict(void* p,const edict_t* edict) noexcept {
     auto& f=*static_cast<Fixture*>(p);
     if(!f.lease_active)f.valid=false;
-    return edict==&f.ea||edict==&f.eb;
+    return f.owner_registry.ValidEdict(edict)&&
+        (edict==&f.ea||edict==&f.eb);
 }
 static bool ValidEntity(void* p,const CBaseEntity* entity) noexcept {
     auto& f=*static_cast<Fixture*>(p);
     if(!f.lease_active)f.valid=false;
-    return (entity==&f.first&&f.first_alive)||entity==&f.second;
+    return f.owner_registry.ValidEntity(entity)&&
+        ((entity==&f.first&&f.first_alive)||entity==&f.second);
 }
 static bool ValidUnknown(void* p,const ServerUnknownAbi* unknown) noexcept {
     auto& f=*static_cast<Fixture*>(p);
     if(!f.lease_active)f.valid=false;
-    return unknown==&f.first_unknown||unknown==&f.second_unknown;
+    return f.owner_registry.ValidUnknown(unknown)&&
+        (unknown==&f.first_unknown||unknown==&f.second_unknown);
 }
 static bool ValidTouch(void* p,const TouchEntity* touch) noexcept {
     auto& f=*static_cast<Fixture*>(p);
     if(!f.lease_active)f.valid=false;
-    return touch==&f.ta||touch==&f.tb;
+    return f.owner_registry.ValidTouch(touch,sizeof(TouchEntity))&&
+        (touch==&f.ta||touch==&f.tb);
 }
 static bool ValidPair(void* p,const edict_t* edict,
                       const CBaseEntity* entity) noexcept {
     auto& f=*static_cast<Fixture*>(p);
     ++f.pair_checks;
     if(!f.lease_active)f.valid=false;
+    if(!f.owner_registry.ValidPair(edict,entity)) {
+        ++f.pair_denials;return false;
+    }
     // The fixture uses a generation-tagged registry instead of merely
     // comparing the numerical addresses of two independently live objects.
     const bool first=edict==&f.ea&&entity==&f.first&&f.first_alive&&
@@ -175,7 +200,8 @@ static bool ValidCandidate(void* p,std::uint32_t table_token,
     auto& f=*static_cast<Fixture*>(p);
     if(!f.lease_active)f.valid=false;
     // Authenticity proof over synthetic table slot 2, using its handle serial.
-    return table_token==91&&index==2&&ValidPair(p,&f.eb,entity);
+    return f.owner_registry.ValidCandidate(table_token,index,entity)&&
+        table_token==91&&index==2&&ValidPair(p,&f.eb,entity);
 }
 static bool Extent(void* p,const CCheckTransmitInfo* info,
                    const unsigned short* indices,int,
@@ -289,6 +315,9 @@ static void Update(CBaseEntity* entity,void* p) noexcept {
 static void Destroy(CBaseEntity* entity,void* p) noexcept {
     auto& f=*static_cast<Fixture*>(p);f.calls+='X';++f.deleted;
     if(entity!=&f.first||!f.removal_env.handleAccessDisabled)f.valid=false;
+    // Source teardown is permitted to tombstone the actor while its
+    // slot-3 owner access lease is still held; the edict prefix stays owned.
+    if(!f.owner_registry.RetireEntity(1))f.valid=false;
     f.first_alive=false;
     f.registry[1].entity=nullptr;f.registry[1].serial=2;
     f.first_unknown.entity=nullptr;
@@ -718,7 +747,8 @@ int main() {
         return Fail(24,"all six non-destructor virtual slots invoked");
     // Every successful virtual call releases precisely the owner token it
     // acquired, including failed authorization, no-entity and host failures.
-    if(!f.valid||f.lease_active||f.lease_granted!=f.lease_released||
+    if(!f.valid||f.lease_active||f.owner_registry.HasLease()||
+       f.lease_granted!=f.lease_released||
        f.pair_checks<10||f.pair_denials<7||
        f.lease_attempts!=f.lease_granted+f.lease_denied||
        game->Report().lease_attempts!=f.lease_attempts||
@@ -726,7 +756,20 @@ int main() {
        game->Report().lease_releases!=f.lease_released||
        game->Report().lease_denials!=f.lease_denied)
         return Fail(48,"owner leases must balance on every successful/failed ABI call");
+    // The actual destruction stage already tombstoned the entity. The
+    // owner must explicitly forget its edict after the release lease ends.
+    std::uint64_t verify_token=0;
+    if(!f.owner_registry.Begin(5,&verify_token)||
+       f.owner_registry.ValidEntity(&f.first)||
+       !f.owner_registry.ValidEdict(&f.ea)||
+       !f.owner_registry.End(5,verify_token)||
+       !f.owner_registry.ForgetEdict(1))
+        return Fail(63,"actual slot-3 release failed owner tombstone contract");
+    if(!f.owner_registry.Begin(5,&verify_token)||
+       f.owner_registry.ValidEdict(&f.ea)||
+       !f.owner_registry.End(5,verify_token))
+        return Fail(64,"forgotten edict still passed owner allocation validator");
     delete v;
-    std::puts("PASS ServerGameEnts001 concrete seven-slot Win32 vtable: owner leases, generation-aware associations, conversions, edict touch, transmit, release, invalid extents and reentrant refusal");
+    std::puts("PASS ServerGameEnts001 concrete seven-slot Win32 vtable: concrete owner registry, leases, generation-aware associations, conversions, edict touch, transmit, release and reentrant refusal");
     return 0;
 }
