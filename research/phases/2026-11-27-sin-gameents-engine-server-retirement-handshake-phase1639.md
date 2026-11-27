@@ -13,3 +13,7 @@ The complete GameEnts fixture additionally verifies that, once the owner explici
 ## Limits
 
 This is a non-retail synthetic engine-to-server roundtrip using real compiled MSVC x86 virtual calls, not the original engine allocator. The owner adapter and entity memory are part of the test fixture, and the registry does not pin physical pages by itself. The live original game client/server remain unbooted, and `ServerGameEnts001` registration remains disabled. No Source-equivalent generic physics, surfaces, models or prop rendering work.
+
+## Explicit original virtual call
+
+The server-side bridge reads the actual compiled MSVC x86 vtable function pointer at slot 3 (+0x0C) and invokes that `__thiscall` thunk. It does not rely on a compiler potentially devirtualizing a pointer to a known final diagnostic class, while the enclosing `CHECK_X86_STACK` asserts that the engine-to-server roundtrip preserves the real x86 caller stack pointer.

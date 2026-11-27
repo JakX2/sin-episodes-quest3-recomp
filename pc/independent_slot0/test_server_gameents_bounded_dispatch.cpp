@@ -389,8 +389,14 @@ static bool EngineOwnedEdict(void* p,const void* edict,
 static bool EngineReleaseEntity(void* p,void* edict) noexcept {
     auto& f=*static_cast<Fixture*>(p);
     if(!f.bridge||!edict)return false;
-    auto* v=static_cast<ServerGameEntsAbi*>(f.bridge);
-    v->FreeContainingEntity(static_cast<edict_t*>(edict));
+    // Force the actual seventh-slot-compatible MSVC x86 vtable entry.
+    // Avoid a compiler devirtualizing this synthetic dispatch through
+    // the statically known final class and silently bypassing the ABI test.
+    auto** slots=*reinterpret_cast<void***>(f.bridge);
+    if(!slots||!slots[3])return false;
+    auto free_slot=reinterpret_cast<void (__thiscall *)(void*,edict_t*)>(
+        slots[3]);
+    free_slot(f.bridge,static_cast<edict_t*>(edict));
     return f.bridge->Report().status==GameEntsDispatchResult::Completed;
 }
 static GameEntsBoundedOwner Hooks(Fixture& f) noexcept {
