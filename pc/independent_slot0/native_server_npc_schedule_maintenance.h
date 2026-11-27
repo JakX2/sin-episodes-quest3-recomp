@@ -6,6 +6,7 @@
 #include "native_server_elite_task.h"
 #include "native_server_jetpack_task.h"
 #include "native_server_npc_state_reconsider.h"
+#include "native_server_map_entity.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_schedule_maintenance_export[]="SiN_GetServerNpcScheduleMaintenanceApi";
 struct ServerNpcScheduleMaintenanceBindings {
@@ -84,6 +85,19 @@ struct ServerNpcSubclassSchedulerApi {
 };
 using GetServerNpcSubclassSchedulerApi=const ServerNpcSubclassSchedulerApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Standalone opt-in composed scripted scheduler. Original v1
+// maintenance, subclass and shared-task binding sizes remain unchanged.
+struct ServerNpcSharedTaskBindings;
+struct ServerNpcScriptedSchedulerStats;
+struct ServerNpcScriptedSchedulerBindings {
+    const ServerNpcSubclassSchedulerBindings* scheduler;
+    const ServerNpcSharedTaskBindings* shared;
+    const native_map::ScriptedNpcTaskBindings* run;
+    const native_map::ScriptedNpcStartTaskBindings* start;
+};
+inline constexpr char server_npc_scripted_scheduler_export[]="SiN_RunServerNpcScriptedScheduler";
+using RunServerNpcScriptedScheduler=int (__cdecl *)(void*,unsigned,float,const ServerNpcScriptedSchedulerBindings*,
+    ServerNpcSubclassSchedulerResult*,ServerNpcScriptedSchedulerStats*) noexcept;
 // New ground-Grunt path connecting original +494/+498 requests to actual task maintenance.
 inline constexpr char server_npc_native_request_scheduler_export[]="SiN_GetServerNpcNativeRequestSchedulerApi";
 struct ServerGruntHelperTaskBindings;

@@ -1,0 +1,3 @@
+# Phase 1555: native scripted subclass scheduler
+
+Add shared StartTask route after component gate, and optional script bindings in synchronous shared-parent session. New standalone composed scheduler export runs existing subclass maintenance, scoped rebinding control and possession to the authoritative schedule registry and live now, with existing native animation assignment where present. Existing public structures unchanged; all unreviewed task cases stay with owner/shared fallback. Standalone scheduler path only, not the full combat-aware outer-think catalog. Integration regression follows; CI pending.
