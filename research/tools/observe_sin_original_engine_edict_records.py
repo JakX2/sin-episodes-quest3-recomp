@@ -284,6 +284,7 @@ def main():
     try:
         with Win32Reader(args.pid) as reader:
             print("ORIGINAL_ENGINE_SHA256_VERIFIED=true")
+            print("LOADED_ENGINE_ALLOCATOR_CODE_WITNESSES_BEGIN=10")
             print("OWNER_EDICT_FIELD_OFFSETS=0x00,0x04,0x10")
             print("OWNER_EDICT_NETWORKABLE_UNKNOWN_POINTERS_READ=false")
             observations = []
@@ -303,6 +304,10 @@ def main():
                               flush=True)
                 if number + 1 < args.samples:
                     time.sleep(args.interval_ms / 1000)
+            # The entire observation window is bracketed by independently
+            # checked, rebased in-process code witnesses (still unpinned).
+            reader.attest_loaded_allocator_code()
+            print("LOADED_ENGINE_ALLOCATOR_CODE_WITNESSES_END=10")
             pairs, serial, flags, reuse_time = observed_transitions(observations)
             print(f"OWNER_EDICT_ADJACENT_COMPARABLE_PAIRS={pairs}")
             print(f"OWNER_EDICT_OBSERVED_SERIAL_CHANGES={serial}")
