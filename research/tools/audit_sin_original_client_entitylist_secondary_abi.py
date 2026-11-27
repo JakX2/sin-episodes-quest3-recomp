@@ -442,18 +442,19 @@ def self_test() -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    mode = p.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--self-test", action="store_true")
-    mode.add_argument("--client", type=Path,
-                      help="owner-private unchanged 2006 client.dll")
+    p.add_argument("--self-test", action="store_true")
+    p.add_argument("--client", type=Path,
+                   help="owner-private unchanged 2006 client.dll")
     p.add_argument("--server", type=Path,
                    help="owner-private unchanged 2006 server.dll")
     args = p.parse_args()
     if args.self_test:
+        if args.client is not None or args.server is not None:
+            p.error("--self-test may not be combined with original file paths")
         self_test()
         return 0
     if args.client is None or args.server is None:
-        p.error("--client and --server are both required")
+        p.error("original audit requires BOTH --client and --server")
     report = verify_original(args.client.read_bytes(), args.server.read_bytes())
     print(json.dumps(report,indent=2,sort_keys=True))
     return 0
