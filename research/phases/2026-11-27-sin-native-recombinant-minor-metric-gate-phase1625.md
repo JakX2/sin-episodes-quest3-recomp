@@ -15,3 +15,11 @@ No original executable bytes or proprietary DLLs committed. No generic Source ph
 `python research/tools/audit_sin_original_recombinant_minor_metric_gate.py --self-test` validates the PE32 VA mapper and synthetic corruption rejection without needing original commercial content. With the owner-local original present, use `python research/tools/audit_sin_original_recombinant_minor_metric_gate.py --server /path/to/server.dll --self-test` to authenticate the exact file SHA, vtable slot, complete method hash, original threshold, critical instruction witnesses and targeted corruption rejection. Output is metadata JSON, never raw executable bytes.
 
 The original-byte witness offsets and SHA were independently checked against the locally extracted SHA-matching owner original before this verifier was committed. The newly created auditor itself still requires normal execution validation.
+
+## Authenticated dispatch call sites and inherited behavior
+
+The BaseMutant vtable `0x2249f65c` and Major vtable `0x224a0d8c` both resolve slot `+0x398` to inherited `0x22044730`, an exact 5-byte `xor al,al; ret 4` implementation. The Minor at `0x224a2974` uniquely overrides the slot with `0x2237e8c0`.
+
+Three original direct virtual `+0x398` dispatch sites were identified in `.text`: `0x22042f15`, `0x222a7a17`, and `0x222ac311`, each using the identical x86 `call [eax+0x398]` form. At `0x22042f15`, a shared NPC routine calls the method with the current damage/info pointer only after actor flag `+0xbd & 0x20`; its false result clears actor field `+0x7c` before subsequent handling. At `0x222a7a17`, another shared routine branches on the returned boolean. At `0x222ac311`, the boolean is passed directly to virtual `+0x3fc`. This confirms **real original virtual use** beyond a registered vtable entry; it does not by itself establish the manager's semantic purpose or an official C++ symbol name.
+
+The offline auditor now additionally pins these three call-site instructions and the base/Major inherited false stub. Its corruption test also checks that changing an original call-site witness is rejected.
