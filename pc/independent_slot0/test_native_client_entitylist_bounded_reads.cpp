@@ -2,6 +2,7 @@
 // on an original-free, owner-pinned, bounded synthetic entity list. This
 // is a behavioral diagnostic, NOT the retail engine or original DLL.
 #include "native_client_entitylist_bounded_reads.h"
+#include "../../include/sin_compat/original_client_entitylist_handle_dispatch.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -41,6 +42,25 @@ void* fake_entity(void* context,void* unknown) noexcept {
     ++cs->entity_calls;
     return &static_cast<FakeUnknown*>(unknown)->entity;
 }
+// Differential host uses the independently reviewed Phase230 portable
+// byte-buffer reference, whose virtual callback indices are source audited.
+struct ReferenceHost final:
+    sin_compat::original_client_entitylist_handle_dispatch::IEntityVirtualHost {
+    std::uint32_t expected_unknown=0u;
+    std::uint32_t networkable_token=0u;
+    std::uint32_t entity_token=0u;
+    std::uint32_t invoke(std::uint32_t pointer,
+                          std::uint32_t byte_offset) override {
+        if(pointer!=expected_unknown)return 0u;
+        return byte_offset==0x10u?networkable_token:
+               byte_offset==0x18u?entity_token:0u;
+    }
+};
+std::uint32_t token(void* p) noexcept {
+    return static_cast<std::uint32_t>(
+        reinterpret_cast<std::uintptr_t>(p));
+}
+
 int failure(int n,const char* why) {
     std::fprintf(stderr,
         "FAIL Phase1657 client bounded nine-method native test #%d: %s\n",
@@ -194,14 +214,59 @@ int main() {
        calls.invalid_unknown_calls!=0u ||
        calls.network_calls==0u || calls.entity_calls==0u)
         return failure(14,"native virtual dispatch/owned callback integrity");
+    // Differential-check the first five native x86 slots against the
+    // old Phase230 source-authenticated PORTABLE 16-byte slot reference.
+    // The pointer tokens are local to this 32-bit process, never originals.
+    namespace reference=sin_compat::original_client_entitylist_handle_dispatch;
+    reference::Bytes original_layout(0x10028u,0u);
+    const auto unknown_id=token(unknown.get());
+    for(const auto index: {5u,2047u,4095u}) {
+        reference::write_u32(original_layout,4u+16u*index,unknown_id);
+        reference::write_u32(original_layout,8u+16u*index,
+            source->raw[index].serial);
+    }
+    ReferenceHost refhost{
+    };
+    refhost.expected_unknown=unknown_id;
+    refhost.networkable_token=token(&unknown->networkable);
+    refhost.entity_token=token(&unknown->entity);
+    const auto parent_this=std::size_t{
+        reference::kOriginalEmbeddedInterfaceOffset};
+    for(const auto h : {kHandle, kHandle^(1u<<12u),
+                        kHandle^1u, api::kInvalidHandle,
+                        (0x24680u<<12u)|4095u}) {
+        if(token(iface->GetClientUnknownFromHandle(h))!=
+           reference::interface_slot2_resolve_handle(
+               original_layout,parent_this,h))
+            return failure(20,"native vs Phase230 EHandle resolver divergence");
+        if(token(iface->GetClientNetworkableFromHandle(h))!=
+           reference::interface_slot1_handle_dispatch_10(
+               original_layout,parent_this,h,refhost))
+            return failure(21,"native vs Phase230 networkable vcall divergence");
+        if(token(iface->GetClientEntityFromHandle(h))!=
+           reference::interface_slot4_handle_dispatch_18(
+               original_layout,parent_this,h,refhost))
+            return failure(22,"native vs Phase230 entity vcall divergence");
+    }
+    for(const int index : {5,2047,4095}) {
+        if(token(iface->GetClientEntity(index))!=
+           reference::interface_slot3_index_dispatch_18(
+               original_layout,parent_this,index,refhost))
+            return failure(23,"native vs Phase230 signed raw-index divergence");
+    }
     // The original method stores unknown+serial in 16-byte raw records.
     // Reusing the same index with a new serial invalidates old handles;
     // no stale pointers may be issued after the owner updates the slot.
     source->raw[kIndex].serial=0xABCDDu;
+    reference::write_u32(original_layout,8u+16u*kIndex,0xABCDDu);
     if(iface->GetClientUnknownFromHandle(kHandle)!=nullptr ||
        iface->GetClientEntityFromHandle(kHandle)!=nullptr ||
        iface->GetClientNetworkableFromHandle(kHandle)!=nullptr)
         return failure(15,"stale handle after serial reuse");
+    if(token(iface->GetClientUnknownFromHandle(kHandle))!=
+       reference::interface_slot2_resolve_handle(
+           original_layout,parent_this,kHandle))
+        return failure(24,"native/reference stale handle serial mismatch");
     // Deliberately clear one host adapter to prove no unknown vcall is
     // performed and no fabricated entity pointer is returned.
     source->callbacks.client_entity=nullptr;
@@ -224,6 +289,7 @@ int main() {
               "callbacks, 4096 mirror/2048 live-count bounds, "
               "optional entity counts, highest "
               "index, max setter/getter, stale-lifetime refusal, ECX/ESP "
-              "thiscall cleanup and missing-provider safety");
+              "thiscall cleanup, Phase230 portable differential, "
+              "and missing-provider safety");
     return 0;
 }
