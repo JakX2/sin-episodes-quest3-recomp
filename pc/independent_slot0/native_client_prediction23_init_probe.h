@@ -34,6 +34,9 @@ constexpr unsigned kOriginalResetSlot=7u;
 constexpr unsigned kOriginalResetIndexOffset=0x24u;
 constexpr unsigned kOriginalResetCountAOffset=0x28u;
 constexpr unsigned kOriginalResetCountBOffset=0x2Cu;
+constexpr unsigned kOriginalGetterSlot15Offset=0x08u;
+constexpr unsigned kOriginalGetterSlot16Offset=0x09u;
+constexpr unsigned kOriginalGetterSlot17Offset=0x0Cu;
 constexpr unsigned kOriginalVirtualCount=23u;
 
 // Only invented ConVar storage is accepted. Original ConVar constructor
@@ -62,8 +65,9 @@ inline Events events{};
 
 // MSVC slot0 deletes, slot1 Init copies cl_predict effective numeric
 // value, slot2 on engine shutdown is an empty RET and slot7 resets three
-// prediction state DWORDs. Other slots remain inert sentinels. This
-// test fixture is not a registerable implementation of IPrediction.
+// prediction state DWORDs. Slots15/16/17 are tiny native field getters;
+// the other slots remain inert sentinels. This fixture is not a
+// registerable implementation of IPrediction.
 class Prediction23Fixture {
 public:
     explicit Prediction23Fixture(const ConVarView* cl_predict) noexcept
@@ -99,9 +103,11 @@ public:
     virtual std::uint32_t __thiscall UnknownSlot12() noexcept {return 0xA00Cu;}
     virtual std::uint32_t __thiscall UnknownSlot13() noexcept {return 0xA00Du;}
     virtual std::uint32_t __thiscall UnknownSlot14() noexcept {return 0xA00Eu;}
-    virtual std::uint32_t __thiscall UnknownSlot15() noexcept {return 0xA00Fu;}
-    virtual std::uint32_t __thiscall UnknownSlot16() noexcept {return 0xA010u;}
-    virtual std::uint32_t __thiscall UnknownSlot17() noexcept {return 0xA011u;}
+    // Retail slots15/16 read individual BYTEs at +8/+9 via AL,
+    // and slot17 reads a DWORD at +0xC via EAX. All are RET0.
+    virtual std::uint8_t __thiscall GetMember8() noexcept {return member8_;}
+    virtual std::uint8_t __thiscall GetMember9() noexcept {return member9_;}
+    virtual std::uint32_t __thiscall GetMemberC() noexcept {return memberC_;}
     virtual std::uint32_t __thiscall UnknownSlot18() noexcept {return 0xA012u;}
     virtual std::uint32_t __thiscall UnknownSlot19() noexcept {return 0xA013u;}
     virtual std::uint32_t __thiscall UnknownSlot20() noexcept {return 0xA014u;}
@@ -114,6 +120,21 @@ public:
     }
     void set_cl_predict(const ConVarView* cl_predict) noexcept {
         cl_predict_=cl_predict;
+    }
+    void prime_early_fields(std::uint8_t a,std::uint8_t b,
+                            std::uint32_t c) noexcept {
+        member8_=a;
+        member9_=b;
+        memberC_=c;
+    }
+    std::uintptr_t member8_address() const noexcept {
+        return reinterpret_cast<std::uintptr_t>(&member8_);
+    }
+    std::uintptr_t member9_address() const noexcept {
+        return reinterpret_cast<std::uintptr_t>(&member9_);
+    }
+    std::uintptr_t memberC_address() const noexcept {
+        return reinterpret_cast<std::uintptr_t>(&memberC_);
     }
     void prime_bookkeeping(std::int32_t highest,
                            std::uint32_t a,std::uint32_t b) noexcept {
@@ -134,9 +155,13 @@ public:
         return reinterpret_cast<std::uintptr_t>(&cleared_b_);
     }
 private:
-    // PE32 native vfptr occupies this+0 through this+3. This opaque
-    // placeholder spans this+4..+0xF, and enabled_ is at +0x10.
-    std::array<std::uint8_t,12> opaque_{};
+    // PE32 native vfptr occupies this+0..+3. The next 12 bytes
+    // preserve actual getter member positions at +8/+9/+0xC.
+    std::array<std::uint8_t,4> opaque4to7_{};
+    std::uint8_t member8_=0u;
+    std::uint8_t member9_=0u;
+    std::array<std::uint8_t,2> opaqueAtoB_{};
+    std::uint32_t memberC_=0u;
     std::uint8_t enabled_=0u;
     const ConVarView* cl_predict_=nullptr; // PE32 native this+0x14
     std::array<std::uint8_t,12> unknown_prediction_fields_{};
@@ -160,6 +185,15 @@ static_assert(std::is_same<
 static_assert(std::is_same<
     decltype(&Prediction23Fixture::ResetBookkeeping),NoArgVoid>::value,
     "original prediction slot7 reset is parameterless RET0");
+using ByteGetter=std::uint8_t (__thiscall Prediction23Fixture::*)() noexcept;
+using DwordGetter=std::uint32_t (__thiscall Prediction23Fixture::*)() noexcept;
+static_assert(std::is_same<decltype(&Prediction23Fixture::GetMember8),
+              ByteGetter>::value &&
+              std::is_same<decltype(&Prediction23Fixture::GetMember9),
+              ByteGetter>::value &&
+              std::is_same<decltype(&Prediction23Fixture::GetMemberC),
+              DwordGetter>::value,
+              "native prediction slots15/16/17 byte/word getter signatures");
 
 } // namespace client_prediction23_diagnostic
 } // namespace sin_independent
