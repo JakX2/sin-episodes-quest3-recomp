@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstring>
 #include <string>
+#include <limits>
 using namespace sin_port::native_weapon_tables;
 struct F {
     alignas(4) unsigned char actor[0x300]{};
@@ -65,5 +66,111 @@ int main(int argc,char** argv){
     assert(!api->mutant(f.actor,sizeof(f.actor),&b,&o)&&!o.sounds&&!o.removed&&f.calls=="R");
     assert(!api->mutant(f.actor,0x97,&b,&o));
     assert(!api->poison(f.actor,0x2c7,&b,&o));
+
+    // Host contract: abort at the first failed service, report completed
+    // stages, and never remove an entity following an earlier failure.
+    // These are bridge-level guarantees, not additional retail decompilation.
+    auto reset=[&](unsigned state,unsigned flags){
+        f=F{};
+        f.put(0x94,state);f.put(0xb8,flags);
+        f.put(0x2bc,4.f);f.put(0x2c0,5.f);f.put(0x2c4,6.f);
+        o={};
+    };
+    auto incomplete=[&](const char* trace){
+        assert(!o.completed&&!o.removed&&!f.removes&&f.calls==trace);
+    };
+    reset(5u,0u);
+    bad=b;
+    bad.clear_state=[](void* ctx,void*) noexcept ->int{
+        static_cast<F*>(ctx)->calls+='C';return 0;
+    };
+    assert(!api->mutant(f.actor,sizeof(f.actor),&bad,&o));
+    incomplete("C");
+    assert(f.get<unsigned>(0x94)==5u&&!o.state_cleared&&!o.random_calls);
+
+    reset(5u,0u);
+    bad=b;
+    bad.random_float=[](void* ctx,float,float,float*) noexcept ->int{
+        static_cast<F*>(ctx)->calls+='R';return 0;
+    };
+    assert(!api->mutant(f.actor,sizeof(f.actor),&bad,&o));
+    incomplete("CR");
+    assert(!f.get<unsigned>(0x94)&&o.state_cleared&&o.random_calls==1&&!o.sounds);
+
+    reset(0u,0x800u);
+    bad=b;
+    bad.sound=[](void* ctx,void*,const char* name,int,int) noexcept ->int{
+        auto& f=*static_cast<F*>(ctx);
+        assert(!std::strcmp(name,"GrenadeSpit.Acid"));
+        f.calls+='S';return 0;
+    };
+    assert(!api->poison(f.actor,sizeof(f.actor),&bad,&o));
+    incomplete("RS");
+    assert(!o.sounds&&!o.refreshes&&!o.effects);
+
+    reset(0u,0x800u);
+    bad=b;
+    bad.sound=[](void* ctx,void*,const char* name,int,int) noexcept ->int{
+        auto& f=*static_cast<F*>(ctx);
+        f.calls+='S';
+        if(!std::strcmp(name,"GrenadeSpit.Acid")){++f.sounds;return 1;}
+        assert(!std::strcmp(name,"GrenadeSpit.Hit"));return 0;
+    };
+    assert(!api->poison(f.actor,sizeof(f.actor),&bad,&o));
+    incomplete("RSS");
+    assert(o.sounds==1&&!o.refreshes&&!o.effects);
+
+    reset(0u,0x800u);
+    bad=b;
+    bad.refresh_origin=[](void* ctx,void*) noexcept ->int{
+        static_cast<F*>(ctx)->calls+='O';return 0;
+    };
+    assert(!api->poison(f.actor,sizeof(f.actor),&bad,&o));
+    incomplete("RSSO");
+    assert(o.sounds==2&&o.refreshes==1&&!o.effects);
+
+    reset(0u,0u);
+    bad=b;
+    bad.poison_effect=[](void* ctx,void*,const ServerGrenadeSpitPoisonEffect*) noexcept ->int{
+        static_cast<F*>(ctx)->calls+='E';return 0;
+    };
+    assert(!api->poison(f.actor,sizeof(f.actor),&bad,&o));
+    incomplete("RSSE");
+    assert(o.sounds==2&&!o.refreshes&&!o.effects);
+
+    reset(0u,0u);
+    bad=b;
+    bad.remove=[](void* ctx,void*) noexcept ->int{
+        static_cast<F*>(ctx)->calls+='D';return 0;
+    };
+    assert(!api->poison(f.actor,sizeof(f.actor),&bad,&o));
+    incomplete("RSSED");
+    assert(o.sounds==2&&o.effects==1&&f.effects==1);
+
+    // A non-finite origin must never be submitted to the effect provider.
+    reset(0u,0u);
+    f.put(0x2c4,std::numeric_limits<float>::quiet_NaN());
+    assert(!api->poison(f.actor,sizeof(f.actor),&b,&o));
+    incomplete("RSS");
+    assert(!o.effects);
+
+    // Both endpoints of the random contract and the exact accepted extents.
+    for(float endpoint : {90.f,110.f}){
+        reset(0u,0u);f.draw=endpoint;
+        assert(api->mutant(f.actor,0x98,&b,&o)&&o.completed&&o.draw==endpoint&&f.calls=="RSSD");
+        reset(0u,0u);f.draw=endpoint;
+        assert(api->poison(f.actor,0x2c8,&b,&o)&&o.completed&&o.draw==endpoint&&f.calls=="RSSED");
+    }
+    reset(5u,0u);
+    f.draw=std::numeric_limits<float>::quiet_NaN();
+    assert(!api->mutant(f.actor,sizeof(f.actor),&b,&o));
+    incomplete("CR");
+    assert(o.state_cleared&&!o.sounds);
+    reset(5u,0u);
+    assert(!api->mutant(f.actor,sizeof(f.actor),&b,nullptr)&&f.calls.empty());
+    assert(!api->mutant(nullptr,sizeof(f.actor),&b,&o)&&f.calls.empty());
+    assert(!api->mutant(f.actor,sizeof(f.actor),nullptr,&o)&&f.calls.empty());
+    assert(f.get<unsigned>(0x94)==5u);
+    assert(!get(1,sizeof(ServerGrenadeSpitDetonationApi)-1));
     FreeLibrary(server);FreeLibrary(client);return 0;
 }
