@@ -37,6 +37,9 @@ constexpr unsigned kNativeMirrorSlots=4096u;
 constexpr unsigned kNetworkedLiveLimit=2048u;
 constexpr std::uint32_t kEhandleIndexMask=0xFFFu;
 constexpr unsigned kEhandleSerialShift=12u;
+// Original Phase248 base-slot constructor selects serials in 0..0x7FFF;
+// the EHandle method nevertheless compares all upper 20 handle bits.
+constexpr std::uint32_t kOriginalSerialGenerationMask=0x7FFFu;
 constexpr std::uint32_t kInvalidHandle=0xFFFFFFFFu;
 
 // Never retain engine-owned pointers here. The callbacks accept only
