@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstring>
 #include <string>
+#include <limits>
 using namespace sin_port::native_weapon_tables;
 struct F{
     alignas(4) unsigned char actor[0xc50]{},entity[0x220]{},info[0x50]{},desc[0x48]{};
@@ -81,5 +82,71 @@ int main(int argc,char** argv){
     f.object_flags=0;f.calls.clear();assert(api->gather(f.actor,sizeof(f.actor),&b,&o)&&!f.has(66)&&f.calls=="GNQYO");
     f.put(f.actor,0x238,0x8001u);f.calls.clear();assert(api->gather(f.actor,sizeof(f.actor),&b,&o)&&!o.ground_live&&!f.has(66)&&f.calls=="G");
     assert(!api->damage(f.actor,sizeof(f.actor),f.info,0x47,10.f,&b,&o)&&!o.completed);
+
+    // Original Minor virtual +0x1d4: return actor origin with a fixed
+    // +6 Z, refreshing the dirty origin before reading any coordinate.
+    const auto get_point=reinterpret_cast<GetServerRecombinantMinorOriginPointApi>(
+        GetProcAddress(server,server_recombinant_minor_origin_point_export));
+    assert(get_point&&!GetProcAddress(client,server_recombinant_minor_origin_point_export)&&
+        !get_point(0,sizeof(ServerRecombinantMinorOriginPointApi))&&
+        !get_point(1,sizeof(ServerRecombinantMinorOriginPointApi)-1));
+    const auto* point_api=get_point(1,sizeof(ServerRecombinantMinorOriginPointApi));
+    assert(point_api);
+    ServerRecombinantMinorOriginPointBindings pb{&f,
+        [](void* p,void* actor) noexcept ->int{
+            auto& fixture=*static_cast<F*>(p);
+            assert(actor==fixture.actor);
+            fixture.calls+='O';
+            fixture.put(actor,0x2bc,1.5f);
+            fixture.put(actor,0x2c0,2.5f);
+            fixture.put(actor,0x2c4,-8.f);
+            fixture.put(actor,0xb8,0u);
+            return 1;
+        }};
+    ServerRecombinantMinorOriginPointResult po{};
+    float point[3]{77.f,88.f,99.f};
+    f.put(f.actor,0,recombinant_minor_vtable);
+    f.put(f.actor,0xb8,0u);
+    f.put(f.actor,0x2bc,10.f);f.put(f.actor,0x2c0,-20.f);
+    f.put(f.actor,0x2c4,30.5f);f.calls.clear();
+    assert(point_api->point(f.actor,sizeof(f.actor),point,&pb,&po)&&
+        po.completed&&!po.refresh_calls&&f.calls.empty()&&
+        po.origin[0]==10.f&&po.origin[1]==-20.f&&po.origin[2]==30.5f&&
+        point[0]==10.f&&point[1]==-20.f&&point[2]==36.5f&&
+        po.point[0]==point[0]&&po.point[1]==point[1]&&po.point[2]==point[2]);
+    // No Source service needed on clean origin, even without bindings.
+    assert(point_api->point(f.actor,0x2c8,point,nullptr,&po)&&po.completed&&!po.refresh_calls);
+    f.put(f.actor,0xb8,0x800u);f.calls.clear();
+    assert(point_api->point(f.actor,sizeof(f.actor),point,&pb,&po)&&
+        po.completed&&po.refresh_calls==1&&f.calls=="O"&&
+        po.origin[0]==1.5f&&po.origin[1]==2.5f&&po.origin[2]==-8.f&&
+        point[0]==1.5f&&point[1]==2.5f&&point[2]==-2.f);
+    // A failed refresh never publishes partial output; exact extent.
+    f.put(f.actor,0xb8,0x800u);f.calls.clear();
+    ServerRecombinantMinorOriginPointBindings bad_pb{&f,
+        [](void* p,void* actor) noexcept ->int{
+            auto& fixture=*static_cast<F*>(p);
+            assert(actor==fixture.actor);fixture.calls+='F';return 0;
+        }};
+    point[0]=77.f;point[1]=88.f;point[2]=99.f;
+    assert(!point_api->point(f.actor,sizeof(f.actor),point,&bad_pb,&po)&&
+        !po.completed&&po.refresh_calls==1&&f.calls=="F"&&
+        point[0]==77.f&&point[1]==88.f&&point[2]==99.f);
+    f.calls.clear();
+    assert(!point_api->point(f.actor,sizeof(f.actor),point,nullptr,&po)&&
+        !po.completed&&po.refresh_calls==1&&f.calls.empty());
+    assert(!point_api->point(f.actor,0x2c7,point,&pb,&po)&&
+        !po.completed&&!po.refresh_calls&&f.calls.empty());
+    f.put(f.actor,0xb8,0u);
+    const auto qnan=std::numeric_limits<float>::quiet_NaN();
+    f.put(f.actor,0x2c4,qnan);
+    assert(!point_api->point(f.actor,sizeof(f.actor),point,&pb,&po)&&
+        !po.completed&&point[0]==77.f&&point[1]==88.f&&point[2]==99.f);
+    f.put(f.actor,0x2c4,3.f);f.put(f.actor,0,recombinant_major_vtable);
+    assert(!point_api->point(f.actor,sizeof(f.actor),point,&pb,&po)&&
+        !po.completed&&point[0]==77.f);
+    f.put(f.actor,0,recombinant_minor_vtable);
+    assert(!point_api->point(f.actor,sizeof(f.actor),nullptr,&pb,&po)&&!po.completed);
+    assert(!point_api->point(f.actor,sizeof(f.actor),point,&pb,nullptr));
     FreeLibrary(server);FreeLibrary(client);return 0;
 }

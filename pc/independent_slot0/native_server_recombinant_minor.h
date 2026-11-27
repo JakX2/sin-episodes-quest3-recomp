@@ -33,4 +33,25 @@ struct ServerRecombinantMinorApi {
     int (__cdecl *gather)(void*,unsigned,const ServerRecombinantMinorBindings*,ServerRecombinantMinorResult*) noexcept;
 };
 using GetServerRecombinantMinorApi=const ServerRecombinantMinorApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+inline constexpr char server_recombinant_minor_origin_point_export[]="SiN_GetServerRecombinantMinorOriginPointApi";
+// Original Minor virtual +0x1d4 (2237b420) writes origin +(0,0,6).
+// Only the Source-owned dirty-origin refresh remains a host service.
+struct ServerRecombinantMinorOriginPointBindings {
+    void* context;
+    int (__cdecl *refresh_origin)(void*,void*) noexcept; // original 2213fa60
+};
+struct ServerRecombinantMinorOriginPointResult {
+    unsigned completed,refresh_calls;
+    float origin[3],point[3];
+};
+struct ServerRecombinantMinorOriginPointApi {
+    unsigned version,size;
+    int (__cdecl *point)(void*,unsigned,float[3],
+        const ServerRecombinantMinorOriginPointBindings*,
+        ServerRecombinantMinorOriginPointResult*) noexcept;
+};
+using GetServerRecombinantMinorOriginPointApi=
+    const ServerRecombinantMinorOriginPointApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
 }
