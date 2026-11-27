@@ -199,6 +199,15 @@ target_compile_features(sin_server_gameents_engine_edict_retire_test PRIVATE cxx
 add_test(NAME independent_server_gameents_engine_edict_retire_native
   COMMAND sin_server_gameents_engine_edict_retire_test)
 
+# Authenticated original engine.dll 0x20110FB0 edict reuse transition:
+# slot-3 callback, reserved indices, x87 reuse-time, owner epoch separate
+# from per-edict retail serial. Original-free, non-retail C++17 fixture.
+add_executable(sin_server_gameents_engine_edict_reuse_test
+  test_server_gameents_engine_edict_reuse.cpp)
+target_compile_features(sin_server_gameents_engine_edict_reuse_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_engine_edict_reuse_native
+  COMMAND sin_server_gameents_engine_edict_reuse_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test

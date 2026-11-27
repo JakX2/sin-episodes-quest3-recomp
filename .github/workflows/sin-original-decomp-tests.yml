@@ -33,6 +33,7 @@ on:
       - 'research/tools/audit_sin_original_gameents_release_chain.py'
       - 'research/tools/audit_sin_original_engine_gameents_consumer.py'
       - 'research/tools/audit_sin_original_engine_gameents_edict_retire.py'
+      - 'research/tools/audit_sin_original_engine_gameents_edict_reuse.py'
       - 'research/tools/verify_gameplay_entity_registry.py'
       - 'research/tests/test_audit_sin_rifle_client_server_registration.py'
       - 'research/tests/test_audit_sin_original_mobgrunt_datamap.py'
@@ -92,6 +93,7 @@ on:
       - 'research/tools/audit_sin_original_gameents_release_chain.py'
       - 'research/tools/audit_sin_original_engine_gameents_consumer.py'
       - 'research/tools/audit_sin_original_engine_gameents_edict_retire.py'
+      - 'research/tools/audit_sin_original_engine_gameents_edict_reuse.py'
       - 'research/tools/verify_gameplay_entity_registry.py'
       - 'research/tests/test_audit_sin_rifle_client_server_registration.py'
       - 'research/tests/test_audit_sin_original_mobgrunt_datamap.py'
@@ -199,3 +201,6 @@ jobs:
 
       - name: Authenticate original engine edict retire stride, flags and serial poisoning (synthetic only)
         run: python research/tools/audit_sin_original_engine_gameents_edict_retire.py --self-test
+
+      - name: Authenticate 2006 engine edict reuse serial, epoch/time and reserved-index gates (synthetic only)
+        run: python research/tools/audit_sin_original_engine_gameents_edict_reuse.py --self-test
