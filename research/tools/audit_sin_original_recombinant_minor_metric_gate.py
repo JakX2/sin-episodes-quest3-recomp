@@ -11,6 +11,9 @@ SERVER_SHA = '568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650'
 METHOD_SHA = 'e08a5b91b9f7e3411976303123a218fb28e6d3ff2df0690a1e8df6525b714ff7'
 METHOD_VA, METHOD_SIZE = 0x2237E8C0, 0x38
 VTABLE_VA, VTABLE_SLOT = 0x224A2974, 0x398
+INHERITED_VTABLES=(0x2249F65C,0x224A0D8C)
+INHERITED_FALSE=0x22044730
+CALL_SITES=(0x22042F15,0x222A7A17,0x222AC311)
 OWNER_GLOBAL, THRESHOLD_VA = 0x22572198, 0x223D8F14
 
 class Refused(ValueError):
@@ -67,6 +70,13 @@ def verify(raw: bytes, verify_whole_file: bool = True) -> dict:
     require(pe.section(METHOD_VA) == '.text', 'method not in .text')
     require(pe.section(VTABLE_VA+VTABLE_SLOT) == '.rdata', 'vtable not in .rdata')
     require(pe.u32(VTABLE_VA+VTABLE_SLOT) == METHOD_VA, 'original Minor +398 vtable mismatch')
+    require(all(pe.u32(vt+VTABLE_SLOT)==INHERITED_FALSE for vt in INHERITED_VTABLES),
+            'base/Major +398 inherited dispatch changed')
+    require(pe.at(INHERITED_FALSE,5) == b'\x32\xc0\xc2\x04\x00',
+            'original inherited false stub changed')
+    for site in CALL_SITES:
+        require(pe.at(site,6) == b'\xff\x90\x98\x03\x00\x00',
+                'shared virtual +398 callsite changed: '+hex(site))
     method = pe.at(METHOD_VA,METHOD_SIZE)
     require(hashlib.sha256(method).hexdigest() == METHOD_SHA, 'complete method digest changed')
     require(pe.at(METHOD_VA+METHOD_SIZE,1) == b'\xcc', 'method lacks expected INT3 terminator')
@@ -92,6 +102,8 @@ def verify(raw: bytes, verify_whole_file: bool = True) -> dict:
         'method_sha256':METHOD_SHA,
         'original_vtable_slot':hex(VTABLE_SLOT),
         'manager_virtual_slot':hex(0x170),
+        'authenticated_shared_vtable_calls':[hex(site) for site in CALL_SITES],
+        'inherited_base_major_default':'false',
         'candidate_scalar_offset':hex(0x2c),
         'threshold_float':10.0,
         'comparison':'strict greater-than; unordered NaN is false',
@@ -127,7 +139,7 @@ def synthetic_test() -> None:
 def original_corruption_test(raw: bytes) -> None:
     pe=PE32(raw)
     verify(raw)
-    for at in (METHOD_VA,VTABLE_VA+VTABLE_SLOT,THRESHOLD_VA,OWNER_GLOBAL):
+    for at in (METHOD_VA,VTABLE_VA+VTABLE_SLOT,THRESHOLD_VA,CALL_SITES[0],OWNER_GLOBAL):
         # The global owner itself is mutable .data and not a code witness.
         if at==OWNER_GLOBAL:continue
         for _,start,size,off in pe.sections:
