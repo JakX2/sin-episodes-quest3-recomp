@@ -1,6 +1,6 @@
 #pragma once
 #include "native_server_recombinant_registration.h"
-#include "native_server_activity_assignment.h"
+#include "native_server_activity_transition.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_recombinant_activity_transition_export[]="SiN_GetServerRecombinantActivityTransitionApi";
 // Original Major/Minor virtual +4e4. Host owns inherited activity playback,
@@ -46,4 +46,23 @@ struct ServerRecombinantActivityAssignmentApi {
     int (__cdecl *request)(void*,unsigned,int,const ServerRecombinantActivityAssignmentBindings*,ServerRecombinantActivityAssignmentResult*) noexcept;
 };
 using GetServerRecombinantActivityAssignmentApi=const ServerRecombinantActivityAssignmentApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+inline constexpr char server_recombinant_pending_activity_export[]="SiN_GetServerRecombinantPendingActivityApi";
+// Compose the shared pending activity lifecycle with the SiN-specific
+// class override, without modifying either existing ABI.
+struct ServerRecombinantPendingActivityBindings {
+    const ServerNpcTransitionBindings* pending;
+    const ServerRecombinantActivityTransitionBindings* activity;
+};
+struct ServerRecombinantPendingActivityResult {
+    ServerNpcTransitionResult pending;
+    ServerRecombinantActivityTransitionResult activity;
+    unsigned transition_calls;
+};
+struct ServerRecombinantPendingActivityApi {
+    unsigned version,size;
+    int (__cdecl *set_pending)(void*,unsigned,int,const ServerRecombinantPendingActivityBindings*,ServerRecombinantPendingActivityResult*) noexcept;
+    int (__cdecl *update)(void*,unsigned,const ServerRecombinantPendingActivityBindings*,ServerRecombinantPendingActivityResult*) noexcept;
+};
+using GetServerRecombinantPendingActivityApi=const ServerRecombinantPendingActivityApi* (__cdecl *)(unsigned,unsigned) noexcept;
 }

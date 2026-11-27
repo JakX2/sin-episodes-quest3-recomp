@@ -3,6 +3,7 @@
 #include <cstring>
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantRegistrationApi* __cdecl SiN_GetServerRecombinantRegistrationApi(unsigned,unsigned) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcActivityAssignmentApi* __cdecl SiN_GetServerNpcActivityAssignmentApi(unsigned,unsigned) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerNpcTransitionApi* __cdecl SiN_GetServerNpcTransitionApi(unsigned,unsigned) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* p,unsigned at) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+at,sizeof(v));return v;}
@@ -128,6 +129,33 @@ int __cdecl composed_request(void* a,unsigned n,int in,
     });
 }
 const ServerRecombinantActivityAssignmentApi composed_api{1,sizeof(ServerRecombinantActivityAssignmentApi),&composed_assign,&composed_request};
+int pending_call(void* a,unsigned n,int in,bool is_update,
+    const ServerRecombinantPendingActivityBindings* b,ServerRecombinantPendingActivityResult* o) noexcept {
+    if(!o)return 0;*o={};o->pending.transition.sequence=-1;
+    if(!b||!b->pending||!b->activity)return 0;
+    const auto* pending=SiN_GetServerNpcTransitionApi(1,sizeof(ServerNpcTransitionApi));
+    if(!pending)return 0;
+    const ServerRecombinantActivityAssignmentBindings ab{&b->pending->assignment,b->activity};
+    ServerRecombinantActivityAssignmentResult captured{};
+    const int ok=compose(a,n,&ab,&captured,
+        [&](const ServerNpcActivityAssignmentApi&,const ServerNpcActivityAssignmentBindings& bound,ServerNpcActivityAssignmentResult&) {
+            // The pending lifecycle owns its own context and node queries.
+            // Replace only its nested assignment for this synchronous call.
+            auto copy=*b->pending;copy.assignment=bound;
+            return is_update?pending->update(a,n,&copy,&o->pending):
+                pending->set_pending(a,n,in,&copy,&o->pending);
+        });
+    o->activity=captured.transition;o->transition_calls=captured.transition_calls;
+    return ok;
+}
+int __cdecl composed_pending(void* a,unsigned n,int in,const ServerRecombinantPendingActivityBindings* b,ServerRecombinantPendingActivityResult* o) noexcept{
+    return pending_call(a,n,in,false,b,o);
+}
+int __cdecl composed_update(void* a,unsigned n,const ServerRecombinantPendingActivityBindings* b,ServerRecombinantPendingActivityResult* o) noexcept{
+    return pending_call(a,n,0,true,b,o);
+}
+const ServerRecombinantPendingActivityApi pending_api{1,sizeof(ServerRecombinantPendingActivityApi),&composed_pending,&composed_update};
+
 
 }
 }
@@ -141,4 +169,9 @@ extern "C" const sin_port::native_weapon_tables::ServerRecombinantActivityTransi
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantActivityAssignmentApi* __cdecl SiN_GetServerRecombinantActivityAssignmentApi(unsigned v,unsigned n) noexcept{
     using namespace sin_port::native_weapon_tables;
     return v==1&&n==sizeof(ServerRecombinantActivityAssignmentApi)?&composed_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantPendingActivityApi=_SiN_GetServerRecombinantPendingActivityApi")
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantPendingActivityApi* __cdecl SiN_GetServerRecombinantPendingActivityApi(unsigned v,unsigned n) noexcept{
+    using namespace sin_port::native_weapon_tables;return v==1&&n==sizeof(ServerRecombinantPendingActivityApi)?&pending_api:nullptr;
 }
