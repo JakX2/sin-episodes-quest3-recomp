@@ -277,6 +277,16 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Original 2006 PE32 server.dll static InterfaceReg constructor, exact
+# three game-facing registrations, singleton creators and error-code ABI.
+# The native fixture uses fake byte windows: NO retail game DLL is loaded.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_server_interfacereg_abi_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_server_interfacereg_abi.py"
+      --self-test)
+endif()
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
