@@ -58,6 +58,73 @@ public:
         return true;
     }
 
+    // Reserve the engine-owned 0x14-byte edict while its backing is still
+    // physically pinned by the host's allocator commit callback. At this
+    // point no CBaseEntity exists: NEVER invent an entity/unknown pointer.
+    // The global epoch advances on reservation, not later entity creation.
+    // Reusing an old edict requires its former entity to be retired. A
+    // pending reservation cannot be silently replaced or replayed.
+    bool ReserveEdict(std::size_t slot,const void* edict,std::size_t bytes,
+                      std::uint64_t epoch) noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(leased_||slot>=Slots||!epoch||epoch<=latest_generation_||
+           bytes!=0x14||!RangeValid(edict,bytes))return false;
+        const auto& prior=slots_[slot];
+        if(prior.entity_live||prior.reserved||
+           (prior.edict_owned&&(prior.value.edict!=edict||
+                                prior.value.edict_bytes!=bytes)))return false;
+        for(std::size_t i=0;i<Slots;++i) {
+            if(i==slot)continue;
+            const auto& other=slots_[i];
+            if(other.edict_owned&&
+               Overlap(edict,bytes,other.value.edict,other.value.edict_bytes))
+                return false;
+            if(other.entity_live&&
+               (Overlap(edict,bytes,other.value.entity,other.value.entity_bytes)||
+                Overlap(edict,bytes,other.value.unknown,other.value.unknown_bytes)||
+                Overlap(edict,bytes,other.value.touch,other.value.touch_bytes)))
+                return false;
+        }
+        GameEntsOwnerIdentity pending{};
+        pending.edict=edict;
+        pending.edict_bytes=bytes;
+        pending.generation=epoch;
+        slots_[slot]={pending,true,true,false,true};
+        latest_generation_=epoch;
+        return true;
+    }
+
+    // Entity construction occurs AFTER edict allocation. A trusted host
+    // must independently attest and pin the later entity/unknown/touch
+    // allocations while attaching them. The reservation alone is only
+    // metadata: it does not physically pin either heap allocation.
+    // Activation may happen out of reservation order, but ONLY at the
+    // exact slot+edict+epoch previously committed under engine pin.
+    bool ActivateReservedEntity(std::size_t slot,
+                                const GameEntsOwnerIdentity& value) noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(leased_||slot>=Slots||!WellFormed(value))return false;
+        const auto& prior=slots_[slot];
+        if(!prior.reserved||!prior.edict_owned||prior.entity_live||
+           prior.value.edict!=value.edict||
+           prior.value.edict_bytes!=value.edict_bytes||
+           prior.value.generation!=value.generation)return false;
+        for(std::size_t i=0;i<Slots;++i) {
+            if(i==slot)continue;
+            const auto& old=slots_[i];
+            if(old.edict_owned&&
+               OverlapAny(value,old.value.edict,old.value.edict_bytes))
+                return false;
+            if(old.entity_live&&
+               (OverlapAny(value,old.value.entity,old.value.entity_bytes)||
+                OverlapAny(value,old.value.unknown,old.value.unknown_bytes)||
+                OverlapAny(value,old.value.touch,old.value.touch_bytes)))
+                return false;
+        }
+        slots_[slot]={value,true,true,true,false};
+        return true;
+    }
+
     // Only the original FreeContainingEntity slot can retire during lease.
     // Keep its edict prefix owned through cleanup; ForgetEdict is separate.
     bool RetireEntity(std::size_t slot) noexcept {
@@ -73,6 +140,7 @@ public:
         if(leased_||slot>=Slots||!slots_[slot].edict_owned||
            slots_[slot].entity_live)return false;
         slots_[slot].edict_owned=false;
+        slots_[slot].reserved=false;
         return true;
     }
 
@@ -190,7 +258,7 @@ public:
 private:
     struct Item {
         GameEntsOwnerIdentity value{};
-        bool seen=false,edict_owned=false,entity_live=false;
+        bool seen=false,edict_owned=false,entity_live=false,reserved=false;
     };
     struct Candidate {
         std::uint32_t table=0;
