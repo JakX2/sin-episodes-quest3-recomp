@@ -1641,3 +1641,14 @@ target_compile_features(sin_original_client_prediction23_readonly_snapshot_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_prediction23_readonly_snapshot_native
   COMMAND sin_original_client_prediction23_readonly_snapshot_test)
+
+
+# Phase1658: direct source-authenticated cl_predict ConVar m_pParent
+# (+0x18) and m_nValue (+0x2C) startup-state readback. Public CI uses
+# fabricated 32-bit DWORD memory; no original DLL or virtuals invoked.
+add_executable(sin_original_cl_predict_convar_readonly_snapshot_test
+  test_original_client_prediction_convar_readonly_snapshot.cpp)
+target_compile_features(sin_original_cl_predict_convar_readonly_snapshot_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_cl_predict_convar_readonly_snapshot_native
+  COMMAND sin_original_cl_predict_convar_readonly_snapshot_test)
