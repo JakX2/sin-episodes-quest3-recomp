@@ -9,6 +9,7 @@
 #include <cstring>
 #include <string>
 #include <limits>
+#include <limits>
 using namespace sin_port::native_weapon_tables;
 struct F{
     alignas(4) unsigned char actor[0xc50]{},entity[0x220]{},info[0x50]{},desc[0x48]{};
@@ -148,5 +149,66 @@ int main(int argc,char** argv){
     f.put(f.actor,0,recombinant_minor_vtable);
     assert(!point_api->point(f.actor,sizeof(f.actor),nullptr,&pb,&po)&&!po.completed);
     assert(!point_api->point(f.actor,sizeof(f.actor),point,&pb,nullptr));
+
+    // Original Minor virtual +0x398 (2237e8c0): query manager +170,
+    // short-circuit on true, otherwise accept candidate +2c > 10.f.
+    const auto get_metric=reinterpret_cast<GetServerRecombinantMinorMetricGateApi>(
+        GetProcAddress(server,server_recombinant_minor_metric_gate_export));
+    assert(get_metric&&!GetProcAddress(client,server_recombinant_minor_metric_gate_export)&&
+        !get_metric(0,sizeof(ServerRecombinantMinorMetricGateApi))&&
+        !get_metric(1,sizeof(ServerRecombinantMinorMetricGateApi)-1));
+    const auto* metric=get_metric(1,sizeof(ServerRecombinantMinorMetricGateApi));
+    assert(metric);
+    struct MetricHost {bool suppress=false,fail=false;unsigned calls=0;} mh;
+    ServerRecombinantMinorMetricGateBindings mb{&mh,
+        [](void* p,bool* value) noexcept ->int{
+            auto& host=*static_cast<MetricHost*>(p);
+            assert(value);
+            ++host.calls;
+            *value=host.suppress;
+            return !host.fail;
+        }};
+    ServerRecombinantMinorMetricGateResult mo{};
+    f.put(f.actor,0,recombinant_minor_vtable);
+    auto evaluate=[&](float value) {
+        f.put(f.entity,0x2c,value);
+        return metric->evaluate(f.actor,sizeof(f.actor),f.entity,sizeof(f.entity),&mb,&mo);
+    };
+    assert(evaluate(11.f)&&mo.completed&&mo.manager_calls==1&&
+        !mo.suppressed&&mo.compared==1&&mo.allowed==1&&
+        mo.observed==11.f&&mo.threshold==10.f&&mh.calls==1);
+    assert(evaluate(10.f)&&mo.completed&&!mo.allowed&&mo.compared==1&&mh.calls==2);
+    assert(evaluate(9.999f)&&mo.completed&&!mo.allowed&&mh.calls==3);
+    assert(evaluate(10.001f)&&mo.completed&&mo.allowed&&mh.calls==4);
+    // FCOMP unordered and infinite inputs retain original result semantics.
+    assert(evaluate(std::numeric_limits<float>::quiet_NaN())&&
+        mo.completed&&mo.compared&&!mo.allowed);
+    assert(evaluate(std::numeric_limits<float>::infinity())&&
+        mo.completed&&mo.allowed);
+    assert(evaluate(-std::numeric_limits<float>::infinity())&&
+        mo.completed&&!mo.allowed);
+    mh.suppress=true;const auto before=mh.calls;
+    // The global manager short-circuits even a null/invalid candidate.
+    assert(metric->evaluate(f.actor,sizeof(f.actor),nullptr,0,&mb,&mo)&&
+        mo.completed&&mo.suppressed&&!mo.compared&&!mo.allowed&&
+        mo.manager_calls==1&&mh.calls==before+1);
+    mh.suppress=false;
+    assert(!metric->evaluate(f.actor,sizeof(f.actor),f.entity,0x2f,&mb,&mo)&&
+        !mo.completed&&mo.manager_calls==1&&!mo.compared);
+    assert(!metric->evaluate(f.actor,sizeof(f.actor),nullptr,0,&mb,&mo)&&
+        !mo.completed&&mo.manager_calls==1&&!mo.compared);
+    mh.fail=true;
+    assert(!evaluate(20.f)&&!mo.completed&&mo.manager_calls==1&&!mo.compared);
+    mh.fail=false;
+    const auto untouched=mh.calls;
+    f.put(f.actor,0,recombinant_major_vtable);
+    assert(!evaluate(20.f)&&!mo.completed&&mh.calls==untouched);
+    f.put(f.actor,0,recombinant_minor_vtable);
+    assert(!metric->evaluate(f.actor,3,f.entity,sizeof(f.entity),&mb,&mo)&&
+        !mo.completed&&mh.calls==untouched);
+    auto missing=mb;missing.manager_suppresses=nullptr;
+    assert(!metric->evaluate(f.actor,sizeof(f.actor),f.entity,sizeof(f.entity),&missing,&mo)&&
+        !mo.completed&&mh.calls==untouched);
+    assert(!metric->evaluate(f.actor,sizeof(f.actor),f.entity,sizeof(f.entity),&mb,nullptr));
     FreeLibrary(server);FreeLibrary(client);return 0;
 }
