@@ -29,3 +29,9 @@ Original factory identity is now proved. The owner previously observed retail-en
 The next useful work is to reconstruct the two large originals at `0x221e9380` and `0x221e94d0` and the delegated helper `0x22221080`, while preserving existing Source engine services and checking all registration/Init call orders. No shared physics, surfaces, props, model handling or rendering is reimplemented here.
 
 No proprietary executable bytes or complete commercial disassembly are included. No new in-engine runtime test was performed, and neither Windows retail startup nor Android/Quest gameplay is claimed.
+
+## Reproduction and audit status
+
+The seven complete virtual method bodies cover **760 authenticated original instruction bytes**. Together with the six-byte factory thunk and 21-byte static registration, the phase inventories **787 distinct original code bytes**, plus 28 vtable data bytes. This counts authenticated full bodies, *not* full semantic decompilation.
+
+Run `python research/tools/audit_sin_original_servergameents_factory.py --self-test` for the original-free synthetic PE32 parser, vtable pointer, method digest and tampering regressions. With the owner-local authenticated original, use `python research/tools/audit_sin_original_servergameents_factory.py --server /path/to/server.dll --self-test` for full SHA-256, exact registration order, thunk, singleton, seven virtual entries, whole-method hashes and targeted original-image corruption tests. The original-free self-test is wired into `sin-original-decomp-tests.yml`; no commercial binaries are included in GitHub CI.
