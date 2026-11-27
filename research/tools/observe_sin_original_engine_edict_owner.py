@@ -251,6 +251,39 @@ class Win32Reader:
         self.close()
 
 
+def test_win32_readonly_api_on_self():
+    """Never accesses a game: Windows test reads only our own DWORD."""
+    if os.name != "nt":
+        return
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL,
+                                   wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    kernel.ReadProcessMemory.argtypes = [
+        wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+    kernel.ReadProcessMemory.restype = wintypes.BOOL
+    handle = kernel.OpenProcess(
+        Win32Reader.PROCESS_VM_READ |
+        Win32Reader.PROCESS_QUERY_LIMITED_INFORMATION,
+        False, os.getpid())
+    if not handle:
+        raise AssertionError("Windows read-only self OpenProcess failed")
+    try:
+        original = ctypes.c_uint32(0x1A2B3C4D)
+        observed = ctypes.c_uint32(0)
+        transferred = ctypes.c_size_t(0)
+        assert kernel.ReadProcessMemory(
+            handle, ctypes.cast(ctypes.byref(original),ctypes.c_void_p),
+            ctypes.byref(observed),4,ctypes.byref(transferred))
+        assert transferred.value == 4 and observed.value == original.value
+    finally:
+        assert kernel.CloseHandle(handle)
+
+
 def self_test():
     assert IMAGE_BASE == 0x20000000
     assert len(ENGINE_SHA) == 64
@@ -289,7 +322,8 @@ def self_test():
     assert summary([first,first,first]) == (3,0)
     assert hashlib.sha256(b"abc").hexdigest() == (
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
-    print("PASS original-free engine edict owner observer: 4 SHA-grounded global RVAs, shifted image bases, torn/unreadable states, overflow and observed-only relocation accounting")
+    test_win32_readonly_api_on_self()
+    print("PASS original-free engine edict owner observer: 4 SHA-grounded global RVAs, shifted image bases, torn/unreadable states, overflow, observed-only relocation accounting and optional Windows read-only self process API")
 
 
 def main():
