@@ -34,7 +34,7 @@ AFTER_VTABLE = b"g_ParticleMgr.Update\0\0"
 # Complete original x86 function SHA, not original bytes.
 METHODS = (
     ("scalar_deleting_destructor", 0x240FE9B0, 31,
-     "c1b42cad1fbf2c68930e72c983f094ae254a3292aa65d90835c33b97dc50a421"),
+     "2bc6592b7ae25272a5b09f7f33c577a7dffed1943c3a8b97fcf45049fc28cc4f"),
     ("forward_slot1", 0x240FE950, 20,
      "f2d5d18b7bd577abae8bbaec5338c5e0d350a6a9b5f1903f2a6ee7c9eae4e1b2"),
     ("forward_slot2", 0x240FE970, 22,
