@@ -157,6 +157,15 @@ target_compile_features(sin_server_gameents_touch_entry_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_gameents_touch_entry_native
   COMMAND sin_server_gameents_touch_entry_test)
 
+# Original ServerGameEnts001::MarkEntitiesAsTouching entry composed with
+# the existing independently owned reciprocal touch graph. All Source
+# edicts, origins, trace initialization and contact allocators stay host-owned.
+add_executable(sin_server_gameents_touch_contact_bridge_test
+  test_server_gameents_touch_contact_bridge.cpp)
+target_compile_features(sin_server_gameents_touch_contact_bridge_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_touch_contact_bridge_native
+  COMMAND sin_server_gameents_touch_contact_bridge_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
