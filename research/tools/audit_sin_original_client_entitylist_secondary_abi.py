@@ -78,6 +78,19 @@ SECONDARY_COL_VA = 0x242E59D4
 PRIMARY_COL_VA = 0x242E5A50
 TYPE_DESCRIPTOR_VA = 0x242FA77C
 CLASS_HIERARCHY_VA = 0x242E5A40
+BASE_ARRAY_VA = 0x242E5A30
+BASE_DESCRIPTOR_VAS = (0x242E5A18, 0x242E5A00, 0x242E59E8)
+BASE_TYPE_VAS = (0x242FA77C, 0x242FA75C, 0x242FA73C)
+BASE_TYPE_NAMES = (
+    b".?AVCClientEntityList@@\0",
+    b".?AVCBaseEntityList@@\0",
+    b".?AVIClientEntityList@@\0",
+)
+BASE_CONTAINED_CLASSES = (2, 0, 0)
+BASE_MEMBER_DISPLACEMENTS = (0, 0, 0x10014)
+# MSVC RTTI CHD attribute 1 == multiple inheritance, and pdisp=-1
+# documents nonvirtual base coordinates using mdisp, not a vbtable.
+RTTI_HIERARCHY_ATTRIBUTES = 1
 TYPE_DESCRIPTOR_NAME = b".?AVCClientEntityList@@\0"
 ORIGINAL_SECONDARY_TABLE_SHA256 = "85b1a89b4c59052c027286beed20e00242cbdf428fa1559dbd666a51fe18be75"
 ORIGINAL_PRIMARY_TABLE_SHA256 = "f4ccb17ffb03a35df448ebfe6b7fcb29fec20cff98f7403121ac0bc8216bd8d3"
@@ -131,6 +144,20 @@ def verify_col_record(data: bytes, offset: int,
     require((signature,suboffset,cdoffset,typeptr,classptr) ==
             (0,offset,0,type_descriptor,class_hierarchy),
             "RTTI Complete Object Locator offset/descriptor mismatch")
+
+
+def verify_hierarchy_record(data: bytes, array_va: int) -> None:
+    require(len(data) == 16, "original RTTI hierarchy record must be 16 bytes")
+    require(struct.unpack("<IIII", data) == (0, 1, 3, array_va),
+            "RTTI inheritance flags, class count or array pointer differ")
+
+
+def verify_base_descriptor(data: bytes, type_va: int,
+                           contained: int, mdisp: int) -> None:
+    require(len(data) == 24, "original RTTI base descriptor must be 24 bytes")
+    require(struct.unpack("<IIiiiI", data) ==
+            (type_va, contained, mdisp, -1, 0, 0),
+            "RTTI base class descriptor/type or PMD differs")
 
 
 def check_prior_phase_contract() -> None:
@@ -241,6 +268,30 @@ def verify_original(client_bytes: bytes, server_bytes: bytes) -> dict:
             pe.at(TYPE_DESCRIPTOR_VA+8,len(TYPE_DESCRIPTOR_NAME))==
             TYPE_DESCRIPTOR_NAME,
             "original RTTI type descriptor does not name CClientEntityList")
+    # Authenticated Microsoft RTTI ClassHierarchyDescriptor:
+    # signature=0, flags=1 (multiple inheritance), three classes.
+    require(pe.section_of(CLASS_HIERARCHY_VA)==".rdata" and
+            CLASS_HIERARCHY_VA+12 in relocated and
+            pe.section_of(BASE_ARRAY_VA)==".rdata",
+            "original RTTI class hierarchy metadata/relocation missing")
+    verify_hierarchy_record(pe.at(CLASS_HIERARCHY_VA,16),BASE_ARRAY_VA)
+    for i,(descriptor_va,type_va,name,contained,mdisp) in enumerate(zip(
+            BASE_DESCRIPTOR_VAS,BASE_TYPE_VAS,BASE_TYPE_NAMES,
+            BASE_CONTAINED_CLASSES,BASE_MEMBER_DISPLACEMENTS)):
+        array_cell=BASE_ARRAY_VA+4*i
+        require(array_cell in relocated and
+                pe.at(array_cell,4)==pack(descriptor_va),
+                "RTTI base class pointer array or relocation drift: "+str(i))
+        require(pe.section_of(descriptor_va)==".rdata" and
+                pe.section_of(descriptor_va+23)==".rdata" and
+                descriptor_va in relocated,
+                "RTTI base descriptor type pointer relocation missing")
+        verify_base_descriptor(pe.at(descriptor_va,24),type_va,contained,mdisp)
+        require(pe.section_of(type_va)==".data" and
+                pe.at(type_va+8,len(name))==name,
+                "RTTI base type name mismatch: "+str(i))
+    require(BASE_MEMBER_DISPLACEMENTS[-1]==SECONDARY_OFFSET,
+            "RTTI IClientEntityList base and factory offset differ")
     require(hashlib.sha256(pe.at(SECONDARY_VTABLE_VA,36)).hexdigest()==
             ORIGINAL_SECONDARY_TABLE_SHA256,
             "complete 36-byte original secondary table SHA changed")
@@ -276,6 +327,12 @@ def verify_original(client_bytes: bytes, server_bytes: bytes) -> dict:
         "primary_rtti_offset_bytes": 0,
         "shared_rtti_type_descriptor_va": hex(TYPE_DESCRIPTOR_VA),
         "shared_rtti_class_hierarchy_va": hex(CLASS_HIERARCHY_VA),
+        "rtti_multiple_inheritance": True,
+        "rtti_base_class_count": len(BASE_DESCRIPTOR_VAS),
+        "rtti_base_names": [name.decode("ascii").rstrip("\\0") for name
+                            in BASE_TYPE_NAMES],
+        "rtti_base_member_displacements": list(BASE_MEMBER_DISPLACEMENTS),
+        "rtti_interface_base_mdisp_matches_factory": True,
         "original_secondary_whole_vtable_digest_authenticated": True,
         "new_original_native_functions_recovered": 0,
         "original_native_methods_executed": 0,
@@ -351,12 +408,34 @@ def self_test() -> None:
     reject(lambda:verify_col_record(b"",SECONDARY_OFFSET,
                                    0x63150000,0x63160000),
            "truncated original RTTI COL")
+    # Synthetic MSVC RTTI hierarchy and base-descriptor mutation
+    # defenses. Addresses and descriptors are fabricated in this mode.
+    h = struct.pack("<IIII",0,1,3,0x63170000)
+    verify_hierarchy_record(h,0x63170000)
+    for i in range(len(h)):
+        broken=bytearray(h);broken[i]^=1
+        reject(lambda data=bytes(broken):verify_hierarchy_record(
+            data,0x63170000), "hierarchy byte "+str(i))
+    reject(lambda:verify_hierarchy_record(h[:-1],0x63170000),
+           "truncated class hierarchy")
+    for fake_mdisp,fake_contained in ((0,2),(0,0),(SECONDARY_OFFSET,0)):
+        bcd=struct.pack("<IIiiiI",0x63180000,fake_contained,
+                        fake_mdisp,-1,0,0)
+        verify_base_descriptor(bcd,0x63180000,fake_contained,fake_mdisp)
+        for i in range(len(bcd)):
+            broken=bytearray(bcd);broken[i]^=1
+            reject(lambda data=bytes(broken):verify_base_descriptor(
+                data,0x63180000,fake_contained,fake_mdisp),
+                "base descriptor byte "+str(i))
+    reject(lambda:verify_base_descriptor(b"",0x63180000,0,SECONDARY_OFFSET),
+           "truncated base descriptor")
     reject(lambda:verify_original(b"synthetic-client",b"synthetic-server"),
            "forged original PE32 file hashes")
     print("PASS Phase1656 original-free VClientEntityList003: independent "
           "Phase226/228/229/230/231 cross-contract, exact nine secondary "
           "virtuals, separate three-slot parent, +0x10014 this-adjustment, "
           "RET4/RET0 inventory, SHA-pinned pair of RTTI COL records, "
+          "three-base RTTI hierarchy/PMDs and "
           "corrupt-every-pointer/constructor/factory/RTTI "
           "fixture and fake original-SHA refusal")
 
