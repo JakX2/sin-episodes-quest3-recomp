@@ -67,7 +67,7 @@ struct Fixture {
     std::size_t index_extent=2;
     bool first_alive=true,valid=true,fail_publish=false,reenter=false,
          reentrancy_refused=false,foreign_touch=false,foreign_transmit=false,
-         expire_pair_on_publish=false;
+         expire_pair_on_publish=false,crosswired_transmit=false;
     bool lease_active=false,deny_next_lease=false,
          reenter_lease_begin=false,reenter_lease_end=false;
     std::uint64_t owner_epoch=77,held_epoch=0;
@@ -169,6 +169,13 @@ static bool ValidPair(void* p,const edict_t* edict,
         f.eb.unknown==&f.second_unknown;
     if(!first&&!second)++f.pair_denials;
     return first||second;
+}
+static bool ValidCandidate(void* p,std::uint32_t table_token,
+                           std::size_t index,const CBaseEntity* entity) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
+    // Authenticity proof over synthetic table slot 2, using its handle serial.
+    return table_token==91&&index==2&&ValidPair(p,&f.eb,entity);
 }
 static bool Extent(void* p,const CCheckTransmitInfo* info,
                    const unsigned short* indices,int,
@@ -313,7 +320,7 @@ static bool TransmitEntity(void* p,std::uint32_t token,
     if(token!=1002)return false;
     *out=f.foreign_transmit
         ?reinterpret_cast<CBaseEntity*>(std::uintptr_t{1})
-        :&f.second;
+        :f.crosswired_transmit?&f.first:&f.second;
     return true;
 }
 static std::uint32_t Should(CBaseEntity* e,TransmitContext&,void* p) noexcept {
@@ -339,7 +346,7 @@ static GameEntsBoundedOwner Hooks(Fixture& f) noexcept {
     h.begin_access=&BeginOwnerAccess;h.end_access=&EndOwnerAccess;
     h.valid_edict=&ValidEdict;h.valid_entity=&ValidEntity;
     h.valid_unknown=&ValidUnknown;h.valid_touch=&ValidTouch;
-    h.valid_pair=&ValidPair;
+    h.valid_pair=&ValidPair;h.valid_candidate=&ValidCandidate;
     h.transmit_extent=&Extent;
     h.touch={&f,&ResolveTouch,&Init,&Publish,&f.contacts,
              f.registry.data(),f.registry.size(),
@@ -390,6 +397,10 @@ int main() {
     no_pair.valid_pair=nullptr;
     if(ServerGameEntsBoundedDispatch(no_pair).Ready())
         return Fail(49,"missing edict/entity generation association gate");
+    GameEntsBoundedOwner no_candidate=Hooks(f);
+    no_candidate.valid_candidate=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_candidate).Ready())
+        return Fail(60,"missing transmit candidate generation gate");
     GameEntsBoundedOwner no_unknown=Hooks(f);
     no_unknown.valid_unknown=nullptr;
     if(ServerGameEntsBoundedDispatch(no_unknown).Ready())
@@ -592,9 +603,27 @@ int main() {
        !game->Report().transmit.unauthorized_entity||
        f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
         return Fail(38,"foreign transmit entity rejected before policy");
-    // The negative fixture intentionally performs one entity lookup;
-    // reset this counter before the established successful-transmit probe.
-    f.foreign_transmit=false;f.indices[0]=1;f.ent_reads=0;
+    f.foreign_transmit=false;
+    // An individually authorized entity cannot be sent as another slot.
+    f.crosswired_transmit=true;f.calls.clear();
+    v->CheckTransmit(&f.info,f.indices,1);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       !game->Report().transmit.unauthorized_entity||
+       f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
+        return Fail(61,"owned but wrong transmit candidate must be refused");
+    f.crosswired_transmit=false;
+    // Same address, newer serial: reject before transmission policy.
+    const auto second_generation=f.registry[2].serial;
+    f.registry[2].serial=second_generation+21;
+    f.calls.clear();v->CheckTransmit(&f.info,f.indices,1);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       !game->Report().transmit.unauthorized_entity||
+       f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
+        return Fail(62,"stale-generation transmit candidate cannot enter policy");
+    f.registry[2].serial=second_generation;
+    // Negative fixtures performed multiple entity lookups; reset before
+    // established successful-transmit probe.
+    f.indices[0]=1;f.ent_reads=0;
 
     f.calls.clear();f.fail_publish=true;
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);

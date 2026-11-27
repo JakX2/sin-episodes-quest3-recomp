@@ -23,3 +23,7 @@ The existing full Windows MSVC x86 vtable fixture now maintains edict serials an
 This validates a **synthetic** host-supplied generation registry, not the original game's unmodified live entity manager. Exact retail edict generation, ownership of unknown interfaces, contacts, and CCheckTransmitInfo bitsets still require owner-backed integration. The engine is not booted. Retail CreateInterface remains disabled. No generic Source physics, surface or model/prop work.
 
 CI verification: check the final commit after push; all synthetic probes are original-free.
+
+## Additional transmit-provenance gate
+
+The complete bounded object additionally requires valid_candidate(context, table_token, candidate_index, entity) during CheckTransmit. This host callback proves that the original opaque candidate-table token resolves to the same live entity and generation as the given table slot, after the independent entity-pointer gate and before the transmission policy can mutate bitsets. The standalone transmit core leaves the hook optional to preserve focused existing tests, while the full vtable fails readiness without it. Native regressions cover a different individually authorized entity returned for the candidate and a recycled serial with unchanged addresses. The original game ABI and retail factory remain unmodified.

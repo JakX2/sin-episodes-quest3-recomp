@@ -41,6 +41,9 @@ struct GameEntsBoundedOwner {
     // generation, not merely two individually approved heap addresses.
     // The host checks a trusted edict serial/handle registry under lease.
     bool (*valid_pair)(void*,const edict_t*,const CBaseEntity*) noexcept=nullptr;
+    // Authenticate the entity against the exact table and slot generation.
+    bool (*valid_candidate)(void*,std::uint32_t,std::size_t,
+                            const CBaseEntity*) noexcept=nullptr;
     // Must prove stable storage for CCheckTransmitInfo and index array.
     // Count is the original signed input; callback reports index ELEMENTS.
     bool (*transmit_extent)(void*,const CCheckTransmitInfo*,
@@ -52,7 +55,7 @@ struct GameEntsBoundedOwner {
     bool Complete() const noexcept {
         return begin_access&&end_access&&
             valid_edict&&valid_entity&&valid_unknown&&valid_touch&&
-            valid_pair&&transmit_extent&&
+            valid_pair&&valid_candidate&&transmit_extent&&
             touch.resolve&&touch.init_trace&&touch.publish_trace&&
             touch.contacts&&touch.entries&&touch.entry_count&&
             touch.touch.Complete()&&release.Complete()&&
@@ -228,6 +231,8 @@ public:
             auto bounded_transmit=owner_.transmit;
             bounded_transmit.authorized_entity=owner_.valid_entity;
             bounded_transmit.authorization_context=owner_.context;
+            bounded_transmit.authorized_candidate=owner_.valid_candidate;
+            bounded_transmit.candidate_authorization_context=owner_.context;
             report_.transmit_status=CheckTransmitEntry(
                 reinterpret_cast<const unsigned char*>(info),info_extent,
                 reinterpret_cast<const std::uint16_t*>(indices),
