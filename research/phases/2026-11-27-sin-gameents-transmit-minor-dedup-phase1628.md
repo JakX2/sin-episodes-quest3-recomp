@@ -28,3 +28,7 @@ Original-to-native callback failure is explicitly represented as `GameEntsTransm
 ## Limits
 
 `ServerGameEnts001` is **not exposed** to the real Source engine in this change. The original interface's engine-owned entity table lifetime, recipient and networkable retrieval, global contact state, entity removal, and real network send effects remain unintegrated. The Win32 binary loader and Android Bionic smoke checks verify native behavior in synthetic hosts, **not** playable SiN startup on Windows, Android or Quest. No proprietary executable bytes, Source physics, surface/material, prop, model-loading or rendering code is committed.
+
+## Regression guard against recurrence
+
+The single original Minor method at `server.dll:0x2237e8c0` is now indexed once in `research/catalog/original_dll_verified_methods.json`, with the Phase 1613 native implementation as canonical and the Phase 1625 export as a compatibility alias. `research/tools/audit_sin_original_unique_method_ledger.py` validates every ledger entry's DLL identity, VA, original function digest and positive byte length, refuses duplicate `(original DLL, VA)` records, and self-tests duplicate, SHA drift and invalid-length mutations. Its `--self-test` is part of `sin-original-authentication.yml`. It does not claim that every separately recovered original function is already present in the intentionally incomplete initial ledger.
