@@ -73,7 +73,7 @@ struct Call{
         void* e=sin_independent::EntityHandleView(p.entries,p.entry_count).Resolve(rd<unsigned>(a,0xc30));
         o.target_live=e!=nullptr;if(!e)return true;
         if(!b.pounce_slash||!b.pounce_slash(b.context,a,e))return false;o.slash_calls=1;
-        // Original first draw -> z, second -> x; y repeats z.
+        // Original first draw -> y, second -> x; z is zero.
         float first=0,second=0;
         auto draw=[&](float& x){++o.random_calls;return b.random&&b.random(b.context,5.f,10.f,&x)&&std::isfinite(x)&&x>=5.f&&x<=10.f;};
         if(!draw(first)||!draw(second))return false;
