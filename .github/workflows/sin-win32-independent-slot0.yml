@@ -84,7 +84,7 @@ jobs:
           [void][System.Management.Automation.Language.Parser]::ParseFile($runner,[ref]$tokens,[ref]$errors)
           if ($errors.Count -ne 0) { throw ($errors | Out-String) }
           & $runner -SelfTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not $?) { throw 'Owner-only original factory package self-test failed' }
           if (-not (Test-Path (Join-Path $bundle.FullName 'sin_original_interfacereg_owner_probe.exe'))) { throw 'Missing owner-only Win32 probe' }
           if ((Get-ChildItem $bundle -File).Count -ne 3) { throw 'Owner-only package includes unexpected files' }
       - uses: actions/upload-artifact@v4
