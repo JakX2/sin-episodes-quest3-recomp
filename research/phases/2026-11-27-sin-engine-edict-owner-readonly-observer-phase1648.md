@@ -38,7 +38,7 @@ This reports up to 30 seconds of read-only observations. If the engine is not lo
 
 ## Synthetic regression and verification
 
-`--self-test` is portable and original-free: it tests exact SHA-backed VAs, image-base relocation, synthetic four-DWORD snapshots, absent/torn reads, zero/partial states, capacity/count inconsistencies, arithmetic overflow, and adjacent-only base-change accounting. It makes no Win32 calls, has no proprietary binaries, and is wired to both the Windows MSVC native CTest and the Linux original-free decomp GitHub Actions workflow. The new synthetic test adds one more CTest case beyond Phase 1647.
+`--self-test` is portable and original-free: it tests exact SHA-backed VAs, image-base relocation, synthetic four-DWORD snapshots, absent/torn reads, zero/partial states, capacity/count inconsistencies, arithmetic overflow, and adjacent-only base-change accounting. On Linux it makes no Win32 calls. On Windows the same self-test additionally opens **only its own test process** with `PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION`, reads one local four-byte test value with `ReadProcessMemory`, and closes the handle. It never opens the game in CI. The regression is wired to both Windows MSVC native CTest and the Linux original-free decomp GitHub Actions workflow. The new synthetic test adds one more CTest case beyond Phase 1647.
 
 ## Limits
 
