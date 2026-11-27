@@ -400,13 +400,16 @@ int main() {
         return Fail(37,"foreign nested touch entity must be rejected");
     f.ta.entity=&f.first;
     // The transmit policy must never receive foreign entity pointers.
+    // Place the rejected full-check entity first: an earlier ALWAYS bit
+    // would correctly be committed by retail-style sequential processing.
     f.calls.clear();f.foreign_transmit=true;f.selected[0]=0;
-    v->CheckTransmit(&f.info,f.indices,2);
+    f.indices[0]=2;
+    v->CheckTransmit(&f.info,f.indices,1);
     if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
        !game->Report().transmit.unauthorized_entity||
        f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
         return Fail(38,"foreign transmit entity rejected before policy");
-    f.foreign_transmit=false;
+    f.foreign_transmit=false;f.indices[0]=1;
 
     f.calls.clear();f.fail_publish=true;
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);
