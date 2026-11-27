@@ -1292,6 +1292,42 @@ int main(int argc,char** argv){
                 assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.schedule==8012&&(sr.index==3||sr.index==4));
             }
             assert(terminated&&play_starts==1&&post_starts==1&&play_completions==1&&play_ticks>1&&post_ticks>1&&q.motion_ticks==1&&q.aims==play_ticks&&q.begins==1&&q.ends==1&&q.assignments==2&&q.lookups==2);
+            // Fresh FACE descriptor: the original cursor enters Start112
+            // after STOP_MOVING. Use the same native outer entry and clock.
+            std::memset(q.seq,0,sizeof(q.seq));f.put(q.seq,0,nm::scripted_sequence_vtable);
+            f.put(q.seq,0x378,0x9002u);f.put(q.seq,0x3d0,0x3000u);f.put(q.seq,0x3d4,0xffffffffu);
+            f.put(q.seq,0x370,90.f);f.put(q.seq,0xb4,4u);
+            prepare_engaged(1,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+            f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0x9002u);
+            f.put(f.actor,0x970,0x9002u);f.put(f.actor,0x378,0x3000u);f.put(f.actor,0x9c,100);
+            f.put(f.motor,0x14,0.f);f.put(equipped.nav,0xc,0);std::memset(equipped.path,0,sizeof(equipped.path));
+            auto face_move=prefix_move;
+            face_move.stop_path=[](void* p,void* nav,bool finished) noexcept ->int{
+                auto& q=*static_cast<EquippedThinkFixture*>(p);assert(nav==q.nav&&finished);++q.f->stop_paths;return 1;
+            };
+            auto face_step=prefix_step;face_step.movement=&face_move;
+            const unsigned turns=f.begins,steps=f.steps,stops=f.stop_paths;
+            const bool saved_align=f.align_on_step;f.align_on_step=false;
+            float face_time=prefix_time+1.f;f.put(f.actor,0x864,face_time);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1700);
+            assert(state->install(f.actor,sizeof(f.actor),8015,face_time,q.schedule,&sr)&&sr.index==0&&sr.task.id==116);
+            f.put(f.actor,0x79c,global+159);
+            for(unsigned tick=0;tick<3;++tick){
+                if(tick==2)f.align_on_step=true;
+                seed_anim(face_time);
+                const ServerNpcRunAnimationInput input{face_time,false,false};
+                const int ok=combined->ground(f.actor,sizeof(f.actor),&input,.05f,&face_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out);
+                if(!ok)std::fprintf(stderr,"script face tick=%u task=%d status=%d turns=%u steps=%u stops=%u\n",tick,step_result.think.requests.scheduler.maintenance.state.task.id,step_result.think.requests.scheduler.maintenance.state.status,f.begins-turns,f.steps-steps,f.stop_paths-stops);
+                assert(ok&&outer_result.completed&&outer_result.think_called&&tail_result.completed);
+                assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.schedule==8015&&sr.index==(tick?1u:0u));
+                if(tick==0)assert(sr.status==4&&sr.task.id==116);
+                else{
+                    float yaw=0;std::memcpy(&yaw,f.motor+0x14,4);assert(yaw==90.f&&sr.task.id==112);
+                    assert(f.begins==turns+1&&f.stop_paths==stops+1&&f.steps==steps+tick);
+                    assert((sr.status==4)==(tick==2));
+                }
+                assert(outer_result.finish.deadline>face_time);face_time=outer_result.finish.deadline;
+            }
+            f.align_on_step=saved_align;
             equipped_entries[4]={};
             meta.suppress=false;meta.scripted=false;equipped.scripted_entity=nullptr;equipped.scripted_other=nullptr;equipped_entries[3]={};equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
         }

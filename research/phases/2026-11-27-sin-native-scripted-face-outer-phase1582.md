@@ -1,0 +1,3 @@
+# Phase 1582: scripted FACE through full NPC outer scheduler
+
+Use existing per-maintenance script-control clock/serial table and facing motor + movement navigator leaves to bind Start112. The shared dispatcher preserves its native behavior-component delegation gate before calling the phase1581 original start implementation. Existing Run112 remains the original facing alias. No public ABI layout changes. Added regression installs actual inherited SCHED_SCRIPTED_FACE at cursor zero; original STOP_MOVING completes, next due frame quantizes goal yaw, starts turn and stops path, subsequent due frame completes after motor owner reports alignment. This tests the FACE prefix only; Start111 still needs an origin-set leaf routed into full scheduler. CI pending.
