@@ -113,6 +113,11 @@ ORIGINAL_METHODS={
   "sequence_group_ready":(0x221adef0,12,"7d1509fd885708ef67ca1b4cd152b0983ba10ee6a6205bb8c00d1bf889ea47ba"),
   "sequence_waiting":(0x221adf00,7,"bab98b95dd0fd5c04e42353458bbffa92caaefd05db8bca11908779c9ed77109"),
   "sequence_begin_output":(0x221adf70,16,"642e3595f71cb26e9f47a7c838ce487bbd3c6e0336ab408c2605e9dc431ce9b9"),
+  "sequence_start_task109_case":(0x22052788,23,"3f753752af55d1a55f3931d0f22e1c792784180874460a8b971342236ab1a22a"),
+  "sequence_start_task110_case":(0x2205279f,228,"82a2c32389a8d29a59608633689d27d7b59539c1f0ff0524ffac962afde4febc"),
+  "sequence_start_dispatch":(0x22050150,42,"af29b30210879c623603389bb558b872a093781552688f748d3cded1f562548b"),
+  "sequence_name_compare":(0x22003a80,26,"2b31208c4e72ce375e3673ef9fa498049390bdae5a9631b113a51d9660de590a"),
+  "sequence_playback_rate":(0x2203d0d0,64,"f117c8e1a03f65b3ea7438c45061a784398564c7f830eda1e3254ebc03f5e284"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
@@ -332,6 +337,8 @@ def verify_filter_factory_keys(read_u32,read_text):
 FILTER_DESTRUCTORS={0x224149a4:0x2216bc40,0x22414c3c:0x2216bd00,0x22414ed4:0x2216be40,0x2241516c:0x2216bf20}
 FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x224,0x2214a060),(0x268,0x220019f0))
 SEQUENCE_WORDS={
+    0x22052eb8:0x2205263b,0x22052ec0:0x2205272a,0x22052ec4:0x22052788,0x22052ec8:0x2205279f,
+    0x22052f24:0x2205281a,
     # RunTask 220538d0: byte table indexed by task-2, then jump table.
     # Pin neighboring bytes too, not guessed task numbers.
     0x22054bac:0x1b1a2519,0x22054bb0:0x1d0d251c,

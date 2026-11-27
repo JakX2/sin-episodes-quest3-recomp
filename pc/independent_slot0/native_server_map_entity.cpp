@@ -3913,6 +3913,52 @@ int run_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcTas
     o->synchronized=1;o->group_updates=sync.group_updates;
     return complete()?done():0;
 }
+// Original StartTask cases 106, 109, 110. 110's missing sequence
+// dereference is not synthesized; the independent owner must supply it.
+int start_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcStartTaskBindings* b,ScriptedNpcStartTaskResult* o) noexcept {
+    if(!o)return 0;*o={};o->task=task;
+    if(!b||!b->task||!b->task->finish||!b->task->finish->animation||!b->task->finish->animation->control||
+       (task!=106&&task!=109&&task!=110)||bytes<0x974)return 0;
+    const auto& route=*b->task;const auto& anim=*route.finish->animation;const auto& c=*anim.control;
+    unsigned marker=0;
+    if(!SinReadCampaignTouchMarkerInternal(npc,&marker)||!scripted_npc_marker(marker)||!SinCampaignStorageReadableInternal(npc,bytes))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    auto done=[&](){o->completed=1;return 1;};
+    if(task==109){write_field(npc,0x96c,2u);o->state_written=1;return done();}
+    if(!c.extent||c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return 0;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    auto resolved=[&](void*& seq,unsigned& n){
+        seq=registry.Resolve(read_field<unsigned>(npc,0x970));n=0;
+        if(!seq)return true;
+        unsigned vt=0;
+        return c.extent(c.context,seq,&n)&&n>=scripted_sequence_extent&&
+            SinReadCampaignTouchMarkerInternal(seq,&vt)&&vt==scripted_sequence_vtable&&SinCampaignStorageReadableInternal(seq,scripted_sequence_extent);
+    };
+    void* seq=nullptr;unsigned n=0;if(!resolved(seq,n))return 0;
+    if(!seq){
+        o->missing=1;
+        if(task!=106||!route.warning||!route.task_fail||!route.warning(route.context,npc,task))return 0;
+        o->warned=1;if(!route.task_fail(route.context,npc,5))return 0;o->task_failed=1;return done();
+    }
+    if(task==106)return done(); // valid handle: no TaskComplete
+    const unsigned idle=read_field<unsigned>(seq,0x394);
+    if(idle){
+        if(!run_sequence_animation(seq,n,npc,idle,false,false,&anim,&o->animation))return 0;o->pre_idle=1;
+        if(!resolved(seq,n)||!seq)return 0;
+        const unsigned live_idle=read_field<unsigned>(seq,0x394),play=read_field<unsigned>(seq,0x398);
+        bool same=false;
+        if(!b->equal_names||!b->equal_names(b->context,live_idle?live_idle:0x223d47a8u,play?play:0x223d47a8u,&same))return 0;
+        o->compared=1;o->same_name=same;
+        if(same){ScriptedNpcTaskResult rate{};if(!scripted_rate(npc,0.f,route,rate))return 0;o->rate_changed=rate.rate_changed;}
+    }else if(read_field<int>(npc,0x96c)!=6){
+        const int pending=read_field<int>(npc,0x880);
+        if(pending==6||pending==7||pending==10||pending==11){
+            if(!b->request_activity||!b->request_activity(b->context,npc,1))return 0;o->requested_idle=1;
+        }
+    }
+    return done();
+}
 // 2216b300 InputTestActivator: predicate (including inherited negation),
 // exactly one output, original activator and self caller, zero extra delay.
 int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
@@ -4420,4 +4466,10 @@ extern "C" int __cdecl SiN_RunScriptedSequencePrimaryWithRemoval(void* a,unsigne
 extern "C" int __cdecl SiN_RunScriptedNpcTask(void* a,unsigned n,int task,
     const sin_port::native_map::ScriptedNpcTaskBindings* b,sin_port::native_map::ScriptedNpcTaskResult* o) noexcept {
     return sin_port::native_map::run_scripted_npc_task(a,n,task,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_StartScriptedNpcTask=_SiN_StartScriptedNpcTask")
+extern "C" int __cdecl SiN_StartScriptedNpcTask(void* a,unsigned n,int task,
+    const sin_port::native_map::ScriptedNpcStartTaskBindings* b,sin_port::native_map::ScriptedNpcStartTaskResult* o) noexcept {
+    return sin_port::native_map::start_scripted_npc_task(a,n,task,b,o);
 }

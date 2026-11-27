@@ -718,6 +718,21 @@ struct ScriptedNpcTaskResult {
 };
 inline constexpr char scripted_npc_task_export[]="SiN_RunScriptedNpcTask";
 using RunScriptedNpcTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcTaskBindings*,ScriptedNpcTaskResult*) noexcept;
+// StartTask's directly indexed table is distinct from RunTask's
+// byte-indexed table. In particular Start110 is pre-idle, not sync.
+struct ScriptedNpcStartTaskBindings {
+    const ScriptedNpcTaskBindings* task;
+    void* context;
+    int (__cdecl *equal_names)(void*,unsigned,unsigned,bool*) noexcept; // original 22003a80
+    int (__cdecl *request_activity)(void*,void*,int) noexcept; // original virtual +4dc
+};
+struct ScriptedNpcStartTaskResult {
+    unsigned completed,missing,warned,task_failed,state_written,pre_idle,compared,same_name,rate_changed,requested_idle;
+    int task;
+    ScriptedSequenceAnimationResult animation;
+};
+inline constexpr char scripted_npc_start_task_export[]="SiN_StartScriptedNpcTask";
+using StartScriptedNpcTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcStartTaskBindings*,ScriptedNpcStartTaskResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
