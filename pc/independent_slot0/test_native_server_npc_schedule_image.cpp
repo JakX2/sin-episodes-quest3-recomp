@@ -144,7 +144,15 @@ int main(int argc,char** argv){
         ServerNpcScriptedScheduleChain chain{};
         assert(chain_bind(f.actor,&scripts,&derived,&runtime,&chain)&&chain.bound.scheduler.maintenance.selection.head==8015&&selection.head==99&&!selection.grunt.schedule.storage);
         auto& chain_schedule=chain.bound.scheduler.maintenance.selection.grunt.schedule;
-        assert(chain_schedule.storage(chain_schedule.context,8014,&p,&n)&&n==6*sizeof(ServerNpcScheduleTask));
+        // Descriptor, task array and name are separate tokens (base + 3*i + kind).
+        assert(chain_schedule.storage(chain_schedule.context,8012,&p,&n)&&n==52);
+        assert(chain_schedule.storage(chain_schedule.context,8013,&p,&n)&&n==5*sizeof(ServerNpcScheduleTask));
+        assert(static_cast<const ServerNpcScheduleTask*>(p)[4].id==109);
+        assert(chain_schedule.storage(chain_schedule.context,8014,&p,&n)&&!std::strcmp(static_cast<const char*>(p),"SCHED_SCRIPTED_WAIT"));
+        assert(chain_schedule.storage(chain_schedule.context,8015,&p,&n)&&n==52);
+        assert(chain_schedule.storage(chain_schedule.context,8016,&p,&n)&&n==6*sizeof(ServerNpcScheduleTask));
+        assert(static_cast<const ServerNpcScheduleTask*>(p)[1].id==112);
+        assert(chain_schedule.storage(chain_schedule.context,8017,&p,&n)&&!std::strcmp(static_cast<const char*>(p),"SCHED_SCRIPTED_FACE"));
         assert(chain_schedule.storage(chain_schedule.context,derived.head+2,&p,&n)&&!std::strcmp(static_cast<const char*>(p),derived.rows[derived.row_count-1].source->name));
         assert(!chain_schedule.storage(chain_schedule.context,8018,&p,&n));
         assert(state->install(f.actor,sizeof(f.actor),8012,9.f,&chain_schedule,&sr)&&sr.global==global+158);
