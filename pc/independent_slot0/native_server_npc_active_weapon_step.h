@@ -271,6 +271,14 @@ struct ServerNpcOuterUpdateApi {
 };
 using GetServerNpcOuterUpdateApi=const ServerNpcOuterUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 
+// Script services are scoped to this frame, including a skipped AI deadline.
+inline constexpr char server_npc_outer_scripts_export[]="SiN_GetServerNpcOuterScriptedUpdateApi";
+struct ServerNpcOuterScriptedUpdateApi {
+    std::uint32_t version,size;
+    int (__cdecl *ground)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveWeaponStepBindings*,const ServerNpcOuterUpdateBindings*,ServerNpcActiveWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterUpdateResult*,const ServerNpcScriptedThinkServices*) noexcept;
+    int (__cdecl *jet)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveJetWeaponStepBindings*,const ServerNpcOuterUpdateBindings*,ServerNpcActiveJetWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterUpdateResult*,const ServerNpcScriptedThinkServices*) noexcept;
+};
+using GetServerNpcOuterScriptedUpdateApi=const ServerNpcOuterScriptedUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_npc_wake_policy_export[]="SiN_GetServerNpcWakePolicyApi";
 struct ServerNpcWakePolicyBindings {
     ServerNpcConditionMapBindings conditions;
