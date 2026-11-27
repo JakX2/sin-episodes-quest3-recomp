@@ -1,0 +1,3 @@
+# Phase 1559: scripted sequence interruption
+
+Original Drive server.dll SHA verified. 221ae350 writes +3cc unless spawn flag 0x20; 221aeca0 checks latch, live serial +3d0, life state +8c==0; 221aecf0 clears current NPC conditions 16/17 only if predicate false and target casts to NPC. Reuse authenticated native condition namespace/store API (220398a0). 2204fc70 gate checks NPC current state 4, resolved current script, interrupt predicate and live flag 0x400 vs saved flag, then own life state. Explicitly refuse unknown RTTI instead of pretending it is a non-NPC. Five measured code digests, loaded tests for protected latch, alive/dead, suppression, stale and non-NPC handles, saved movement flag. New versioned export; scheduler/animation-event integration pending.

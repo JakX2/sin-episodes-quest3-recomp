@@ -2,6 +2,7 @@
 #include "native_server_npc_active_weapon_step.h"
 #include "native_server_activity_assignment.h"
 #include "native_server_npc_task_lifecycle.h"
+extern "C" const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcTaskLifecycleApi* __cdecl SiN_GetServerNpcTaskLifecycleApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcActivityAssignmentApi* __cdecl SiN_GetServerNpcActivityAssignmentApi(std::uint32_t,std::uint32_t) noexcept;
 #include <cmath>
@@ -4038,6 +4039,87 @@ int start_scripted_npc_motion_task(void* npc,unsigned bytes,int task,const Scrip
     }else o->missing=1;
     write_field(npc,0x96c,0u);o->state_written=1;return done();
 }
+bool interrupt_storage(void* a,unsigned n) noexcept {
+    unsigned vt=0;
+    return n>=scripted_sequence_extent&&SinReadCampaignTouchMarkerInternal(a,&vt)&&vt==scripted_sequence_vtable&&
+        SinCampaignStorageReadableInternal(a,scripted_sequence_extent);
+}
+bool interrupt_control(const ScriptedSequenceInterruptBindings* b) noexcept {
+    return b&&b->control&&b->control->extent&&b->control->entry_count<=sin_independent::kEntityHandleCapacity&&
+        (b->control->entries||!b->control->entry_count);
+}
+int __cdecl interrupt_set(void* a,unsigned n,bool enable,ScriptedSequenceInterruptResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!interrupt_storage(a,n))return 0;
+    if(read_field<unsigned char>(a,0xb4)&0x20u)o->flag_protected=1;
+    else{
+        const auto value=static_cast<unsigned char>(enable);
+        o->changed=read_field<unsigned char>(a,0x3cc)!=value;
+        write_field(a,0x3cc,value);
+    }
+    o->completed=1;return 1;
+}
+bool interrupt_query_impl(void* a,const ScriptedSequenceControlBindings& c,ScriptedSequenceInterruptResult& o) noexcept {
+    if(!read_field<unsigned char>(a,0x3cc))return true;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    if(void* actor=registry.Resolve(read_field<unsigned>(a,0x3d0))){
+        unsigned n=0;
+        if(!c.extent(c.context,actor,&n)||n<0x90||!SinCampaignStorageReadableInternal(actor,0x90))return false;
+        o.live_actor=1;o.dead_actor=read_field<int>(actor,0x8c)!=0;o.permitted=!o.dead_actor;
+    }
+    return true;
+}
+int __cdecl interrupt_query(void* a,unsigned n,const ScriptedSequenceInterruptBindings* b,ScriptedSequenceInterruptResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!interrupt_storage(a,n)||!interrupt_control(b)||!interrupt_query_impl(a,*b->control,*o))return 0;
+    o->completed=1;return 1;
+}
+int __cdecl interrupt_suppress(void* a,unsigned n,const ScriptedSequenceInterruptBindings* b,ScriptedSequenceInterruptResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!interrupt_storage(a,n)||!interrupt_control(b))return 0;
+    const auto& c=*b->control;
+    if(!interrupt_query_impl(a,c,*o))return 0;
+    if(!o->permitted){
+        const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+        if(void* actor=registry.Resolve(read_field<unsigned>(a,0x3d0))){
+            unsigned bytes=0,vt=0;
+            if(!c.extent(c.context,actor,&bytes)||bytes<4||!SinReadCampaignTouchMarkerInternal(actor,&vt))return 0;
+            o->live_actor=1;
+            if(scripted_npc_marker(vt)){
+                using namespace sin_port::native_weapon_tables;
+                const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+                ServerNpcConditionResult result{};
+                if(!api||!b->conditions||bytes<0x7ec||!SinCampaignStorageReadableInternal(actor,0x7ec)||
+                   !api->store(actor,bytes,16,NpcConditionCurrent,false,b->conditions,&result))return 0;
+                o->condition16=1;o->cleared16=result.changed;
+                if(!api->store(actor,bytes,17,NpcConditionCurrent,false,b->conditions,&result))return 0;
+                o->condition17=1;o->cleared17=result.changed;
+            }else if(campaign_player_marker(vt)!=PlayerPredicate::Unknown||campaign_filter_class(vt)||vt==scripted_sequence_vtable)o->non_npc=1;
+            else return 0; // unknown RTTI cast is not an authenticated non-NPC
+        }
+    }
+    o->completed=1;return 1;
+}
+// 2204fc70: scripted state requires both sequence permission and
+// the saved movement flag when the live NPC has that flag set.
+int __cdecl interrupt_npc_gate(void* a,unsigned n,const ScriptedSequenceInterruptBindings* b,ScriptedSequenceInterruptResult* o) noexcept {
+    if(!o)return 0;*o={};unsigned vt=0;
+    if(!interrupt_control(b)||n<0x974||!SinReadCampaignTouchMarkerInternal(a,&vt)||!scripted_npc_marker(vt)||
+       !SinCampaignStorageReadableInternal(a,0x974))return 0;
+    const auto& c=*b->control;
+    if(read_field<int>(a,0x850)==4){
+        const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+        if(void* seq=registry.Resolve(read_field<unsigned>(a,0x970))){
+            unsigned bytes=0;
+            if(!c.extent(c.context,seq,&bytes)||!interrupt_storage(seq,bytes)||!interrupt_query_impl(seq,c,*o))return 0;
+            o->script_live=1;o->script_gate=!o->permitted;
+            o->motion_gate=o->permitted&&(read_field<unsigned>(a,0xbc)&0x400u)&&!(read_field<unsigned>(seq,0x3c8)&0x400u);
+            if(o->script_gate||o->motion_gate){o->permitted=0;o->completed=1;return 1;}
+        }
+    }
+    o->dead_actor=read_field<int>(a,0x8c)!=0;o->permitted=!o->dead_actor;o->completed=1;return 1;
+}
+const ScriptedSequenceInterruptApi interrupt_api{1,sizeof(ScriptedSequenceInterruptApi),&interrupt_set,&interrupt_query,&interrupt_suppress,&interrupt_npc_gate};
 // 2216b300 InputTestActivator: predicate (including inherited negation),
 // exactly one output, original activator and self caller, zero extra delay.
 int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
@@ -4557,4 +4639,10 @@ extern "C" int __cdecl SiN_StartScriptedNpcTask(void* a,unsigned n,int task,
 extern "C" int __cdecl SiN_StartScriptedNpcMotionTask(void* a,unsigned n,int task,
     const sin_port::native_map::ScriptedNpcStartMotionBindings* b,sin_port::native_map::ScriptedNpcStartMotionResult* o) noexcept {
     return sin_port::native_map::start_scripted_npc_motion_task(a,n,task,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetScriptedSequenceInterruptApi=_SiN_GetScriptedSequenceInterruptApi")
+extern "C" const sin_port::native_map::ScriptedSequenceInterruptApi* __cdecl SiN_GetScriptedSequenceInterruptApi(std::uint32_t version,std::uint32_t size) noexcept {
+    using namespace sin_port::native_map;
+    return version==1&&size==sizeof(ScriptedSequenceInterruptApi)?&interrupt_api:nullptr;
 }
