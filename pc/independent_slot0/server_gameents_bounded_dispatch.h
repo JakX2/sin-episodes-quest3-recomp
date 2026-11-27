@@ -98,8 +98,10 @@ public:
         edict_t* first,edict_t* second) noexcept override {
         const auto gate=Begin(GameEntsDispatchSlot::MarkEntitiesAsTouching);
         if(gate!=GameEntsDispatchResult::Completed)return;
-        if((first&&!owner_.valid_edict(owner_.context,first))||
-           (second&&!owner_.valid_edict(owner_.context,second))) {
+        if((first&&(!owner_.valid_edict(owner_.context,first)||
+                    !UnknownAuthorized(first)))||
+           (second&&(!owner_.valid_edict(owner_.context,second)||
+                     !UnknownAuthorized(second)))) {
             report_.status=GameEntsDispatchResult::Unauthorized;
         } else {
             auto bounded_touch=owner_.touch;
