@@ -4866,6 +4866,37 @@
       ],
       "implementation_path": "pc/independent_slot0/server_transmit_policy_core.h",
       "test_path": "pc/independent_slot0/test_server_transmit_policy_core.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x221E82E0",
+      "label": "ServerGameEnts001 FreeContainingEntity virtual thunk",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "0b0caf62afd15971ebdd8778c492e03519e45a2c93c03b42aceec070630cb0ac",
+      "original_code_length": 14,
+      "evidence_path": "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md",
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-gameents-touch-release-lifecycle-phase1632.md"
+      ],
+      "implementation_path": "pc/independent_slot0/server_entity_release_core.h",
+      "test_path": "pc/independent_slot0/test_server_gameents_touch_release_lifecycle.cpp"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x22266E60",
+      "label": "ServerGameEnts001 FreeContainingEntity helper: detach edict, touch, ground, immediate removal",
+      "owner": "ServerGameEnts001",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "a502a1f89195150a94d7a02b8e224090d543047fb3a95c384d62260289435090",
+      "original_code_length": 65,
+      "evidence_path": "research/phases/2026-11-27-sin-gameents-touch-release-lifecycle-phase1632.md",
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-original-servergameents-factory-phase1626.md"
+      ],
+      "implementation_path": "pc/independent_slot0/server_entity_release_core.h",
+      "test_path": "pc/independent_slot0/test_server_gameents_touch_release_lifecycle.cpp",
+      "additional_test_path": "pc/independent_slot0/test_server_entity_full_teardown.cpp"
     }
   ]
 }
