@@ -18,6 +18,8 @@ Windows 32-bit original factory interface readback:
     interface-registry records without executing any vtable method
   - Verifies original client 55 and server 10 InterfaceReg record counts
   - Verifies original client GameClientExports001 4-slot loaded vtable
+  - Verifies original VClientEntityList003 secondary +0x10014 factory identity,
+    distinct parent/secondary vptrs and 9+3 code-pointer slots (read-only)
   - Verifies original server ServerGameClients003 15-slot loaded vtable
   - Does NOT launch SinEpisodes.exe, load a map, or test independent game DLLs
 
@@ -36,7 +38,13 @@ Owner-original test, from this package directory (edit both paths to match):
 Expected output includes JSON events:
   original_interfacereg_snapshot
   original_gameclientexports_vtable
+  original_client_entitylist_secondary_vtable
   original_servergameclients_vtable
+
+The entity-list JSON event reports the 65556-byte secondary interface
+adjustment, nine secondary slots, three separate parent slots, and zero
+method invocations. Its four-byte inter-table gap is NOT treated as a
+virtual. Runtime method semantics remain out of scope.
 
 Output prints status, counts, expected counts and matched vtable slots only.
 It does NOT print raw original machine-code bytes, process pointers, or
