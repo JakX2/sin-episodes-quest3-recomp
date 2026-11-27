@@ -1236,6 +1236,62 @@ int main(int argc,char** argv){
             assert(script_stats.last_run.script.task_completed&&script_stats.last_run.script.begin_output&&script_stats.last_run.script.begin_queued==1&&script_stats.last_run.script.animation.assigned);
             assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.index==2&&sr.task.id==106&&sr.status==4);
             int play_sequence=-1;std::memcpy(&play_sequence,f.actor+0x3ec,4);assert(play_sequence==2&&q.begins==1&&!q.ends&&q.lookups==1&&q.assignments==1&&!cleaned.completed);
+            // Complete the same schedule with nonlooping animation metadata.
+            // From here no seed_anim, cursor writes, or finished-byte writes:
+            // the recovered base cycle and original outer cadence drive it.
+            q.restored=q.cleared=q.reads=0;
+            finish.sequence_has_motion=[](void* p,void* a,int seq,bool* value) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&seq==2);*value=false;return 1;
+            };
+            task.context=&q;
+            task.update_aim=[](void* p,void* a,int x,int y) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&!x&&!y);++q.aims;return 1;
+            };
+            nm::ScriptedNpcStartMotionBindings motion{};motion.base=&start;motion.context=&q;
+            motion.duration=[](void* p,void* a,int seq,double* duration) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&seq==2);*duration=2.;return 1;
+            };
+            motion.advance_motion=[](void* p,void* a,float elapsed,int x,int y) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&elapsed>0.f&&elapsed<=.15f&&!x&&!y);++q.motion_ticks;return 1;
+            };
+            ServerNpcScriptedMotionSchedulerStats motion_stats{};services.motion=&motion;services.motion_stats=&motion_stats;
+            unsigned play_ticks=0,post_ticks=0,play_starts=0,post_starts=0,play_completions=0;
+            bool terminated=false;
+            for(unsigned tick=0;tick<64;++tick){
+                const float now=outer_result.finish.deadline;assert(now>prefix_time);prefix_time=now;
+                const ServerNpcRunAnimationInput input{now,false,false};
+                const int ok=combined->ground(f.actor,sizeof(f.actor),&input,.05f,&prefix_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out);
+                if(!ok)std::fprintf(stderr,"script continuous tick=%u task=%d status=%d starts=%u/%u runs=%u assigned=%u end=%u cleaned=%u anim=%u\n",tick,step_result.think.requests.scheduler.maintenance.state.task.id,step_result.think.requests.scheduler.maintenance.state.status,script_stats.native_starts,motion_stats.native_starts,script_stats.native_runs,q.assignments,q.ends,cleaned.completed,step_result.animation_called);
+                assert(ok&&outer_result.completed&&outer_result.think_called&&tail_result.completed);
+                if(motion_stats.native_starts){
+                    assert(motion_stats.native_starts==1&&motion_stats.last.task==108&&motion_stats.last.state_written&&motion_stats.last.duration_called);
+                    ++play_starts;
+                }
+                if(script_stats.native_starts){
+                    assert(script_stats.native_starts==1&&script_stats.last_start.script.task==109&&script_stats.last_start.script.state_written);
+                    ++post_starts;
+                }
+                assert(script_stats.native_runs==1);
+                const auto& result=script_stats.last_run.script;
+                if(result.task==108){
+                    ++play_ticks;assert(result.aim_called);
+                    if(result.task_completed){
+                        ++play_completions;assert(result.animation.post_idle_started&&result.animation.output_called&&result.animation.queued==1&&q.ends==1&&q.assignments==2);
+                        int current=-1;std::memcpy(&current,f.actor+0x3ec,4);assert(current==3&&!f.actor[0x3e1]);
+                    }else assert(result.waiting);
+                }else{
+                    assert(result.task==109);++post_ticks;
+                    if(result.terminal.completed){
+                        assert(cleaned.completed&&cleaned.handles_cleared==3&&q.restored==1&&q.cleared==1&&q.reads==2);
+                        assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&!sr.schedule);
+                        unsigned script=0;std::memcpy(&script,f.actor+0x970,4);assert(script==0xffffffffu);
+                        terminated=true;break;
+                    }
+                    assert(result.waiting&&!cleaned.completed);
+                }
+                assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.schedule==8012&&(sr.index==3||sr.index==4));
+            }
+            assert(terminated&&play_starts==1&&post_starts==1&&play_completions==1&&play_ticks>1&&post_ticks>1&&q.motion_ticks==1&&q.aims==play_ticks&&q.begins==1&&q.ends==1&&q.assignments==2&&q.lookups==2);
             equipped_entries[4]={};
             meta.suppress=false;meta.scripted=false;equipped.scripted_entity=nullptr;equipped.scripted_other=nullptr;equipped_entries[3]={};equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
         }
