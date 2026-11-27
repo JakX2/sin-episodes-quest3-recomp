@@ -1582,3 +1582,13 @@ add_executable(sin_original_client_entitylist_secondary_abi_test
 target_compile_features(sin_original_client_entitylist_secondary_abi_test PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_entitylist_secondary_9slot_native_abi
   COMMAND sin_original_client_entitylist_secondary_abi_test)
+
+
+# Phase 1656: test the exact read-only owner probe against fabricated
+# independent PE32 pointer records. No original DLLs loaded in CI.
+add_executable(sin_original_client_entitylist_readonly_snapshot_test
+  test_original_client_entitylist_readonly_snapshot.cpp)
+target_compile_features(sin_original_client_entitylist_readonly_snapshot_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_entitylist_owner_readonly_snapshot_native
+  COMMAND sin_original_client_entitylist_readonly_snapshot_test)
