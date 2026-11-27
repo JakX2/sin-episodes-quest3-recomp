@@ -105,6 +105,8 @@ int main() {
     source->max_entities=2048;
     source->mirrors[5].networkable=&unknown->networkable;
     source->mirrors[2047].networkable=&unknown->networkable;
+    source->mirrors[2048].networkable=&unknown->networkable;
+    source->mirrors[4095].networkable=&unknown->networkable;
     constexpr std::uint32_t kSerial=0xABCDEu;
     constexpr unsigned kIndex=5u;
     constexpr auto kHandle=(kSerial<<12u)|kIndex;
@@ -128,9 +130,11 @@ int main() {
     }
     if(iface->GetClientNetworkable(5)!=&unknown->networkable ||
        iface->GetClientNetworkable(2047)!=&unknown->networkable ||
+       iface->GetClientNetworkable(2048)!=&unknown->networkable ||
+       iface->GetClientNetworkable(4095)!=&unknown->networkable ||
        iface->GetClientNetworkable(-1)!=nullptr ||
-       iface->GetClientNetworkable(2048)!=nullptr)
-        return failure(4,"slot0 valid/missing/mirror boundary");
+       iface->GetClientNetworkable(4096)!=nullptr)
+        return failure(4,"slot0 4096-mirror boundary differs from 2048 live guard");
     if(iface->GetClientUnknownFromHandle(kHandle)!=unknown.get() ||
        iface->GetClientUnknownFromHandle(kHandle^(1u<<12u))!=nullptr ||
        iface->GetClientUnknownFromHandle(kHandle^1u)!=nullptr ||
@@ -217,7 +221,8 @@ int main() {
     // Nine virtuals have been executed solely against owned C++ inputs.
     std::puts("PASS Phase1657 original-free MSVC x86: all nine real vtable "
               "positions, network mirror, handle serials, client unknown "
-              "callbacks, bounded indexes, optional entity counts, highest "
+              "callbacks, 4096 mirror/2048 live-count bounds, "
+              "optional entity counts, highest "
               "index, max setter/getter, stale-lifetime refusal, ECX/ESP "
               "thiscall cleanup and missing-provider safety");
     return 0;
