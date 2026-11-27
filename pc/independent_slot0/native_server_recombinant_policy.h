@@ -33,4 +33,27 @@ struct ServerRecombinantPolicyApi {
     int (__cdecl *pain)(void*,unsigned,const ServerRecombinantPolicyBindings*,ServerRecombinantPolicyResult*) noexcept;
 };
 using GetServerRecombinantPolicyApi=const ServerRecombinantPolicyApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+inline constexpr char server_recombinant_fail_schedule_export[]="SiN_GetServerRecombinantFailScheduleApi";
+// Authenticated class-specific virtual +0x438. The inherited generic
+// failure scheduler and the Minor's collision-based clearance probe stay
+// host-owned; only SiN's conditional routing and Major handle reset are here.
+struct ServerRecombinantFailScheduleBindings {
+    const ServerRecombinantPolicyBindings* policy;
+    void* context;
+    int (__cdecl *ground_clear)(void*,void*,bool*) noexcept; // original 2237c190
+    int (__cdecl *parent)(void*,void*,int,int,int,int*) noexcept; // inherited 2204e6d0
+};
+struct ServerRecombinantFailScheduleResult {
+    unsigned completed,kind,condition_tests,ground_probes,delegated,handle_cleared;
+    int input,reason,arg3,output;
+    unsigned condition_met,ground_clear;
+};
+struct ServerRecombinantFailScheduleApi {
+    unsigned version,size;
+    int (__cdecl *evaluate)(void*,unsigned,int,int,int,
+        const ServerRecombinantFailScheduleBindings*,ServerRecombinantFailScheduleResult*) noexcept;
+};
+using GetServerRecombinantFailScheduleApi=const ServerRecombinantFailScheduleApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
 }

@@ -9,9 +9,10 @@
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
+#include <string>
 using namespace sin_port::native_weapon_tables;
 struct Fixture {
-    alignas(4) unsigned char actor[0xc30]{},desc[0x48]{},weapon[4]{};
+    alignas(4) unsigned char actor[0xc80]{},desc[0x48]{},weapon[4]{};
     sin_independent::EntityHandleEntry entries[2]{};
     int schedule=0,random=0,last_parent=0;
     unsigned matches=0,sounds=0,parents=0;
@@ -94,5 +95,104 @@ int main(int argc,char** argv){
     auto missing=b;missing.activities=nullptr;assert(!api->yaw(f.actor,sizeof(f.actor),&missing,&o)&&!o.completed);
     assert(!api->yaw(f.actor,0x878,&b,&o)&&!o.completed);
     f.put(0,0x2249aaa4u);assert(!api->schedule(f.actor,sizeof(f.actor),1,&b,&o)&&!o.completed);
+
+    // Authentic Major/Minor +0x438 failure-schedule policy. The inherited
+    // scheduler and the Minor's collision probe remain host callbacks.
+    const auto get_fail=reinterpret_cast<GetServerRecombinantFailScheduleApi>(
+        GetProcAddress(server,server_recombinant_fail_schedule_export));
+    assert(get_fail&&!GetProcAddress(client,server_recombinant_fail_schedule_export));
+    assert(!get_fail(0,sizeof(ServerRecombinantFailScheduleApi))&&
+        !get_fail(1,sizeof(ServerRecombinantFailScheduleApi)-1));
+    const auto* fail_api=get_fail(1,sizeof(ServerRecombinantFailScheduleApi));
+    assert(fail_api);
+    struct FailHost {
+        Fixture* fixture;
+        std::string calls;
+        unsigned probes=0,parents=0;
+        bool clearance=false,fail_clearance=false,fail_parent=false;
+        int last_failed=-1,last_reason=-1,last_arg3=-1;
+    } h{&f};
+    ServerRecombinantFailScheduleBindings fb{};
+    fb.policy=&b;fb.context=&h;
+    fb.ground_clear=[](void* context,void* actor,bool* out) noexcept ->int{
+        auto& host=*static_cast<FailHost*>(context);
+        assert(actor==host.fixture->actor&&out);
+        ++host.probes;host.calls+='G';*out=host.clearance;
+        return !host.fail_clearance;
+    };
+    fb.parent=[](void* context,void* actor,int failed,int reason,int arg3,int* out) noexcept ->int{
+        auto& host=*static_cast<FailHost*>(context);
+        assert(actor==host.fixture->actor&&out);
+        ++host.parents;host.calls+='P';
+        host.last_failed=failed;host.last_reason=reason;host.last_arg3=arg3;
+        *out=failed+200;
+        return !host.fail_parent;
+    };
+    ServerRecombinantFailScheduleResult fo{};
+    f.put(0,recombinant_major_vtable);f.put(0xc68,0x1234u);
+    assert(fail_api->evaluate(f.actor,sizeof(f.actor),7,8,9,&fb,&fo)&&
+        fo.kind==RecombinantMajor&&fo.handle_cleared&&fo.delegated&&fo.completed&&
+        fo.input==7&&fo.reason==8&&fo.arg3==9&&fo.output==207&&
+        !fo.condition_tests&&!fo.ground_probes&&
+        h.calls=="P"&&h.last_failed==7&&h.last_reason==8&&h.last_arg3==9);
+    unsigned cleared=0;std::memcpy(&cleared,f.actor+0xc68,4);
+    assert(cleared==0xffffffffu);
+    f.put(0xc68,0x7777u);h.calls.clear();h.fail_parent=true;
+    assert(!fail_api->evaluate(f.actor,sizeof(f.actor),5,6,7,&fb,&fo)&&
+        fo.handle_cleared&&fo.delegated&&!fo.completed&&h.calls=="P");
+    std::memcpy(&cleared,f.actor+0xc68,4);assert(cleared==0xffffffffu);
+    h.fail_parent=false;h.calls.clear();f.put(0xc68,0x9999u);
+    assert(!fail_api->evaluate(f.actor,0xc6b,7,8,9,&fb,&fo)&&
+        !fo.handle_cleared&&!fo.delegated&&h.calls.empty());
+    std::memcpy(&cleared,f.actor+0xc68,4);assert(cleared==0x9999u);
+
+    f.put(0,recombinant_minor_vtable);
+    // Condition 10 is the original local NPC condition, resolved through
+    // the already reconstructed condition namespace, not a guessed bit.
+    assert(cond->store(f.actor,sizeof(f.actor),10,NpcConditionCurrent,false,&b.conditions,&cr));
+    h.calls.clear();h.probes=h.parents=0;h.clearance=false;
+    assert(fail_api->evaluate(f.actor,sizeof(f.actor),85,0,9,&fb,&fo)&&
+        fo.kind==RecombinantMinor&&fo.condition_tests==1&&!fo.condition_met&&
+        fo.ground_probes==1&&!fo.ground_clear&&fo.output==86&&
+        !fo.delegated&&h.calls=="G"&&h.probes==1&&!h.parents);
+    assert(cond->store(f.actor,sizeof(f.actor),10,NpcConditionCurrent,true,&b.conditions,&cr));
+    h.calls.clear();
+    assert(fail_api->evaluate(f.actor,sizeof(f.actor),85,0,9,&fb,&fo)&&
+        fo.condition_tests==1&&fo.condition_met&&fo.output==41&&
+        !fo.ground_probes&&!fo.delegated&&h.calls.empty());
+    h.calls.clear();
+    assert(fail_api->evaluate(f.actor,sizeof(f.actor),23,100,11,&fb,&fo)&&
+        fo.output==41&&fo.condition_tests==1&&!fo.ground_probes&&h.calls.empty());
+    h.calls.clear();
+    assert(fail_api->evaluate(f.actor,sizeof(f.actor),23,99,11,&fb,&fo)&&
+        fo.output==86&&!fo.condition_tests&&fo.ground_probes==1&&h.calls=="G");
+    for(int id:{72,73}){
+        h.calls.clear();
+        assert(fail_api->evaluate(f.actor,sizeof(f.actor),id,100,11,&fb,&fo)&&
+            fo.output==86&&!fo.condition_tests&&fo.ground_probes==1&&h.calls=="G");
+    }
+    h.clearance=true;h.calls.clear();
+    assert(fail_api->evaluate(f.actor,sizeof(f.actor),73,1,2,&fb,&fo)&&
+        fo.output==273&&fo.ground_clear&&fo.ground_probes==1&&fo.delegated&&
+        h.calls=="GP"&&h.last_failed==73&&h.last_reason==1&&h.last_arg3==2);
+    h.calls.clear();
+    assert(fail_api->evaluate(f.actor,sizeof(f.actor),77,11,12,&fb,&fo)&&
+        fo.output==277&&!fo.condition_tests&&!fo.ground_probes&&
+        fo.delegated&&h.calls=="P"&&h.last_arg3==12);
+    assert(cond->store(f.actor,sizeof(f.actor),10,NpcConditionCurrent,false,&b.conditions,&cr));
+    h.calls.clear();
+    assert(fail_api->evaluate(f.actor,sizeof(f.actor),85,0,0,&fb,&fo)&&
+        fo.output==285&&fo.condition_tests==1&&fo.ground_probes==1&&
+        fo.delegated&&h.calls=="GP");
+    h.clearance=false;h.fail_clearance=true;h.calls.clear();
+    assert(!fail_api->evaluate(f.actor,sizeof(f.actor),23,99,1,&fb,&fo)&&
+        !fo.completed&&fo.ground_probes==1&&!fo.delegated&&h.calls=="G");
+    h.fail_clearance=false;h.calls.clear();
+    auto invalid=fb;invalid.parent=nullptr;
+    assert(!fail_api->evaluate(f.actor,sizeof(f.actor),77,0,0,&invalid,&fo)&&h.calls.empty());
+    assert(!fail_api->evaluate(f.actor,0x7eb,85,0,0,&fb,&fo)&&h.calls.empty());
+    f.put(0,0x2249aaa4u);
+    assert(!fail_api->evaluate(f.actor,sizeof(f.actor),85,0,0,&fb,&fo)&&h.calls.empty());
+    assert(!fail_api->evaluate(f.actor,sizeof(f.actor),85,0,0,&fb,nullptr));
     FreeLibrary(server);FreeLibrary(client);return 0;
 }
