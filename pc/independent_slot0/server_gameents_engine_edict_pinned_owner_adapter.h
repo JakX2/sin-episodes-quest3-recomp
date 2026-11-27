@@ -212,30 +212,37 @@ private:
         return ptr==a.view.array&&bytes==a.view.capacity_bytes&&
             a.host.validate_pin(a.host.context,&a.view);
     }
+    // Resolve an untrusted pointer using integer interval arithmetic *after*
+    // validating the pinned array. No out-of-bounds pointer formation and no
+    // O(capacity) adversarial scan of the host-supplied record count.
+    static bool RecordIndex(void* opaque,const void* ptr,std::size_t bytes,
+                            std::size_t* out_index) noexcept {
+        auto& a=*static_cast<Active*>(opaque);
+        if(!ptr||bytes!=kEngineOriginalEdictStride||
+           !ArrayAuthorized(opaque,a.view.array,a.view.capacity_bytes))return false;
+        const auto base=reinterpret_cast<std::uintptr_t>(a.view.array);
+        const auto candidate=reinterpret_cast<std::uintptr_t>(ptr);
+        if(candidate<base)return false;
+        const auto delta=candidate-base;
+        if(delta>=a.view.capacity_bytes||delta%kEngineOriginalEdictStride)
+            return false;
+        if(out_index)*out_index=delta/kEngineOriginalEdictStride;
+        return true;
+    }
     static bool RecordAuthorized(void* opaque,const void* ptr,
                                  std::size_t bytes) noexcept {
-        auto& a=*static_cast<Active*>(opaque);
-        if(bytes!=kEngineOriginalEdictStride||
-           !ArrayAuthorized(opaque,a.view.array,a.view.capacity_bytes))return false;
-        auto* base=static_cast<unsigned char*>(a.view.array);
-        const auto capacity=a.view.capacity_bytes/kEngineOriginalEdictStride;
-        for(std::size_t i=0;i<capacity;++i)
-            if(ptr==base+i*kEngineOriginalEdictStride)return true;
-        return false;
+        return RecordIndex(opaque,ptr,bytes,nullptr);
     }
     static bool FreeEntity(void* opaque,void* edict) noexcept {
         auto& a=*static_cast<Active*>(opaque);
-        if(!RecordAuthorized(opaque,edict,kEngineOriginalEdictStride))return false;
-        auto* base=static_cast<unsigned char*>(a.view.array);
-        const auto capacity=a.view.capacity_bytes/kEngineOriginalEdictStride;
-        for(std::size_t i=0;i<capacity;++i) {
-            if(edict!=base+i*kEngineOriginalEdictStride)continue;
-            if(a.cleanup_calls&&i!=a.cleanup_index)return false;
-            a.cleanup_index=i;
-            ++a.cleanup_calls;
-            return a.host.free_containing_entity(a.host.context,a.view.token,i,edict);
-        }
-        return false;
+        std::size_t index=0;
+        if(!RecordIndex(opaque,edict,kEngineOriginalEdictStride,&index))
+            return false;
+        if(a.cleanup_calls&&index!=a.cleanup_index)return false;
+        a.cleanup_index=index;
+        ++a.cleanup_calls;
+        return a.host.free_containing_entity(a.host.context,a.view.token,
+                                              index,edict);
     }
     static bool ReserveEpoch(void* opaque,const EngineEdictReuseEvent& e,
                              std::uint64_t* out) noexcept {
