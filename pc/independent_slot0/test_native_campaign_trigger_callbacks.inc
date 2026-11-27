@@ -1340,6 +1340,8 @@
             sin_independent::EntityHandleEntry entries[3]{};
             unsigned lookups=0,activities=0,warnings=0,assignments=0,finishes=0,outputs=0;
             unsigned last_token=0;int last_sequence=-1;
+            alignas(4) unsigned char conditions[0x48]{};
+            float now=23.f;
             std::string order;
         } f;
         const auto start=reinterpret_cast<StartScriptedSequenceAnimation>(GetProcAddress(server,scripted_sequence_start_export));
@@ -1400,6 +1402,55 @@
         assert(done(f.seq,sizeof(f.seq),f.npc,&b,&o)&&o.post_idle&&o.post_idle_started&&o.output_called&&f.order=="AWAWAAOFOAO");
         put(f.seq,0x39c,0u);
         assert(done(f.seq,sizeof(f.seq),f.npc,&b,&o)&&o.finish_called&&o.output_called&&f.order=="AWAWAAOFOAOFO"&&f.assignments==5&&f.finishes==2&&f.outputs==4);
+        // Full NPC task path, not separate animation leaf calls.
+        const auto run=reinterpret_cast<RunScriptedNpcTask>(GetProcAddress(server,scripted_npc_task_export));assert(run);
+        control.now=&f.now;
+        put(f.conditions,0x34,nw::npc_global_condition_base);put(f.conditions,0x38,0);put(f.conditions,0x3c,127);
+        nw::ServerNpcTaskLifecycleBindings life{};life.conditions.context=&f;
+        life.conditions.descriptor=[](void* p,void*,const void** out,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);*out=f.conditions;*n=sizeof(f.conditions);return 1;
+        };
+        ScriptedSequenceFinishBindings terminal{&b,nullptr,&f};
+        terminal.cleanup_script_state=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc);f.order+='C';
+            const unsigned invalid=0xffffffffu;
+            std::memcpy(f.npc+0x970,&invalid,4);std::memcpy(f.seq+0x3d0,&invalid,4);return 1;
+        };
+        terminal.current_schedule=[](void*,void*,bool* present,int*) noexcept ->int{*present=false;return 1;};
+        terminal.clear_schedule=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc);f.order+='X';return 1;
+        };
+        terminal.sequence_has_motion=[](void* p,void* a,int seq,bool* value) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc&&seq==2);f.order+='M';*value=true;return 1;
+        };
+        ScriptedNpcTaskBindings task{&terminal,&life,&f};
+        task.update_aim=[](void* p,void* a,int x,int y) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc&&!x&&!y);f.order+='U';return 1;
+        };
+        task.remove_flags=[](void* p,void* a,unsigned flags) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc&&flags==0x400);f.order+='R';return 1;
+        };
+        fire.enqueue=[](void* p,void* activator,void* caller,const nw::ServerEntityVoidOutputAction* action) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(caller==f.seq&&action->target==21&&action->input==22);
+            if(activator){unsigned status=0;std::memcpy(&status,f.npc+0x7a4,4);assert(activator==f.seq&&status==4);f.order+='B';}
+            else f.order+='O';
+            return 1;
+        };
+        put(f.seq,0x3e0+0x14,1u);put(f.seq,0x398,21u);put(f.seq,0x39c,22u);
+        put(f.seq,0x3b8,0u);put(f.seq,0x3d4,0xffffffffu);put(f.seq,0x3d0,0x4001u);put(f.npc,0x970,0x3000u);
+        put(f.npc,0x7a4,1);f.order.clear();
+        ScriptedNpcTaskResult tr{};
+        assert(run(f.npc,sizeof(f.npc),106,&task,&tr)&&tr.task_completed&&tr.begin_output&&tr.begin_queued==1&&tr.animation.assigned&&word(f.npc,0x3ec)==2&&word(f.npc,0x3c0)==0x3f800000u&&f.order=="BA");
+        // Raw finished byte drives task108 even when pending sequence differs.
+        f.npc[0x3e0]=1;put(f.npc,0x884,777);put(f.npc,0x7a4,1);put(f.seq,0x3c8,0u);
+        assert(run(f.npc,sizeof(f.npc),108,&task,&tr)&&tr.aim_called&&tr.motion_checked&&tr.flags_removed&&tr.animation.post_idle_started&&tr.animation.output_called&&tr.task_completed&&word(f.npc,0x3ec)==3&&f.order=="BAUMRAO");
+        put(f.seq,0xb4,0x100u);f.npc[0x3e0]=1;
+        assert(run(f.npc,sizeof(f.npc),109,&task,&tr)&&tr.terminal.looped&&tr.terminal.animation.assigned&&!tr.task_completed&&!tr.terminal.cleanup_called&&f.order=="BAUMRAOA");
+        // Empty play token: begin, native terminal cleanup, end, schedule
+        // clear after re-resolution and rate write after the handle is gone.
+        put(f.seq,0xb4,4u);put(f.seq,0x398,0u);put(f.seq,0x39c,0u);
+        put(f.npc,0x3c0,.25f);f.npc[0x200]=0;put(f.npc,0x7a4,1);
+        assert(run(f.npc,sizeof(f.npc),106,&task,&tr)&&tr.task_completed&&tr.animation.empty_completed&&tr.terminal.cleanup_called&&tr.animation.output_called&&tr.schedule_cleared&&tr.rate_changed&&word(f.npc,0x970)==0xffffffffu&&word(f.npc,0x3c0)==0x3f800000u&&f.npc[0x200]&&f.order=="BAUMRAOABCXOX");
     }
 
 
