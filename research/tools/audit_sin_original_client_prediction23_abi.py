@@ -64,7 +64,29 @@ CLIENT_DELETE_TARGET = 0x2416FD60
 CLIENT_INIT_VA = CLIENT_VIRTUAL_TARGETS[1]
 CLIENT_INIT_BYTES = 16
 CLIENT_INIT_SHA = "7829179302e1698746d72b1e4bdfdc51704ef8c90bd8d25ea03e6b54331eab11"
+# This is NOT a missing engine service: it is cl_predict's m_pParent
+# field, at object address +0x18, initialized to self by the ConVar
+# constructor. Prediction slot1 reads m_pParent->m_nValue (+0x2C).
 CLIENT_INIT_GLOBAL_VA = 0x24374540
+CL_PREDICT_OBJECT_VA = 0x24374528
+CL_PREDICT_PARENT_FIELD_OFFSET = 0x18
+CL_PREDICT_CVAR_VALUE_OFFSET = 0x2C
+CL_PREDICT_NAME_VA = 0x242A3A04
+CL_PREDICT_DESCRIPTION_VA = 0x242A3A10
+CL_PREDICT_DEFAULT_STRING_VA = 0x242D6CCC
+CL_PREDICT_DEFAULT_STRING = b"1\0"
+CL_PREDICT_REGISTER_WRAPPER_VA = 0x2426C550
+CL_PREDICT_REGISTER_WRAPPER_SHA = "17281254628e8b8b69d1def3b311502cc351d08583b5c92b977fc74357ad6858"
+CL_PREDICT_CVAR_CTOR_VA = 0x241216C0
+CL_PREDICT_CVAR_CTOR_BYTES = 64
+CL_PREDICT_CVAR_CTOR_SHA = "e1ddea23dbd98b86e8a02f0b56494b364e1a9102e4824f466b51f1a0bcbd5196"
+CL_PREDICT_BASE_CTOR_VA = 0x241212E0
+CL_PREDICT_BASE_CTOR_BYTES = 244
+CL_PREDICT_BASE_CTOR_SHA = "510247221f012afd3817fb65b99122d8907e752d7d472ad46cf6d0a93d3ab761"
+CL_PREDICT_CONVAR_VPTR_VA = 0x242981CC
+CL_PREDICT_REGISTER_ATEXIT_VA = 0x24248788
+CL_PREDICT_ATEXIT_THUNK_VA = 0x24274990
+CL_PREDICT_FLAGS = 0x200
 CLIENT_INIT_GLOBAL_FIELD_OFFSET = 0x2C
 CLIENT_INIT_DESTINATION_OFFSET = 0x10
 
@@ -140,6 +162,53 @@ def verify_registration(blob: bytes, start: int,
     check(destination==ctor_va,
           "original static InterfaceReg target constructor differs")
 
+def verify_cl_predict_registration(blob: bytes,va: int,
+                                   description: int, flags: int,
+                                   default_string: int, name: int,
+                                   object_va: int, convar_ctor: int,
+                                   atexit_thunk: int,
+                                   atexit_register: int) -> None:
+    check(len(blob)==42 and
+          all(blob[at:at+1]==b"\x68" for at in (0,5,10,15,30))
+          and blob[20:21]==b"\xB9" and
+          blob[25:26]==b"\xE8" and blob[35:36]==b"\xE8" and
+          blob[40:42]==b"\x59\xC3",
+          "cl_predict static ConVar registration wrapper changed")
+    check((u32(blob,1),u32(blob,6),u32(blob,11),
+           u32(blob,16),u32(blob,21),u32(blob,31)) ==
+          (description,flags,default_string,name,object_va,atexit_thunk),
+          "cl_predict actual name/default/ConVar object flags differ")
+    check(va+30+struct.unpack_from("<i",blob,26)[0]==convar_ctor and
+          va+40+struct.unpack_from("<i",blob,36)[0]==atexit_register,
+          "cl_predict ConVar constructor/atexit target changed")
+
+
+def verify_convar_constructor(blob: bytes,base_constructor: int,
+                              address: int, vptr: int) -> None:
+    check(len(blob)==CL_PREDICT_CVAR_CTOR_BYTES,
+          "cl_predict delegating constructor must have 64 bytes")
+    off=0x2F
+    check(blob[off:off+2]==b"\xC7\x06"
+          and u32(blob,off+2)==vptr and blob[off+6:off+7]==b"\xE8"
+          and blob[-3:]==b"\xC2\x10\x00",
+          "ConVar delegating constructor does not install vptr/RET16")
+    check(address+off+11+struct.unpack_from("<i",blob,off+7)[0] ==
+          base_constructor,
+          "cl_predict ConVar constructor did not call parent constructor")
+
+
+def verify_convar_base_constructor(blob: bytes) -> None:
+    check(len(blob)==CL_PREDICT_BASE_CTOR_BYTES,
+          "ConVar base constructor must have 244 bytes")
+    # Full retail method SHA checks happen separately in owner-only mode.
+    # These are the two relevant ABI semantics, not full decompilation:
+    # ebp=this; +0x18 self parent; +0x2c numeric integer from FISTP.
+    check(blob[9:12]==bytes.fromhex("896d18") and
+          blob[0xAB:0xAE]==bytes.fromhex("db5d2c") and
+          blob[-3:]==b"\xC2\x24\x00",
+          "ConVar self parent or +0x2C numeric DWORD store differs")
+
+
 def verify_prediction_ctor(blob: bytes, vtable: int) -> None:
     check(len(blob)==CLIENT_CONSTRUCTOR_BYTES,
           "original prediction constructor expected 50 bytes")
@@ -172,8 +241,9 @@ def verify_prediction_dtor(blob: bytes, parent_vtable: int,
 def verify_prediction_init(blob: bytes, global_va: int) -> None:
     """Original slot1 is a no-argument RET, not a full prediction engine.
 
-    MOV EAX,[global]; CMP DWORD PTR[EAX+2C],0; SETNE DL;
-    MOV BYTE PTR[ECX+10],DL; RET. There is NO null-pointer check.
+    MOV EAX,[cl_predict.m_pParent]; CMP DWORD PTR[EAX+2C],0;
+    SETNE DL; MOV BYTE PTR[ECX+10],DL; RET.
+    This is the ConVar numeric value; no m_pParent null guard.
     """
     check(len(blob)==CLIENT_INIT_BYTES and
           blob[0:1]==b"\xA1" and u32(blob,1)==global_va and
@@ -304,6 +374,51 @@ def verify_original(client_bytes: bytes, engine_bytes: bytes) -> dict:
     check(CLIENT_INIT_VA+1 in reloc and
           client.section_of(CLIENT_INIT_GLOBAL_VA)==".data",
           "original prediction slot1 global pointer relocation missing")
+    # Resolve the previously ambiguous +0x2C dependency to the ACTUAL
+    # original cl_predict ConVar registration and its m_pParent->m_nValue.
+    check(CL_PREDICT_OBJECT_VA+CL_PREDICT_PARENT_FIELD_OFFSET ==
+          CLIENT_INIT_GLOBAL_VA and
+          CLIENT_INIT_GLOBAL_FIELD_OFFSET==CL_PREDICT_CVAR_VALUE_OFFSET,
+          "original cl_predict ConVar parent/value offsets drifted")
+    check(client.section_of(CL_PREDICT_OBJECT_VA)==".data",
+          "cl_predict ConVar singleton not in virtual .data")
+    check(section_read(client,CL_PREDICT_NAME_VA,11,".rdata")==b"cl_predict\0"
+          and section_read(client,CL_PREDICT_DEFAULT_STRING_VA,2,".rdata")
+              ==b"1\0"
+          and section_read(client,CL_PREDICT_DESCRIPTION_VA,
+                           len(b"Perform client side prediction.\0"),
+                           ".rdata")==b"Perform client side prediction.\0",
+          "original cl_predict name/default/help text differs")
+    cv=section_read(client,CL_PREDICT_REGISTER_WRAPPER_VA,42,".text")
+    check(hashlib.sha256(cv).hexdigest()==CL_PREDICT_REGISTER_WRAPPER_SHA,
+          "original cl_predict static constructor full SHA mismatch")
+    verify_cl_predict_registration(
+        cv,CL_PREDICT_REGISTER_WRAPPER_VA,
+        CL_PREDICT_DESCRIPTION_VA,CL_PREDICT_FLAGS,
+        CL_PREDICT_DEFAULT_STRING_VA,CL_PREDICT_NAME_VA,
+        CL_PREDICT_OBJECT_VA,CL_PREDICT_CVAR_CTOR_VA,
+        CL_PREDICT_ATEXIT_THUNK_VA,CL_PREDICT_REGISTER_ATEXIT_VA)
+    for site in (CL_PREDICT_REGISTER_WRAPPER_VA+1,
+                 CL_PREDICT_REGISTER_WRAPPER_VA+11,
+                 CL_PREDICT_REGISTER_WRAPPER_VA+16,
+                 CL_PREDICT_REGISTER_WRAPPER_VA+21,
+                 CL_PREDICT_REGISTER_WRAPPER_VA+31):
+        check(site in reloc,"original cl_predict ConVar HIGHLOW relocation missing")
+    cvctor=section_read(client,CL_PREDICT_CVAR_CTOR_VA,
+                        CL_PREDICT_CVAR_CTOR_BYTES,".text")
+    check(hashlib.sha256(cvctor).hexdigest()==CL_PREDICT_CVAR_CTOR_SHA,
+          "original ConVar delegation complete function SHA changed")
+    verify_convar_constructor(cvctor,CL_PREDICT_BASE_CTOR_VA,
+                              CL_PREDICT_CVAR_CTOR_VA,
+                              CL_PREDICT_CONVAR_VPTR_VA)
+    check(CL_PREDICT_CVAR_CTOR_VA+0x31 in reloc,
+          "original ConVar constructor vtable pointer is not relocated")
+    cvbase=section_read(client,CL_PREDICT_BASE_CTOR_VA,
+                        CL_PREDICT_BASE_CTOR_BYTES,".text")
+    check(hashlib.sha256(cvbase).hexdigest()==CL_PREDICT_BASE_CTOR_SHA,
+          "original ConVar base constructor full SHA changed")
+    verify_convar_base_constructor(cvbase)
+
     check(client.section_of(CLIENT_RTTI_CELL_VA)==".rdata"
           and CLIENT_RTTI_CELL_VA in reloc
           and section_read(client,CLIENT_RTTI_CELL_VA,4,".rdata") ==
@@ -378,7 +493,13 @@ def verify_original(client_bytes: bytes, engine_bytes: bytes) -> dict:
         "original_target_vas": [hex(x) for x in CLIENT_VIRTUAL_TARGETS],
         "slot0_scalar_deleting_destructor_ret4": True,
         "slot1_parameterless_init_ret0": True,
-        "slot1_reads_engine_global_va": hex(CLIENT_INIT_GLOBAL_VA),
+        "slot1_reads_cl_predict_parent_slot_va": hex(CLIENT_INIT_GLOBAL_VA),
+        "cl_predict_original_convar_va": hex(CL_PREDICT_OBJECT_VA),
+        "cl_predict_parent_member_offset": hex(CL_PREDICT_PARENT_FIELD_OFFSET),
+        "cl_predict_parent_numeric_value_offset": hex(CL_PREDICT_CVAR_VALUE_OFFSET),
+        "cl_predict_default_numeric_value": 1,
+        "cl_predict_registration_full_sha_verified": True,
+        "cl_predict_convar_constructor_full_sha_verified": True,
         "slot1_reads_global_field_offset": hex(CLIENT_INIT_GLOBAL_FIELD_OFFSET),
         "slot1_sets_prediction_byte_offset": hex(CLIENT_INIT_DESTINATION_OFFSET),
         "slot1_uses_null_guard": False,
@@ -463,6 +584,55 @@ def self_test() -> None:
         reject(lambda data=bytes(corrupt):verify_prediction_dtor(
             data,fake_parent_vptr,fake_dtor_va,fake_free),
             "deleting dtor byte "+str(i))
+    # Validate that our newly identified synthetic ConVar object
+    # constructor sets m_pParent at +0x18, and an integer at +0x2C.
+    fake_cv_start=0x47001000
+    fake_cvobj=0x47102000
+    fake_cvdefault=0x47110000
+    fake_cvname=0x47111000
+    fake_cvdesc=0x47112000
+    fake_cv_ctor=0x47010000
+    fake_cv_atexit=0x47020000
+    fake_cv_thunk=0x47022000
+    fake_cv=(b"\x68"+pack(fake_cvdesc)+b"\x68"+pack(0x200)+
+             b"\x68"+pack(fake_cvdefault)+b"\x68"+pack(fake_cvname)+
+             b"\xB9"+pack(fake_cvobj)+b"\xE8"+
+             struct.pack("<i",fake_cv_ctor-(fake_cv_start+30))+
+             b"\x68"+pack(fake_cv_thunk)+b"\xE8"+
+             struct.pack("<i",fake_cv_atexit-(fake_cv_start+40))+
+             b"\x59\xC3")
+    verify_cl_predict_registration(
+        fake_cv,fake_cv_start,fake_cvdesc,0x200,fake_cvdefault,
+        fake_cvname,fake_cvobj,fake_cv_ctor,fake_cv_thunk,fake_cv_atexit)
+    for i in range(len(fake_cv)):
+        corrupt=bytearray(fake_cv);corrupt[i]^=1
+        reject(lambda data=bytes(corrupt):verify_cl_predict_registration(
+            data,fake_cv_start,fake_cvdesc,0x200,fake_cvdefault,
+            fake_cvname,fake_cvobj,fake_cv_ctor,fake_cv_thunk,fake_cv_atexit),
+            "synthetic cl_predict ConVar wrapper byte "+str(i))
+    fake_base_ctor=0x47030000
+    fake_cv_vtable=0x47200000
+    fake_delegate=(bytearray(64))
+    fake_delegate[0x2F:0x35]=b"\xC7\x06"+pack(fake_cv_vtable)
+    fake_delegate[0x35:0x3A]=b"\xE8"+struct.pack(
+        "<i",fake_base_ctor-(fake_cv_ctor+0x3A))
+    fake_delegate[-3:]=b"\xC2\x10\x00"
+    verify_convar_constructor(bytes(fake_delegate),fake_base_ctor,
+                              fake_cv_ctor,fake_cv_vtable)
+    for i in range(0x2F,0x3A):
+        corrupt=bytearray(fake_delegate);corrupt[i]^=1
+        reject(lambda data=bytes(corrupt):verify_convar_constructor(
+            data,fake_base_ctor,fake_cv_ctor,fake_cv_vtable),
+            "synthetic ConVar delegating constructor byte "+str(i))
+    fake_base=bytearray(244)
+    fake_base[9:12]=bytes.fromhex("896d18")
+    fake_base[0xAB:0xAE]=bytes.fromhex("db5d2c")
+    fake_base[-3:]=b"\xC2\x24\x00"
+    verify_convar_base_constructor(bytes(fake_base))
+    for pos in list(range(9,12))+list(range(0xAB,0xAE))+list(range(241,244)):
+        corrupt=bytearray(fake_base);corrupt[pos]^=1
+        reject(lambda data=bytes(corrupt):verify_convar_base_constructor(data),
+               "synthetic cl_predict parent/nValue byte "+str(pos))
     fake_engine_global=0x45610000
     fake_init=b"\xA1"+pack(fake_engine_global)+bytes.fromhex(
         "83782c000f95c2885110c3")
@@ -524,7 +694,8 @@ def self_test() -> None:
     print("PASS Phase1658 synthetic original-free prediction23: exact 23-slot "
           "pointer extent and nonvirtual boundary; creator, InterfaceReg, "
           "constructor, deleting destructor RET4 and slot1 RET0/service "
-          "dependency; engine slot1 before entity-list; RTTI two-base class "
+          "dependency through cl_predict ConVar parent/nValue; "
+          "engine slot1 before entity-list; RTTI two-base class "
           "metadata; mutation and fake original-SHA rejection")
 
 def main() -> int:
