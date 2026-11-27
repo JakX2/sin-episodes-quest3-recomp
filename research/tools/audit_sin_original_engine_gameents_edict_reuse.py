@@ -18,6 +18,8 @@ WINDOWS=(
      "aab72caf36338a6845884f0ed865ee4486677bf51bc479248f5d45daf1d1bfdc"),
     ("allocator_age_scan",0x20110ef0,151,
      "567f15c192da14cbbda102dcbd1099f90b947d192fc208ec814fb106cac7c0ee"),
+    ("negative_index_select",0x20110ecc,220,
+     "cae5a58071ef8531ac82c3d000dfce4c68a09d70c4d2eb20887f4e703ae3427b"),
 )
 # (window index, original VA, local short witness, semantic interpretation)
 WITNESSES=(
@@ -43,6 +45,15 @@ WITNESSES=(
     (2,0x20110f08,"db056ceb7620","age scan signed tick source"),
     (2,0x20110f16,"d80d6cda7920","age scan time scaling"),
     (2,0x20110f2f,"83c614","next edict record by 0x14"),
+    (3,0x20110ecc,"a164da7920","protected last edict index"),
+    (3,0x20110ed1,"8b1504db7920","original edict array base"),
+    (3,0x20110ede,"8b15fcda7920","current used edict count"),
+    (3,0x20110efb,"d81d40bf2d20","x87 compare against 2.0"),
+    (3,0x20110f03,"f6c405","x87 status parity for 2.0 threshold"),
+    (3,0x20110f1f,"dc1d60bf2d20","x87 compare elapsed against 1.0"),
+    (3,0x20110f27,"f6c401","x87 elapsed status test"),
+    (3,0x20110f36,"a100db7920","current edict capacity"),
+    (3,0x20110f7a,"8305fcda792001","increase count on append"),
 )
 
 def inspect_windows(blobs,strict=False):
@@ -73,6 +84,11 @@ def inspect_windows(blobs,strict=False):
         "original_code_exported":False,
     }
 
+def inspect_age_constants(early,elapsed):
+    if early!=bytes.fromhex("00000040") or elapsed!=bytes.fromhex("000000000000f03f"):
+        raise ValueError("original reuse-age thresholds are not 2.0f and 1.0d")
+    return True
+
 def audit(data):
     if hashlib.sha256(data).hexdigest()!=ENGINE_SHA:
         raise ValueError("unexpected original 2006 engine.dll SHA")
@@ -81,6 +97,9 @@ def audit(data):
         raise ValueError("unexpected original engine image base")
     blobs=[pe.raw(va,size) for _,va,size,_ in WINDOWS]
     result=inspect_windows(blobs,True)
+    inspect_age_constants(pe.raw(0x202dbf40,4),pe.raw(0x202dbf60,8))
+    result["original_engine_reuse_age_float_threshold"]=2.0
+    result["original_engine_reuse_elapsed_double_threshold"]=1.0
     result["whole_engine_sha_verified"]=True
     return result
 
@@ -91,6 +110,12 @@ def self_test():
         raw=bytes.fromhex(code)
         blobs[index][at:at+len(raw)]=raw
     inspect_windows(blobs,False)
+    inspect_age_constants(bytes.fromhex("00000040"),bytes.fromhex("000000000000f03f"))
+    for incorrect in ((b"\0"*4,bytes.fromhex("000000000000f03f")),
+                      (bytes.fromhex("00000040"),b"\0"*8)):
+        try:inspect_age_constants(*incorrect)
+        except ValueError:pass
+        else:raise AssertionError("mutated age constants accepted")
     for index,va,code,label in WITNESSES:
         changed=[bytearray(blob) for blob in blobs]
         changed[index][va-WINDOWS[index][1]]^=1
@@ -106,7 +131,7 @@ def self_test():
     try:inspect_windows(blobs,True)
     except ValueError:pass
     else:raise AssertionError("synthetic bytes passed original SHA")
-    print("PASS original-free 2006 engine edict reuse: 22 opcode witnesses, 3 SHA windows, corruption and truncation")
+    print(f"PASS original-free 2006 engine edict reuse/selection: {len(WITNESSES)} opcode witnesses, {len(WINDOWS)} SHA windows, original 2.0/1.0 threshold literals and corruption tests")
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
