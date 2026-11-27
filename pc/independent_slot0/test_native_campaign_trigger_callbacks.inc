@@ -1553,7 +1553,8 @@
         f.now=10.1f;
         assert(run(f.seq,sizeof(f.seq),101,&primary,&out,&removal,&removed)&&out.completed&&out.invoked&&!out.native_result&&out.last_tick==101&&out.next_tick==-1);
         assert(removed.completed&&removed.positive_health&&removed.warning_called&&removed.health_cleared&&removed.cancelled.missing&&removed.cancelled.count_reset&&removed.removal.queued&&f.queue.count==1&&f.calls=="R[HWU]");
-        assert(!word(f.seq,0xc0)&&!word(f.seq,0x9c)&&f.notices==2);
+        // Clearing the default twice only flips the no-think bit once.
+        assert(!word(f.seq,0xc0)&&!word(f.seq,0x9c)&&f.notices==1&&(word(f.seq,0xb8)&0x400000u));
         DeferredRemovalResult dr{};
         assert(api->cleanup_deferred(&deferred,&dr)&&dr.released==1&&!f.queue.count&&!f.entries[0].entity&&f.calls=="R[HWU]D");
     }
