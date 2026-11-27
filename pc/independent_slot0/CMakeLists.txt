@@ -305,6 +305,15 @@ add_executable(sin_original_interfacereg_owner_probe
   ../../research/tools/sin_win32_factory_probe_phase657.cpp)
 target_compile_features(sin_original_interfacereg_owner_probe PRIVATE cxx_std_17)
 target_link_libraries(sin_original_interfacereg_owner_probe PRIVATE bcrypt)
+set_target_properties(sin_original_interfacereg_owner_probe PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+# The original DLLs remain outside CI. This only tests the guardrails of
+# the packaged owner-original factory probe launcher.
+add_test(NAME independent_owner_original_factory_package_guardrails
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Run-OwnerOriginalInterfaceFactoryProbe.ps1"
+    -SelfTest)
 
 add_executable(sin_original_interfacereg_readonly_snapshot_test
   test_original_interfacereg_readonly_snapshot.cpp)
