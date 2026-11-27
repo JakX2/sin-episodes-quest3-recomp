@@ -1116,6 +1116,99 @@ int main(int argc,char** argv){
             assert(finished&&outer_result.completed&&outer_result.think_called&&tail_result.completed&&!script_stats.native_starts&&script_stats.native_runs==1&&script_stats.last_run.script.terminal.completed&&cleaned.completed&&cleaned.handles_cleared==3&&q.restored==1&&q.reads==2&&q.cleared==1);
             assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&!sr.schedule);
             unsigned script_handle=0;std::memcpy(&script_handle,f.actor+0x970,4);assert(script_handle==0xffffffffu);
+            // Exercise the new native navigation scheduler using the
+            // actual inherited WALK/RUN/CUSTOM_MOVE descriptors. Stop at
+            // FACE completion so this fixture does not need play metadata.
+            {
+                const auto navigate=reinterpret_cast<RunServerNpcScriptedSchedulerWithNavigation>(GetProcAddress(s,server_npc_scripted_navigation_scheduler_export));
+                assert(navigate&&!GetProcAddress(c,server_npc_scripted_navigation_scheduler_export));
+                struct NavFixture {
+                    SequenceFixture* q;EquippedThinkFixture* eq;
+                    unsigned goals=0,angles=0,plants=0,updates=0,stops=0,turns=0,steps=0;
+                    int activity=0;
+                } nav{&q,&equipped};
+                ServerNpcActivityTranslateBindings translation{};translation.actor_class=NpcActivityHosted;
+                translation.activities=&activities;translation.events=&event_dictionary;
+                translation.weapon=[](void*,void*,int in,bool* required,int* out) noexcept ->int{*required=false;*out=in;return 1;};
+                translation.other=[](void*,void*,int in,int* out) noexcept ->int{*out=in;return 1;};
+                translation.metadata=[](void*,void*,const ServerActivityCompositeView** view) noexcept ->int{*view=nullptr;return 0;};
+                nm::ScriptedNpcMoveBindings move{&control,nullptr,&translation,&nav,916u};
+                move.storage=[](void* p,unsigned token,void** out,unsigned* n) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);
+                    if(token==604){*out=q.eq->nav;*n=sizeof(q.eq->nav);return 1;}
+                    if(token==605){*out=q.eq->path;*n=sizeof(q.eq->path);return 1;}
+                    if(token==88){*out=q.q->f->motor;*n=sizeof(q.q->f->motor);return 1;}return 0;
+                };
+                move.set_goal=[](void* p,void* navigator,const nm::ScriptedNpcMoveGoal* goal,int mode,bool* accepted) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);assert(navigator==q.eq->nav&&mode==4&&goal->activity==q.activity&&goal->arrival_activity==17);
+                    q.q->f->put(q.eq->path,0,1u);q.q->f->put(q.eq->path,0x44,1u);++q.goals;*accepted=true;return 1;
+                };
+                move.arrival_angles=[](void* p,void* navigator,const float v[3]) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);assert(navigator==q.eq->nav&&v[1]==90.f);++q.angles;return 1;
+                };
+                nm::ScriptedNpcArrivalBindings arrival{&control,nullptr,&nav};
+                arrival.storage=move.storage;
+                arrival.absolute_origin=[](void* p,void* goal,float v[3]) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);assert(goal==q.q->seq);std::memcpy(v,q.q->seq+0x2bc,12);return 1;
+                };
+                arrival.set_origin=[](void* p,void* a,const float v[3]) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);assert(a==q.q->f->actor&&v[0]==64.f);std::memcpy(q.q->f->actor+0x360,v,12);++q.plants;return 1;
+                };
+                arrival.begin_turn=[](void* p,void* a) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);assert(a==q.q->f->actor);++q.turns;return 1;
+                };
+                arrival.stop_path=[](void* p,void* navigator,bool finished) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);assert(navigator==q.eq->nav&&finished);++q.stops;return 1;
+                };
+                auto navigation_movement=mb;navigation_movement.context=&nav;navigation_movement.storage=move.storage;
+                navigation_movement.stop_path=arrival.stop_path;
+                navigation_movement.movement_update=[](void* p,void* a) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);assert(a==q.q->f->actor);
+                    if(++q.updates==2)q.q->f->put(q.eq->path,0x44,0u);return 1;
+                };
+                auto navigation_facing=fb;navigation_facing.context=&nav;navigation_facing.motor_storage=move.storage;
+                navigation_facing.begin_turn=arrival.begin_turn;
+                navigation_facing.step_turn=[](void* p,void* motor,int mode) noexcept ->int{
+                    auto& q=*static_cast<NavFixture*>(p);assert(motor==q.q->f->motor&&mode==-1);
+                    if(++q.steps==2)q.q->f->put(q.q->f->actor,0x370,90.f);return 1;
+                };
+                nm::ScriptedNpcStartMotionBindings nav_motion{};nav_motion.base=&start;nav_motion.context=&nav;
+                nav_motion.event_lookup=[](void*,unsigned token,int* index) noexcept ->int{assert(token==31);*index=17;return 1;};
+                ServerNpcScriptedNavigationStats nav_stats{};ServerNpcSharedFacingStats face_stats{};ServerNpcSharedMovementStats move_stats{};
+                ServerNpcScriptedMotionSchedulerStats nav_motion_stats{};ServerNpcScriptedSchedulerStats nav_script_stats{};
+                ServerNpcScriptedNavigationServices navigation{&move,&arrival,&navigation_facing,&navigation_movement,&face_stats,&move_stats,&nav_stats};
+                const ServerNpcScriptedSchedulerBindings scheduler_bind{&chain.bound.scheduler,&ab.shared,&task,&start};
+                static ServerNpcSubclassSchedulerResult nav_out;
+                for(unsigned variant=0;variant<3;++variant){
+                    nav.goals=nav.angles=nav.plants=nav.updates=nav.stops=nav.turns=nav.steps=0;
+                    nav.activity=variant==0?6:variant==1?10:15;
+                    std::memset(q.seq,0,sizeof(q.seq));f.put(q.seq,0,nm::scripted_sequence_vtable);
+                    f.put(q.seq,0x378,0x9002u);f.put(q.seq,0x3d0,0x3000u);f.put(q.seq,0x398,31u);
+                    f.put(q.seq,0x2bc,64.f);f.put(q.seq,0x358,90.f);f.put(q.seq,0x370,90.f);f.put(q.seq,0x3d4,0xffffffffu);
+                    prepare_engaged(1,0);f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0x9002u);
+                    f.put(f.actor,0x970,0x9002u);f.put(f.actor,0x378,0x3000u);f.put(f.actor,0x980,variant==2?1u:0u);
+                    f.put(equipped.nav,0xc,0);std::memset(equipped.path,0,sizeof(equipped.path));
+                    const unsigned token=8003+3*variant;
+                    float now=77.2f+.2f*variant;
+                    assert(state->install(f.actor,sizeof(f.actor),token,now,q.schedule,&sr)&&sr.index==0);
+                    f.put(f.actor,0x79c,global+155+variant);
+                    const int expected[]{89,107,9+static_cast<int>(variant),121,121,111,112,112};
+                    const int index[]{0,1,2,3,3,4,5,5};
+                    for(unsigned tick=0;tick<8;++tick){
+                        now+=.01f;
+                        const int ok=navigate(f.actor,sizeof(f.actor),now,&scheduler_bind,&nav_out,&nav_script_stats,&nav_motion,&nav_motion_stats,nullptr,nullptr,&navigation);
+                        if(!ok)std::fprintf(stderr,"script nav variant=%u tick=%u task=%d status=%d starts=%u/%u/%u native=%u\n",variant,tick,nav_out.maintenance.state.task.id,nav_out.maintenance.state.status,nav_stats.move_starts,nav_stats.arrival_starts,nav_motion_stats.starts,nav_stats.native_starts);
+                        assert(ok&&state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.schedule==token&&sr.index==index[tick]&&sr.task.id==expected[tick]);
+                        assert((sr.status==4)==(tick!=3&&tick!=6));
+                        if(tick==0){float tolerance=0;std::memcpy(&tolerance,equipped.path+4,4);assert(tolerance==2.f&&move_stats.native==1);}
+                        if(tick==1)assert(nav_motion_stats.native_starts==1&&nav_motion_stats.last.event_index==17);
+                        if(tick==2)assert(nav_stats.native_starts==1&&nav_stats.move.goal_accepted&&nav_stats.move.arrival_cleared&&nav_stats.move.activity==nav.activity);
+                        if(tick==5)assert(nav_stats.native_starts==1&&nav_stats.arrival.origin_set&&nav_stats.arrival.task_completed);
+                        if(tick==6)assert(nav_stats.native_starts==1&&nav_stats.arrival.yaw_written&&nav_stats.arrival.path_stopped);
+                    }
+                    assert(nav.goals==1&&nav.angles==1&&nav.plants==1&&nav.updates==2&&nav.stops==2&&nav.turns==1&&nav.steps==2);
+                }
+            }
             // Begin a fresh original WAIT at index zero. No test-side
             // cursor advance: task completion and outer cadence drive it.
             std::memset(q.seq,0,sizeof(q.seq));f.put(q.seq,0,nm::scripted_sequence_vtable);
@@ -1339,7 +1432,8 @@ int main(int argc,char** argv){
             const unsigned turns=f.begins,steps=f.steps,stops=f.stop_paths;
             const bool saved_align=f.align_on_step;f.align_on_step=false;
             float face_time=prefix_time+1.f;f.put(f.actor,0x864,face_time);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1700);
-            assert(state->install(f.actor,sizeof(f.actor),8015,face_time,q.schedule,&sr)&&sr.index==0&&sr.task.id==116);
+            assert(state->install(f.actor,sizeof(f.actor),8015,face_time,q.schedule,&sr)&&sr.index==0);
+            assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.has_task&&sr.task.id==116);
             f.put(f.actor,0x79c,global+159);
             for(unsigned tick=0;tick<3;++tick){
                 if(tick==2)f.align_on_step=true;

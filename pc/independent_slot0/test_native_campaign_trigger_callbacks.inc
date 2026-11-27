@@ -1813,10 +1813,10 @@
         };
         ScriptedNpcMoveResult o{};
         seed(0x41f80000u,17,0); // 31
-        assert(start(f.npc,sizeof(f.npc),9,&b,&o)&&o.near&&o.distance==31.f&&o.completion_calls==2&&o.task_completed&&o.arrival_cleared&&!o.goal_requested&&f.notices==1);
+        assert(start(f.npc,sizeof(f.npc),9,&b,&o)&&o.within_threshold&&o.distance==31.f&&o.completion_calls==2&&o.task_completed&&o.arrival_cleared&&!o.goal_requested&&f.notices==1);
         assert(word(f.npc,0x974)==0xffffffffu&&!word(f.npc,0x978));
         seed(0x42000000u,17,0);put(f.goal,0xb8,0x800u); // exactly 32: request
-        assert(start(f.npc,sizeof(f.npc),9,&b,&o)&&!o.near&&o.distance==32.f&&o.refreshes==1&&o.activity==6&&o.translated_activity==10&&o.goal.activity==6&&o.goal.arrival_activity==17&&o.goal.arrival_sequence==-1&&o.goal_accepted&&o.angles_written&&o.task_completed&&f.calls=="RGY");
+        assert(start(f.npc,sizeof(f.npc),9,&b,&o)&&!o.within_threshold&&o.distance==32.f&&o.refreshes==1&&o.activity==6&&o.translated_activity==10&&o.goal.activity==6&&o.goal.arrival_activity==17&&o.goal.arrival_sequence==-1&&o.goal_accepted&&o.angles_written&&o.task_completed&&f.calls=="RGY");
         seed(0x42800000u,-1,22); // 64
         assert(start(f.npc,sizeof(f.npc),10,&b,&o)&&o.activity==10&&o.translated_activity==6&&o.goal.activity==10&&o.goal.arrival_activity==-1&&o.goal.arrival_sequence==8&&f.calls=="QGY");
         put(f.seq,0x3a0,21u);f.named_activity=33;seed(0x42800000u,-1,0);
