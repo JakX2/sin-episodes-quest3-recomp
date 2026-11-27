@@ -2,6 +2,7 @@
 #include "server_gameents_owner_lifetime_registry.h"
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <thread>
 using namespace sin_independent;
 using Registry=GameEntsOwnerLifetimeRegistry<3,2>;
@@ -26,6 +27,21 @@ int main() {
     if(!r.Enroll(0,first)||!r.Enroll(1,second))
         return Fail(1,"initial enrollment denied");
     if(r.Enroll(2,first))return Fail(2,"duplicate live address enrolled");
+    // All four memory ranges must be nonoverlapping, not just unlike
+    // base pointers. Alias across field types and partial overlap count.
+    auto aliased=third;
+    aliased.unknown=first.entity;
+    if(r.Enroll(2,aliased))return Fail(27,"cross-field live address alias");
+    aliased=third;
+    aliased.edict=static_cast<const unsigned char*>(first.edict)+1;
+    if(r.Enroll(2,aliased))return Fail(28,"partial live edict overlap");
+    aliased=third;
+    aliased.touch=third.entity;
+    if(r.Enroll(2,aliased))return Fail(29,"overlapping fields in one slot");
+    aliased=third;
+    aliased.entity=reinterpret_cast<const void*>(
+        (std::numeric_limits<std::uintptr_t>::max)()-4);
+    if(r.Enroll(2,aliased))return Fail(30,"overflowed entity extent");
     auto short_edict=third;short_edict.edict_bytes=0x13;
     if(r.Enroll(2,short_edict))return Fail(3,"short edict prefix enrolled");
     auto short_entity=third;short_entity.entity_bytes=0x16f;
@@ -97,6 +113,16 @@ int main() {
        !r.Begin(5,&token)||!r.ValidPair(second.edict,second.entity)||
        r.ValidCandidate(91,2,second.entity)||!r.End(5,token))
         return Fail(26,"new owner reused address without rebind");
-    std::puts("PASS owner lifecycle registry: leases, thread isolation, extents, retire/reuse, generation and transmit rebinding");
+    // Retired slots lose their previous record on reuse; their old
+    // generation must nevertheless never be accepted under a fresh
+    // address after the latest global enrollment has advanced.
+    if(!r.RetireEntity(2)||!r.ForgetEdict(2))
+        return Fail(31,"cannot retire reused slot for epoch regression");
+    Storage fresh{};
+    if(r.Enroll(2,Identity(fresh,5)))
+        return Fail(32,"global generation rollback through fresh address");
+    if(!r.Enroll(2,Identity(fresh,6)))
+        return Fail(33,"new higher owner generation unexpectedly refused");
+    std::puts("PASS owner lifecycle registry: leases, thread isolation, overlap/overflow bounds, retirement, global generations and transmit rebinding");
     return 0;
 }

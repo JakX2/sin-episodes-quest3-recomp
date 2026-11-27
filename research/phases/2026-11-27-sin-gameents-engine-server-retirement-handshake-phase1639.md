@@ -17,3 +17,7 @@ This is a non-retail synthetic engine-to-server roundtrip using real compiled MS
 ## Explicit original virtual call
 
 The server-side bridge reads the actual compiled MSVC x86 vtable function pointer at slot 3 (+0x0C) and invokes that `__thiscall` thunk. It does not rely on a compiler potentially devirtualizing a pointer to a known final diagnostic class, while the enclosing `CHECK_X86_STACK` asserts that the engine-to-server roundtrip preserves the real x86 caller stack pointer.
+
+## Hardening the owner allocation registry
+
+The owner registry now checks each of the four enrolled allocation intervals for internal overlap and for overlap with every still-owned region of another slot, rather than comparing only corresponding pointer values. A malicious edict beginning one byte inside another owned edict, or an unknown-interface pointer aliasing an entity in another slot, is rejected before any client of the registry can read those addresses. Pointer-range endpoint overflow is rejected before addition, and adjacent 0x14-byte engine edict records remain valid. Enrollment generations must also be globally monotonic, even when a prior slot record was overwritten after retirement. The test adds cross-field aliases, partial overlap, self-overlap, overflow, and older global-generation reuse after a fresh address allocation. These checks do not replace authentication from the real engine allocator.
