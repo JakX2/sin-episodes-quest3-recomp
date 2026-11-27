@@ -127,17 +127,19 @@ int main() {
     source->mirrors[2047].networkable=&unknown->networkable;
     source->mirrors[2048].networkable=&unknown->networkable;
     source->mirrors[4095].networkable=&unknown->networkable;
-    constexpr std::uint32_t kSerial=0xABCDEu;
+    constexpr std::uint32_t kSerial=0x5EEDu;
     constexpr unsigned kIndex=5u;
+    static_assert(kSerial<=api::kOriginalSerialGenerationMask,
+                  "retail original generation range is 15 bits");
     constexpr auto kHandle=(kSerial<<12u)|kIndex;
     static_assert((kHandle & api::kEhandleIndexMask)==kIndex,
                   "handle must index original 4096 slots");
     source->raw[kIndex].unknown=unknown.get();
     source->raw[kIndex].serial=kSerial;
     source->raw[2047].unknown=unknown.get();
-    source->raw[2047].serial=0x13579u;
+    source->raw[2047].serial=0x1357u;
     source->raw[4095].unknown=unknown.get();
-    source->raw[4095].serial=0x24680u;
+    source->raw[4095].serial=0x2468u;
     api::BoundedReader reader(*source);
     api::NineMethodInterface* iface=&reader;
     auto** table=*reinterpret_cast<void***>(iface);
@@ -157,6 +159,7 @@ int main() {
         return failure(4,"slot0 4096-mirror boundary differs from 2048 live guard");
     if(iface->GetClientUnknownFromHandle(kHandle)!=unknown.get() ||
        iface->GetClientUnknownFromHandle(kHandle^(1u<<12u))!=nullptr ||
+       iface->GetClientUnknownFromHandle(kHandle|0x80000000u)!=nullptr ||
        iface->GetClientUnknownFromHandle(kHandle^1u)!=nullptr ||
        iface->GetClientUnknownFromHandle(api::kInvalidHandle)!=nullptr)
         return failure(5,"slot2 handle serial/index/invalid sentinel");
@@ -233,8 +236,9 @@ int main() {
     const auto parent_this=std::size_t{
         reference::kOriginalEmbeddedInterfaceOffset};
     for(const auto h : {kHandle, kHandle^(1u<<12u),
-                        kHandle^1u, api::kInvalidHandle,
-                        (0x24680u<<12u)|4095u}) {
+                        kHandle|0x80000000u, kHandle^1u,
+                        api::kInvalidHandle,
+                        (0x2468u<<12u)|4095u}) {
         if(token(iface->GetClientUnknownFromHandle(h))!=
            reference::interface_slot2_resolve_handle(
                original_layout,parent_this,h))
@@ -257,8 +261,8 @@ int main() {
     // The original method stores unknown+serial in 16-byte raw records.
     // Reusing the same index with a new serial invalidates old handles;
     // no stale pointers may be issued after the owner updates the slot.
-    source->raw[kIndex].serial=0xABCDDu;
-    reference::write_u32(original_layout,8u+16u*kIndex,0xABCDDu);
+    source->raw[kIndex].serial=0x5EECu;
+    reference::write_u32(original_layout,8u+16u*kIndex,0x5EECu);
     if(iface->GetClientUnknownFromHandle(kHandle)!=nullptr ||
        iface->GetClientEntityFromHandle(kHandle)!=nullptr ||
        iface->GetClientNetworkableFromHandle(kHandle)!=nullptr)
