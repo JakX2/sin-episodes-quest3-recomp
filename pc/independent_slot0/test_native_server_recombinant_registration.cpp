@@ -9,6 +9,9 @@
 #include <cstring>
 using namespace sin_port::native_weapon_tables;
 struct F{
+    alignas(4) unsigned char actor[8]{};
+    const char* sound_names[8]{};
+    unsigned sound_calls=0,fail_sound=~0u;
     const ServerRecombinantActivityDefinition* defs=nullptr;
     unsigned count=0,seen=0;
     int ids[10]{};
@@ -44,5 +47,51 @@ int main(int argc,char** argv){
     ServerEventDictionaryEntry collision[4]{};ServerActivityDictionary shared{{collision,4,0,1,920},0};
     assert(da->shared(&shared,"ACT_FLY_ATTACK",100));
     assert(!api->register_activities(RecombinantMajor,&shared,nullptr,&partial)&&!partial.count&&!partial.ready);
+
+    // Original Major +0x180 22377070 and Minor +0x180 2237b3e0
+    // are short, ordered calls to the inherited sound precache service.
+    const auto get_sounds=reinterpret_cast<GetServerRecombinantSoundPrecacheApi>(
+        GetProcAddress(server,server_recombinant_sound_precache_export));
+    assert(get_sounds&&!GetProcAddress(client,server_recombinant_sound_precache_export)&&
+        !get_sounds(2,sizeof(ServerRecombinantSoundPrecacheApi))&&
+        !get_sounds(1,0));
+    const auto* sounds=get_sounds(1,sizeof(ServerRecombinantSoundPrecacheApi));
+    assert(sounds);
+    ServerRecombinantSoundPrecacheBindings sb{&f,
+        [](void* context,void* actor,const char* name) noexcept ->int{
+            auto& fixture=*static_cast<F*>(context);
+            assert(actor==fixture.actor&&name&&fixture.sound_calls<8);
+            const unsigned i=fixture.sound_calls++;
+            fixture.sound_names[i]=name;
+            return i!=fixture.fail_sound;
+        }};
+    ServerRecombinantSoundPrecacheResult sr{};
+    const auto put_vtable=[&](unsigned vt){std::memcpy(f.actor,&vt,4);};
+    put_vtable(recombinant_major_vtable);
+    assert(sounds->precache(f.actor,sizeof(f.actor),&sb,&sr)&&
+        sr.completed&&sr.kind==RecombinantMajor&&sr.attempted==3&&
+        sr.registered==3&&sr.failed_index==-1&&f.sound_calls==3);
+    const char* major_sounds[]{"NPC_Leperkin.Idle","NPC_Leperkin.Run","NPC_Leperkin.WalkFast"};
+    for(unsigned i=0;i<3;++i)assert(!std::strcmp(f.sound_names[i],major_sounds[i]));
+    f.sound_calls=0;put_vtable(recombinant_minor_vtable);
+    assert(sounds->precache(f.actor,sizeof(f.actor),&sb,&sr)&&
+        sr.completed&&sr.kind==RecombinantMinor&&sr.attempted==4&&
+        sr.registered==4&&sr.failed_index==-1&&f.sound_calls==4);
+    const char* minor_sounds[]{"NPC_gib_hopper.Idle","NPC_gib_hopper.Walk",
+        "NPC_gib_hopper.WalkBackwards","NPC_gib_hopper.Run"};
+    for(unsigned i=0;i<4;++i)assert(!std::strcmp(f.sound_names[i],minor_sounds[i]));
+    // First failed service halts the sequence without forgetting
+    // the already accepted precache requests.
+    f.sound_calls=0;f.fail_sound=1;
+    assert(!sounds->precache(f.actor,sizeof(f.actor),&sb,&sr)&&
+        !sr.completed&&sr.kind==RecombinantMinor&&sr.attempted==2&&
+        sr.registered==1&&sr.failed_index==1&&f.sound_calls==2);
+    f.sound_calls=0;f.fail_sound=~0u;
+    assert(!sounds->precache(f.actor,3,&sb,&sr)&&!sr.completed&&!f.sound_calls);
+    assert(!sounds->precache(f.actor,sizeof(f.actor),nullptr,&sr)&&!f.sound_calls);
+    put_vtable(0x2249aaa4u);
+    assert(!sounds->precache(f.actor,sizeof(f.actor),&sb,&sr)&&
+        !sr.completed&&!sr.kind&&!f.sound_calls);
+    assert(!sounds->precache(f.actor,sizeof(f.actor),&sb,nullptr)&&!f.sound_calls);
     FreeLibrary(server);FreeLibrary(client);return 0;
 }

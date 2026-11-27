@@ -22,4 +22,23 @@ struct ServerRecombinantRegistrationApi {
     int (__cdecl *bind_minor)(const ServerRecombinantActivityRegistration*,const ServerRecombinantMinorTaskBindings*,ServerRecombinantMinorTaskBindings*) noexcept;
 };
 using GetServerRecombinantRegistrationApi=const ServerRecombinantRegistrationApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+inline constexpr char server_recombinant_sound_precache_export[]="SiN_GetServerRecombinantSoundPrecacheApi";
+// Two retail class-specific virtual +0x180 routines: only the ordered
+// sound requests are reconstructed. Source owns the actual precache service.
+struct ServerRecombinantSoundPrecacheBindings {
+    void* context;
+    int (__cdecl *precache)(void*,void*,const char*) noexcept;
+};
+struct ServerRecombinantSoundPrecacheResult {
+    unsigned kind,completed,attempted,registered;
+    int failed_index;
+};
+struct ServerRecombinantSoundPrecacheApi {
+    unsigned version,size;
+    int (__cdecl *precache)(void*,unsigned,const ServerRecombinantSoundPrecacheBindings*,
+        ServerRecombinantSoundPrecacheResult*) noexcept;
+};
+using GetServerRecombinantSoundPrecacheApi=const ServerRecombinantSoundPrecacheApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
 }
