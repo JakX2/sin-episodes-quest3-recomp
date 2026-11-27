@@ -1,6 +1,8 @@
-#include "native_server_recombinant_damage.h"
+#include "native_server_recombinant_damage_pending.h"
 #include <cmath>
 #include <cstring>
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantPendingActivityApi* __cdecl SiN_GetServerRecombinantPendingActivityApi(unsigned,unsigned) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantRegistrationApi* __cdecl SiN_GetServerRecombinantRegistrationApi(unsigned,unsigned) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
@@ -84,9 +86,94 @@ int __cdecl expire_major(void* a,unsigned n,float now,ServerRecombinantDamageExp
     o->completed=1;return 1;
 }
 const ServerRecombinantDamageApi api{1,sizeof(ServerRecombinantDamageApi),&damage_major,&ignite_major,&expire_major};
+
+struct MajorPendingFrame {
+    void* actor;
+    unsigned bytes;
+    ServerRecombinantDamageBindings source;
+    const ServerRecombinantPendingActivityBindings* pending;
+    ServerRecombinantDamagePendingResult* result;
+};
+template<class Invoke>
+int compose_pending(void* a,unsigned n,const ServerRecombinantDamagePendingBindings* b,
+    ServerRecombinantDamagePendingResult* o,Invoke invoke) noexcept {
+    if(!o)return 0;*o={};o->requested_activity=-1;
+    if(!major(a,n,0xc16u)||!b||!b->damage||!b->pending||
+       !b->pending->pending||!b->pending->activity||
+       b->pending->pending->assignment.translation.actor_class!=NpcActivityHosted)return 0;
+    const auto& activity=*b->pending->activity;
+    const auto* ids=activity.major_activities;
+    const auto* reg=SiN_GetServerRecombinantRegistrationApi(1,sizeof(ServerRecombinantRegistrationApi));
+    const auto* pending=SiN_GetServerRecombinantPendingActivityApi(1,sizeof(ServerRecombinantPendingActivityApi));
+    if(!pending||!reg||!activity.policy||!ids||ids->kind!=RecombinantMajor||
+       !reg->valid(ids)||activity.policy->activities!=ids->owner)return 0;
+    MajorPendingFrame frame{a,n,*b->damage,b->pending,o};
+    auto wrapped=frame.source;wrapped.context=&frame;
+    wrapped.extent=[](void* p,void* entity,unsigned* n) noexcept ->int{
+        auto& f=*static_cast<MajorPendingFrame*>(p);
+        return f.source.extent&&f.source.extent(f.source.context,entity,n);
+    };
+    wrapped.classification=[](void* p,void* entity,int* category) noexcept ->int{
+        auto& f=*static_cast<MajorPendingFrame*>(p);
+        return f.source.classification&&f.source.classification(f.source.context,entity,category);
+    };
+    wrapped.color_fade=[](void* p,void* actor,int x,int y) noexcept ->int{
+        auto& f=*static_cast<MajorPendingFrame*>(p);
+        return actor==f.actor&&f.source.color_fade&&f.source.color_fade(f.source.context,actor,x,y);
+    };
+    wrapped.parent_damage=[](void* p,void* actor,const void* info,unsigned bytes,int* value) noexcept ->int{
+        auto& f=*static_cast<MajorPendingFrame*>(p);
+        return actor==f.actor&&f.source.parent_damage&&
+            f.source.parent_damage(f.source.context,actor,info,bytes,value);
+    };
+    wrapped.parent_ignite=[](void* p,void* actor,const ServerRecombinantIgniteRequest* request) noexcept ->int{
+        auto& f=*static_cast<MajorPendingFrame*>(p);
+        return actor==f.actor&&f.source.parent_ignite&&
+            f.source.parent_ignite(f.source.context,actor,request);
+    };
+    wrapped.random_float=[](void* p,float lo,float hi,float* out) noexcept ->int{
+        auto& f=*static_cast<MajorPendingFrame*>(p);
+        return f.source.random_float&&f.source.random_float(f.source.context,lo,hi,out);
+    };
+    wrapped.health_changed=[](void* p,void* actor) noexcept ->int{
+        auto& f=*static_cast<MajorPendingFrame*>(p);
+        return actor==f.actor&&f.source.health_changed&&f.source.health_changed(f.source.context,actor);
+    };
+    wrapped.pending_activity=[](void* p,void* actor,int activity) noexcept ->int{
+        auto& f=*static_cast<MajorPendingFrame*>(p);
+        if(actor!=f.actor)return 0;
+        ++f.result->pending_calls;
+        f.result->requested_activity=activity;
+        const auto* api=SiN_GetServerRecombinantPendingActivityApi(1,sizeof(ServerRecombinantPendingActivityApi));
+        return api&&api->set_pending(actor,f.bytes,activity,f.pending,&f.result->pending);
+    };
+    return invoke(wrapped,*o);
+}
+int __cdecl composed_damage_major(void* a,unsigned n,const void* info,unsigned info_bytes,float now,
+    const ServerRecombinantDamagePendingBindings* b,ServerRecombinantDamagePendingResult* o) noexcept {
+    return compose_pending(a,n,b,o,[&](const ServerRecombinantDamageBindings& wrapped,ServerRecombinantDamagePendingResult& out) {
+        return damage_major(a,n,info,info_bytes,now,&wrapped,&out.damage);
+    });
+}
+int __cdecl composed_ignite_major(void* a,unsigned n,const ServerRecombinantIgniteRequest* in,
+    const ServerRecombinantDamagePendingBindings* b,ServerRecombinantDamagePendingResult* o) noexcept {
+    return compose_pending(a,n,b,o,[&](const ServerRecombinantDamageBindings& wrapped,ServerRecombinantDamagePendingResult& out) {
+        return ignite_major(a,n,in,&wrapped,&out.ignition);
+    });
+}
+const ServerRecombinantDamagePendingApi pending_damage_api{
+    1,sizeof(ServerRecombinantDamagePendingApi),&composed_damage_major,&composed_ignite_major
+};
+
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantDamageApi=_SiN_GetServerRecombinantDamageApi")
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantDamageApi* __cdecl SiN_GetServerRecombinantDamageApi(unsigned v,unsigned n) noexcept{
     using namespace sin_port::native_weapon_tables;return v==1&&n==sizeof(ServerRecombinantDamageApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantDamagePendingApi=_SiN_GetServerRecombinantDamagePendingApi")
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantDamagePendingApi* __cdecl SiN_GetServerRecombinantDamagePendingApi(unsigned v,unsigned n) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return v==1&&n==sizeof(ServerRecombinantDamagePendingApi)?&pending_damage_api:nullptr;
 }
