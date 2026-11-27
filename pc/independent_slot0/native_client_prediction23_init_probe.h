@@ -29,6 +29,11 @@ constexpr std::uintptr_t kOriginalClPredictParentSlotRva=0x374540u;
 constexpr unsigned kOriginalConVarParentFieldOffset=0x18u;
 constexpr unsigned kOriginalConVarNumericValueOffset=0x2Cu;
 constexpr unsigned kOriginalPredictionEnabledOffset=0x10u;
+constexpr unsigned kOriginalShutdownSlot=2u;
+constexpr unsigned kOriginalResetSlot=7u;
+constexpr unsigned kOriginalResetIndexOffset=0x24u;
+constexpr unsigned kOriginalResetCountAOffset=0x28u;
+constexpr unsigned kOriginalResetCountBOffset=0x2Cu;
 constexpr unsigned kOriginalVirtualCount=23u;
 
 // Only invented ConVar storage is accepted. Original ConVar constructor
@@ -55,10 +60,10 @@ struct Events {
 };
 inline Events events{};
 
-// The first virtual in MSVC Win32 x86 is a deleting destructor.
-// The second is the only method signature authenticated in this fixture.
-// All remaining slots are separate inert SENTINELS, not claims about
-// the actual retail IPrediction methods or their parameters.
+// MSVC slot0 deletes, slot1 Init copies cl_predict effective numeric
+// value, slot2 on engine shutdown is an empty RET and slot7 resets three
+// prediction state DWORDs. Other slots remain inert sentinels. This
+// test fixture is not a registerable implementation of IPrediction.
 class Prediction23Fixture {
 public:
     explicit Prediction23Fixture(const ConVarView* cl_predict) noexcept
@@ -73,12 +78,20 @@ public:
         }
         enabled_=cl_predict_->parent->numeric_value!=0 ? 1u : 0u;
     }
-    virtual std::uint32_t __thiscall UnknownSlot02() noexcept {return 0xA002u;}
+    // Retail slot2 is a literal RET with no side effects; engine invokes
+    // it during client shutdown through [vptr+8].
+    virtual void __thiscall ShutdownNoop() noexcept {}
     virtual std::uint32_t __thiscall UnknownSlot03() noexcept {return 0xA003u;}
     virtual std::uint32_t __thiscall UnknownSlot04() noexcept {return 0xA004u;}
     virtual std::uint32_t __thiscall UnknownSlot05() noexcept {return 0xA005u;}
     virtual std::uint32_t __thiscall UnknownSlot06() noexcept {return 0xA006u;}
-    virtual std::uint32_t __thiscall UnknownSlot07() noexcept {return 0xA007u;}
+    // Retail slot7 is 16 bytes, zeroing [+0x28] and [+0x2C] and
+    // setting [+0x24] to -1. No arguments, RET 0.
+    virtual void __thiscall ResetBookkeeping() noexcept {
+        cleared_a_=0u;
+        cleared_b_=0u;
+        highest_=-1;
+    }
     virtual std::uint32_t __thiscall UnknownSlot08() noexcept {return 0xA008u;}
     virtual std::uint32_t __thiscall UnknownSlot09() noexcept {return 0xA009u;}
     virtual std::uint32_t __thiscall UnknownSlot10() noexcept {return 0xA00Au;}
@@ -102,12 +115,34 @@ public:
     void set_cl_predict(const ConVarView* cl_predict) noexcept {
         cl_predict_=cl_predict;
     }
+    void prime_bookkeeping(std::int32_t highest,
+                           std::uint32_t a,std::uint32_t b) noexcept {
+        highest_=highest;
+        cleared_a_=a;
+        cleared_b_=b;
+    }
+    std::int32_t highest() const noexcept {return highest_;}
+    std::uint32_t value_a() const noexcept {return cleared_a_;}
+    std::uint32_t value_b() const noexcept {return cleared_b_;}
+    std::uintptr_t highest_address() const noexcept {
+        return reinterpret_cast<std::uintptr_t>(&highest_);
+    }
+    std::uintptr_t value_a_address() const noexcept {
+        return reinterpret_cast<std::uintptr_t>(&cleared_a_);
+    }
+    std::uintptr_t value_b_address() const noexcept {
+        return reinterpret_cast<std::uintptr_t>(&cleared_b_);
+    }
 private:
     // PE32 native vfptr occupies this+0 through this+3. This opaque
     // placeholder spans this+4..+0xF, and enabled_ is at +0x10.
     std::array<std::uint8_t,12> opaque_{};
     std::uint8_t enabled_=0u;
-    const ConVarView* cl_predict_=nullptr;
+    const ConVarView* cl_predict_=nullptr; // PE32 native this+0x14
+    std::array<std::uint8_t,12> unknown_prediction_fields_{};
+    std::int32_t highest_=-1;
+    std::uint32_t cleared_a_=0u;
+    std::uint32_t cleared_b_=0u;
 };
 
 static_assert(sizeof(void*)==4u,"original 2006 PE32 pointer width");
@@ -118,6 +153,13 @@ static_assert(std::is_same<
     decltype(&Prediction23Fixture::InitializeFromEngine),
     Slot1Signature>::value,
     "original prediction slot1 is parameterless MSVC thiscall");
+using NoArgVoid=void (__thiscall Prediction23Fixture::*)() noexcept;
+static_assert(std::is_same<
+    decltype(&Prediction23Fixture::ShutdownNoop),NoArgVoid>::value,
+    "original prediction slot2 shutdown is parameterless RET0");
+static_assert(std::is_same<
+    decltype(&Prediction23Fixture::ResetBookkeeping),NoArgVoid>::value,
+    "original prediction slot7 reset is parameterless RET0");
 
 } // namespace client_prediction23_diagnostic
 } // namespace sin_independent
