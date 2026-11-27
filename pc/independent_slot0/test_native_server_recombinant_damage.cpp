@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstring>
 #include <string>
+#include <initializer_list>
 using namespace sin_port::native_weapon_tables;
 struct F {
     alignas(4) unsigned char actor[0xc50]{},source[4]{},info[0x44]{};
@@ -201,6 +202,31 @@ int main(int argc,char** argv){
         f.get<int>(f.actor,0x878)==113&&f.get<int>(f.actor,0x880)==113);
     assert(pending_api->update(f.actor,sizeof(f.actor),&pending_bindings,&step)&&
         step.pending.skipped&&!step.transition_calls);
+
+    // The remaining original ignite choices also reach the pending owner.
+    for(const int previous : {6,1,7}){
+        f.put(f.actor,0x878,previous);f.put(f.actor,0x880,previous);
+        f.put(f.actor,0x9c,35);f.used=0;f.calls.clear();
+        assert(composed->ignite_major(f.actor,sizeof(f.actor),&req,&combined,&session));
+        const int expected=previous==6?112:previous==1?111:-1;
+        assert(session.ignition.activity==expected&&session.requested_activity==expected&&
+            session.pending_calls==static_cast<unsigned>(expected!=-1)&&f.calls=="IR");
+        assert(f.get<int>(f.actor,0x880)==(expected==-1?previous:expected)&&
+            f.get<int>(f.actor,0x878)==previous);
+    }
+    // A provider failure after the request is written cannot retroactively
+    // undo the inherited Ignite or erase the attempted pending activity.
+    auto metadata_ok=assignment.translation.metadata;
+    assignment.translation.metadata=[](void*,void*,const ServerActivityCompositeView**) noexcept ->int{
+        return -1;
+    };
+    f.put(f.actor,0x878,10);f.put(f.actor,0x880,10);
+    f.put(f.actor,0x9c,35);f.used=0;f.calls.clear();
+    assert(!composed->ignite_major(f.actor,sizeof(f.actor),&req,&combined,&session));
+    assert(!session.ignition.completed&&session.pending_calls==1&&
+        session.requested_activity==113&&f.get<int>(f.actor,0x880)==113&&
+        f.get<int>(f.actor,0x878)==10&&f.calls=="IR");
+    assignment.translation.metadata=metadata_ok;
 
     // Invalid registration and actor identity must fail before Ignite
     // mutates health, fire state, animation or calls any host service.
