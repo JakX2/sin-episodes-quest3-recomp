@@ -5,7 +5,6 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 
 namespace sin_independent {
 namespace original_client_entitylist_snapshot {
@@ -77,7 +76,7 @@ inline Result Observe(std::uintptr_t base,Reader reader) noexcept {
     // No implicit wrap and no disassembly or instruction execution.
     constexpr auto maxRva=kSecondaryObjectRva+4u;
     if(base==0u || base>static_cast<std::uintptr_t>(
-            std::numeric_limits<std::uint32_t>::max()-maxRva)) {
+            0xFFFFFFFFu-maxRva)) {
         out.status=Status::InvalidBase;
         return out;
     }
