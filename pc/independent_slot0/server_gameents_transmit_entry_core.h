@@ -27,10 +27,15 @@ struct GameEntsTransmitEntryHooks {
     bool (*bits)(void*,std::uint32_t,TransmitBits*) noexcept=nullptr;
     bool (*entity)(void*,std::uint32_t,CBaseEntity**) noexcept=nullptr;
     TransmitHooks policy{};
+    // Bound diagnostic users attest callback-returned entity pointers BEFORE
+    // policy callbacks; left optional for existing lower-level fixtures.
+    bool (*authorized_entity)(void*,const CBaseEntity*) noexcept=nullptr;
+    void* authorization_context=nullptr;
 };
 struct GameEntsTransmitEntryResult {
     unsigned table_calls=0,recipient_calls=0,bitset_calls=0,entity_calls=0;
     bool fallback=false;
+    bool unauthorized_entity=false;
     TransmitContext policy_context{};
 };
 
@@ -101,7 +106,13 @@ inline TransmitResult CheckTransmitEntry(
                                           kGameEntsTransmitEntityOffset);
             if(!token){entity=nullptr;return true;}
             ++out.entity_calls;
-            return hooks.entity(hooks.context,token,&entity);
+            if(!hooks.entity(hooks.context,token,&entity))return false;
+            if(entity&&hooks.authorized_entity&&
+               !hooks.authorized_entity(hooks.authorization_context,entity)) {
+                out.unauthorized_entity=true;
+                return false;
+            }
+            return true;
         });
 }
 } // namespace sin_independent

@@ -37,7 +37,8 @@ struct EntityReleaseHooks {
 enum class EntityReleaseStatus : unsigned char {
     NoAssociatedEntity,
     MissingCleanupHooks,
-    DetachedAndHooksInvoked
+    DetachedAndHooksInvoked,
+    UnauthorizedEntity
 };
 
 // A safe, test-only core, NOT a drop-in implementation of the void virtual
@@ -46,12 +47,19 @@ enum class EntityReleaseStatus : unsigned char {
 inline EntityReleaseStatus TryReleaseContainingEntity(
     const ServerGameEntsConversionCore& conversion,
     edict_t* edict,
-    const EntityReleaseHooks& hooks) noexcept {
+    const EntityReleaseHooks& hooks,
+    bool (*authorized_entity)(void*,const CBaseEntity*) noexcept = nullptr,
+    void* authorization_context = nullptr) noexcept {
     if (!edict) return EntityReleaseStatus::NoAssociatedEntity;
     if (!hooks.Complete()) return EntityReleaseStatus::MissingCleanupHooks;
 
     CBaseEntity* entity = conversion.EdictToBaseEntity(edict);
     if (!entity) return EntityReleaseStatus::NoAssociatedEntity;
+    // Reject a callback-returned foreign/retired entity before the first
+    // irreversible edict write or any cleanup callback. Optional only for
+    // legacy standalone fixtures; the complete vtable always supplies it.
+    if (authorized_entity && !authorized_entity(authorization_context, entity))
+        return EntityReleaseStatus::UnauthorizedEntity;
 
     auto* bytes = reinterpret_cast<unsigned char*>(edict);
     // Original order is important: unknown is cleared FIRST, then the

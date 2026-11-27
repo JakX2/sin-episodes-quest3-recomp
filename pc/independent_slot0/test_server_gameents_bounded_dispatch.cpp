@@ -66,7 +66,7 @@ struct Fixture {
              roots=0,updated=0,deleted=0,should=0,set=0,ent_reads=0;
     std::size_t index_extent=2;
     bool first_alive=true,valid=true,fail_publish=false,reenter=false,
-         reentrancy_refused=false;
+         reentrancy_refused=false,foreign_touch=false,foreign_transmit=false;
     Fixture() {
         ea.serial=1;eb.serial=2;
         ea.unknown=&first_unknown;eb.unknown=&second_unknown;
@@ -100,6 +100,14 @@ static bool ValidEntity(void* p,const CBaseEntity* entity) noexcept {
     auto& f=*static_cast<Fixture*>(p);
     return (entity==&f.first&&f.first_alive)||entity==&f.second;
 }
+static bool ValidUnknown(void* p,const ServerUnknownAbi* unknown) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    return unknown==&f.first_unknown||unknown==&f.second_unknown;
+}
+static bool ValidTouch(void* p,const TouchEntity* touch) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    return touch==&f.ta||touch==&f.tb;
+}
 static bool Extent(void* p,const CCheckTransmitInfo* info,
                    const unsigned short* indices,int,
                    std::size_t* out_info,std::size_t* out_indices) noexcept {
@@ -118,6 +126,8 @@ static bool ResolveTouch(void* p,const void* edict,TouchEntity** out) noexcept {
     if(!e){*out=nullptr;return true;}
     *out=e==&f.first&&f.first_alive?&f.ta:
          e==&f.second?&f.tb:nullptr;
+    if(f.foreign_touch&&*out)
+        *out=reinterpret_cast<TouchEntity*>(std::uintptr_t{1});
     return *out!=nullptr;
 }
 static bool Init(void* p,GameEntsTouchTrace* trace) noexcept {
@@ -235,7 +245,10 @@ static bool TransmitEntity(void* p,std::uint32_t token,
                            CBaseEntity** out) noexcept {
     auto& f=*static_cast<Fixture*>(p);f.calls+='E';++f.ent_reads;
     if(token!=1002)return false;
-    *out=&f.second;return true;
+    *out=f.foreign_transmit
+        ?reinterpret_cast<CBaseEntity*>(std::uintptr_t{1})
+        :&f.second;
+    return true;
 }
 static std::uint32_t Should(CBaseEntity* e,TransmitContext&,void* p) noexcept {
     auto& f=*static_cast<Fixture*>(p);f.calls+='W';++f.should;
@@ -258,6 +271,7 @@ static GameEntsBoundedOwner Hooks(Fixture& f) noexcept {
     GameEntsBoundedOwner h{};
     h.context=&f;
     h.valid_edict=&ValidEdict;h.valid_entity=&ValidEntity;
+    h.valid_unknown=&ValidUnknown;h.valid_touch=&ValidTouch;
     h.transmit_extent=&Extent;
     h.touch={&f,&ResolveTouch,&Init,&Publish,&f.contacts,
              f.registry.data(),f.registry.size(),
@@ -294,6 +308,16 @@ int main() {
     if(invalid->EdictToBaseEntity(&f.ea)!=nullptr||
        unbound.Report().status!=GameEntsDispatchResult::Unbound)
         return Fail(3,"unbound vtable never reads entity");
+    // Incomplete nested-pointer attestation must prevent readiness even
+    // when the outer edict and buffer validators are present.
+    GameEntsBoundedOwner no_unknown=Hooks(f);
+    no_unknown.valid_unknown=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_unknown).Ready())
+        return Fail(31,"missing unknown-interface ownership gate");
+    GameEntsBoundedOwner no_touch=Hooks(f);
+    no_touch.valid_touch=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_touch).Ready())
+        return Fail(32,"missing touch-storage ownership gate");
     const unsigned before=f.allocated;
     invalid->MarkEntitiesAsTouching(&f.ea,&f.eb);
     if(f.allocated!=before||unbound.Report().status!=GameEntsDispatchResult::Unbound)
@@ -338,6 +362,51 @@ int main() {
     if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
        !f.calls.empty()||f.allocated)
         return Fail(10,"reject unauthorized edict before touch effects");
+
+    // The 0x0c unknown pointer is a second trust boundary. Reject it
+    // before issuing any unknown virtual method, including Free.
+    Unknown foreign_unknown{&f.first};
+    f.ea.unknown=&foreign_unknown;
+    f.calls.clear();
+    if(v->EdictToBaseEntity(&f.ea)!=nullptr||
+       game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       foreign_unknown.calls!=0)
+        return Fail(33,"foreign unknown must not be virtually dispatched");
+    v->FreeContainingEntity(&f.ea);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       foreign_unknown.calls||f.ea.unknown!=&foreign_unknown||
+       f.ea.flags!=0x65||!f.calls.empty())
+        return Fail(34,"foreign unknown cannot trigger release writes");
+    f.ea.unknown=&f.first_unknown;
+    // A trusted unknown may itself return an unauthorized CBaseEntity.
+    f.first_unknown.entity=&rogue_entity;
+    v->FreeContainingEntity(&f.ea);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       f.ea.unknown!=&f.first_unknown||f.ea.flags!=0x65||
+       !f.calls.empty())
+        return Fail(35,"foreign resolved entity cannot trigger cleanup");
+    f.first_unknown.entity=&f.first;
+    // A touch callback can return a forged storage address. Never read its
+    // fields before attesting the returned TouchEntity pointer.
+    f.calls.clear();f.foreign_touch=true;
+    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
+       f.calls!="A"||f.allocated!=0)
+        return Fail(36,"foreign touch storage must not be dereferenced");
+    f.foreign_touch=false;f.ta.entity=&rogue_entity;
+    f.calls.clear();v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
+       f.calls!="A"||f.allocated!=0)
+        return Fail(37,"foreign nested touch entity must be rejected");
+    f.ta.entity=&f.first;
+    // The transmit policy must never receive foreign entity pointers.
+    f.calls.clear();f.foreign_transmit=true;f.selected[0]=0;
+    v->CheckTransmit(&f.info,f.indices,2);
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       !game->Report().transmit.unauthorized_entity||
+       f.calls!="QRBE"||f.selected[0]!=0||f.should!=0)
+        return Fail(38,"foreign transmit entity rejected before policy");
+    f.foreign_transmit=false;
 
     f.calls.clear();f.fail_publish=true;
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);
