@@ -49,7 +49,9 @@ inline EntityReleaseStatus TryReleaseContainingEntity(
     edict_t* edict,
     const EntityReleaseHooks& hooks,
     bool (*authorized_entity)(void*,const CBaseEntity*) noexcept = nullptr,
-    void* authorization_context = nullptr) noexcept {
+    void* authorization_context = nullptr,
+    bool (*authorized_pair)(void*,const edict_t*,const CBaseEntity*) noexcept
+        = nullptr) noexcept {
     if (!edict) return EntityReleaseStatus::NoAssociatedEntity;
     if (!hooks.Complete()) return EntityReleaseStatus::MissingCleanupHooks;
 
@@ -59,6 +61,10 @@ inline EntityReleaseStatus TryReleaseContainingEntity(
     // irreversible edict write or any cleanup callback. Optional only for
     // legacy standalone fixtures; the complete vtable always supplies it.
     if (authorized_entity && !authorized_entity(authorization_context, entity))
+        return EntityReleaseStatus::UnauthorizedEntity;
+    // An individually authorized but cross-wired/stale-generation entity
+    // must not be deleted on behalf of some other still-live edict.
+    if (authorized_pair && !authorized_pair(authorization_context, edict, entity))
         return EntityReleaseStatus::UnauthorizedEntity;
 
     auto* bytes = reinterpret_cast<unsigned char*>(edict);

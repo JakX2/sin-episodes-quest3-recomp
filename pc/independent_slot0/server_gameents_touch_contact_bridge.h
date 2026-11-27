@@ -28,6 +28,10 @@ struct GameEntsContactBridgeHooks {
     bool (*authorized_touch)(void*,const TouchEntity*) noexcept=nullptr;
     bool (*authorized_entity)(void*,const CBaseEntity*) noexcept=nullptr;
     void* authorization_context=nullptr;
+    // Optional on the standalone touch core; the bounded dispatch requires
+    // a trusted edict/entity live-generation association check.
+    bool (*authorized_pair)(void*,const void*,const CBaseEntity*) noexcept=nullptr;
+    void* pair_authorization_context=nullptr;
 };
 struct GameEntsContactBridgeResult {
     GameEntsTouchEntryResult entry{};
@@ -43,6 +47,8 @@ struct GameEntsContactFrame {
     GameEntsContactBridgeResult& result;
     TouchEntity* first=nullptr;
     TouchEntity* second=nullptr;
+    const void* first_source_edict=nullptr;
+    const void* second_source_edict=nullptr;
 };
 inline bool AuthorizedContact(const GameEntsContactFrame& frame,
                               const TouchEntity* entity) noexcept {
@@ -51,9 +57,23 @@ inline bool AuthorizedContact(const GameEntsContactFrame& frame,
        !frame.hooks.authorized_touch(frame.hooks.authorization_context,entity))
         return false;
     if(!entity->entity)return false;
-    return !frame.hooks.authorized_entity||
-        frame.hooks.authorized_entity(frame.hooks.authorization_context,
-                                      entity->entity);
+    if(frame.hooks.authorized_entity &&
+       !frame.hooks.authorized_entity(frame.hooks.authorization_context,
+                                      entity->entity))return false;
+    // Reverify both mappings across origin refresh and trace callbacks.
+    // This blocks two owned entities being crossed through a valid touch
+    // object, including an allocator address reused under a new serial.
+    if(frame.hooks.authorized_pair) {
+        if(entity==frame.first&&frame.first_source_edict&&
+           !frame.hooks.authorized_pair(
+               frame.hooks.pair_authorization_context,
+               frame.first_source_edict,entity->entity))return false;
+        if(entity==frame.second&&frame.second_source_edict&&
+           !frame.hooks.authorized_pair(
+               frame.hooks.pair_authorization_context,
+               frame.second_source_edict,entity->entity))return false;
+    }
+    return true;
 }
 inline bool ResolveContact(void* p,const void* edict,
                            GameEntsTouchEntity* out) noexcept {
@@ -61,9 +81,13 @@ inline bool ResolveContact(void* p,const void* edict,
     TouchEntity* entity=nullptr;
     if(!frame.hooks.resolve(frame.hooks.context,edict,&entity))return false;
     const unsigned call=++frame.result.resolved_calls;
-    if(call==1)frame.first=entity;
-    else if(call==2)frame.second=entity;
-    else return false;
+    if(call==1) {
+        frame.first=entity;
+        frame.first_source_edict=edict;
+    } else if(call==2) {
+        frame.second=entity;
+        frame.second_source_edict=edict;
+    } else return false;
     if(!entity)return true;
     if(!AuthorizedContact(frame,entity))return false;
     out->opaque=entity;
