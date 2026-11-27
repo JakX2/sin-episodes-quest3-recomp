@@ -63,6 +63,116 @@ int main(int argc,char** argv){
     assert(!api->major(f.actor,sizeof(f.actor),major_ids.ids[1],&b,&o));
     f.put(0,recombinant_major_vtable);auto bad=b;bad.major_activities=nullptr;
     assert(!api->major(f.actor,sizeof(f.actor),29,&bad,&o));
+
+    // Exercise the real assignment -> +4e4 -> publication path through
+    // both native APIs, with a different context for assignment callbacks.
+    const auto gc=reinterpret_cast<GetServerRecombinantActivityAssignmentApi>(GetProcAddress(server,server_recombinant_activity_assignment_export));
+    assert(gc&&!GetProcAddress(client,server_recombinant_activity_assignment_export)&&
+        !gc(0,sizeof(ServerRecombinantActivityAssignmentApi))&&!gc(1,0));
+    const auto* composed=gc(1,sizeof(ServerRecombinantActivityAssignmentApi));assert(composed);
+    struct Host {F* fixture;int next;bool fail_component;};
+    Host host{&f,29,false};
+    ServerNpcActivityAssignmentBindings ab{};
+    ab.context=&host;ab.translation.actor_class=NpcActivityHosted;
+    ServerEventDictionaryEntry er[4]{};ServerEventDictionary ed{er,4,0,1,0};
+    ab.translation.events=&ed;ab.dictionary.dictionary=&ed;
+    ab.reset.context=&f;
+    ab.reset.duration=[](void* p,void* a,int seq,double* out) noexcept ->int{
+        auto& f=*static_cast<F*>(p);assert(a==f.actor&&seq==0);*out=2.;return 1;
+    };
+    ab.reset.distance=[](void*,void*,int,double* out) noexcept ->int{*out=0.;return 1;};
+    ab.reset.flags=[](void*,void*,int,unsigned* out) noexcept ->int{*out=1;return 1;};
+    ab.weapon_notify=[](void* p,void* a,std::uint32_t h,int act,float duration) noexcept ->int{
+        auto& x=*static_cast<Host*>(p);assert(a==x.fixture->actor&&h==0x1234u&&act==x.next&&duration==2.f);
+        x.fixture->calls+='W';return 1;
+    };
+    ab.view_vector=[](void* p,void* a,int act,float* out) noexcept ->int{
+        auto& x=*static_cast<Host*>(p);assert(a==x.fixture->actor&&act==x.next);
+        out[0]=out[1]=0.f;out[2]=42.f;x.fixture->calls+='V';return 1;
+    };
+    ab.view_dirty=[](void* p,void* a) noexcept ->int{
+        auto& x=*static_cast<Host*>(p);assert(a==x.fixture->actor);
+        x.fixture->calls+='D';return 1;
+    };
+    ab.component_notify=[](void* p,void* a,std::uint32_t c) noexcept ->int{
+        auto& x=*static_cast<Host*>(p);assert(a==x.fixture->actor&&c==0x5678u&&x.fixture->get<int>(0x878)==x.next);
+        x.fixture->calls+='C';return !x.fail_component;
+    };
+    // This must not be used by the composed route.
+    ab.activity_changed=[](void*,void*,int) noexcept ->int{assert(false);return 0;};
+    ab.translation.context=&f;
+    ab.translation.metadata=[](void* p,void* a,const ServerActivityCompositeView** out) noexcept ->int{
+        auto& f=*static_cast<F*>(p);assert(a==f.actor);f.calls+='Q';*out=nullptr;return 0;
+    };
+    ServerRecombinantActivityAssignmentBindings cb{&ab,&b};
+    ServerRecombinantActivityAssignmentResult co{};
+    f.put(0,recombinant_major_vtable);f.put(0x878,27);f.put(0x3ec,0);
+    f.put(0x3e1,static_cast<unsigned char>(1));f.put(0x78c,0x1234u);f.put(0x908,0x5678u);
+    f.calls.clear();f.actor[0xc14]=1;f.actor[0xc15]=1;
+    auto direct=[&](int act){
+        host.next=act;const ServerNpcActivityAssignmentInput in{act,0,act,act};
+        return composed->assign(f.actor,sizeof(f.actor),&in,&cb,&co);
+    };
+    assert(direct(29)&&co.assignment.assigned&&co.transition_calls==1&&co.transition.previous==27&&
+        co.transition.latch_cleared&&!f.actor[0xc14]&&!f.actor[0xc15]&&f.get<int>(0x878)==29&&f.calls=="WVDC");
+    f.calls.clear();
+    assert(direct(27)&&co.transition.previous==29&&co.transition.latch_written&&f.actor[0xc14]&&
+        !f.actor[0xc15]&&f.calls=="WVC");
+    f.calls.clear();
+    assert(direct(27)&&!co.transition_calls&&!co.assignment.activity_changed&&f.calls=="WVC");
+
+    f.calls.clear();f.draw=1.025f;
+    assert(direct(major_ids.ids[1])&&co.transition.frenzy&&co.transition.previous==27&&f.calls=="WVSRFC");
+    // Hosted Minor uses the same assignment but its own native override.
+    f.put(0,recombinant_minor_vtable);f.put(0x878,6);f.calls.clear();f.draw=.5f;
+    auto mb=b;
+    mb.set_minor_scalar=[](void* p,void* a,float v) noexcept ->int{
+        auto& f=*static_cast<F*>(p);assert(a==f.actor&&f.get<int>(0x878)==6);
+        f.calls+='M';f.scalar=v;return 1;
+    };
+    cb.transition=&mb;
+    assert(direct(1)&&co.transition.kind==RecombinantMinor&&co.transition_calls==1&&co.assignment.assigned&&
+        f.get<int>(0x878)==1&&f.scalar==.5f&&f.calls=="WVRMC");
+    f.put(0x878,6);f.calls.clear();f.draw=2.f;
+    assert(!direct(1)&&co.transition_calls==1&&!co.transition.completed&&!co.assignment.assigned&&
+        f.get<int>(0x878)==6&&f.calls=="WVR");
+    f.calls.clear();
+    assert(composed->request(f.actor,sizeof(f.actor),10,&cb,&co)&&co.assignment.skipped&&!co.transition_calls&&f.calls=="Q");
+
+    // Exercise a non-skipped request through the already recovered scripted
+    // activity selection route; the class override is a no-op for activity15.
+    ServerActivityCompositeView empty_view{};
+    struct Selection {F* fixture;const ServerActivityCompositeView* view;} selection{&f,&empty_view};
+    ab.translation.context=&selection;ab.translation.activities=&dictionary;
+    ab.translation.metadata=[](void* p,void* a,const ServerActivityCompositeView** out) noexcept ->int{
+        auto& s=*static_cast<Selection*>(p);assert(a==s.fixture->actor);s.fixture->calls+='Q';*out=s.view;return 1;
+    };
+    ab.translation.weapon=[](void*,void*,int act,bool* required,int* out) noexcept ->int{
+        *required=false;*out=act;return 1;
+    };
+    ab.translation.other=[](void*,void*,int act,int* out) noexcept ->int{*out=act;return 1;};
+    ab.translation.scripted_sequence=[](void*,void*,int* out) noexcept ->int{*out=0;return 1;};
+    f.calls.clear();host.next=15;
+    assert(composed->request(f.actor,sizeof(f.actor),15,&cb,&co)&&co.assignment.assigned&&
+        co.transition_calls==1&&co.transition.completed&&!co.transition.scalar_calls&&
+        f.get<int>(0x878)==15&&f.get<int>(0x880)==15&&f.get<int>(0x884)==0&&f.calls=="QWVC");
+    // A later failure is not a transaction rollback: publication occurs
+    // before notifying the component, exactly as the underlying assignment.
+    f.put(0x878,6);f.calls.clear();f.draw=.125f;host.fail_component=true;
+    assert(!direct(10)&&co.transition.completed&&co.assignment.activity_changed&&
+        !co.assignment.assigned&&f.get<int>(0x878)==10&&f.calls=="WVRMC");
+    host.fail_component=false;
+    // Wrong actor or assignment class is rejected before any callbacks.
+    f.calls.clear();f.put(0,0u);
+    assert(!direct(1)&&!co.transition_calls&&f.calls.empty());
+    f.put(0,recombinant_minor_vtable);ab.translation.actor_class=NpcActivityGrunt;
+    assert(!direct(1)&&!co.transition_calls&&f.calls.empty());
+    ab.translation.actor_class=NpcActivityHosted;f.put(0,recombinant_major_vtable);
+    assert(!composed->request(f.actor,0xc15,10,&cb,&co)&&f.calls.empty());
+    cb.transition=&b;
+    ++dictionary.names.generation;
+    assert(!direct(29)&&!co.transition_calls&&f.calls.empty());
+    --dictionary.names.generation;
     ++dictionary.names.generation;
     assert(!api->major(f.actor,sizeof(f.actor),major_ids.ids[1],&b,&o));
     FreeLibrary(server);FreeLibrary(client);return 0;
