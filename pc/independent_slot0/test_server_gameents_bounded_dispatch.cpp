@@ -370,7 +370,7 @@ int main() {
     f.calls.clear();v->FreeContainingEntity(&f.ea);
     if(game->Report().status!=GameEntsDispatchResult::Completed||
        game->Report().release!=EntityReleaseStatus::DetachedAndHooksInvoked||
-       f.calls!="LEFFDG MUX")
+       f.calls!="LEFFDGMUX")
         return Fail(18,"slot 3 complete detachment and ordered owned cleanup");
     // The test checks mutation and cleanup separately so no original
     // entity pointer is dereferenced after synthetic immediate removal.
@@ -391,7 +391,7 @@ int main() {
         return Fail(21,"retired entity not exported through PE32 conversion slots");
     f.calls.clear();v->MarkEntitiesAsTouching(&f.ea,&f.eb);
     if(game->Report().status!=GameEntsDispatchResult::NoEntity||
-       !f.calls.empty()&&f.calls!="AB"||f.contacts.touchAllocated)
+       f.calls!="AB"||f.contacts.touchAllocated)
         return Fail(22,"retired edict touch no-op");
     v->SetDebugEdictBase(nullptr);
     if(game->DebugEdictBase()!=nullptr||
