@@ -237,6 +237,16 @@ target_compile_features(sin_server_gameents_pinned_original_link_attacher_test P
 add_test(NAME independent_server_gameents_pinned_original_link_attacher_native
   COMMAND sin_server_gameents_pinned_original_link_attacher_test)
 
+# Win32 owner-controlled VirtualAlloc/VirtualFree backing. A real recursive
+# lock remains held throughout engine allocator callbacks and later entity
+# attachment: physically non-moving, not just a synthetic pin boolean.
+# Original-free test; not a retail engine allocator or live startup proof.
+add_executable(sin_server_gameents_win32_owned_pin_integration_test
+  test_server_gameents_win32_owned_pin_integration.cpp)
+target_compile_features(sin_server_gameents_win32_owned_pin_integration_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_win32_owned_pin_integration_native
+  COMMAND sin_server_gameents_win32_owned_pin_integration_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
