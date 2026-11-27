@@ -32,8 +32,9 @@ bool invoke_init_no_args(void* receiver,void* method) noexcept {
 
 int main() {
     api::events={};
-    api::Provider provider{};
-    auto owner=std::make_unique<api::Prediction23Fixture>(&provider);
+    api::ConVarView cl_predict{};
+    cl_predict.parent=&cl_predict; // original constructor: m_pParent=this
+    auto owner=std::make_unique<api::Prediction23Fixture>(&cl_predict);
     auto* const receiver=owner.get();
     const auto owner_address=reinterpret_cast<std::uintptr_t>(receiver);
     if(receiver->enabled_address()-owner_address!=
@@ -50,32 +51,47 @@ int main() {
     }
     if(vtable[0]==vtable[1])
         return fail(5,"destructor wrongly aliases parameterless Init");
-    // Original code reads service global indirectly and then tests its
-    // +0x2C DWORD; zero becomes false, any nonzero becomes true. No
-    // original game state is dereferenced in this fixture.
+    // Original code reads cl_predict m_pParent at ConVar +0x18 and
+    // tests m_pParent->m_nValue (+0x2C). All state is invented here.
     if(!invoke_init_no_args(receiver,vtable[1]) ||
        receiver->enabled()!=0u || api::events.init_calls!=1u)
         return fail(6,"zero-valued service word Init or RET0 stack");
-    provider.flag=0x80000000u;
+    cl_predict.numeric_value=static_cast<std::int32_t>(0x80000000u);
     if(!invoke_init_no_args(receiver,vtable[1]) ||
        receiver->enabled()!=1u || api::events.init_calls!=2u)
         return fail(7,"nonzero service word boolean Init or RET0 stack");
-    provider.flag=0u;
+    cl_predict.numeric_value=0;
     if(!invoke_init_no_args(receiver,vtable[1]) ||
        receiver->enabled()!=0u || api::events.init_calls!=3u)
         return fail(8,"service transition true->false not reflected");
-    provider.flag=0x10u;
+    cl_predict.numeric_value=0x10;
     if(!invoke_init_no_args(receiver,vtable[1]) ||
        receiver->enabled()!=1u || api::events.init_calls!=4u)
         return fail(9,"service transition false->true not reflected");
-    receiver->set_provider(nullptr);
+    cl_predict.parent=nullptr;
     if(!invoke_init_no_args(receiver,vtable[1]) ||
        receiver->enabled()!=1u ||
        api::events.missing_provider_refusals!=1u ||
        api::events.init_calls!=5u)
-        return fail(10,"missing service not safely refused");
+        return fail(10,"unbound cl_predict m_pParent not safely refused");
+    receiver->set_cl_predict(nullptr);
+    if(!invoke_init_no_args(receiver,vtable[1]) ||
+       receiver->enabled()!=1u ||
+       api::events.missing_provider_refusals!=2u ||
+       api::events.init_calls!=6u)
+        return fail(13,"missing cl_predict ConVar object not refused");
+    // Model ConVar aliases: original CPrediction dereferences the
+    // *parent* value, not always the numeric value in the input ConVar.
+    api::ConVarView alternateParent{};
+    alternateParent.parent=&alternateParent;
+    alternateParent.numeric_value=0;
+    cl_predict.parent=&alternateParent;
+    receiver->set_cl_predict(&cl_predict);
+    if(!invoke_init_no_args(receiver,vtable[1]) ||
+       receiver->enabled()!=0u || api::events.init_calls!=7u)
+        return fail(14,"cl_predict must read parent's numeric value");
     // Important distinction: original native slot1 has NO null check.
-    // The test's null-service refusal is a deliberate safety deviation.
+    // The test's null-ConVar refusal is a deliberate safety deviation.
     if(api::events.destructor_calls!=0u)
         return fail(11,"prediction object destroyed during normal initialization");
     // Only the synthetic object is deleted; no original deleting-destructor
@@ -86,7 +102,8 @@ int main() {
     std::puts("PASS Phase1658 original-free MSVC Win32 x86: compiler-generated "
               "23-slot prediction table with scalar deleting destructor in "
               "slot0, no-argument __thiscall Init in slot1, ECX/ESP RET0, "
-              "engine service+0x2C nonzero-to-this+0x10 boolean conversion, "
+              "cl_predict m_pParent+0x18 / m_nValue+0x2C "
+              "to-this+0x10 boolean conversion, "
               "null-service refusal, and local destructor ownership");
     return 0;
 }
