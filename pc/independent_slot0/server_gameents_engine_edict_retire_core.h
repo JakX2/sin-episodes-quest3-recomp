@@ -21,7 +21,7 @@ constexpr std::size_t kEngineOriginalEdictReuseTime=0x10;
 constexpr std::uint32_t kEngineOriginalEdictFreeBit=2u;
 constexpr std::uint32_t kEngineOriginalEdictRetiredSerial=0xffffffffu;
 static_assert(kEngineOriginalEdictReuseTime+4==kEngineOriginalEdictStride,
-              "owner original edict element includes trailing free-link");
+              "owner original edict record includes x87 reuse-time float");
 
 struct EngineEdictRetireHooks {
     void* context=nullptr;
