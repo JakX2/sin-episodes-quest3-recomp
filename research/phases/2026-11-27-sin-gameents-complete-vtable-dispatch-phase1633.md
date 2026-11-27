@@ -34,7 +34,7 @@ All original void signatures remain void and preserve x86 calling convention. A 
 
 New `independent_server_gameents_bounded_dispatch_native` CTest:
 
-- Constructs a fully bound native x86 object, examines all seven non-null virtual slots and calls every non-destructor method through `ServerGameEntsAbi*` before deleting the instance via its virtual destructor.
+- Constructs a fully bound native x86 object and examines all seven non-null virtual slots. In addition to calling through `ServerGameEntsAbi*`, it casts the six operational entries from the **actual MSVC x86 vtable** to original `__thiscall` signatures, invokes each pointer, and checks unchanged `ESP` across each call. It deletes the instance via its virtual destructor.
 - Validates exact original CBaseEntity edict+0x16c and edict unknown+0x0c GetBaseEntity virtual+0x14 conversion, including unauthorized foreign memory and retired entity pointers without dereference.
 - Executes original-guided edict touch initialization, midpoint publication and reciprocal two-node creation; verifies publication refusal before allocations and successful repeat-contact calls.
 - Executes original candidate table and selected-bit processing through virtual CheckTransmit, including valid index array, undersized physical index array before bit mutation and an attempted callback reentrancy.
