@@ -58,6 +58,7 @@ on:
       - 'research/tests/test_audit_sin_original_ar_touch_gate.py'
       - 'research/tests/test_audit_sin_original_rifle_grenade_factories.py'
       - 'research/tools/observe_sin_original_engine_edict_owner.py'
+      - 'research/tools/observe_sin_original_engine_edict_records.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -213,3 +214,6 @@ jobs:
 
       - name: Verify read-only original engine edict owner probe RVA and torn-snapshot bounds (synthetic only)
         run: python research/tools/observe_sin_original_engine_edict_owner.py --self-test
+
+      - name: Test selected original 2006 PE32 edict serial, flags and reuse-time reads (synthetic only)
+        run: python research/tools/observe_sin_original_engine_edict_records.py --self-test

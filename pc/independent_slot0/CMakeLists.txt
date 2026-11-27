@@ -257,6 +257,16 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Optional, explicitly selected original PE32 edict record reads.
+# On CI this is synthetic-only; real Windows owner PID is never opened.
+# Source-verified fields +0 flags, +4 serial and +0x10 reuse float bits.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_engine_edict_record_observer_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/observe_sin_original_engine_edict_records.py"
+      --self-test)
+endif()
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
