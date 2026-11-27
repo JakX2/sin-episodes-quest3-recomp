@@ -49,7 +49,7 @@ Authenticated allocator witness opcodes: 10 / 10
 Authenticated absolute-memory operand relocations: 6 / 6
 ```
 
-This independently establishes the six exact operand relocation RVAs `0x110ECD`, `0x110ED3`, `0x110EE0`, `0x110F37`, `0x110FBD`, and `0x111026` in the original PE32 file. The new `--engine` audit mode reproduces the evidence from an owner-private DLL and emits **metadata only**; public CI runs only the invented PE32 relocation fixtures. The `server.dll` and `client.dll` in the same Drive installation were also SHA-checked locally against the previously recorded server fingerprint and original client archive: server `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`; client `6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d`.
+This independently establishes the six exact operand relocation RVAs `0x110ECD`, `0x110ED3`, `0x110EE0`, `0x110F37`, `0x110FBD`, and `0x111026` in the original PE32 file. The new `--engine` audit mode reproduces the evidence from an owner-private DLL and emits **metadata only**; public CI runs only the invented PE32 relocation fixtures. The `server.dll` and `client.dll` in the same Drive installation were also SHA-checked locally: the server matches the previously recorded original fingerprint; the client digest below is newly recorded from this archive. Server `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`; client `6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d`.
 
 These are **on-disk** original-file provenance findings, not measurements from a live process. The original source bytes are not committed or included in public CI.
 
