@@ -1,8 +1,15 @@
-#include "native_server_animation_events.h"
+#include "native_server_scripted_animation_events.h"
+extern "C" int __cdecl SiN_HandleScriptedNpcAnimationEvent(void*,unsigned,int,const char*,unsigned,
+    const sin_port::native_map::ScriptedNpcAnimationEventBindings*,sin_port::native_map::ScriptedNpcAnimationEventResult*) noexcept;
 #include <cmath>
 #include <cstring>
 namespace sin_port::native_weapon_tables {
 namespace {
+struct ScriptedEventRoute {
+    unsigned receiver_bytes;
+    const native_map::ScriptedNpcAnimationEventBindings* bindings;
+    ServerScriptedAnimationDispatchResult* result;
+};
 template<class T> T read(const void* p,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+off,sizeof(v));return v;}
 template<class T> void write(void* p,unsigned off,T v) noexcept {std::memcpy(static_cast<unsigned char*>(p)+off,&v,sizeof(v));}
 bool valid(const ServerAnimationEventSequence& s) noexcept {
@@ -34,7 +41,7 @@ double interval(void* actor,float now) noexcept {
     const double dt=current<now?now-current:current-previous;
     return dt>.2f?.2f:(dt<0.?0.:dt);
 }
-bool emit_interval(void* actor,void* receiver,int layer,const ServerAnimationEventSequence& s,float start,float end,float cycle,float effective,float now,const ServerAnimationEventBindings& b,ServerAnimationEventResult& result) noexcept {
+bool emit_interval(void* actor,void* receiver,int layer,const ServerAnimationEventSequence& s,float start,float end,float cycle,float effective,float now,const ServerAnimationEventBindings& b,ServerAnimationEventResult& result,const ScriptedEventRoute* script=nullptr) noexcept {
     unsigned index=0;
     for(;;){
         ServerAnimationEvent event{};
@@ -48,10 +55,19 @@ bool emit_interval(void* actor,void* receiver,int layer,const ServerAnimationEve
             event.time=static_cast<float>(static_cast<double>(read<float>(actor,0x2c))+interval(actor,now)+(static_cast<double>(adjusted)-cycle)/effective);
             if(!std::isfinite(event.time))return false;
         }
-        b.emit(b.context,receiver,layer,&event);++result.emitted;
+        if(script&&event.event>=1001&&event.event<=1003){
+            auto& out=*script->result;
+            if(!SiN_HandleScriptedNpcAnimationEvent(receiver,script->receiver_bytes,event.event,event.options,64,script->bindings,&out.last)||
+               !out.last.handled)return false;
+            ++out.script_events;
+        }else{
+            b.emit(b.context,receiver,layer,&event);
+            if(script)++script->result->fallback_events;
+        }
+        ++result.emitted;
     }
 }
-bool dispatch_base_impl(void* actor,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out) noexcept {
+bool dispatch_base_impl(void* actor,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out,const ScriptedEventRoute* script=nullptr) noexcept {
     // 220eefe0: base metadata uses the source actor, not the receiver.
     out->failed_layer=-1;
     const float playback=read<float>(actor,0x3c0);
@@ -67,7 +83,7 @@ bool dispatch_base_impl(void* actor,void* receiver,float now,const ServerAnimati
             float effective=0;
             if(!std::isfinite(cycle)||!std::isfinite(start)||!rate(*b,actor,sequence,playback,effective))return 0;
             write(actor,0x398,end);
-            if(!emit_interval(actor,receiver,-1,s,start,end,cycle,effective,now,*b,*out))return 0;
+            if(!emit_interval(actor,receiver,-1,s,start,end,cycle,effective,now,*b,*out,script))return 0;
         }
     }
     out->failed_layer=-2;return true;
@@ -78,7 +94,8 @@ int __cdecl dispatch_base(void* actor,unsigned bytes,void* receiver,float now,co
        !std::isfinite(read<float>(actor,0x28))||!std::isfinite(read<float>(actor,0x2c)))return 0;
     return dispatch_base_impl(actor,receiver,now,b,out);
 }
-int __cdecl dispatch(void* actor,unsigned bytes,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out) noexcept {
+int dispatch_impl(void* actor,unsigned bytes,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out,
+    const ScriptedEventRoute* script=nullptr) noexcept {
     if(!out)return 0;
     *out={};out->failed_layer=-2;
     if(!actor||bytes<0x4a8||!receiver||!b||!b->sequence||!b->cycle_rate||!b->storage||!b->emit||!std::isfinite(now)||
@@ -87,7 +104,7 @@ int __cdecl dispatch(void* actor,unsigned bytes,void* receiver,float now,const S
     if(count<0||count>4096||capacity<count)return 0;
     void* data=nullptr;unsigned extent=0;
     if(count&&(!b->storage(b->context,read<std::uint32_t>(actor,0x494),&data,&extent)||!data||extent<static_cast<unsigned>(count)*0x40))return 0;
-    if(!dispatch_base_impl(actor,receiver,now,b,out))return 0;
+    if(!dispatch_base_impl(actor,receiver,now,b,out,script))return 0;
     // 220f33c0: metadata and rate use receiver, frame clock/source use actor.
     for(int i=0;i<count;++i){
         auto* row=static_cast<unsigned char*>(data)+i*0x40;
@@ -105,9 +122,23 @@ int __cdecl dispatch(void* actor,unsigned bytes,void* receiver,float now,const S
             write<std::uint8_t>(row,4,1);end=1.f;
         }
         write(row,0x38,end);
-        if(!emit_interval(actor,receiver,i,s,start,end,cycle,effective,now,*b,*out))return 0;
+        if(!emit_interval(actor,receiver,i,s,start,end,cycle,effective,now,*b,*out,script))return 0;
     }
     out->failed_layer=-2;return 1;
+}
+int __cdecl dispatch(void* actor,unsigned bytes,void* receiver,float now,const ServerAnimationEventBindings* b,ServerAnimationEventResult* out) noexcept {
+    return dispatch_impl(actor,bytes,receiver,now,b,out);
+}
+int dispatch_scripted(void* actor,unsigned bytes,void* receiver,unsigned receiver_bytes,float now,
+    const ServerScriptedAnimationDispatchBindings* b,ServerScriptedAnimationDispatchResult* out) noexcept {
+    if(!out)return 0;*out={};out->animation.failed_layer=-2;
+    if(!b||!b->animation||!b->script||!b->script->interrupt||!b->script->interrupt->control||receiver_bytes<0x974)return 0;
+    const auto& control=*b->script->interrupt->control;
+    unsigned actual=0;
+    if(!receiver||!control.extent||!control.extent(control.context,receiver,&actual)||actual<receiver_bytes)return 0;
+    const ScriptedEventRoute script{receiver_bytes,b->script,out};
+    out->completed=dispatch_impl(actor,bytes,receiver,now,b->animation,&out->animation,&script);
+    return out->completed;
 }
 const ServerBaseAnimationEventsApi base_api{1,sizeof(ServerBaseAnimationEventsApi),&dispatch_base};
 const ServerAnimationEventsApi api{1,sizeof(ServerAnimationEventsApi),&next,&dispatch};
@@ -125,4 +156,11 @@ extern "C" __declspec(dllexport) const sin_port::native_weapon_tables::ServerBas
 SiN_GetServerBaseAnimationEventsApi(std::uint32_t version,std::uint32_t size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerBaseAnimationEventsApi)?&base_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_DispatchScriptedNpcAnimationEvents=_SiN_DispatchScriptedNpcAnimationEvents")
+extern "C" int __cdecl SiN_DispatchScriptedNpcAnimationEvents(void* a,unsigned n,void* receiver,unsigned receiver_bytes,float now,
+    const sin_port::native_weapon_tables::ServerScriptedAnimationDispatchBindings* b,
+    sin_port::native_weapon_tables::ServerScriptedAnimationDispatchResult* out) noexcept {
+    return sin_port::native_weapon_tables::dispatch_scripted(a,n,receiver,receiver_bytes,now,b,out);
 }

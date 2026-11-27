@@ -1,0 +1,3 @@
+# Phase 1566: scripted NPC studio event traversal
+
+Optional new dispatcher retains original base and overlay traversal and timestamp calculations, intercepts original NPC animation event IDs 1001-1003 only, and forwards other events to the existing owner virtual exactly once. Uses the fixed 64-byte original options field and receiver extent from script control. Failure propagates through the original traversal; no successful duplicate output. Loaded regression authored for base disable/output, overlay enable/fallback, cursor no-repeat and invalid extent. No new code digests, no old ABI changes. Integration into full outer NPC weapon-frame route remains pending. CI pending.

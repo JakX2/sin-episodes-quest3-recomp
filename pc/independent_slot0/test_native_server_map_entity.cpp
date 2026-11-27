@@ -3,6 +3,7 @@
 #include "native_server_activity_assignment.h"
 #include "native_server_npc_task_lifecycle.h"
 #include "native_server_npc_shared_task.h"
+#include "native_server_scripted_animation_events.h"
 #include "server_fixed_difficulty_service.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
