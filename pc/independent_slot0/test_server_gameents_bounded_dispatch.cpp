@@ -66,7 +66,8 @@ struct Fixture {
              roots=0,updated=0,deleted=0,should=0,set=0,ent_reads=0;
     std::size_t index_extent=2;
     bool first_alive=true,valid=true,fail_publish=false,reenter=false,
-         reentrancy_refused=false,foreign_touch=false,foreign_transmit=false;
+         reentrancy_refused=false,foreign_touch=false,foreign_transmit=false,
+         expire_pair_on_publish=false;
     bool lease_active=false,deny_next_lease=false,
          reenter_lease_begin=false,reenter_lease_end=false;
     std::uint64_t owner_epoch=77,held_epoch=0;
@@ -211,6 +212,9 @@ static bool Publish(void* p,const GameEntsTouchTrace* trace) noexcept {
     if(trace->ReadFloat(0x0c)!=5.f||trace->ReadFloat(0x10)!=7.f||
        trace->ReadFloat(0x14)!=9.f||trace->ReadFloat(0x2c)!=1.f||
        trace->ReadFloat(0x3c)!=123.f)f.valid=false;
+    // Stress a misbehaving host callback that recycles an entity generation
+    // even while the bounded dispatch holds its access lease.
+    if(f.expire_pair_on_publish)++f.registry[1].serial;
     return !f.fail_publish;
 }
 static ContactNode* Allocate(void* p) noexcept {
@@ -597,7 +601,14 @@ int main() {
     if(game->Report().status!=GameEntsDispatchResult::HostFailure||
        f.calls!="ABI21P"||f.allocated||f.contacts.touchAllocated)
         return Fail(11,"original trace publish refusal before contact link allocation");
-    f.fail_publish=false;f.ta.dirtyOrigin=true;f.tb.dirtyOrigin=true;
+    f.fail_publish=false;f.expire_pair_on_publish=true;f.calls.clear();
+    v->MarkEntitiesAsTouching(&f.ea,&f.eb);
+    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
+       f.calls!="ABIP"||f.allocated||f.starts||f.contacts.touchAllocated)
+        return Fail(59,"expired post-publication pair cannot mutate contact graph");
+    f.expire_pair_on_publish=false;
+    f.registry[1].serial=f.ea.serial;
+    f.ta.dirtyOrigin=true;f.tb.dirtyOrigin=true;
     f.ta.origin={0,0,0};f.tb.origin={0,0,0};f.calls.clear();
     CHECK_X86_STACK(touchSlot(game,&f.ea,&f.eb),28);
     if(game->Report().status!=GameEntsDispatchResult::Completed||

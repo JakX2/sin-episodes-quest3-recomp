@@ -162,6 +162,12 @@ inline bool MarkContactPair(void* p,void* a,void* b,
     ++result.publish_calls;
     if(!frame.hooks.publish_trace(frame.hooks.context,original_trace))
         return false;
+    // Publishing the global trace is an externally supplied callback; the
+    // owner may have changed entity generations before returning. Protect
+    // the directed contact writes even when a host violates its promised
+    // lease stability. The already-published trace cannot be rolled back.
+    if(!AuthorizedContact(frame,frame.first)||
+       !AuthorizedContact(frame,frame.second))return false;
     const auto status=MarkTouchPair(first,second,*frame.hooks.contacts,
         EntityHandleView(frame.hooks.entries,frame.hooks.entry_count),
         result.contact_trace,frame.hooks.touch);
