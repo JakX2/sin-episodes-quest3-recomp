@@ -2,6 +2,9 @@
 #include "native_server_map_entity.h"
 extern "C" const sin_port::native_map::Api* __cdecl SiN_GetServerMapEntityApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" __declspec(dllexport) const sin_port::native_resupply::Api* __cdecl SiN_GetServerDynamicResupplyApi(std::uint32_t,std::uint32_t) noexcept;
+extern "C" int __cdecl SiN_RunServerNpcWeaponPolicyThinkWithScripts(void* a,unsigned bytes,float now,const sin_port::native_weapon_tables::ServerScheduleImage* image,const sin_port::native_weapon_tables::ServerNpcScheduleServicesBindings* b,const sin_port::native_weapon_tables::ServerGruntHelperTaskBindings* full,const sin_port::native_weapon_tables::ServerNpcSharedAttackBindings* attack,const sin_port::native_weapon_tables::ServerNpcSharedFacingBindings* facing,const sin_port::native_weapon_tables::ServerNpcSharedTargetAnimationBindings* target,const sin_port::native_weapon_tables::ServerNpcSharedMovementBindings* movement,const sin_port::native_weapon_tables::ServerNpcSharedCueBindings* cue,const sin_port::native_weapon_tables::ServerNpcSharedObservationBindings* observe,const sin_port::native_weapon_tables::ServerNpcSharedSoundCoverBindings* sound_cover,const sin_port::native_weapon_tables::ServerNpcSharedTacticalCoverBindings* tactical,const sin_port::native_weapon_tables::ServerNpcNativeCombatLineThinkBindings* bindings,sin_port::native_weapon_tables::ServerNpcNativeRequestThinkResult* result,sin_port::native_weapon_tables::ServerNpcGruntNativeLineAttackResult* outer_line,sin_port::native_weapon_tables::ServerNpcGruntNativeLineAttackResult* inner_line,const sin_port::native_weapon_tables::ServerNpcWeaponPolicyBindings* weapons,sin_port::native_weapon_tables::ServerNpcWeaponPolicyResult* outer_weapon,sin_port::native_weapon_tables::ServerNpcWeaponPolicyResult* inner_weapon,const sin_port::native_weapon_tables::ServerNpcScriptedThinkServices* scripts) noexcept;
+extern "C" int __cdecl SiN_RunServerNpcJetWeaponPolicyThinkWithScripts(void* a,unsigned bytes,float now,const sin_port::native_weapon_tables::ServerScheduleImage* image,const sin_port::native_weapon_tables::ServerNpcScheduleServicesBindings* b,const sin_port::native_weapon_tables::ServerGruntHelperTaskBindings* full,const sin_port::native_weapon_tables::ServerNpcSharedAttackBindings* attack,const sin_port::native_weapon_tables::ServerNpcSharedFacingBindings* facing,const sin_port::native_weapon_tables::ServerNpcSharedTargetAnimationBindings* target,const sin_port::native_weapon_tables::ServerNpcSharedMovementBindings* movement,const sin_port::native_weapon_tables::ServerNpcSharedCueBindings* cue,const sin_port::native_weapon_tables::ServerNpcSharedObservationBindings* observe,const sin_port::native_weapon_tables::ServerNpcSharedSoundCoverBindings* sound_cover,const sin_port::native_weapon_tables::ServerNpcSharedTacticalCoverBindings* tactical,const sin_port::native_weapon_tables::ServerNpcNativeJetCombatLineThinkBindings* bindings,sin_port::native_weapon_tables::ServerNpcNativeJetRequestThinkResult* result,sin_port::native_weapon_tables::ServerNpcGruntNativeLineAttackResult* outer_line,sin_port::native_weapon_tables::ServerNpcGruntNativeLineAttackResult* inner_line,const sin_port::native_weapon_tables::ServerNpcWeaponPolicyBindings* weapons,sin_port::native_weapon_tables::ServerNpcWeaponPolicyResult* outer_weapon,sin_port::native_weapon_tables::ServerNpcWeaponPolicyResult* inner_weapon,const sin_port::native_weapon_tables::ServerNpcScriptedThinkServices* scripts) noexcept;
+#include <type_traits>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -31,10 +34,11 @@ namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* a,unsigned off) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(a)+off,sizeof(v));return v;}
 template<class ThinkBinding,class ThinkApi,class Result>
-int run_impl(void* a,unsigned n,const ServerNpcRunAnimationInput* in,const ServerNpcActiveWeaponStepBindings* b,const ThinkBinding* think_binding,const ThinkApi* think,bool jet,Result* out) noexcept {
+int run_impl(void* a,unsigned n,const ServerNpcRunAnimationInput* in,const ServerNpcActiveWeaponStepBindings* b,const ThinkBinding* think_binding,const ThinkApi* think,bool jet,Result* out,const ServerNpcScriptedThinkServices* scripts=nullptr) noexcept {
     if(!out)return 0;
     // Large scheduler result; avoid recursive aggregate temporary on MSVC x86.
     std::memset(out,0,sizeof(*out));out->animation.frame.frame.failed_event=-1;
+    if(scripts&&!valid_scripted_think_services(scripts))return 0;
     if(!a||n<0xfd8||!in||!std::isfinite(in->now)||!b||!b->schedule||!b->policy||
        !b->policy->ammo||!b->policy->ammo->scripts||!b->policy->melee||!b->frame)return 0;
     const auto& scheduler=b->schedule->scheduler;
@@ -61,7 +65,14 @@ int run_impl(void* a,unsigned n,const ServerNpcRunAnimationInput* in,const Serve
         if(!b->image||!think_binding||!b->full||!b->attack||!b->facing||!b->target||!b->movement||
            !b->cue||!b->observe||!b->sound_cover||!b->tactical)return 0;
         out->think_called=1;
-        if(!think->run(a,n,in->now,b->image,b->schedule,b->full,b->attack,b->facing,b->target,b->movement,b->cue,b->observe,b->sound_cover,b->tactical,
+        if(scripts){
+            const auto script_think=[](){
+                if constexpr(std::is_same_v<ThinkBinding,ServerNpcNativeCombatLineThinkBindings>)return &SiN_RunServerNpcWeaponPolicyThinkWithScripts;
+                else return &SiN_RunServerNpcJetWeaponPolicyThinkWithScripts;
+            }();
+            if(!script_think(a,n,in->now,b->image,b->schedule,b->full,b->attack,b->facing,b->target,b->movement,b->cue,b->observe,b->sound_cover,b->tactical,
+                think_binding,&out->think,&out->outer_line,&out->inner_line,b->policy,&out->outer_weapon,&out->inner_weapon,scripts))return 0;
+        }else if(!think->run(a,n,in->now,b->image,b->schedule,b->full,b->attack,b->facing,b->target,b->movement,b->cue,b->observe,b->sound_cover,b->tactical,
             think_binding,&out->think,&out->outer_line,&out->inner_line,b->policy,&out->outer_weapon,&out->inner_weapon))return 0;
         out->think_completed=1;
     }else{
@@ -323,6 +334,31 @@ int __cdecl outer_ground(void* a,unsigned n,const ServerNpcRunAnimationInput* in
 int __cdecl outer_jet(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveJetWeaponStepBindings* b,const ServerNpcOuterUpdateBindings* outer,ServerNpcActiveJetWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out) noexcept {
     return outer_run(a,n,in,interval,b,b&&!b->base.think?&b->base:nullptr,outer,step,tail,out,true,&jet_post);
 }
+template<class Binding,class Step>
+bool prepare_scripted_outer(const ServerNpcScriptedThinkServices* scripts,Step* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out) noexcept {
+    if(step){std::memset(step,0,sizeof(*step));step->animation.frame.frame.failed_event=-1;}
+    if(tail)*tail={};if(out)*out={};
+    if(!valid_scripted_think_services(scripts))return false;
+    *scripts->stats={};if(scripts->motion_stats)*scripts->motion_stats={};if(scripts->cleaned)*scripts->cleaned={};
+    return true;
+}
+int __cdecl outer_ground_scripted(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveWeaponStepBindings* b,const ServerNpcOuterUpdateBindings* outer,ServerNpcActiveWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out,const ServerNpcScriptedThinkServices* scripts) noexcept {
+    if(!prepare_scripted_outer<ServerNpcActiveWeaponStepBindings>(scripts,step,tail,out))return 0;
+    auto execute=[scripts](void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveWeaponStepBindings* b,const ServerNpcActivePostAnimationBindings* p,ServerNpcActiveWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail) noexcept ->int{
+        if(!run_impl(a,n,in,b,b?b->think:nullptr,SiN_GetServerNpcNativeWeaponPolicyThinkApi(1,sizeof(ServerNpcNativeWeaponPolicyThinkApi)),false,step,scripts))return 0;
+        return post(a,n,in->now,interval,b->schedule,p,tail);
+    };
+    return outer_run(a,n,in,interval,b,b,outer,step,tail,out,false,execute);
+}
+int __cdecl outer_jet_scripted(void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveJetWeaponStepBindings* b,const ServerNpcOuterUpdateBindings* outer,ServerNpcActiveJetWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail,ServerNpcOuterUpdateResult* out,const ServerNpcScriptedThinkServices* scripts) noexcept {
+    if(!prepare_scripted_outer<ServerNpcActiveJetWeaponStepBindings>(scripts,step,tail,out))return 0;
+    auto execute=[scripts](void* a,unsigned n,const ServerNpcRunAnimationInput* in,float interval,const ServerNpcActiveJetWeaponStepBindings* b,const ServerNpcActivePostAnimationBindings* p,ServerNpcActiveJetWeaponStepResult* step,ServerNpcActivePostAnimationResult* tail) noexcept ->int{
+        if(!run_impl(a,n,in,b&&!b->base.think?&b->base:nullptr,b?b->think:nullptr,SiN_GetServerNpcNativeJetWeaponPolicyThinkApi(1,sizeof(ServerNpcNativeJetWeaponPolicyThinkApi)),true,step,scripts))return 0;
+        return post(a,n,in->now,interval,b->base.schedule,p,tail);
+    };
+    return outer_run(a,n,in,interval,b,b&&!b->base.think?&b->base:nullptr,outer,step,tail,out,true,execute);
+}
+const ServerNpcOuterScriptedUpdateApi outer_scripted_api{1,sizeof(ServerNpcOuterScriptedUpdateApi),&outer_ground_scripted,&outer_jet_scripted};
 bool wake_transition_impl(void*,unsigned,std::uint32_t,bool,const ServerNpcWakeTransitionBindings&,ServerNpcWakeTransitionResult&,unsigned) noexcept;
 struct WakeTransitionRoute {const ServerNpcWakeTransitionBindings& bindings;ServerNpcWakeTransitionResult& result;};
 int wake_policy_impl(void* a,unsigned n,std::uint32_t vt,bool pvs,const ServerNpcWakePolicyBindings* b,ServerNpcWakePolicyResult* out,const WakeTransitionRoute* route) noexcept {
@@ -3130,4 +3166,10 @@ extern "C" int __cdecl SiN_ServiceScriptedSequenceEvents(void* root,unsigned byt
     const sin_port::native_map::CampaignFilterInputBindings* filters,sin_port::native_weapon_tables::CampaignFilterServiceSummary* filter_summary) noexcept {
     if(o)*o={};if(seq_summary)*seq_summary={};if(filter_summary)*filter_summary={};
     return sequence&&seq_summary&&sin_port::native_weapon_tables::service_events_impl(root,bytes,token,now,stepping,steps,b,o,filters,filter_summary,sequence,seq_summary);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerNpcOuterScriptedUpdateApi=_SiN_GetServerNpcOuterScriptedUpdateApi")
+extern "C" const sin_port::native_weapon_tables::ServerNpcOuterScriptedUpdateApi* __cdecl SiN_GetServerNpcOuterScriptedUpdateApi(std::uint32_t v,std::uint32_t n) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return v==1&&n==sizeof(ServerNpcOuterScriptedUpdateApi)?&outer_scripted_api:nullptr;
 }

@@ -1,0 +1,3 @@
+# Phase 1569: scripted think through full outer update
+
+New versioned outer update API for ground and Jetpack uses the established admission, cadence, PVS, think-deadline, animation and post-animation routes. Due think invokes the explicit script-aware combat catalog path from phase1568, future deadline retains old animation-only behavior. Sidecar stats reset on every outer frame including bypass. Existing wake and ordinary outer APIs unchanged. Existing three-frame weapon fixture now exercises the new route and still checks exact due/skip/due cadence, shots and ammo, with no script task execution expected on those combat schedules. This does not yet connect script animation events into the full weapon-frame chain or suppression into perception. CI pending.

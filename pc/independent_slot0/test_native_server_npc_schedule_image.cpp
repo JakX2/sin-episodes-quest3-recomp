@@ -924,6 +924,9 @@ int main(int argc,char** argv){
         auto get_outer=reinterpret_cast<GetServerNpcOuterUpdateApi>(GetProcAddress(s,server_npc_outer_update_export));
         assert(get_outer&&!GetProcAddress(c,server_npc_outer_update_export));
         const auto* outer_api=get_outer(1,sizeof(ServerNpcOuterUpdateApi));assert(outer_api);
+        const auto get_outer_scripts=reinterpret_cast<GetServerNpcOuterScriptedUpdateApi>(GetProcAddress(s,server_npc_outer_scripts_export));
+        assert(get_outer_scripts&&!GetProcAddress(c,server_npc_outer_scripts_export)&&!get_outer_scripts(0,sizeof(ServerNpcOuterScriptedUpdateApi))&&!get_outer_scripts(1,0));
+        const auto* outer_scripts=get_outer_scripts(1,sizeof(ServerNpcOuterScriptedUpdateApi));assert(outer_scripts);
         ServerNpcActivePostAnimationBindings post_bind{};post_bind.context=&equipped;post_bind.resolve=storage;
         post_bind.navigation_update=[](void*,void*,std::uint32_t token,float dt) noexcept -> int{
             assert(token==604u&&std::isfinite(dt));return 1;
@@ -948,7 +951,9 @@ int main(int argc,char** argv){
             const float now=i==0?75.5f:i==1?75.55f:75.6f;
             seed_anim(now);
             const ServerNpcRunAnimationInput input{now,false,false};
-            assert(outer_api->ground(f.actor,sizeof(f.actor),&input,.05f,&step_bind,&outer_bind,&step_result,&tail_result,&outer_result)&&outer_result.completed&&outer_result.active_called&&tail_result.completed);
+            script_stats.starts=99;script_stats.runs=99;
+            assert(outer_scripts->ground(f.actor,sizeof(f.actor),&input,.05f,&step_bind,&outer_bind,&step_result,&tail_result,&outer_result,&script_services)&&outer_result.completed&&outer_result.active_called&&tail_result.completed);
+            assert(!script_stats.starts&&!script_stats.runs);
             assert(bool(outer_result.think_called)==(i!=1)&&bool(step_result.think_completed)==(i!=1));
             assert(step_result.animation.frame.frame.weapon_events==1&&step_result.animation.last.event.parent.weapon.clip_changed);
             assert(outer_result.finish.deadline==(i==2?static_cast<float>(double(now)+double(.1f)):75.6f)&&outer_result.finish.tick==1512+i);
