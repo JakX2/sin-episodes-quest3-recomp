@@ -88,7 +88,8 @@ int main() {
     F f;GameEntsTransmitEntryResult out{};
     const std::uint16_t candidates[]{0,1,2,3,4,5,1,2};
     auto run=[&](const std::uint16_t* list,int count) {
-        return CheckTransmitEntry(&f.recipient_cookie,list,count,Hooks(f),out);
+        return CheckTransmitEntry(&f.recipient_cookie,list,count,
+            count>0?static_cast<std::size_t>(count):0u,Hooks(f),out);
     };
     if(run(candidates,8)!=GameEntsTransmitEntryStatus::Completed ||
        out.table_calls!=1||out.recipient_calls!=1||out.bitset_calls!=1||
@@ -152,9 +153,17 @@ int main() {
     if(run(nullptr,1)!=GameEntsTransmitEntryStatus::InvalidInput ||
        out.bitset_calls||f.calls!="TR")
         return fail(12,"missing nonzero work list");
+    f.Reset();
+    // A caller can supply a larger count than the actual array; reject
+    // this before any index dereference, bitset access or engine callback.
+    if(CheckTransmitEntry(&f.recipient_cookie,candidates,4,3u,Hooks(f),out)
+          !=GameEntsTransmitEntryStatus::InvalidInput ||
+       out.bitset_calls||f.calls!="TR"||
+       f.selected[0]||f.always[0])
+        return fail(14,"undersized physical candidate index buffer");
     auto missing=Hooks(f);missing.table=nullptr;
     f.Reset();
-    if(CheckTransmitEntry(&f.recipient_cookie,candidates,1,missing,out)
+    if(CheckTransmitEntry(&f.recipient_cookie,candidates,1,1u,missing,out)
           !=GameEntsTransmitEntryStatus::InvalidInput||!f.calls.empty())
         return fail(13,"missing global manager callback");
     std::puts("PASS ServerGameEnts CheckTransmit entry: table, recipient, bounded bitsets, policy integration and failure order");
