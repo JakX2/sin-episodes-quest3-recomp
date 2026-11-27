@@ -1,0 +1,3 @@
+# Phase 1564: scheduler uses native common cleanup
+
+New opt-in composed scheduler routes RunTask through native cleanup. Scoped copy binds to the same script-control object and authoritative schedule condition namespace, retaining the original component delegation and motion StartTask route. Existing public structures and exports unchanged; only internal session extended. Loaded test disables hosted cleanup, verifies effect restoration and invalidated script handle at schedule clear, and rejects mismatched control. CI pending.
