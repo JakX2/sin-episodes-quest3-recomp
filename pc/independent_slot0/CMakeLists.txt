@@ -208,6 +208,15 @@ target_compile_features(sin_server_gameents_engine_edict_reuse_test PRIVATE cxx_
 add_test(NAME independent_server_gameents_engine_edict_reuse_native
   COMMAND sin_server_gameents_engine_edict_reuse_test)
 
+# 2006 engine.dll negative-index edict selection at 0x20110ECC:
+# source-verified 2.0/1.0 age gates, 0x14 record stride and capacity growth.
+# Host-provided ownership; no original engine DLL is loaded by the fixture.
+add_executable(sin_server_gameents_engine_edict_select_test
+  test_server_gameents_engine_edict_select.cpp)
+target_compile_features(sin_server_gameents_engine_edict_select_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_engine_edict_select_native
+  COMMAND sin_server_gameents_engine_edict_select_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
