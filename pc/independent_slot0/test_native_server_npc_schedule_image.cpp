@@ -657,7 +657,7 @@ int main(int argc,char** argv){
     // call sites. Deliberately stop after the second gather at ideal-state query.
     {
         struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{},senses[0x60]{},empty_vectors[3][0x10]{},relationship[16]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;void* scripted_entity=nullptr;void* scripted_other=nullptr;} equipped{&f};
-        sin_independent::EntityHandleEntry equipped_entries[4]{};
+        sin_independent::EntityHandleEntry equipped_entries[5]{};
         equipped_entries[0].serial=3;equipped_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
         equipped_entries[1].serial=7;equipped_entries[1].entity=reinterpret_cast<CBaseEntity*>(equipped.weapon);
         const auto previous_entities=selection.state.entities;
@@ -1021,10 +1021,10 @@ int main(int argc,char** argv){
             const auto scripted_frame=reinterpret_cast<RunServerNpcWeaponFrameWithScriptedEvents>(GetProcAddress(s,server_npc_scripted_weapon_frame_export));
             assert(scripted_frame&&!GetProcAddress(c,server_npc_scripted_weapon_frame_export));
             struct SequenceFixture {
-                F* f;alignas(4) unsigned char seq[nm::scripted_sequence_extent]{},other[nm::scripted_sequence_extent]{};
+                F* f;alignas(4) unsigned char seq[nm::scripted_sequence_extent]{},other[nm::scripted_sequence_extent]{},partner[0x1088]{},begin_action[0x1c]{},end_action[0x1c]{};
                 const ServerNpcScheduleStateApi* state=nullptr;
                 const ServerNpcScheduleBindings* schedule=nullptr;
-                unsigned restored=0,cleared=0,reads=0;
+                unsigned restored=0,cleared=0,reads=0,lookups=0,assignments=0,begins=0,ends=0,aims=0,motion_ticks=0;
             } q{&f};
             f.put(q.seq,0,nm::scripted_sequence_vtable);f.put(q.seq,0x378,0x9002u);
             const auto prior_slot=equipped_entries[2];const auto prior_count=selection.state.entities.count;
@@ -1032,7 +1032,7 @@ int main(int argc,char** argv){
             selection.state.entities.count=3;
             nm::ScriptedSequenceControlBindings control{};control.context=&q;
             control.extent=[](void* p,void* entity,unsigned* n) noexcept ->int{
-                auto& q=*static_cast<SequenceFixture*>(p);*n=entity==q.seq||entity==q.other?sizeof(q.seq):entity==q.f->actor?sizeof(q.f->actor):0;return *n!=0;
+                auto& q=*static_cast<SequenceFixture*>(p);*n=entity==q.seq||entity==q.other?sizeof(q.seq):entity==q.partner?sizeof(q.partner):entity==q.f->actor?sizeof(q.f->actor):0;return *n!=0;
             };
             nm::ScriptedSequenceInterruptBindings interrupt{&control,nullptr};
             nm::ScriptedNpcAnimationEventBindings events{&interrupt,nullptr};
@@ -1171,6 +1171,72 @@ int main(int argc,char** argv){
             const ServerNpcRunAnimationInput held{prefix_time,false,false};
             assert(combined->ground(f.actor,sizeof(f.actor),&held,.05f,&prefix_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out)&&outer_result.completed&&outer_result.think_called);
             assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.index==2&&sr.task.id==106&&sr.status!=4&&!script_stats.native_starts&&script_stats.native_runs==1&&script_stats.last_run.script.waiting);
+            // The partner's actual native RunTask110 releases both counters.
+            // Keep the first actor on its existing descriptor and live cursor.
+            const auto run_task=reinterpret_cast<nm::RunScriptedNpcTask>(GetProcAddress(s,nm::scripted_npc_task_export));assert(run_task);
+            f.put(q.partner,0,0x2249aaa4u);f.put(q.partner,0x378,0xb004u);f.put(q.partner,0x970,0xa003u);
+            f.put(q.partner,0x7a4,1);f.put(q.other,0x3d0,0xb004u);
+            equipped_entries[4].serial=11;equipped_entries[4].entity=reinterpret_cast<CBaseEntity*>(q.partner);
+            const float release_time=prefix_time+.025f;
+            auto partner_control=control;partner_control.entries=equipped_entries;partner_control.entry_count=5;partner_control.now=&release_time;
+            auto partner_anim=anim;partner_anim.control=&partner_control;
+            auto partner_pos=native_pos;partner_pos.entries=equipped_entries;partner_pos.entry_count=5;partner_pos.now=&release_time;
+            auto partner_finish=finish;partner_finish.animation=&partner_anim;partner_finish.possession=&partner_pos;
+            auto partner_life=scheduler.grunt.lifecycle;partner_life.conditions=sb.conditions;
+            auto partner_task=task;partner_task.finish=&partner_finish;partner_task.lifecycle=&partner_life;
+            nm::ScriptedNpcTaskResult released{};
+            assert(run_task(q.partner,sizeof(q.partner),110,&partner_task,&released)&&released.synchronized&&released.group_updates==2&&released.task_completed);
+            std::memcpy(&sync_count,q.seq+0x3b8,4);std::memcpy(&other_count,q.other+0x3b8,4);assert(!sync_count&&!other_count);
+            float sync_stamp=0,other_stamp=0;std::memcpy(&sync_stamp,q.seq+0x3bc,4);std::memcpy(&other_stamp,q.other+0x3bc,4);assert(sync_stamp==release_time&&other_stamp==release_time);
+            assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.index==2&&sr.task.id==106&&sr.status!=4);
+            // Real native activity assignment, using only fixture metadata
+            // and engine notification leaves. OnBegin fires before lookup.
+            f.put(q.seq,0x398,31u);f.put(q.seq,0x39c,32u);
+            f.put(q.seq,0x3e0+0x14,1u);f.put(q.seq,0x3f8+0x14,2u);
+            for(unsigned char* a:{q.begin_action,q.end_action}){
+                f.put(a,0,41u);f.put(a,4,42u);f.put(a,0x10,0xffffffffu);
+            }
+            ServerEntityVoidOutputBindings fire{};fire.context=&q;
+            fire.resolve=[](void* p,unsigned token,void** row,unsigned* n) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);*row=token==1?q.begin_action:token==2?q.end_action:nullptr;
+                *n=*row?0x1c:0;return *row!=nullptr;
+            };
+            fire.enqueue=[](void* p,void* activator,void* caller,const ServerEntityVoidOutputAction* action) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(caller==q.seq&&action->target==41&&action->input==42);
+                if(activator){assert(activator==q.seq&&!q.lookups);++q.begins;}else{assert(q.begins==1);++q.ends;}return 1;
+            };
+            nm::ScriptedSequenceEventBindings script_outputs{&fire,nullptr};
+            ServerNpcActivityAssignmentBindings play_assign{};play_assign.context=&q;play_assign.translation.actor_class=NpcActivityGrunt;
+            play_assign.reset.context=&q;play_assign.dictionary.dictionary=&event_dictionary;
+            play_assign.reset.duration=[](void*,void*,int,double* d) noexcept ->int{*d=2.;return 1;};
+            play_assign.reset.distance=[](void*,void*,int,double* d) noexcept ->int{*d=0.;return 1;};
+            play_assign.reset.flags=[](void*,void*,int,unsigned* flags) noexcept ->int{*flags=0;return 1;};
+            play_assign.dictionary.descriptor=[](void*,void*,int,void**,unsigned*,unsigned*) noexcept ->int{return 0;};
+            play_assign.capabilities=[](void*,void*,unsigned* caps) noexcept ->int{*caps=0;return 1;};
+            play_assign.weapon_notify=[](void* p,void* a,unsigned h,int activity,float duration) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&h==0x7001u&&activity==16&&duration==2.f);return 1;
+            };
+            play_assign.component_notify=[](void* p,void* a,unsigned component) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&component==88u&&q.seq[0x3cd]);++q.assignments;return 1;
+            };
+            anim.events=&script_outputs;anim.assignment=&play_assign;anim.context=&q;
+            anim.lookup=[](void* p,void* a,unsigned token,int* index) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&q.begins==1&&(token==31||token==32));
+                ++q.lookups;*index=token==31?2:3;return 1;
+            };
+            anim.activity=[](void* p,void* a,int index,int* activity) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&(index==2||index==3));*activity=16;return 1;
+            };
+            prefix_time=outer_result.finish.deadline;assert(prefix_time>release_time);
+            seed_anim(prefix_time);
+            const ServerNpcRunAnimationInput play{prefix_time,false,false};
+            const int playing=combined->ground(f.actor,sizeof(f.actor),&play,.05f,&prefix_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out);
+            if(!playing)std::fprintf(stderr,"script release/play think=%u/%u begin=%u assigned=%u anim=%u\n",step_result.think_called,step_result.think_completed,q.begins,q.assignments,step_result.animation_called);
+            assert(playing&&outer_result.completed&&outer_result.think_called&&tail_result.completed&&!script_stats.native_starts&&script_stats.native_runs==1);
+            assert(script_stats.last_run.script.task_completed&&script_stats.last_run.script.begin_output&&script_stats.last_run.script.begin_queued==1&&script_stats.last_run.script.animation.assigned);
+            assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.index==2&&sr.task.id==106&&sr.status==4);
+            int play_sequence=-1;std::memcpy(&play_sequence,f.actor+0x3ec,4);assert(play_sequence==2&&q.begins==1&&!q.ends&&q.lookups==1&&q.assignments==1&&!cleaned.completed);
+            equipped_entries[4]={};
             meta.suppress=false;meta.scripted=false;equipped.scripted_entity=nullptr;equipped.scripted_other=nullptr;equipped_entries[3]={};equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
         }
         // Real due-think wake route, using the original proximity branch
