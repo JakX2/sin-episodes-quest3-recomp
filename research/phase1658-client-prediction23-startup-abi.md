@@ -78,9 +78,9 @@ exactly 92 bytes, SHA-256:
 | 12 | `0x24195EC0` | Target pointer authenticated only |
 | 13 | `0x24195F10` | Target pointer authenticated only |
 | 14 | `0x24195F50` | Target pointer authenticated only |
-| 15 | `0x24195970` | Target pointer authenticated only |
-| 16 | `0x24195980` | Target pointer authenticated only |
-| 17 | `0x24195990` | Target pointer authenticated only |
+| 15 | `0x24195970` | **No-argument byte getter** `this+0x08`, RET |
+| 16 | `0x24195980` | **No-argument byte getter** `this+0x09`, RET |
+| 17 | `0x24195990` | **No-argument DWORD getter** `this+0x0C`, RET |
 | 18 | `0x241968A0` | Target pointer authenticated only |
 | 19 | `0x241964F0` | Target pointer authenticated only |
 | 20 | `0x24196790` | Target pointer authenticated only |
@@ -104,6 +104,18 @@ These two exact original method extents and their semantics are now
 checked by static authentication and original-free mutation tests.
 This does not make the other 19 unexamined method signatures safe or
 constitute evidence that the game has started.
+
+**Additional original prediction field accessors:** slots **15–17**
+are three separate four-byte, no-argument methods that read
+`this+0x08` into AL, `this+0x09` into AL, and `this+0x0C` into
+EAX, respectively, and each ends with a plain `RET`.
+Their complete original per-function SHA-256 digests are:
+slot15 `8a905797df24e4a1fe68a2f630971aa55b606cd6a92fed57303379d0f93a7a2d`,
+slot16 `d577cc6b1b05cb0c2be7f658f60d7baf98684eeaad579cd874c21150f6dd70ab`,
+and slot17 `2e339cdc5de837ec151dbde90057caeabba18ac3ea32e7c2cffc8f95df41a6ff`.
+These verify exact member widths and offsets, **not** high-level field
+names. Native MSVC x86 tests now exercise all three via actual vtable
+calls and check byte return values and complete DWORD returns.
 
 The subsequent `.rdata` bytes begin with non-pointer debug text,
 not a 24th prediction method. Every pointer carries a HIGHLOW
@@ -174,7 +186,7 @@ multiple-inheritance offset `+0x10014`.
 The read-only `research/tools/audit_sin_original_client_prediction23_abi.py`
 requires BOTH complete original client and engine SHA matches.
 It verifies the registration, singleton factory, constructor, vtable
-and every cell's PE32 relocation, slots 0/1/2/7 complete method
+and every cell's PE32 relocation, slots 0/1/2/7/15/16/17 complete method
 hashes and the engine's slot2 shutdown vcall, original `cl_predict` registration and **both original
 ConVar constructors**, including self-parent and +`0x2C` integer field
 stores, RTTI COL/hierarchy/base descriptors, and original engine
@@ -189,7 +201,7 @@ ECX/ESP invariants and transforms an invented **cl_predict
 ConVar** `m_pParent->m_nValue` at +`0x2C` into a byte at
 `this+0x10`. Synthetic `ConVarView` separately authenticates the
 +0x18 parent pointer and +0x2C integer offset and tests a distinct
-parent alias. Slots 3-6 and 8-22 are **inert sentinels**, not guesses
+parent alias. Slots 3–6, 8–14 and 18–22 are **inert sentinels**, not guesses
 of original method signatures. Missing ConVar parent pointers are
 refused in this fixture, unlike the original unguarded dereference.
 
