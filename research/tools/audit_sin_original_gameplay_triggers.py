@@ -113,6 +113,14 @@ ORIGINAL_METHODS={
   "sequence_group_ready":(0x221adef0,12,"7d1509fd885708ef67ca1b4cd152b0983ba10ee6a6205bb8c00d1bf889ea47ba"),
   "sequence_waiting":(0x221adf00,7,"bab98b95dd0fd5c04e42353458bbffa92caaefd05db8bca11908779c9ed77109"),
   "sequence_begin_output":(0x221adf70,16,"642e3595f71cb26e9f47a7c838ce487bbd3c6e0336ab408c2605e9dc431ce9b9"),
+  "sequence_start_task106_case":(0x2205263b,58,"bd77bb8bd6be5acc69ff6cefdbd9d6125c28a43ba01fe69c162b35a2f53d4971"),
+  "sequence_start_task107_case":(0x22052675,181,"15b84496c5118459c18e7b0fc7c9b8462af913b5bdbd4ce685e03b2616f5459a"),
+  "sequence_start_task108_case":(0x2205272a,94,"14ed10c792a019874e1c9e96dc2d4eaac39db73a95485ddc5fa7ac52c7c5226a"),
+  "sequence_start_motion_sync":(0x221af9d0,150,"3eecb99c05aef4a3b72c09ea678425d70d1d9b6b06b52940f6af2439d6ff9192"),
+  "sequence_event_lookup":(0x22022ab0,25,"efd51e4fd77bb45dddef9044c83b375a2275a17e00d5b78002b5cd859031a57e"),
+  "sequence_task_complete_tail":(0x2205095b,22,"6df535331da87fa3d7a5b77b834bf81f7ef8e5e81a64cb2c4e0b53f71ecd6cf3"),
+  "sequence_cycle_rate":(0x220eee90,43,"c9eeba06c5d6260985d272cef807737764a96e78123bbd5df673b66d96a6fb89"),
+  "sequence_cycle_setter":(0x220405c0,74,"c29922726417ba239a53115070d53d158916bcdd6113e22651a359a5be872926"),
   "sequence_start_task109_case":(0x22052788,23,"3f753752af55d1a55f3931d0f22e1c792784180874460a8b971342236ab1a22a"),
   "sequence_start_task110_case":(0x2205279f,228,"82a2c32389a8d29a59608633689d27d7b59539c1f0ff0524ffac962afde4febc"),
   "sequence_start_dispatch":(0x22050150,42,"af29b30210879c623603389bb558b872a093781552688f748d3cded1f562548b"),
@@ -337,7 +345,7 @@ def verify_filter_factory_keys(read_u32,read_text):
 FILTER_DESTRUCTORS={0x224149a4:0x2216bc40,0x22414c3c:0x2216bd00,0x22414ed4:0x2216be40,0x2241516c:0x2216bf20}
 FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x224,0x2214a060),(0x268,0x220019f0))
 SEQUENCE_WORDS={
-    0x22052eb8:0x2205263b,0x22052ec0:0x2205272a,0x22052ec4:0x22052788,0x22052ec8:0x2205279f,
+    0x22052eb8:0x2205263b,0x22052ebc:0x22052675,0x223d9f88:0x33333333,0x223d9f8c:0x3fc33333,0x223d8f14:0x41200000,0x22052ec0:0x2205272a,0x22052ec4:0x22052788,0x22052ec8:0x2205279f,
     0x22052f24:0x2205281a,
     # RunTask 220538d0: byte table indexed by task-2, then jump table.
     # Pin neighboring bytes too, not guessed task numbers.

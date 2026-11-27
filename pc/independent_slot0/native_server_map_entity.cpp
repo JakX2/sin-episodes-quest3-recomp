@@ -3959,6 +3959,85 @@ int start_scripted_npc_task(void* npc,unsigned bytes,int task,const ScriptedNpcS
     }
     return done();
 }
+// 22052675 and 2205272a are StartTask cases, not RunTask aliases.
+int start_scripted_npc_motion_task(void* npc,unsigned bytes,int task,const ScriptedNpcStartMotionBindings* b,ScriptedNpcStartMotionResult* o) noexcept {
+    if(!o)return 0;*o={};o->task=task;o->event_index=-1;
+    if(!b||!b->base||!b->base->task||!b->base->task->finish||!b->base->task->finish->animation||
+       !b->base->task->finish->animation->control||(task!=107&&task!=108)||bytes<0x9f4)return 0;
+    const auto& route=*b->base->task;const auto& finish=*route.finish;const auto& c=*finish.animation->control;
+    unsigned marker=0;
+    if(!c.extent||!c.now||!std::isfinite(*c.now)||c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count)||
+       !SinReadCampaignTouchMarkerInternal(npc,&marker)||!scripted_npc_marker(marker)||!SinCampaignStorageReadableInternal(npc,bytes))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    auto resolved=[&](void*& seq){
+        seq=registry.Resolve(read_field<unsigned>(npc,0x970));if(!seq)return true;
+        unsigned n=0,vt=0;
+        return c.extent(c.context,seq,&n)&&n>=scripted_sequence_extent&&
+            SinReadCampaignTouchMarkerInternal(seq,&vt)&&vt==scripted_sequence_vtable&&SinCampaignStorageReadableInternal(seq,scripted_sequence_extent);
+    };
+    auto done=[&](){o->completed=1;return 1;};
+    void* seq=nullptr;
+    if(task==107){
+        if(!route.lifecycle||!resolved(seq))return 0;
+        if(!seq){
+            o->missing=1;
+            if(!route.warning||!route.task_fail||!route.warning(route.context,npc,task))return 0;o->warned=1;
+            if(!route.task_fail(route.context,npc,5))return 0;o->task_failed=1;return done();
+        }
+        o->token=read_field<unsigned>(seq,0x398);
+        if(!o->token)o->token=read_field<unsigned>(seq,0x39c);
+        write_field(npc,0x974,-1);write_field(npc,0x978,0u);
+        if(o->token){
+            if(!b->event_lookup||!b->event_lookup(b->context,o->token,&o->event_index))return 0;o->lookup_called=1;
+            write_field(npc,0x974,o->event_index);
+            if(o->event_index==-1){write_field(npc,0x978,o->token);o->unresolved_token=o->token;}
+        }
+        using namespace sin_port::native_weapon_tables;
+        const auto* api=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+        ServerNpcTaskLifecycleResult result{};
+        if(!api||!api->complete(npc,bytes,*c.now,false,route.lifecycle,&result))return 0;
+        o->task_completed=result.completed;o->status=result.status;return done();
+    }
+    // Motion test precedes handle resolution in Start108. The flags and
+    // ground relationship operations are the original owner leaves.
+    bool motion=false;
+    if(!finish.sequence_has_motion||!finish.sequence_has_motion(finish.context,npc,read_field<int>(npc,0x3ec),&motion))return 0;
+    o->motion_checked=1;
+    if(motion){
+        if(!finish.add_flags||!finish.add_flags(finish.context,npc,0x400u))return 0;o->flags_added=1;
+        if(!b->clear_ground||!b->clear_ground(b->context,npc))return 0;o->ground_cleared=1;
+    }
+    if(!resolved(seq))return 0;
+    if(seq){
+        // 221af9d0: cycle rate = reciprocal of positive duration, or 10.
+        double duration=0;
+        if(!b->duration||!b->duration(b->context,npc,read_field<int>(npc,0x3ec),&duration)||!std::isfinite(duration))return 0;
+        o->duration_called=1;
+        const double rate=duration>0?1.0/duration:10.0;
+        const float start=read_field<float>(seq,0x3bc);
+        if(!std::isfinite(start)||!std::isfinite(rate)||!std::isfinite(*c.now))return 0;
+        const double delta=double(*c.now)-double(start);
+        o->elapsed=static_cast<float>(delta>0.15?0.15:delta<0?0:delta);
+        if(o->elapsed!=0.f){
+            o->cycle=static_cast<float>(rate*double(o->elapsed));
+            if(!std::isfinite(o->cycle)||!b->advance_motion)return 0;
+            // Original 220405c0 network-dirties +3e8 only on change.
+            if(read_field<float>(npc,0x3e8)!=o->cycle){
+                if(read_field<unsigned char>(npc,0x1f0))write_field(npc,0x200,static_cast<unsigned char>(1));
+                else if(const unsigned token=read_field<unsigned>(npc,0x16c)){
+                    void* p=nullptr;unsigned n=0;
+                    if(!route.rate_storage||!route.rate_storage(route.context,token,&p,&n)||n<4||!SinCampaignStorageReadableInternal(p,4))return 0;
+                    write_field(p,0,read_field<unsigned>(p,0)|1u);
+                }
+                write_field(npc,0x3e8,o->cycle);o->cycle_written=1;
+            }
+            if(!b->advance_motion(b->context,npc,o->elapsed,0,0))return 0;o->motion_advanced=1;
+        }
+    }else o->missing=1;
+    write_field(npc,0x96c,0u);o->state_written=1;return done();
+}
 // 2216b300 InputTestActivator: predicate (including inherited negation),
 // exactly one output, original activator and self caller, zero extra delay.
 int campaign_filter_test_activator(void* a,unsigned n,void* activator,const CampaignFilterInputBindings* b,CampaignFilterInputResult* o) noexcept {
@@ -4472,4 +4551,10 @@ extern "C" int __cdecl SiN_RunScriptedNpcTask(void* a,unsigned n,int task,
 extern "C" int __cdecl SiN_StartScriptedNpcTask(void* a,unsigned n,int task,
     const sin_port::native_map::ScriptedNpcStartTaskBindings* b,sin_port::native_map::ScriptedNpcStartTaskResult* o) noexcept {
     return sin_port::native_map::start_scripted_npc_task(a,n,task,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_StartScriptedNpcMotionTask=_SiN_StartScriptedNpcMotionTask")
+extern "C" int __cdecl SiN_StartScriptedNpcMotionTask(void* a,unsigned n,int task,
+    const sin_port::native_map::ScriptedNpcStartMotionBindings* b,sin_port::native_map::ScriptedNpcStartMotionResult* o) noexcept {
+    return sin_port::native_map::start_scripted_npc_motion_task(a,n,task,b,o);
 }

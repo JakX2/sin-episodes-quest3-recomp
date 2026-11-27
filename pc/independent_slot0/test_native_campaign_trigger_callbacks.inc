@@ -1473,6 +1473,37 @@
         assert(start_task(f.npc,sizeof(f.npc),110,&pre,&sr)&&sr.requested_idle&&f.order=="AEAEI");
         put(f.npc,0x970,0x5000u);
         assert(!start_task(f.npc,sizeof(f.npc),110,&pre,&sr)&&sr.missing);
+        const auto motion_task=reinterpret_cast<StartScriptedNpcMotionTask>(GetProcAddress(server,scripted_npc_start_motion_export));
+        assert(motion_task&&!GetProcAddress(client,scripted_npc_start_motion_export));
+        ScriptedNpcStartMotionBindings mb{&pre,&f};
+        mb.event_lookup=[](void* p,unsigned tok,int* event) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);f.order+='L';*event=tok==21?17:-1;return 1;
+        };
+        mb.clear_ground=[](void* p,void* a) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc);f.order+='G';return 1;
+        };
+        mb.duration=[](void* p,void* a,int seq,double* duration) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc&&seq==2);f.order+='D';*duration=2.;return 1;
+        };
+        mb.advance_motion=[](void* p,void* a,float dt,int x,int y) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc&&dt==.15f&&!x&&!y);f.order+='V';return 1;
+        };
+        terminal.add_flags=[](void* p,void* a,unsigned flags) noexcept ->int{
+            auto& f=*static_cast<AnimationSequenceFixture*>(p);assert(a==f.npc&&flags==0x400u);f.order+='F';return 1;
+        };
+        ScriptedNpcStartMotionResult mr{};
+        put(f.npc,0x970,0x3000u);put(f.seq,0x398,21u);put(f.seq,0x39c,22u);f.order.clear();
+        assert(motion_task(f.npc,sizeof(f.npc),107,&mb,&mr)&&mr.task_completed&&mr.lookup_called&&mr.event_index==17&&word(f.npc,0x974)==17&&!word(f.npc,0x978)&&f.order=="L");
+        put(f.seq,0x398,0u);put(f.npc,0x7a4,1);
+        assert(motion_task(f.npc,sizeof(f.npc),107,&mb,&mr)&&mr.task_completed&&mr.token==22&&mr.unresolved_token==22&&word(f.npc,0x974)==0xffffffffu&&word(f.npc,0x978)==22&&f.order=="LL");
+        put(f.seq,0x39c,0u);put(f.npc,0x7a4,1);
+        assert(motion_task(f.npc,sizeof(f.npc),107,&mb,&mr)&&mr.task_completed&&!mr.lookup_called&&word(f.npc,0x974)==0xffffffffu&&!word(f.npc,0x978)&&f.order=="LL");
+        put(f.npc,0x3ec,2);put(f.npc,0x3e8,0.f);put(f.seq,0x3bc,22.f);put(f.npc,0x96c,9u);f.npc[0x200]=0;f.order.clear();
+        assert(motion_task(f.npc,sizeof(f.npc),108,&mb,&mr)&&mr.motion_checked&&mr.flags_added&&mr.ground_cleared&&mr.duration_called&&mr.elapsed==.15f&&mr.cycle==.075f&&mr.cycle_written&&mr.motion_advanced&&mr.state_written&&!mr.task_completed&&!word(f.npc,0x96c)&&f.npc[0x200]&&f.order=="MFGDV");
+        put(f.seq,0x3bc,24.f);put(f.npc,0x96c,9u);f.order.clear();
+        assert(motion_task(f.npc,sizeof(f.npc),108,&mb,&mr)&&mr.duration_called&&!mr.elapsed&&!mr.cycle_written&&!mr.motion_advanced&&mr.state_written&&f.order=="MFGD");
+        put(f.npc,0x970,0x5000u);f.order.clear();
+        assert(motion_task(f.npc,sizeof(f.npc),108,&mb,&mr)&&mr.missing&&!mr.duration_called&&mr.state_written&&f.order=="MFG");
     }
 
 

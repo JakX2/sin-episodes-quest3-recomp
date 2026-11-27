@@ -733,6 +733,24 @@ struct ScriptedNpcStartTaskResult {
 };
 inline constexpr char scripted_npc_start_task_export[]="SiN_StartScriptedNpcTask";
 using StartScriptedNpcTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcStartTaskBindings*,ScriptedNpcStartTaskResult*) noexcept;
+// Separate opt-in Start107/108 extension, preserving the existing
+// scripted start ABI. Owner callbacks are individual engine leaves.
+struct ScriptedNpcStartMotionBindings {
+    const ScriptedNpcStartTaskBindings* base;
+    void* context;
+    int (__cdecl *event_lookup)(void*,unsigned,int*) noexcept; // 22022ab0
+    int (__cdecl *clear_ground)(void*,void*) noexcept; // 22221890(nullptr)
+    int (__cdecl *duration)(void*,void*,int,double*) noexcept; // 220eede0
+    int (__cdecl *advance_motion)(void*,void*,float,int,int) noexcept; // 2204cea0
+};
+struct ScriptedNpcStartMotionResult {
+    unsigned completed,missing,warned,task_failed,task_completed,lookup_called,token,unresolved_token,
+        motion_checked,flags_added,ground_cleared,duration_called,cycle_written,motion_advanced,state_written;
+    int task,event_index,status;
+    float elapsed,cycle;
+};
+inline constexpr char scripted_npc_start_motion_export[]="SiN_StartScriptedNpcMotionTask";
+using StartScriptedNpcMotionTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcStartMotionBindings*,ScriptedNpcStartMotionResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;
