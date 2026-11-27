@@ -26,6 +26,7 @@ The preceding entry model resolved both edicts into independent `GameEntsTouchEn
 
 ## Regression scenarios
 
+- Standalone entry: the owner trace initializer clears the second actor's live dirty bit before the original `0x221e93d3` read; the wrapper must skip refreshing it even though the earlier edict-resolution snapshot was dirty.
 - Standalone entry: both edicts resolve to the **same actor**; a dirty-origin refresh clears the live state, and the original first-actor check then skips refresh. Both callback-equipped and legacy callback-free variants assert **one** refresh (not two) and one handoff.
 - Integrated contact bridge: identical edict inputs are recognized and ignored by `MarkTouchPair` after one original dirty-origin refresh; no contact nodes are allocated.
 - Integrated bridge: refreshing the **second** actor clears the formerly dirty first actor, so first refresh is skipped, and the midpoint uses the new first origin.
