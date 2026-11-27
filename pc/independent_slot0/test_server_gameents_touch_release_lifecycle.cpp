@@ -91,7 +91,9 @@ static bool Refresh(TouchEntity& ent,void* ctx) noexcept {
 }
 static bool Publish(void* ctx,const GameEntsTouchTrace* trace) noexcept {
     auto& w=*static_cast<Fixture*>(ctx);w.calls+='P';
-    if(w.stage!=0||w.contacts.touchAllocated||
+    // The original global trace publisher runs on BOTH first contact and
+    // repeated contact; existing reciprocal nodes must be allowed here.
+    if(w.stage!=0||
        trace->ReadFloat(0x0c)!=5.f||trace->ReadFloat(0x10)!=7.f||
        trace->ReadFloat(0x14)!=9.f||trace->ReadFloat(0x2c)!=1.f)
         w.valid=false;
