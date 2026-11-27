@@ -23,7 +23,8 @@ struct Fixture {
     unsigned allocations=0,freed=0,starts=0,touches=0,refreshes=0;
     bool missing_first=false,missing_second=false,fail_resolve=false,
          fail_init=false,fail_second_refresh=false,fail_first_refresh=false,
-         leave_dirty=false,fail_second_alloc=false,valid=true;
+         leave_dirty=false,fail_second_alloc=false,valid=true,
+         clear_first_during_second=false,dirty_first_during_second=false;
     Fixture() {
         registry[1].entity=&a;registry[1].serial=1;
         registry[2].entity=&b;registry[2].serial=2;
@@ -78,6 +79,13 @@ static bool Refresh(TouchEntity& t,void* ctx) noexcept {
         return false;
     t.origin=is_first?ContactPoint{2.f,4.f,6.f}:ContactPoint{8.f,10.f,12.f};
     if(!f.leave_dirty)t.dirtyOrigin=false;
+    if(!is_first && f.clear_first_during_second) {
+        f.first.origin={4.f,8.f,12.f};
+        f.first.dirtyOrigin=false;
+    }
+    if(!is_first && f.dirty_first_during_second) {
+        f.first.dirtyOrigin=true;
+    }
     return true;
 }
 static ContactNode* Allocate(void* ctx) noexcept {
@@ -144,13 +152,36 @@ int main() {
     same.calls.clear();
     if(MarkEntitiesAsTouchingWithContactGraph(&same.ea,&same.ea,Hooks(same),out)
        !=GameEntsTouchEntryStatus::Completed ||
-       same.calls!="AAI11P"||out.refresh_calls!=2)
+       same.calls!="AAI1P"||out.refresh_calls!=1||
+       out.entry.first_refreshes||out.entry.second_refreshes!=1||
+       out.live_reads!=4)
         return Fail(3,"same entity still follows two original dirty snapshots");
     // Same edict resolves twice to the same TouchEntity, and its dirty
     // origin is refreshed exactly once during the second argument path.
     if(out.contact_status!=TouchMarkResult::Ignored||out.contact_calls!=1||
        same.state.touchAllocated||same.allocations||!same.valid)
         return Fail(4,"self-touch is ignored before reciprocal allocations");
+    // Retail reads first +b8 AFTER the second refresh. Here the owner
+    // clears an unrelated first actor's dirty bit while refreshing second;
+    // a stale initial snapshot would incorrectly refresh first again.
+    Fixture cross_clear;cross_clear.clear_first_during_second=true;
+    if(Run(cross_clear,out)!=GameEntsTouchEntryStatus::Completed ||
+       cross_clear.calls!="ABI2PNNSS"||out.refresh_calls!=1||
+       out.entry.second_refreshes!=1||out.entry.first_refreshes||
+       out.live_reads!=4||out.entry.midpoint[0]!=6.f||
+       out.entry.midpoint[1]!=9.f||out.entry.midpoint[2]!=12.f)
+        return Fail(18,"live first-origin flag cleared by second refresh");
+    // Likewise the second callback may make a previously-clean first
+    // origin dirty, requiring a refresh even though its old snapshot
+    // had a clear flag. The final midpoint must use the live values.
+    Fixture cross_dirty;cross_dirty.first.dirtyOrigin=false;
+    cross_dirty.dirty_first_during_second=true;
+    if(Run(cross_dirty,out)!=GameEntsTouchEntryStatus::Completed ||
+       cross_dirty.calls!="ABI21PNNSS"||out.refresh_calls!=2||
+       out.entry.second_refreshes!=1||out.entry.first_refreshes!=1||
+       out.live_reads!=4||out.entry.midpoint[0]!=5.f||
+       out.entry.midpoint[1]!=7.f||out.entry.midpoint[2]!=9.f)
+        return Fail(19,"live first-origin flag set by second refresh");
     Fixture absent;absent.missing_second=true;
     if(Run(absent,out)!=GameEntsTouchEntryStatus::NoEntities||
        absent.calls!="AB"||out.contact_calls||out.entry.trace_initialized||
