@@ -201,8 +201,8 @@ def verify_engine_prediction_window(blob: bytes, start: int,
           blob[43:47]==bytes.fromhex("8b108bc8") and
           blob[47:50]==bytes.fromhex("ff5204"),
           "engine failed to invoke prediction __thiscall slot1 (+4)")
-    check(start+47==ENGINE_PREDICTION_VCALL_VA,
-          "engine slot1 call instruction site shifted")
+    check(blob[47:50]==bytes.fromhex("ff5204"),
+          "engine no-argument prediction slot1 call differs")
 
 def verify_engine_next_interface(blob: bytes,
                                  name_va: int, factory_global: int) -> None:
@@ -336,6 +336,8 @@ def verify_original(client_bytes: bytes, engine_bytes: bytes) -> dict:
                       ENGINE_FACTORY_CALL_BYTES,".text")
     check(hashlib.sha256(call).hexdigest()==ENGINE_FACTORY_CALL_SHA,
           "original engine prediction request/init complete window changed")
+    check(ENGINE_FACTORY_CALL_VA+47==ENGINE_PREDICTION_VCALL_VA,
+          "original prediction vcallsite offset differs")
     verify_engine_prediction_window(
         call,ENGINE_FACTORY_CALL_VA,
         ENGINE_PREDICTION_NAME_VA,ENGINE_FACTORY_GLOBAL_VA,
@@ -481,19 +483,24 @@ def self_test() -> None:
               b"\xA3"+pack(fake_stored)+b"\x75\x12\x68"+pack(fake_error)+
               b"\xE8"+struct.pack("<i",fake_handler-(fake_engine_site+35))+
               b"\xA1"+pack(fake_stored)+bytes.fromhex("83c4048b108bc8ff5204"))
-    # Standalone fixture uses fabricated address; engine callsite offset
-    # 47 is invariant, while actual original VA is pinned in owner mode.
-    check(len(fake_eng)==50,"fabricated engine 50-byte callsite")
-    # Rebase its callsite temporarily by verifying with equivalent shape,
-    # then directly exercise final +4 virtual call bytes.
-    check(fake_eng[47:50]==b"\xFF\x52\x04",
-          "fabricated engine slot1 call unexpectedly changed")
+    # Real byte-accurate engine request+slot1 dispatch verifier, using
+    # ENTIRELY invented addresses and call targets in this self-test.
+    verify_engine_prediction_window(fake_eng,fake_engine_site,
+                                    fake_eng_name,fake_eng_factory,
+                                    fake_stored,fake_error,fake_handler)
     for i in range(len(fake_eng)):
         corrupt=bytearray(fake_eng);corrupt[i]^1
-        # The real verifier pins the callsite VA; synthetic verification
-        # also rejects corruption through SHA of an invented fixture.
-        check(bytes(corrupt)!=fake_eng,
-              "fabricated engine mutation inexplicably identical")
+        reject(lambda data=bytes(corrupt):verify_engine_prediction_window(
+            data,fake_engine_site,fake_eng_name,fake_eng_factory,
+            fake_stored,fake_error,fake_handler),
+            "engine prediction request/call byte "+str(i))
+    fake_entitylist_call=b"\x6A\x00\x68"+pack(0x46240000)+b"\xFF\x15"+pack(fake_eng_factory)
+    verify_engine_next_interface(fake_entitylist_call,0x46240000,fake_eng_factory)
+    for i in range(len(fake_entitylist_call)):
+        corrupt=bytearray(fake_entitylist_call);corrupt[i]^1
+        reject(lambda data=bytes(corrupt):verify_engine_next_interface(
+            data,0x46240000,fake_eng_factory),
+            "next original client interface request byte "+str(i))
     fake_col=struct.pack("<IIIII",0,0,0,0x47310000,0x47320000)
     verify_rtti_col(fake_col,0x47310000,0x47320000)
     fake_hierarchy=struct.pack("<IIII",0,0,2,0x47330000)
