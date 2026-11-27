@@ -200,8 +200,22 @@ diagnostic after the original DLL's complete SHA check and explicit
 disposable-copy confirmation. The owner probe never invokes original
 prediction slot1 or any other retail virtual method.
 
-These are THREE new CTests, raising Phase1657's expected suite
-from 261 to **264** tests. Wait for the final commit's actual
+A third **native** observer test checks `cl_predict`'s ConVar
+`m_pParent` at object +`0x18` and, **only when that parent equals the
+ConVar itself**, the integer `m_nValue` at object +`0x2C`. The
+snapshot is limited to **two DWORD reads**, uses PE32 overflow guards
+and refuses null/unreadable/foreign parent aliases without dereferencing
+them. The owner diagnostic event `original_cl_predict_convar_startup`
+prints status, self-parent boolean and integer value only, never raw
+addresses. This is post-`DllMain` original readback, not a game's
+full console-variable registration, network update or engine boot.
+The third native test exercises fake self-parent, default 1, zero,
+negative integer, missing and external parent, and every unreadable
+DWORD using purely invented memory.
+
+There are now **FOUR** Phase1658 CTests (one Python synthetic original
+PE32 audit, three MSVC native tests), raising Phase1657's expected
+suite from 261 to **265** tests. Wait for the final commit's actual
 GitHub Actions result before claiming a pass.
 
 ## Remaining startup work
