@@ -331,6 +331,38 @@ def test_win32_readonly_api_on_self():
             pass
         else:
             raise AssertionError("unbounded process code read accepted")
+
+        # Exercise ALL TEN instruction windows through REAL Windows
+        # ReadProcessMemory over synthetic local buffers. A mapping adapter
+        # links fake PE32 VAs to these owned buffers; no actual game module
+        # or original process is loaded by the Windows CI fixture.
+        from attest_sin_original_engine_live_allocator_code import (
+            WITNESSES, expected_instruction)
+        fake_pe32_base = 0x25000000
+        expected = {
+            fake_pe32_base + w.va - IMAGE_BASE:
+                expected_instruction(w, fake_pe32_base)
+            for w in WITNESSES
+        }
+        buffers = {
+            va: ctypes.create_string_buffer(raw)
+            for va, raw in expected.items()
+        }
+        def read_owned_witness(va, length):
+            if va not in buffers:
+                raise OSError("no synthetic original-free witness backing")
+            return Win32Reader.read_bytes(
+                self_reader, ctypes.addressof(buffers[va]), length)
+        code = verify_loaded_code(
+            read_owned_witness, fake_pe32_base, 0x900000)
+        assert code.accepted and code.code_windows_checked == 20
+        first_va = fake_pe32_base + WITNESSES[0].va - IMAGE_BASE
+        original_code = expected[first_va]
+        tampered = bytes([original_code[0] ^ 1]) + original_code[1:]
+        ctypes.memmove(buffers[first_va], tampered, len(tampered))
+        assert verify_loaded_code(
+            read_owned_witness, fake_pe32_base,
+            0x900000).status == "code_witness_mismatch"
     finally:
         assert kernel.CloseHandle(handle)
 
