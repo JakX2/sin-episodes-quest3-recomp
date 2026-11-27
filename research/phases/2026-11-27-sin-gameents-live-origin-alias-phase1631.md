@@ -32,4 +32,10 @@ The preceding entry model resolved both edicts into independent `GameEntsTouchEn
 - Integrated bridge: refreshing the **second** actor marks the formerly clean first actor dirty, so first refresh is performed, and the midpoint uses both live results.
 - Existing 0x54 trace, owner publication, reciprocal allocation and failure tests continue to apply. No fake Source physics, surface/material, prop, model-loading or rendering work is added.
 
+## Connected contact lifecycle regression
+
+The Phase 1631 integrated fixture now **creates contacts through the original GameEnts edict entry**, repeats the same pair (Touch rather than StartTouch), then removes the first actor's actual newly allocated touch list using the existing `RemoveContactList` and `RemoveReciprocalContact` implementations. It observes EndTouch before freeing the remote and local links, preserves the remote touch sentinel while the original cleanup-data-object suppression is active, restores that state, checks the link-allocation count returns to zero, and recreates the pair through the same edict entry. This is the first test at this boundary to connect **original entry -> owner trace -> reciprocal registration -> reciprocal teardown -> original entry again** rather than relying on manually seeded contact nodes.
+
+The fixture delegates all contact node and entity lifetime ownership to existing independent services. It does not interpret real game physics, change any Source data-object layout, call the original retail allocator, or assert in-engine contact teardown.
+
 This still does **not** export the incomplete `ServerGameEnts001` interface to retail Source. Live-state views are host-provided, and passing Windows regression tests are not proof of a retail engine boot or playable Android/VR port.
