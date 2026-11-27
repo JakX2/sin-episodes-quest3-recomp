@@ -57,6 +57,7 @@ on:
       - 'research/tests/test_audit_original_sin_dllinit_factories.py'
       - 'research/tests/test_audit_sin_original_ar_touch_gate.py'
       - 'research/tests/test_audit_sin_original_rifle_grenade_factories.py'
+      - 'research/tools/observe_sin_original_engine_edict_owner.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -209,3 +210,6 @@ jobs:
 
       - name: Authenticate 2006 engine edict reuse serial, epoch/time and reserved-index gates (synthetic only)
         run: python research/tools/audit_sin_original_engine_gameents_edict_reuse.py --self-test
+
+      - name: Verify read-only original engine edict owner probe RVA and torn-snapshot bounds (synthetic only)
+        run: python research/tools/observe_sin_original_engine_edict_owner.py --self-test
