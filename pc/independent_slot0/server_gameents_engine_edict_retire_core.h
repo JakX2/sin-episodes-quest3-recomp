@@ -2,7 +2,7 @@
 // Original 2006 engine.dll edict-side FreeContainingEntity contract.
 // Authenticated direct routine VA 0x20110E50 and indexed route 0x20110E70.
 // Source server.dll owns the cleanup callback; engine owns this 0x14-byte
-// edict array, flag, serial and trailing free-link writes.
+// edict array, flag, serial and reuse-time dword writes.
 //
 // Independent safety: does not call original engine, dispatch foreign
 // vtables, or dereference unowned pointers. A trusted host must attest that
@@ -16,10 +16,11 @@ constexpr std::size_t kEngineOriginalEdictStride=0x14;
 constexpr std::size_t kEngineOriginalEdictFlags=0x00;
 constexpr std::size_t kEngineOriginalEdictSerial=0x04;
 constexpr std::size_t kEngineOriginalEdictUnknown=0x0c;
-constexpr std::size_t kEngineOriginalEdictNext=0x10;
+// The original x87 allocator reads/stamps this dword as a float.
+constexpr std::size_t kEngineOriginalEdictReuseTime=0x10;
 constexpr std::uint32_t kEngineOriginalEdictFreeBit=2u;
 constexpr std::uint32_t kEngineOriginalEdictRetiredSerial=0xffffffffu;
-static_assert(kEngineOriginalEdictNext+4==kEngineOriginalEdictStride,
+static_assert(kEngineOriginalEdictReuseTime+4==kEngineOriginalEdictStride,
               "owner original edict element includes trailing free-link");
 
 struct EngineEdictRetireHooks {
@@ -54,11 +55,11 @@ inline void WriteEngineEdictDword(
 }
 
 // Direct engine route: clear state flag bit 1 BEFORE server-side release;
-// only AFTER the callback writes edict+0x10=0, edict+0x04=-1.
+// only AFTER the callback clears reuse-time+0x10 and poisons serial+0x04.
 // The server callback may additionally clear flags and unknown +0x0C.
 // A callback refusal or later post-callback ownership denial is not
 // transactional. The flag (and possibly the entity cleanup) has already
-// changed; the serial/free-link remain untouched to expose incomplete work.
+// changed; the serial/reuse-time remain untouched to expose incomplete work.
 inline EngineEdictRetireResult RetireEngineEdict(
     void* edict,std::size_t bytes,const EngineEdictRetireHooks& h) noexcept {
     if(!edict||bytes<kEngineOriginalEdictStride||!h.Complete())
@@ -79,7 +80,7 @@ inline EngineEdictRetireResult RetireEngineEdict(
     // independent fail-closed boundary and does not roll back callbacks.
     if(!h.authorized(h.context,edict,kEngineOriginalEdictStride))
         return EngineEdictRetireResult::PostCallbackUnauthorized;
-    WriteEngineEdictDword(raw,kEngineOriginalEdictNext,0u);
+    WriteEngineEdictDword(raw,kEngineOriginalEdictReuseTime,0u);
     WriteEngineEdictDword(raw,kEngineOriginalEdictSerial,
                          kEngineOriginalEdictRetiredSerial);
     return EngineEdictRetireResult::Retired;

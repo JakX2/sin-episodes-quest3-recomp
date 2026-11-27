@@ -10,20 +10,24 @@ import json
 from pathlib import Path
 from audit_sin_original_engine_gameents_consumer import PE32, ENGINE_SHA, IMAGE_BASE
 
-# Original engine virtual GameEnts +0x0C consumer, 30 and 92 source bytes.
+# Original engine virtual GameEnts +0x0C consumer plus allocator x87 reuse-time witnesses.
 # Only hashes and short evidence snippets are committed, never original code.
 WINDOWS = (
     ("direct_free",0x20110e50,30,
      "fbe3675f5a7f441f9715872da4255c6a401e6f916c1222a7c8c8e5894e68a679"),
     ("indexed_free",0x20110e70,92,
      "66ff927d95b2ef135ac84d7802704b2020c17e10eb4fbe739a644300fa9a8509"),
+    ("reuse_x87_load",0x20110ef8,3,
+     "6d1efb147a9081b12760505f6a20882bfb044e166a67b4cc5c0881e8d47410e1"),
+    ("reuse_x87_store",0x20111004,3,
+     "d8006e7080c798a8f6e12083ed9b44ec078bedc6a7fa6f259363b35a156d03f6"),
 )
 # (window index, original VA, small byte witness, independently understood)
 WITNESSES = (
     (0,0x20110e50,"8b0d88443e20","read GameEnts interface global"),
     (0,0x20110e56,"8326fd","clear edict flag bit 1"),
     (0,0x20110e5c,"ff500c","call GameEnts virtual +0x0c"),
-    (0,0x20110e5f,"c7461000000000","clear edict trailing +0x10"),
+    (0,0x20110e5f,"c7461000000000","zero edict reuse-time +0x10"),
     (0,0x20110e66,"c74604ffffffff","retire edict serial +0x04"),
     (1,0x20110e76,"3b05fcda7920","upper bound index check"),
     (1,0x20110e92,"8b0d04db7920","load owner edict base pointer"),
@@ -32,13 +36,15 @@ WITNESSES = (
     (1,0x20110ea2,"d1eaf6c201","test edict state flag bit 1"),
     (1,0x20110ea9,"8b0d88443e20","read GameEnts interface global"),
     (1,0x20110eb6,"ff500c","call GameEnts virtual +0x0c"),
-    (1,0x20110eb9,"c7461000000000","clear indexed edict trailing +0x10"),
+    (1,0x20110eb9,"c7461000000000","zero indexed edict reuse-time +0x10"),
     (1,0x20110ec0,"c74604ffffffff","retire indexed edict serial +0x04"),
+    (2,0x20110ef8,"d94610","x87 float load from +0x10"),
+    (3,0x20111004,"d95e10","x87 float store into +0x10"),
 )
 
 def inspect_windows(blobs, strict):
     if len(blobs)!=len(WINDOWS):
-        raise ValueError("two engine retirement windows required")
+        raise ValueError("engine edict retirement/reuse windows required")
     for blob,(name,va,length,sha) in zip(blobs,WINDOWS):
         if len(blob)!=length:
             raise ValueError("engine edict witness window truncated: "+name)
@@ -55,7 +61,8 @@ def inspect_windows(blobs, strict):
         "original_engine_edict_stride_bytes": 0x14,
         "original_engine_edict_flags_offset": 0,
         "original_engine_edict_serial_offset": 4,
-        "original_engine_edict_next_offset": 0x10,
+        "original_engine_edict_reuse_time_float_offset": 0x10,
+        "original_engine_edict_reuse_x87_verified": True,
         "original_engine_free_before_serial_poison": True,
         "original_engine_GameEnts_virtual_offset": 0x0c,
         "original_engine_retire_witness_windows": len(blobs),
@@ -91,8 +98,9 @@ def self_test():
             pass
         else:
             raise AssertionError("corrupted x86 original-free witness accepted: "+label)
-    for corrupt in ([windows[0][:-1],windows[1]],
-                    [windows[0],windows[1][:-1]]):
+    for i in range(len(WINDOWS)):
+        corrupt=[bytearray(blob) for blob in windows]
+        corrupt[i]=corrupt[i][:-1]
         try:
             inspect_windows(corrupt,False)
         except ValueError:
@@ -105,7 +113,7 @@ def self_test():
         pass
     else:
         raise AssertionError("fabricated byte stream accepted as original")
-    print("PASS original-free 2006 engine GameEnts edict retirement witnesses and corruption tests")
+    print("PASS original-free 2006 engine edict retirement, x87 reuse-time witnesses and corruption tests")
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)

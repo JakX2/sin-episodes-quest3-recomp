@@ -17,7 +17,7 @@ struct edict_t {
     std::uint32_t flags=0x65, serial=0;
     IServerNetworkable* networkable=nullptr;
     sin_independent::ServerUnknownAbi* unknown=nullptr;
-    std::uint32_t next_free=0x12345678;
+    std::uint32_t reuse_time_bits=0x12345678;
 };
 class CBaseEntity {
 public:
@@ -27,7 +27,7 @@ public:
 };
 struct CCheckTransmitInfo {unsigned char bytes[0x2010]{};};
 static_assert(offsetof(edict_t,unknown)==0x0c,"retail edict unknown offset");
-static_assert(offsetof(edict_t,next_free)==0x10,"retail engine edict free-link offset");
+static_assert(offsetof(edict_t,reuse_time_bits)==0x10,"retail engine x87 reuse-time offset");
 static_assert(sizeof(edict_t)==0x14,"retail engine 20-byte edict array stride");
 static_assert(offsetof(CBaseEntity,edict)==0x16c,"retail entity edict offset");
 static_assert(sizeof(void*)==4,"original PE32 only");
@@ -773,7 +773,7 @@ int main() {
        game->Report().status!=GameEntsDispatchResult::Completed||
        game->Report().release!=EntityReleaseStatus::DetachedAndHooksInvoked||
        f.ea.serial!=kEngineOriginalEdictRetiredSerial||
-       f.ea.next_free!=0||f.calls!="LEFFDGMUX")
+       f.ea.reuse_time_bits!=0||f.calls!="LEFFDGMUX")
         return Fail(18,"engine-to-server slot 3 release, owner retirement, and engine epilogue");
     // The test checks mutation and cleanup separately so no original
     // entity pointer is dereferenced after synthetic immediate removal.
