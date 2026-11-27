@@ -90,6 +90,33 @@ int main() {
     if(!invoke_init_no_args(receiver,vtable[1]) ||
        receiver->enabled()!=0u || api::events.init_calls!=7u)
         return fail(14,"cl_predict must read parent's numeric value");
+    // Phase1658: verify two more original no-argument methods.
+    // Original slot2 is an empty RET called during engine shutdown.
+    // Original slot7 clears two dwords and sets an index dword to -1.
+    if(receiver->highest_address()-owner_address!=
+           api::kOriginalResetIndexOffset ||
+       receiver->value_a_address()-owner_address!=
+           api::kOriginalResetCountAOffset ||
+       receiver->value_b_address()-owner_address!=
+           api::kOriginalResetCountBOffset)
+        return fail(15,"prediction reset fields not at +0x24/+0x28/+0x2C");
+    receiver->prime_bookkeeping(17,0xABCD1234u,0x89ABCDEFu);
+    const auto init_count=api::events.init_calls;
+    if(!invoke_init_no_args(receiver,vtable[2]) ||
+       receiver->highest()!=17 || receiver->value_a()!=0xABCD1234u ||
+       receiver->value_b()!=0x89ABCDEFu ||
+       api::events.init_calls!=init_count)
+        return fail(16,"original prediction slot2 shutdown must be no-op RET0");
+    if(!invoke_init_no_args(receiver,vtable[7]) ||
+       receiver->highest()!=-1 || receiver->value_a()!=0u ||
+       receiver->value_b()!=0u ||
+       api::events.init_calls!=init_count)
+        return fail(17,"original prediction slot7 reset or RET0 stack mismatch");
+    // Idempotence is native: repeated clears preserve the reset state.
+    if(!invoke_init_no_args(receiver,vtable[7]) ||
+       receiver->highest()!=-1 || receiver->value_a()!=0u ||
+       receiver->value_b()!=0u)
+        return fail(18,"second prediction reset not idempotent");
     // Important distinction: original native slot1 has NO null check.
     // The test's null-ConVar refusal is a deliberate safety deviation.
     if(api::events.destructor_calls!=0u)
@@ -104,6 +131,7 @@ int main() {
               "slot0, no-argument __thiscall Init in slot1, ECX/ESP RET0, "
               "cl_predict m_pParent+0x18 / m_nValue+0x2C "
               "to-this+0x10 boolean conversion, "
-              "null-service refusal, and local destructor ownership");
+              "null-ConVar refusal, original slot2 shutdown empty RET, "
+              "slot7 +0x24/+0x28/+0x2C reset, and local ownership");
     return 0;
 }
