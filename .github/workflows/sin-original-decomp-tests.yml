@@ -29,6 +29,7 @@ on:
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
       - 'research/tools/audit_sin_original_recombinant_minor_metric_gate.py'
       - 'research/tools/audit_sin_original_servergameents_factory.py'
+      - 'research/tools/audit_sin_original_servergameents_methods.py'
       - 'research/tools/verify_gameplay_entity_registry.py'
       - 'research/tests/test_audit_sin_rifle_client_server_registration.py'
       - 'research/tests/test_audit_sin_original_mobgrunt_datamap.py'
@@ -84,6 +85,7 @@ on:
       - 'research/tools/audit_sin_original_druglab_vtable_diff.py'
       - 'research/tools/audit_sin_original_recombinant_minor_metric_gate.py'
       - 'research/tools/audit_sin_original_servergameents_factory.py'
+      - 'research/tools/audit_sin_original_servergameents_methods.py'
       - 'research/tools/verify_gameplay_entity_registry.py'
       - 'research/tests/test_audit_sin_rifle_client_server_registration.py'
       - 'research/tests/test_audit_sin_original_mobgrunt_datamap.py'
@@ -179,3 +181,6 @@ jobs:
 
       - name: Validate original ServerGameEnts001 seven-slot factory audit (synthetic only)
         run: python research/tools/audit_sin_original_servergameents_factory.py --self-test
+
+      - name: Authenticate GameEnts touch/transmit instruction witnesses (synthetic only)
+        run: python research/tools/audit_sin_original_servergameents_methods.py --self-test
