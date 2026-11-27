@@ -5,6 +5,8 @@ on:
       - 'research/tools/verify_original_batch.py'
       - 'research/tools/test_verify_original_batch.py'
       - 'research/tools/triage_original_abi_atlas.py'
+      - 'research/tools/check_original_recovery_ledger.py'
+      - 'research/catalog/original_dll_verified_methods.json'
       - '.github/workflows/sin-original-authentication.yml'
   pull_request:
   workflow_dispatch:
@@ -20,3 +22,6 @@ jobs:
         run: python3 -m unittest discover -s research/tools -p 'test_verify_original_batch.py' -v
       - name: Run existing ABI triage regressions
         run: python3 -m unittest discover -s research/tests -p 'test_triage_original_abi_atlas.py' -v
+
+      - name: Reject duplicate original DLL method identities and validate recovery ledger
+        run: python3 research/tools/check_original_recovery_ledger.py --self-test
