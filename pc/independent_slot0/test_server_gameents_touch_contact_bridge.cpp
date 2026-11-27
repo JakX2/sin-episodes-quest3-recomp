@@ -131,8 +131,8 @@ int main() {
     same.calls.clear();
     if(MarkEntitiesAsTouchingWithContactGraph(&same.ea,&same.ea,Hooks(same),out)
        !=GameEntsTouchEntryStatus::Completed ||
-       same.calls!="AAI1"&&false)
-        return Fail(3,"same entity should be ignored");
+       same.calls!="AAI11"||out.refresh_calls!=2)
+        return Fail(3,"same entity still follows two original dirty snapshots");
     // Same edict resolves twice to the same TouchEntity, and its dirty
     // origin is refreshed exactly once during the second argument path.
     if(out.contact_status!=TouchMarkResult::Ignored||out.contact_calls!=1||
