@@ -113,6 +113,20 @@ ENGINE_ERROR_HANDLER_VA = 0x2015D5E0
 ENGINE_PREDICTION_VCALL_VA = 0x20023D21
 ENGINE_ENTITYLIST_FACTORY_CALL_VA = 0x20023D24
 
+# Additional original-file findings from same full-SHA retail client and engine:
+# engine invokes prediction slot2 on shutdown; it is exactly RET (one byte).
+# Slot7 is a parameterless reset of 3 CPrediction state DWORDs.
+CLIENT_SHUTDOWN_VA = CLIENT_VIRTUAL_TARGETS[2]
+CLIENT_SHUTDOWN_BYTES = 1
+CLIENT_SHUTDOWN_SHA = "ae3f4619b0413d70d3004b9131c3752153074e45725be13b9a148978895e359e"
+CLIENT_RESET_VA = CLIENT_VIRTUAL_TARGETS[7]
+CLIENT_RESET_BYTES = 16
+CLIENT_RESET_SHA = "a6da88d507f80f25c7ebde380cf57df4b325e3acaba22aef172d84d6082733b2"
+ENGINE_PREDICTION_SHUTDOWN_VA = 0x20023DEF
+ENGINE_PREDICTION_SHUTDOWN_BYTES = 11
+ENGINE_PREDICTION_SHUTDOWN_SHA = "4495aebe5d5ab5d1808a077cd1993f35112fc2a0be1388c1bff2ef5491b7438d"
+
+
 def check(ok: bool, why: str) -> None:
     if not ok:
         raise VerificationError("Phase1658 VClientPrediction001: " + why)
@@ -250,6 +264,34 @@ def verify_prediction_init(blob: bytes, global_va: int) -> None:
           blob[5:] == bytes.fromhex("83782c000f95c2885110c3"),
           "original prediction slot1 global/field/return ABI differs")
 
+
+def verify_prediction_slot2_shutdown(blob: bytes) -> None:
+    check(len(blob)==1 and blob[0]==0xC3,
+          "original prediction virtual slot2 is not a no-arg empty RET")
+
+
+def verify_prediction_slot7_reset(blob: bytes) -> None:
+    """Authenticated no-argument reset of three original DWORDs.
+
+    Original stores zero to this+0x28/+0x2C and -1 to this+0x24.
+    The whole-original method SHA is checked in owner mode separately.
+    """
+    check(len(blob)==16 and blob[:2]==b"\x33\xC0" and
+          blob[2:4]==b"\x89\x41" and blob[4]==0x28 and
+          blob[5:7]==b"\x89\x41" and blob[7]==0x2C and
+          blob[8:10]==b"\xC7\x41" and blob[10]==0x24 and
+          u32(blob,11)==0xFFFFFFFF and blob[15:16]==b"\xC3",
+          "original prediction slot7 noarg field-reset form differs")
+
+
+def verify_engine_prediction_shutdown(blob: bytes,
+                                      global_address: int) -> None:
+    check(len(blob)==11 and blob[:2]==b"\x8B\x0D" and
+          u32(blob,2)==global_address and
+          blob[6:]==b"\x8B\x11\xFF\x52\x08",
+          "engine does not dispatch prediction virtual slot2 on shutdown")
+
+
 def verify_engine_prediction_window(blob: bytes, start: int,
                                     pred_name: int, factory_global: int,
                                     stored_global: int, error_name: int,
@@ -374,6 +416,16 @@ def verify_original(client_bytes: bytes, engine_bytes: bytes) -> dict:
     check(CLIENT_INIT_VA+1 in reloc and
           client.section_of(CLIENT_INIT_GLOBAL_VA)==".data",
           "original prediction slot1 global pointer relocation missing")
+
+    shutdown=section_read(client,CLIENT_SHUTDOWN_VA,CLIENT_SHUTDOWN_BYTES,".text")
+    check(hashlib.sha256(shutdown).hexdigest()==CLIENT_SHUTDOWN_SHA,
+          "original prediction slot2 whole RET method SHA changed")
+    verify_prediction_slot2_shutdown(shutdown)
+    reset=section_read(client,CLIENT_RESET_VA,CLIENT_RESET_BYTES,".text")
+    check(hashlib.sha256(reset).hexdigest()==CLIENT_RESET_SHA,
+          "original prediction slot7 reset whole SHA changed")
+    verify_prediction_slot7_reset(reset)
+
     # Resolve the previously ambiguous +0x2C dependency to the ACTUAL
     # original cl_predict ConVar registration and its m_pParent->m_nValue.
     check(CL_PREDICT_OBJECT_VA+CL_PREDICT_PARENT_FIELD_OFFSET ==
@@ -479,6 +531,16 @@ def verify_original(client_bytes: bytes, engine_bytes: bytes) -> dict:
     check(ENGINE_ENTITYLIST_FACTORY_CALL_VA+3 in engine_reloc
           and ENGINE_ENTITYLIST_FACTORY_CALL_VA+9 in engine_reloc,
           "engine entity-list next factory call HIGHLOW refs missing")
+
+    engine_shutdown=section_read(engine,ENGINE_PREDICTION_SHUTDOWN_VA,
+                                 ENGINE_PREDICTION_SHUTDOWN_BYTES,".text")
+    check(hashlib.sha256(engine_shutdown).hexdigest()==
+          ENGINE_PREDICTION_SHUTDOWN_SHA,
+          "original engine prediction shutdown vcall whole-window SHA changed")
+    verify_engine_prediction_shutdown(engine_shutdown,ENGINE_PREDICTION_GLOBAL_VA)
+    check(ENGINE_PREDICTION_SHUTDOWN_VA+2 in engine_reloc,
+          "engine prediction shutdown global lacks HIGHLOW relocation")
+
     return {
         "phase": 1658,
         "provenance": "client and engine original full SHA-256 matched",
@@ -503,6 +565,10 @@ def verify_original(client_bytes: bytes, engine_bytes: bytes) -> dict:
         "slot1_reads_global_field_offset": hex(CLIENT_INIT_GLOBAL_FIELD_OFFSET),
         "slot1_sets_prediction_byte_offset": hex(CLIENT_INIT_DESTINATION_OFFSET),
         "slot1_uses_null_guard": False,
+        "slot2_ignores_arguments_and_is_empty_RET": True,
+        "slot2_engine_shutdown_caller_va": hex(ENGINE_PREDICTION_SHUTDOWN_VA),
+        "slot7_parameterless_reset_ret0": True,
+        "slot7_reset_fields": {"0x24": -1, "0x28": 0, "0x2c": 0},
         "original_RTTI_primary_class": "CPrediction",
         "original_RTTI_base_class": "IPrediction",
         "original_engine_prediction_callsite_va": hex(ENGINE_FACTORY_CALL_VA),
@@ -633,6 +699,31 @@ def self_test() -> None:
         corrupt=bytearray(fake_base);corrupt[pos]^=1
         reject(lambda data=bytes(corrupt):verify_convar_base_constructor(data),
                "synthetic cl_predict parent/nValue byte "+str(pos))
+    # Invented self-test windows for the distinct no-argument original
+    # prediction shutdown and book-keeping reset method shapes.
+    verify_prediction_slot2_shutdown(b"\xC3")
+    for synthetic_bad in (b"",b"\xC2\x00\x00",b"\x90",b"\xC3\x90"):
+        reject(lambda data=synthetic_bad:verify_prediction_slot2_shutdown(data),
+               "prediction slot2 shutdown RET mismatch")
+    invented_reset=(b"\x33\xC0"+b"\x89\x41"+bytes([0x28])+
+                    b"\x89\x41"+bytes([0x2C])+
+                    b"\xC7\x41"+bytes([0x24])+pack(0xFFFFFFFF)+b"\xC3")
+    verify_prediction_slot7_reset(invented_reset)
+    for i in range(len(invented_reset)):
+        corrupt=bytearray(invented_reset);corrupt[i]^=1
+        reject(lambda data=bytes(corrupt):verify_prediction_slot7_reset(data),
+               "synthetic prediction slot7 reset byte "+str(i))
+    invented_shutdown_global=0x45630000
+    invented_engine_shutdown=b"\x8B\x0D"+pack(invented_shutdown_global)+bytes.fromhex(
+        "8b11ff5208")
+    verify_engine_prediction_shutdown(invented_engine_shutdown,
+                                      invented_shutdown_global)
+    for i in range(len(invented_engine_shutdown)):
+        corrupt=bytearray(invented_engine_shutdown);corrupt[i]^=1
+        reject(lambda data=bytes(corrupt):verify_engine_prediction_shutdown(
+            data,invented_shutdown_global),
+            "synthetic engine shutdown callsite byte "+str(i))
+
     fake_engine_global=0x45610000
     fake_init=b"\xA1"+pack(fake_engine_global)+bytes.fromhex(
         "83782c000f95c2885110c3")
@@ -695,7 +786,8 @@ def self_test() -> None:
           "pointer extent and nonvirtual boundary; creator, InterfaceReg, "
           "constructor, deleting destructor RET4 and slot1 RET0/service "
           "dependency through cl_predict ConVar parent/nValue; "
-          "engine slot1 before entity-list; RTTI two-base class "
+          "engine slot1 before entity-list and prediction slot2 shutdown; "
+          "slot7 noarg field reset; RTTI two-base class "
           "metadata; mutation and fake original-SHA rejection")
 
 def main() -> int:
