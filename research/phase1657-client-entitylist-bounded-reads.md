@@ -78,10 +78,39 @@ unknowns only, default and optional counts, highest index, max setter,
 and corruption/missing callback refusal. No original DLLs or contents are
 linked or run in CI.
 
+## Owner-only startup-state readback
+
+The Phase 1656 owner-original InterfaceReg probe now also emits
+`original_client_entitylist_startup_state` after the original's own
+`DllMain` and already SHA-gated vtable readback. The four read-only DWORD
+fields are anchored at the following **module RVAs**, not hard-coded
+process pointers:
+
+- `0x34FDE0`: networked entity count (owner +`0x10018`)
+- `0x34FDE4`: maximum entities (owner +`0x1001C`)
+- `0x34FDE8`: secondary-flagged count (owner +`0x10020`)
+- `0x34FDEC`: highest live index (owner +`0x10024`)
+
+The readback never executes an entity-list virtual method. It prints only
+four counters, successful read count, and a bounded status label. The
+read-only adapter rejects unreadable memory, 32-bit module-base wrapping,
+counts exceeding 2048/4096, and an impossible empty/nonempty highest-index
+combination. This is a conservative observer: some intermediate or unusual
+runtime transitions may fail the invariants without implying that original
+retail code is defective. Such a failure must be investigated, not
+fabricated as a successful boot.
+
+`test_original_client_entitylist_state_snapshot.cpp` uses only fabricated
+memory to exercise initial zero counters/highwater -1, a valid populated
+snapshot, each unreadable field, overflow, and corrupt-count cases.
+The prior four-figure owner package still requires explicit confirmation
+that the original files are in a disposable copy. No actual owner-original
+DLL was loaded by public CI.
+
 ## Test gate and explicit non-goals
 
-This branch adds one native CTest. The expected native suite is
-**260/260** when all prior tests remain green. It is not marked verified
+This branch adds two native CTests. The expected native suite is
+**261/261** when all prior tests remain green. It is not marked verified
 until GitHub Actions on the *final commit* passes.
 
 - `VClientEntityList003` is **not** registered with the independent
