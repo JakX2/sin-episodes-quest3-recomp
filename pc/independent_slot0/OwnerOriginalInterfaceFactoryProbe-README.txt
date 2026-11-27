@@ -22,6 +22,8 @@ Windows 32-bit original factory interface readback:
     distinct parent/secondary vptrs and 9+3 code-pointer slots (read-only)
   - Reads original client entity-list initial count/max/flagged/highwater
     DWORDs after DllMain with a bounded 32-bit read-only observer
+  - Verifies original VClientPrediction001 singleton vptr and ALL 23
+    original prediction virtual targets after DllMain, no method invocation
   - Verifies original server ServerGameClients003 15-slot loaded vtable
   - Does NOT launch SinEpisodes.exe, load a map, or test independent game DLLs
 
@@ -42,6 +44,7 @@ Expected output includes JSON events:
   original_gameclientexports_vtable
   original_client_entitylist_secondary_vtable
   original_client_entitylist_startup_state
+  original_client_prediction23_vtable
   original_servergameclients_vtable
 
 The entity-list JSON event reports the 65556-byte secondary interface
@@ -54,6 +57,13 @@ The Phase1657 startup-state event additionally shows four bounded original
 entity-list integer counters, without printing original process pointers.
 It does NOT print raw original machine-code bytes, process pointers, or
 original game object contents.
+
+The Phase1658 prediction event requires all 23 pointers in the original
+prediction object's virtual table to match the SHA-pinned retail image.
+It does NOT invoke the original prediction Init, which dereferences a
+global pointer to an engine-owned service at +0x2C. Such a service
+would not be initialized by this standalone owner probe. Retail DllMain
+may still have side effects, so always use a disposable owner copy.
 
 A green result means the unmodified original DLLs' factory and static
 registrations match this read-only observer. It does NOT prove independent
