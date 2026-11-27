@@ -1498,9 +1498,10 @@
         assert(motion_task(f.npc,sizeof(f.npc),107,&mb,&mr)&&mr.task_completed&&mr.token==22&&mr.unresolved_token==22&&word(f.npc,0x974)==0xffffffffu&&word(f.npc,0x978)==22&&f.order=="LL");
         put(f.seq,0x39c,0u);put(f.npc,0x7a4,1);
         assert(motion_task(f.npc,sizeof(f.npc),107,&mb,&mr)&&mr.task_completed&&!mr.lookup_called&&word(f.npc,0x974)==0xffffffffu&&!word(f.npc,0x978)&&f.order=="LL");
-        put(f.npc,0x3ec,2);put(f.npc,0x3e8,0.f);put(f.seq,0x3bc,22.f);put(f.npc,0x96c,9u);f.npc[0x200]=0;f.order.clear();
+        // put() writes an unsigned word, not a float; use IEEE-754 bits.
+        put(f.npc,0x3ec,2);put(f.npc,0x3e8,0u);put(f.seq,0x3bc,0x41b00000u);put(f.npc,0x96c,9u);f.npc[0x200]=0;f.order.clear();
         assert(motion_task(f.npc,sizeof(f.npc),108,&mb,&mr)&&mr.motion_checked&&mr.flags_added&&mr.ground_cleared&&mr.duration_called&&mr.elapsed==.15f&&mr.cycle==.075f&&mr.cycle_written&&mr.motion_advanced&&mr.state_written&&!mr.task_completed&&!word(f.npc,0x96c)&&f.npc[0x200]&&f.order=="MFGDV");
-        put(f.seq,0x3bc,24.f);put(f.npc,0x96c,9u);f.order.clear();
+        put(f.seq,0x3bc,0x41c00000u);put(f.npc,0x96c,9u);f.order.clear();
         assert(motion_task(f.npc,sizeof(f.npc),108,&mb,&mr)&&mr.duration_called&&!mr.elapsed&&!mr.cycle_written&&!mr.motion_advanced&&mr.state_written&&f.order=="MFGD");
         put(f.npc,0x970,0x5000u);f.order.clear();
         assert(motion_task(f.npc,sizeof(f.npc),108,&mb,&mr)&&mr.missing&&!mr.duration_called&&mr.state_written&&f.order=="MFG");
