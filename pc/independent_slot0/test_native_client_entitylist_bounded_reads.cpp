@@ -194,7 +194,8 @@ int main() {
         if(i==6u || i==8u) {
             int value=0;
             balanced=no_arg_dispatch(iface,table[i],value);
-            const int expected=(i==6u)?2047:4096;
+            // Slot 7 already set 1024 immediately before slot 8 runs.
+            const int expected=(i==6u)?2047:1024;
             if(value!=expected)
                 return failure(11,"native no-arg slot returned wrong value");
         } else if(i==7u) {
