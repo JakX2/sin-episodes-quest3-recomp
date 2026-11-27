@@ -33,7 +33,7 @@ bool invoke_init_no_args(void* receiver,void* method) noexcept {
 int main() {
     api::events={};
     api::Provider provider{};
-    const auto owner=std::make_unique<api::Prediction23Fixture>(&provider);
+    auto owner=std::make_unique<api::Prediction23Fixture>(&provider);
     auto* const receiver=owner.get();
     const auto owner_address=reinterpret_cast<std::uintptr_t>(receiver);
     if(receiver->enabled_address()-owner_address!=
@@ -80,7 +80,7 @@ int main() {
         return fail(11,"prediction object destroyed during normal initialization");
     // Only the synthetic object is deleted; no original deleting-destructor
     // method or original client.dll is invoked.
-    const_cast<std::unique_ptr<api::Prediction23Fixture>&>(owner).reset();
+    owner.reset();
     if(api::events.destructor_calls!=1u)
         return fail(12,"synthetic prediction destruction did not occur once");
     std::puts("PASS Phase1658 original-free MSVC Win32 x86: compiler-generated "
