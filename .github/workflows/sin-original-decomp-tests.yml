@@ -62,6 +62,7 @@ on:
       - 'research/tools/attest_sin_original_engine_live_allocator_code.py'
       - 'research/tools/audit_sin_original_server_interfacereg_abi.py'
       - 'research/tools/audit_sin_original_vclient011_complete_vtable.py'
+      - 'research/tools/audit_sin_original_gameclientexports_abi.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -229,3 +230,6 @@ jobs:
 
       - name: Validate full original 2006 VClient011 48-slot vtable and registration (synthetic only)
         run: python research/tools/audit_sin_original_vclient011_complete_vtable.py --self-test
+
+      - name: Validate original 2006 GameClientExports001 four-slot destructor and voice flag ABI
+        run: python research/tools/audit_sin_original_gameclientexports_abi.py --self-test
