@@ -24,6 +24,9 @@ Windows 32-bit original factory interface readback:
     DWORDs after DllMain with a bounded 32-bit read-only observer
   - Verifies original VClientPrediction001 singleton vptr and ALL 23
     original prediction virtual targets after DllMain, no method invocation
+  - Reads original cl_predict ConVar's m_pParent at +0x18 and its numeric
+    m_nValue at +0x2C only when m_pParent==&cl_predict; never follows
+    an external alias, and never invokes ConVar or prediction functions
   - Verifies original server ServerGameClients003 15-slot loaded vtable
   - Does NOT launch SinEpisodes.exe, load a map, or test independent game DLLs
 
@@ -45,6 +48,7 @@ Expected output includes JSON events:
   original_client_entitylist_secondary_vtable
   original_client_entitylist_startup_state
   original_client_prediction23_vtable
+  original_cl_predict_convar_startup
   original_servergameclients_vtable
 
 The entity-list JSON event reports the 65556-byte secondary interface
@@ -60,9 +64,11 @@ original game object contents.
 
 The Phase1658 prediction event requires all 23 pointers in the original
 prediction object's virtual table to match the SHA-pinned retail image.
-It does NOT invoke the original prediction Init, which dereferences a
-global pointer to an engine-owned service at +0x2C. Such a service
-would not be initialized by this standalone owner probe. Retail DllMain
+It does NOT invoke the original prediction Init, which reads the
+cl_predict ConVar's m_pParent pointer and that parent's numeric
+m_nValue (+0x2C). The owner diagnostic verifies the self-parent case
+using only two bounded read-only DWORDs, and explicitly refuses to
+follow external ConVar parent aliases or unknown object memory. Retail DllMain
 may still have side effects, so always use a disposable owner copy.
 
 A green result means the unmodified original DLLs' factory and static
