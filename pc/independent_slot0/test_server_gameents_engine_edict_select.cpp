@@ -13,7 +13,7 @@ struct Edict {
 static_assert(sizeof(Edict)==0x14,"original 2006 record stride");
 struct Owner {
     std::array<Edict,5> records{};
-    unsigned frees=0,record_checks=0;
+    unsigned frees=0,record_checks=0,epoch_reservations=0;
     bool owned=true,deny_edict=false,deny_callback=false,
          revoke_after_callback=false;
 };
@@ -39,6 +39,14 @@ static bool Release(void* p,void* ptr) noexcept {
 static EngineEdictRetireHooks Hooks(Owner& o) noexcept {
     return {&o,&Record,&Array,&Release};
 }
+static bool ReserveEpoch(void* p,const EngineEdictReuseEvent& event,
+                         std::uint64_t* out) noexcept {
+    auto& o=*static_cast<Owner*>(p);
+    if(!out||event.index!=3||event.prior_serial!=0xffffffffu||
+       event.next_serial!=0||event.time_bits!=0x40800000)return false;
+    *out=5000+ ++o.epoch_reservations;
+    return true;
+}
 static void Time(Edict& e,float v) noexcept {
     std::memcpy(&e.reuse_time,&v,sizeof(v));
 }
@@ -61,13 +69,25 @@ int main() {
        o.records[3].serial!=0xffffffffu||o.records[3].reuse_time!=0||
        o.records[3].unknown!=0||o.records[4].flags!=2)
         return Fail(1,"age scan chose wrong reusable edict or failed retirement");
-    // The retired slot is now inactive and must not be reselected until
-    // ReuseEngineEdictAt has restamped its active flag and serial.
+    // Real synthetic lifecycle: selection -> ServerGameEnts release ->
+    // per-record restamp with separate globally monotonic uint64 epoch.
+    // The scanner must not immediately reclaim this freshly active record.
+    const EngineEdictReuseHooks revive{
+        &o,&Array,&Record,&Release,&ReserveEpoch};
+    const auto restarted=ReuseEngineEdictAt(o.records.data(),
+        sizeof(o.records),3,1,16,0.25f,revive);
+    if(restarted.status!=EngineEdictReuseStatus::Reused||
+       restarted.owner_epoch!=5001||restarted.new_serial!=0||
+       o.records[3].flags!=2||o.records[3].serial!=0||
+       o.records[3].reuse_time!=0x40800000||
+       o.epoch_reservations!=1||o.frees!=2)
+        return Fail(11,"selection-to-restamp handoff lost original serial/epoch");
     o.records[4].flags=2;Time(o.records[4],3.f);
     const auto other=SelectEngineEdictForReuse(o.records.data(),
         sizeof(o.records),5,1,16,0.25f,Hooks(o));
-    if(other.status!=S::SelectedExisting||other.index!=4||o.frees!=2)
-        return Fail(2,"elapsed time >=1 did not recover aged edict");
+    if(other.status!=S::SelectedExisting||other.index!=4||o.frees!=3||
+       o.records[3].flags!=2||o.records[3].serial!=0)
+        return Fail(2,"restamped slot immediately reclaimed ahead of aged one");
     Owner append{};
     append.records[2].flags=0;
     auto added=SelectEngineEdictForReuse(append.records.data(),
@@ -119,6 +139,6 @@ int main() {
         sizeof(recent.records),4,1,5,0.5f,Hooks(recent));
     if(latest.status!=S::SelectedNew||latest.index!=4||recent.frees!=1)
         return Fail(10,"timestamp 2.0/age threshold misinterpreted");
-    std::puts("PASS original-engine edict selector: 2.0 immediate and 1.0 elapsed gates, 0x14 scan, append/capacity, callback and owner failures");
+    std::puts("PASS original-engine edict selector: source timing gates, selection-to-restamp epoch roundtrip, append/capacity, callback and owner failures");
     return 0;
 }
