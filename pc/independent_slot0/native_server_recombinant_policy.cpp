@@ -1,5 +1,6 @@
 #include "native_server_recombinant_policy.h"
 #include <cstring>
+#include <cmath>
 extern "C" const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(unsigned,unsigned) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerActivityDictionaryApi* __cdecl SiN_GetServerActivityDictionaryApi(unsigned,unsigned) noexcept;
 namespace sin_port::native_weapon_tables {
