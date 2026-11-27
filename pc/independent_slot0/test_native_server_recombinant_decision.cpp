@@ -39,7 +39,7 @@ int main(int argc,char** argv){
     ServerRecombinantDecisionBindings b{&policy,&schedule,&f,100.f};
     b.extent=[](void* p,void* a,unsigned* n) noexcept ->int{auto& f=*static_cast<F*>(p);*n=a==f.goal?sizeof(f.goal):0;return *n!=0;};
     b.parent_select=[](void* p,void*,int* out) noexcept ->int{auto& f=*static_cast<F*>(p);++f.parents;*out=f.parent;return 1;};
-    b.parent_gather=[](void* p,void*) noexcept ->int{auto& f=*static_cast<F*>(p);assert(!f.has(66));++f.gathers;f.cond(66,true);return 1;};
+    b.parent_gather=[](void* p,void*) noexcept ->int{auto& f=*static_cast<F*>(p);assert(!f.has(66));++f.gathers;f.cond(66,true);f.cond(20,true);return 1;};
     b.parent_interrupts=[](void* p,void*) noexcept ->int{auto& f=*static_cast<F*>(p);++f.interrupts;f.cond(16,true,NpcConditionInterrupt);f.cond(17,true,NpcConditionInterrupt);return 1;};
     b.parent_invalidated=[](void* p,void*) noexcept ->int{++static_cast<F*>(p)->invalidated;return 1;};
     b.flinch_activity=[](void*,void*,int big,int gesture,int* out) noexcept ->int{assert(!gesture);*out=big?101:102;return 1;};
@@ -68,7 +68,7 @@ int main(int argc,char** argv){
     f.put(f.actor,0x8a0,0x8001u);assert(api->select(f.actor,sizeof(f.actor),&b,&o)&&o.selected==41&&!o.enemy_live);
     f.clear();f.cond(66,true);f.put(f.actor,0xc44,0x7001u);
     assert(api->gather_major(f.actor,sizeof(f.actor),&b,&o)&&o.goal_live&&f.has(66)&&f.has(67)&&!f.has(20)&&f.gathers==1);
-    f.put(f.actor,0xc44,0x8001u);assert(api->gather_major(f.actor,sizeof(f.actor),&b,&o)&&!o.goal_live&&!f.has(67)&&f.has(20)&&f.gathers==2);
+    f.put(f.actor,0xc44,0x8001u);assert(api->gather_major(f.actor,sizeof(f.actor),&b,&o)&&!o.goal_live&&!f.has(67)&&!f.has(20)&&f.gathers==2);
     f.clear();f.ideal=39;
     assert(api->interrupts(f.actor,sizeof(f.actor),&b,&o)&&f.has(67,NpcConditionInterrupt)&&!f.has(16,NpcConditionInterrupt)&&!f.has(17,NpcConditionInterrupt)&&o.schedule_tests==2);
     f.clear();f.ideal=86;assert(api->interrupts(f.actor,sizeof(f.actor),&b,&o)&&!f.has(67,NpcConditionInterrupt)&&f.has(16,NpcConditionInterrupt)&&f.has(17,NpcConditionInterrupt));

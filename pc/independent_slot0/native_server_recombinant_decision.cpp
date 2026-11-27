@@ -131,7 +131,7 @@ int __cdecl gather_major(void* a,unsigned n,const ServerRecombinantDecisionBindi
     Call c{a,n,*b,*o,api,*b->policy};
     if(!c.store(66,NpcConditionCurrent,false)||!b->parent_gather||!b->parent_gather(b->context,a))return 0;
     ++o->delegated;o->goal_live=c.entity(0xc44)!=nullptr;
-    if(!c.store(67,NpcConditionCurrent,o->goal_live!=0)||!c.store(20,NpcConditionCurrent,!o->goal_live))return 0;
+    if(!c.store(67,NpcConditionCurrent,o->goal_live!=0)||!c.store(20,NpcConditionCurrent,false))return 0;
     o->completed=1;return 1;
 }
 int __cdecl interrupts(void* a,unsigned n,const ServerRecombinantDecisionBindings* b,ServerRecombinantDecisionResult* o) noexcept{
