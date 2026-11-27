@@ -1615,3 +1615,29 @@ target_compile_features(sin_original_client_entitylist_startup_state_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_entitylist_startup_state_snapshot_native
   COMMAND sin_original_client_entitylist_startup_state_test)
+
+
+# Phase 1658: SHA-authenticated original VClientPrediction001 23-slot PE32
+# vtable and the REAL engine's prediction-before-entitylist startup callsite.
+# Public CI only runs invented x86/windows and fake-memory tests.
+# The separate owner-live factory diagnostic remains explicit/off-by-default
+# and may run original DllMain only under the disposable-copy owner guard.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_prediction23_abi_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_prediction23_abi.py"
+      --self-test)
+endif()
+add_executable(sin_original_client_prediction23_init_abi_test
+  test_original_client_prediction23_init_abi.cpp)
+target_compile_features(sin_original_client_prediction23_init_abi_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_prediction23_init_native_abi
+  COMMAND sin_original_client_prediction23_init_abi_test)
+
+add_executable(sin_original_client_prediction23_readonly_snapshot_test
+  test_original_client_prediction23_readonly_snapshot.cpp)
+target_compile_features(sin_original_client_prediction23_readonly_snapshot_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_prediction23_readonly_snapshot_native
+  COMMAND sin_original_client_prediction23_readonly_snapshot_test)
