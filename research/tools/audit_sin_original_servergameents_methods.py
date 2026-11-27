@@ -15,6 +15,7 @@ REGIONS=(
  (0x22285a10,45,'35e66fcdbd33a37b6440a98ed9b363478da2322bc6fc388461ddb5e0edd2a28d','TraceInitializer'),
  (0x22221080,106,'7b7c2ab2d13044215c84ceac8a39306ea31cb1e17f142be6ce2e64771252b5d3','PairContactRegistration'),
  (0x2221f350,526,'bbdebe8fad62ff42eb88b6b282addbd23be90161aca0a7fd5aec4a814ced8dff','DirectedContactRegistration'),
+ (0x2206e2c0,128,'383458ce02ffe087f4aa8fb8a3d4d68a761eeae74a77673b6e259949dad6f47d','GlobalTracePrefixCopy'),
 )
 # The witnesses are disjoint local instructions at behavioral branch points,
 # not a pasted commercial disassembly. Full-method SHA checks also apply.
@@ -28,6 +29,9 @@ WITNESSES=(
  (0x221e944c,'d80d78973d22','X midpoint multiplier 0.5'),
  (0x221e9462,'d80d78973d22','Y midpoint multiplier 0.5'),
  (0x221e9481,'d80d78973d22','Z midpoint multiplier 0.5'),
+ (0x22221089,'b9f84a5722','global trace prefix copy destination'),
+ (0x2206e31c,'8b512c','global copy includes trace +2c'),
+ (0x2206e33d,'c20400','global prefix copy return'),
  (0x22285a17,'b915000000','trace initializer 21 dwords'),
  (0x22285a1e,'f3ab','trace initializer rep stosd'),
  (0x22285a2e,'c7422c0000803f','trace +2c fraction equals 1'),
@@ -48,6 +52,7 @@ DIRECT_CALLS=(
  (0x221e93e6,0x2213fa60,'refresh second origin'),
  (0x221e93fb,0x2213fa60,'refresh first origin'),
  (0x221e949e,0x22221080,'submit pair contact'),
+ (0x2222108e,0x2206e2c0,'copy first 0x38 trace bytes to global state'),
  (0x222210d8,0x2221f350,'first directed contact registration'),
  (0x222210e0,0x2221f350,'reverse directed contact registration'),
  (0x221e9600,0x2227ee90,'CheckTransmit PVS test helper'),
@@ -145,7 +150,7 @@ def self_test():
 def corruption_test(raw):
  original=PE32(raw)
  for target in (REGIONS[0][0],REGIONS[1][0],REGIONS[2][0],REGIONS[3][0],
-                REGIONS[4][0],VTABLE+0x08,VTABLE+0x18,0x223d9778):
+                REGIONS[4][0],REGIONS[5][0],VTABLE+0x08,VTABLE+0x18,0x223d9778):
   for _,start,size,off in original.sections:
    if start<=target<start+size:
     changed=bytearray(raw);changed[off+target-start]^=1
