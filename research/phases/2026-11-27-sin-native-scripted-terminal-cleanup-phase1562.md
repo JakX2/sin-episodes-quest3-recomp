@@ -1,0 +1,3 @@
+# Phase 1562: terminal completion with native common cleanup
+
+New opt-in finish export calls phase1561 cleanup directly at original 22048fe0 boundary, preserving removal schedule -> cleanup -> schedule reset -> successor possession order. Sidecar must share the exact control binding, unsupported initial dying path refuses before scheduling; old finish ABI and owner callback remain available. No new code digests, no engine geometry. Loaded regression disables hosted cleanup, proves effects restored and handles cleared before actual native successor transfer; verifies mismatched sidecar and dying-state refusal before mutation. Full play-completion and scheduler propagation of cleanup sidecar remains next. CI pending.
