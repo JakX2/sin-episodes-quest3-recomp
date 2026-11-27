@@ -1564,3 +1564,21 @@ add_test(NAME independent_server_recombinant_minor_damage_gate_native COMMAND si
 add_executable(sin_server_grenade_spit_detonation_test test_native_server_grenade_spit_detonation.cpp)
 target_compile_features(sin_server_grenade_spit_detonation_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_grenade_spit_detonation_native COMMAND sin_server_grenade_spit_detonation_test "$<TARGET_FILE:sin_slot0_client>" "$<TARGET_FILE:sin_slot0_server>")
+
+
+# Phase 1656: prior original phases 226/228/229/230/231 cross-checked as a
+# separate nine-virtual secondary client entity interface at owner+0x10014.
+# Owner-only SHA gate audits genuine PE32 off-CI. Public CI uses only invented
+# vtable-pointer windows; the C++ test calls only its own MSVC x86 vftables.
+# It does NOT enable VClientEntityList003 in the replacement client factory.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_entitylist_secondary_9slot_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_entitylist_secondary_abi.py"
+      --self-test)
+endif()
+add_executable(sin_original_client_entitylist_secondary_abi_test
+  test_original_client_entitylist_secondary_abi.cpp)
+target_compile_features(sin_original_client_entitylist_secondary_abi_test PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_entitylist_secondary_9slot_native_abi
+  COMMAND sin_original_client_entitylist_secondary_abi_test)
