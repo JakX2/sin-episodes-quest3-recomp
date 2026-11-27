@@ -267,6 +267,16 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# SHA-backed original 2006 PE32 allocator instruction witness gate.
+# Native CTest uses invented x86 code/relocations, never a retail process.
+# The shared observer invokes the same verifier on owner-local loaded code.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_engine_loaded_allocator_code_attestation_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/attest_sin_original_engine_live_allocator_code.py"
+      --self-test)
+endif()
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
