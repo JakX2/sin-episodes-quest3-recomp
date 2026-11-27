@@ -13,7 +13,7 @@ Read-only `objdump` and bounded PE32 reads of the **owner-local original** 2006 
 | directed contact helper | `0x2221f350` | 526 | `bbdebe8fad62ff42eb88b6b282addbd23be90161aca0a7fd5aec4a814ced8dff` |
 | global trace-prefix copy helper | `0x2206e2c0` | 128 | `383458ce02ffe087f4aa8fb8a3d4d68a761eeae74a77673b6e259949dad6f47d` |
 
-All five functions end at observed `INT3` boundaries. Source-like snippets below express **reconstructed control flow**, not original source code.
+The two GameEnts methods, the trace initializer, the pair-contact helper, and the directed-contact helper end at observed `INT3` boundaries. The 128-byte global trace-copy helper ends directly before a separate three-byte getter at `0x2206e340`, **without** intervening `INT3` padding; its successor bytes are audited independently. Source-like snippets below express **reconstructed control flow**, not original source code.
 
 ## Touch entry: verified path
 
