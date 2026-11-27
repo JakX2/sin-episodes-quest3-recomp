@@ -648,7 +648,7 @@ int main(int argc,char** argv){
     // Active, equipped NPC with no enemy: native ammo must run at both +420
     // call sites. Deliberately stop after the second gather at ideal-state query.
     {
-        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{},senses[0x60]{},empty_vectors[3][0x10]{},relationship[16]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;} equipped{&f};
+        struct EquippedThinkFixture {F* f;unsigned char weapon[0x520]{},enemy[0x900]{},memory[0x40]{},node[12]{},record[0x38]{},nav[0x50]{},path[0x6c]{},senses[0x60]{},empty_vectors[3][0x10]{},relationship[16]{};unsigned queries=0,traces=0,shots=0,sounds=0,flashes=0,prepares=0;void* scripted_entity=nullptr;} equipped{&f};
         sin_independent::EntityHandleEntry equipped_entries[3]{};
         equipped_entries[0].serial=3;equipped_entries[0].entity=reinterpret_cast<CBaseEntity*>(f.actor);
         equipped_entries[1].serial=7;equipped_entries[1].entity=reinterpret_cast<CBaseEntity*>(equipped.weapon);
@@ -663,7 +663,7 @@ int main(int argc,char** argv){
         };
         auto extent=[](void* p,void* e,unsigned* n) noexcept -> int{
             auto& q=*static_cast<EquippedThinkFixture*>(p);
-            if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.weapon)*n=sizeof(q.weapon);else if(e==q.enemy)*n=sizeof(q.enemy);else return 0;return 1;
+            if(e==q.f->actor)*n=sizeof(q.f->actor);else if(e==q.weapon)*n=sizeof(q.weapon);else if(e==q.enemy)*n=sizeof(q.enemy);else if(e&&e==q.scripted_entity)*n=sin_port::native_map::scripted_sequence_extent;else return 0;return 1;
         };
         req_schedule.admission.context=&equipped;req_schedule.admission.extent=extent;
         auto active=combat_bind;
@@ -1012,7 +1012,12 @@ int main(int argc,char** argv){
         {
             const auto scripted_frame=reinterpret_cast<RunServerNpcWeaponFrameWithScriptedEvents>(GetProcAddress(s,server_npc_scripted_weapon_frame_export));
             assert(scripted_frame&&!GetProcAddress(c,server_npc_scripted_weapon_frame_export));
-            struct SequenceFixture {F* f;alignas(4) unsigned char seq[nm::scripted_sequence_extent]{};} q{&f};
+            struct SequenceFixture {
+                F* f;alignas(4) unsigned char seq[nm::scripted_sequence_extent]{};
+                const ServerNpcScheduleStateApi* state=nullptr;
+                const ServerNpcScheduleBindings* schedule=nullptr;
+                unsigned restored=0,cleared=0,reads=0;
+            } q{&f};
             f.put(q.seq,0,nm::scripted_sequence_vtable);f.put(q.seq,0x378,0x9002u);
             const auto prior_slot=equipped_entries[2];const auto prior_count=selection.state.entities.count;
             equipped_entries[2].serial=9;equipped_entries[2].entity=reinterpret_cast<CBaseEntity*>(q.seq);
@@ -1051,7 +1056,59 @@ int main(int argc,char** argv){
             const ServerNpcRunAnimationInput next{76.125f,false,false};
             assert(combined->ground(f.actor,sizeof(f.actor),&next,.05f,&step_bind,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out)&&outer_result.completed&&outer_result.active_called&&!outer_result.think_called&&tail_result.completed);
             assert(seq_out.handled==2&&!seq_out.failed&&q.seq[0x3cc]&&equipped.shots==1&&!script_stats.runs&&!script_stats.starts);
-            meta.scripted=false;equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
+            // Execute the authenticated inherited WAIT descriptor, not a
+            // fabricated one-task row. Start at its actual post-idle cursor.
+            const auto bind_chain=reinterpret_cast<BindServerNpcScriptedScheduleChain>(GetProcAddress(s,server_npc_scripted_schedule_chain_export));
+            assert(bind_chain);
+            ServerScheduleImage inherited{},derived{};ServerScheduleImageResult ir{};
+            assert(scripts_image->build(f.actor,NpcSubclassGround,8000,selection.head,&b,&inherited,&ir));
+            assert(f.api->build(f.actor,NpcSubclassGround,9000,inherited.head,&b,&derived,&ir));
+            ServerNpcScriptedScheduleChain chain{};
+            assert(bind_chain(f.actor,&inherited,&derived,&runtime,&chain));
+            q.state=state;q.schedule=&chain.bound.scheduler.maintenance.selection.grunt.schedule;
+            equipped.scripted_entity=q.seq;
+            auto scripted_step=step_bind;scripted_step.image=&derived;scripted_step.schedule=&chain.bound;
+            auto native_pos=script_possession;native_pos.context=&q;native_pos.extent=control.extent;
+            finish.possession=&native_pos;finish.context=&q;
+            finish.current_schedule=[](void* p,void* actor,bool* present,int* type) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(actor==q.f->actor);
+                ServerNpcScheduleStateResult s{};if(!q.state->inspect(actor,sizeof(q.f->actor),q.schedule,&s))return 0;
+                *present=s.has_task!=0;*type=s.task.id;++q.reads;return 1;
+            };
+            finish.clear_schedule=[](void* p,void* actor) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(actor==q.f->actor&&q.restored==1);
+                ++q.cleared;return q.state->clear(actor,sizeof(q.f->actor));
+            };
+            nm::ScriptedNpcCleanupBindings cleanup{&control,nullptr,&q};
+            cleanup.effect_changed=[](void* p,void* actor) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(actor==q.f->actor);++q.restored;return 1;
+            };
+            nm::ScriptedNpcCleanupResult cleaned{};
+            services.cleanup=&cleanup;services.cleaned=&cleaned;
+            prepare_engaged(1,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+            f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0xffffffffu);
+            f.put(f.actor,0x970,0x9002u);f.put(f.actor,0x378,0x3000u);f.put(f.actor,0x9c,100);f.put(f.actor,0x78,1u);
+            f.put(q.seq,0xb4,4u);f.put(q.seq,0x3d0,0x3000u);f.put(q.seq,0x3d4,0xffffffffu);f.put(q.seq,0x3c4,2u);
+            f.put(f.actor,0x864,77.f);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1540);
+            assert(state->install(f.actor,sizeof(f.actor),8012,77.f,q.schedule,&sr)&&sr.global==global+158);
+            f.put(f.actor,0x79c,global+158);
+            for(unsigned i=0;i<4;++i)assert(state->advance(f.actor,sizeof(f.actor),q.schedule,&sr));
+            assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&sr.index==4&&sr.task.id==109);
+            meta.scripted=false;meta.suppress=true;stamp=0;
+            seed_anim(77.f);f.actor[0x3e0]=0;
+            const ServerNpcRunAnimationInput wait{77.f,false,false};
+            const int waiting=combined->ground(f.actor,sizeof(f.actor),&wait,.05f,&scripted_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out);
+            if(!waiting)std::fprintf(stderr,"script wait outer=%u think=%u/%u task=%d start=%u run=%u anim=%u\n",outer_result.active_called,step_result.think_called,step_result.think_completed,step_result.think.requests.scheduler.maintenance.state.task.id,script_stats.native_starts,script_stats.native_runs,step_result.animation_called);
+            assert(waiting&&outer_result.completed&&outer_result.think_called&&tail_result.completed&&script_stats.native_starts==1&&script_stats.native_runs==1&&script_stats.last_run.script.waiting&&!cleaned.completed&&!q.cleared);
+            const float done_time=outer_result.finish.deadline;assert(done_time>77.f);
+            seed_anim(done_time);f.actor[0x3e0]=1;
+            const ServerNpcRunAnimationInput done{done_time,false,false};
+            const int finished=combined->ground(f.actor,sizeof(f.actor),&done,.05f,&scripted_step,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out);
+            if(!finished)std::fprintf(stderr,"script finish outer=%u think=%u/%u task=%d start=%u run=%u cleaned=%u anim=%u\n",outer_result.active_called,step_result.think_called,step_result.think_completed,step_result.think.requests.scheduler.maintenance.state.task.id,script_stats.native_starts,script_stats.native_runs,cleaned.completed,step_result.animation_called);
+            assert(finished&&outer_result.completed&&outer_result.think_called&&tail_result.completed&&!script_stats.native_starts&&script_stats.native_runs==1&&script_stats.last_run.script.terminal.completed&&cleaned.completed&&cleaned.handles_cleared==3&&q.restored==1&&q.reads==2&&q.cleared==1);
+            assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&!sr.schedule);
+            unsigned script_handle=0;std::memcpy(&script_handle,f.actor+0x970,4);assert(script_handle==0xffffffffu);
+            meta.suppress=false;meta.scripted=false;equipped.scripted_entity=nullptr;equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
         }
         // Real due-think wake route, using the original proximity branch
         // with PVS false to retain the already verified combat fixture.
