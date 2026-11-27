@@ -227,6 +227,16 @@ target_compile_features(sin_server_gameents_engine_edict_pinned_owner_adapter_te
 add_test(NAME independent_server_gameents_engine_edict_pinned_owner_adapter_native
   COMMAND sin_server_gameents_engine_edict_pinned_owner_adapter_test)
 
+# Source-authenticated reciprocal CBaseEntity/CServerNetworkProperty
+# pointers (+0x168/+0x16c), edict unknown (+0x0c) and deferred activation.
+# The trusted synthetic host pins edict/entity/touch simultaneously; this
+# native test never reads the original DLL or registers ServerGameEnts001.
+add_executable(sin_server_gameents_pinned_original_link_attacher_test
+  test_server_gameents_pinned_original_link_attacher.cpp)
+target_compile_features(sin_server_gameents_pinned_original_link_attacher_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_pinned_original_link_attacher_native
+  COMMAND sin_server_gameents_pinned_original_link_attacher_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
