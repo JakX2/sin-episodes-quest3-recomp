@@ -54,7 +54,7 @@ int __cdecl activity(void* a,unsigned n,int id,const ServerRecombinantPolicyBind
             if(!b->schedule_matches||!b->schedule_matches(b->context,a,73,false,&yes))return 0;
             if(yes)id=10;
         }
-        // Original injured/crouched state gate precedes weapon lookup.
+        // Original burning-state gate precedes weapon lookup.
         if(rd<unsigned char>(a,0xbf)&8u){
             if(id==1)return done(111);
             if(id==6||id==113)return done(112);
