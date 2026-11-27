@@ -297,6 +297,21 @@ if(Python3_Interpreter_FOUND)
       --self-test)
 endif()
 
+# Phase 1653: read-only, SHA-gated authentic 2006 PE32
+# client/server InterfaceReg post-DllMain snapshots. This C++ source builds
+# in native CI but is NEVER executed on commercial DLLs by CI. The snapshot
+# library is tested independently using entirely invented DWORD/byte memory.
+add_executable(sin_original_interfacereg_owner_probe
+  ../../research/tools/sin_win32_factory_probe_phase657.cpp)
+target_compile_features(sin_original_interfacereg_owner_probe PRIVATE cxx_std_17)
+target_link_libraries(sin_original_interfacereg_owner_probe PRIVATE bcrypt)
+
+add_executable(sin_original_interfacereg_readonly_snapshot_test
+  test_original_interfacereg_readonly_snapshot.cpp)
+target_compile_features(sin_original_interfacereg_readonly_snapshot_test PRIVATE cxx_std_17)
+add_test(NAME independent_original_interfacereg_readonly_snapshot_native
+  COMMAND sin_original_interfacereg_readonly_snapshot_test)
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
