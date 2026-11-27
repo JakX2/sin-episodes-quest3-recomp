@@ -93,9 +93,64 @@ int __cdecl pain(void* a,unsigned n,const ServerRecombinantPolicyBindings* b,Ser
     o->sound_calls=o->completed=1;return 1;
 }
 const ServerRecombinantPolicyApi api{1,sizeof(ServerRecombinantPolicyApi),&schedule,&activity,&yaw,&pain};
+
+int __cdecl fail_schedule(void* actor,unsigned bytes,int failed,int reason,int arg3,
+    const ServerRecombinantFailScheduleBindings* b,ServerRecombinantFailScheduleResult* out) noexcept {
+    if(!out)return 0;*out={};
+    out->input=failed;out->reason=reason;out->arg3=arg3;out->output=-1;
+    if(!actor||!b||!b->parent||!b->policy||bytes<4)return 0;
+    const unsigned vt=rd<unsigned>(actor,0);
+    if(vt==recombinant_major_vtable){
+        out->kind=RecombinantMajor;
+        if(bytes<0xc6cu)return 0;
+        // Major +0x438 clears its private handle before the inherited
+        // failure scheduler, even if the delegated call later fails.
+        std::uint32_t cleared=0xffffffffu;
+        std::memcpy(static_cast<unsigned char*>(actor)+0xc68,&cleared,sizeof(cleared));
+        out->handle_cleared=1;
+    }else if(vt==recombinant_minor_vtable){
+        out->kind=RecombinantMinor;
+        if(bytes<0x7ecu)return 0;
+        // Minor +0x438: 85 or (23,reason=100) may select 41 when
+        // condition 10 is present. Other special inputs 23/72/73
+        // and a rejected 41 candidate pass through the clearance gate.
+        bool probe=false,check=false;
+        if(failed==85||(failed==23&&reason==100)){
+            const auto* conditions=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+            ServerNpcConditionResult cond{};
+            ++out->condition_tests;
+            if(!conditions||!conditions->test(actor,bytes,10,NpcConditionCurrent,&b->policy->conditions,&cond))
+                return 0;
+            check=cond.value!=0;out->condition_met=check;
+            if(check){out->output=41;out->completed=1;return 1;}
+            probe=true;
+        }else probe=failed==23||failed==72||failed==73;
+        if(probe){
+            ++out->ground_probes;
+            bool clear=false;
+            if(!b->ground_clear||!b->ground_clear(b->context,actor,&clear))return 0;
+            out->ground_clear=clear;
+            if(!clear){out->output=86;out->completed=1;return 1;}
+        }
+    }else return 0;
+    ++out->delegated;
+    if(!b->parent(b->context,actor,failed,reason,arg3,&out->output))return 0;
+    out->completed=1;return 1;
+}
+const ServerRecombinantFailScheduleApi fail_api{
+    1,sizeof(ServerRecombinantFailScheduleApi),&fail_schedule
+};
+
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantPolicyApi=_SiN_GetServerRecombinantPolicyApi")
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantPolicyApi* __cdecl SiN_GetServerRecombinantPolicyApi(unsigned v,unsigned n) noexcept {
     using namespace sin_port::native_weapon_tables;return v==1&&n==sizeof(ServerRecombinantPolicyApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantFailScheduleApi=_SiN_GetServerRecombinantFailScheduleApi")
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantFailScheduleApi* __cdecl
+SiN_GetServerRecombinantFailScheduleApi(unsigned version,unsigned size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerRecombinantFailScheduleApi)?&fail_api:nullptr;
 }
