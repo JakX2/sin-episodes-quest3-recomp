@@ -34,6 +34,22 @@ struct ServerRecombinantPolicyApi {
 };
 using GetServerRecombinantPolicyApi=const ServerRecombinantPolicyApi* (__cdecl *)(unsigned,unsigned) noexcept;
 
+inline constexpr char server_recombinant_major_scale_export[]="SiN_GetServerRecombinantMajorAltitudeScaleApi";
+// Original Major virtual +0x5d8 (0x22377150): transform an in/out scalar.
+// Two engine-provided vector arguments are used only when mode == 2.
+struct ServerRecombinantMajorScaleResult {
+    unsigned completed,modified;
+    int mode;
+    float input,output,factor,height_delta;
+};
+struct ServerRecombinantMajorScaleApi {
+    unsigned version,size;
+    int (__cdecl *scale)(const void*,unsigned,int,const float[3],const float[3],
+        float*,ServerRecombinantMajorScaleResult*) noexcept;
+};
+using GetServerRecombinantMajorScaleApi=const ServerRecombinantMajorScaleApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+
 inline constexpr char server_recombinant_fail_schedule_export[]="SiN_GetServerRecombinantFailScheduleApi";
 // Authenticated class-specific virtual +0x438. The inherited generic
 // failure scheduler and the Minor's collision-based clearance probe stay

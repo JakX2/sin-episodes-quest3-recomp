@@ -1,5 +1,6 @@
 #include "native_server_recombinant_policy.h"
 #include <cstring>
+#include <cmath>
 extern "C" const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(unsigned,unsigned) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerActivityDictionaryApi* __cdecl SiN_GetServerActivityDictionaryApi(unsigned,unsigned) noexcept;
 namespace sin_port::native_weapon_tables {
@@ -94,6 +95,37 @@ int __cdecl pain(void* a,unsigned n,const ServerRecombinantPolicyBindings* b,Ser
 }
 const ServerRecombinantPolicyApi api{1,sizeof(ServerRecombinantPolicyApi),&schedule,&activity,&yaw,&pain};
 
+int __cdecl major_scale(const void* actor,unsigned bytes,int mode,const float from[3],
+    const float to[3],float* value,ServerRecombinantMajorScaleResult* out) noexcept {
+    if(!out)return 0;
+    *out={};out->mode=mode;out->factor=1.f;
+    if(!actor||bytes<4||rd<unsigned>(actor,0)!=recombinant_major_vtable||
+       !value||!std::isfinite(*value))return 0;
+    out->input=*value;
+    // 22377150 / Major +0x5d8: the scalar is only changed for mode 2.
+    // Retail compares to.z - from.z with zero, choosing 0.5 for
+    // negative separation and 1.5 otherwise. The returned boolean
+    // means factor != 1, independent of the input scalar's value.
+    if(mode==2){
+        if(!from||!to||!std::isfinite(from[2])||!std::isfinite(to[2]))return 0;
+        const double delta=double(to[2])-double(from[2]);
+        out->height_delta=static_cast<float>(delta);
+        if(!std::isfinite(out->height_delta))return 0;
+        out->factor=delta<0.?.5f:1.5f;
+        const float next=static_cast<float>(double(*value)*out->factor);
+        if(!std::isfinite(next))return 0;
+        *value=next;
+        out->modified=1;
+    }
+    out->output=*value;
+    out->completed=1;
+    return 1;
+}
+const ServerRecombinantMajorScaleApi scale_api{
+    1,sizeof(ServerRecombinantMajorScaleApi),&major_scale
+};
+
+
 int __cdecl fail_schedule(void* actor,unsigned bytes,int failed,int reason,int arg3,
     const ServerRecombinantFailScheduleBindings* b,ServerRecombinantFailScheduleResult* out) noexcept {
     if(!out)return 0;*out={};
@@ -153,4 +185,11 @@ extern "C" const sin_port::native_weapon_tables::ServerRecombinantFailScheduleAp
 SiN_GetServerRecombinantFailScheduleApi(unsigned version,unsigned size) noexcept {
     using namespace sin_port::native_weapon_tables;
     return version==1&&size==sizeof(ServerRecombinantFailScheduleApi)?&fail_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantMajorAltitudeScaleApi=_SiN_GetServerRecombinantMajorAltitudeScaleApi")
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantMajorScaleApi* __cdecl
+SiN_GetServerRecombinantMajorAltitudeScaleApi(unsigned version,unsigned size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerRecombinantMajorScaleApi)?&scale_api:nullptr;
 }

@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <string>
 using namespace sin_port::native_weapon_tables;
 struct Fixture {
@@ -194,5 +195,60 @@ int main(int argc,char** argv){
     f.put(0,0x2249aaa4u);
     assert(!fail_api->evaluate(f.actor,sizeof(f.actor),85,0,0,&fb,&fo)&&h.calls.empty());
     assert(!fail_api->evaluate(f.actor,sizeof(f.actor),85,0,0,&fb,nullptr));
+
+    // Original Major virtual +0x5d8: the scalar is multiplied only for
+    // mode 2, using the sign of (to.z - from.z). This is a class-local
+    // policy, not a reconstruction of host movement/collision services.
+    const auto get_scale=reinterpret_cast<GetServerRecombinantMajorScaleApi>(
+        GetProcAddress(server,server_recombinant_major_scale_export));
+    assert(get_scale&&!GetProcAddress(client,server_recombinant_major_scale_export)&&
+        !get_scale(0,sizeof(ServerRecombinantMajorScaleApi))&&
+        !get_scale(1,sizeof(ServerRecombinantMajorScaleApi)-1));
+    const auto* scale=get_scale(1,sizeof(ServerRecombinantMajorScaleApi));
+    assert(scale);
+    f.put(0,recombinant_major_vtable);
+    ServerRecombinantMajorScaleResult so{};
+    const float from[]{0.f,0.f,4.f};
+    float below[]{0.f,0.f,-2.f};
+    float above[]{0.f,0.f,8.f};
+    float equal[]{0.f,0.f,4.f};
+    float v=2.f;
+    assert(scale->scale(f.actor,sizeof(f.actor),2,from,below,&v,&so)&&so.completed&&
+        so.modified&&so.mode==2&&so.input==2.f&&so.factor==.5f&&
+        so.height_delta==-6.f&&v==1.f&&so.output==1.f);
+    v=2.f;
+    assert(scale->scale(f.actor,sizeof(f.actor),2,from,above,&v,&so)&&
+        so.modified&&so.factor==1.5f&&so.height_delta==4.f&&v==3.f);
+    v=2.f;
+    assert(scale->scale(f.actor,sizeof(f.actor),2,from,equal,&v,&so)&&
+        so.modified&&so.factor==1.5f&&!so.height_delta&&v==3.f);
+    // Original return is true for factor != 1 even if the scalar is 0.
+    v=0.f;
+    assert(scale->scale(f.actor,sizeof(f.actor),2,from,above,&v,&so)&&
+        so.modified&&so.factor==1.5f&&v==0.f);
+    for(int id:{-1,0,1,3,200}){
+        v=7.f;
+        assert(scale->scale(f.actor,sizeof(f.actor),id,nullptr,nullptr,&v,&so)&&
+            so.completed&&!so.modified&&so.factor==1.f&&so.input==7.f&&
+            so.output==7.f&&v==7.f);
+    }
+    v=2.f;
+    assert(!scale->scale(f.actor,sizeof(f.actor),2,nullptr,above,&v,&so)&&
+        !so.completed&&!so.modified&&v==2.f);
+    assert(!scale->scale(f.actor,sizeof(f.actor),2,from,nullptr,&v,&so)&&
+        !so.completed&&!so.modified&&v==2.f);
+    const float bad[]{0.f,0.f,std::numeric_limits<float>::quiet_NaN()};
+    assert(!scale->scale(f.actor,sizeof(f.actor),2,from,bad,&v,&so)&&v==2.f);
+    float huge=std::numeric_limits<float>::max();
+    assert(!scale->scale(f.actor,sizeof(f.actor),2,from,above,&huge,&so)&&
+        !so.completed&&huge==std::numeric_limits<float>::max());
+    v=std::numeric_limits<float>::quiet_NaN();
+    assert(!scale->scale(f.actor,sizeof(f.actor),2,from,below,&v,&so));
+    v=2.f;
+    assert(!scale->scale(f.actor,3,2,from,below,&v,&so)&&v==2.f);
+    f.put(0,recombinant_minor_vtable);
+    assert(!scale->scale(f.actor,sizeof(f.actor),2,from,below,&v,&so)&&
+        !so.completed&&v==2.f);
+    assert(!scale->scale(f.actor,sizeof(f.actor),2,from,below,&v,nullptr)&&v==2.f);
     FreeLibrary(server);FreeLibrary(client);return 0;
 }
