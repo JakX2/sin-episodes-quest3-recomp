@@ -1,0 +1,11 @@
+# Phase 1623: original Recombinant Minor +0x1d4 offset-origin point
+
+Direct read-only recovery of the original 2006 PE32 `server.dll` from the user's bin.zip, authenticated SHA-256 `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`. Original Recombinant Minor vtable at `0x224a2974` slot `+0x1d4` points to function `0x2237b420` (93 bytes, SHA-256 `99df09c6a541d40a2890fcee0f7861e8ad3354987d117f9d539542fafb6c1e7a`). The original BaseMutant/Major slot points to shared inherited function `0x22031220`; no inherited implementation is copied.
+
+Disassembly of `0x2237b420` confirms the first explicit method argument is an output vector pointer (the original method returns with `ret 0x0c`; other explicit arguments are unused). If actor flags at `+0xb8` have bit 11 set (`0x800`), the method invokes inherited `0x2213fa60` to refresh its origin **before** reading the three coordinates. It reads actor floats at `+0x2bc`, `+0x2c0`, `+0x2c4`, and writes output `(x, y, z + 6.0f)`. The 6.0f literal is at `0x223de180` (IEEE754 `0x40c00000`). The original method also leaves EAX pointing at the output vector; the reconstructed host-facing API uses `int` success/failure plus an output buffer.
+
+The new separate server-only export `SiN_GetServerRecombinantMinorOriginPointApi` preserves the old `SiN_GetServerRecombinantMinorApi` ABI. It delegates dirty-origin refresh to an explicitly supplied engine callback; for clean origins it does not require that callback. Synthetic safety behavior (fail closed for missing callback, wrong class/size, or non-finite floats) is deliberately distinct from unchecked retail engine pointer/NaN behavior. The output array is only published after a successful refresh and validation.
+
+The loaded Windows DLL regression proves clean-state passthrough with an exact 0x2c8 minimum actor extent, dirty-state callback invocation and reread of mutated origin, valid negative Z, service rejection without partial output, missing service on dirty state, null arguments, nonfinite origin and wrong-class rejection. The fixture verifies the export is server-only and factory version/size gates.
+
+Original binary bytes and redistributed proprietary DLLs are excluded from commits. No generic Source physics, surfaces, props, model-loading or rendering, and no real game-engine startup claim. CI pending.
