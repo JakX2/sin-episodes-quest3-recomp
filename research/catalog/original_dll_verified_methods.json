@@ -4809,6 +4809,24 @@
       "original_code_length": 146,
       "original_code_sha256": "c292491b77e181d88ab5c65d6c49667f99cbd9fcf82a6be39d62f1af23e7c4b5",
       "label": "Original 60-byte INTEGER placeholder RecvProp factory uses optional explicit proxy or byte width 1/2/4 fallback"
+    },
+    {
+      "dll": "server",
+      "entry_va": "0x2237E8C0",
+      "label": "Recombinant Minor +0x398 global-veto damage-info threshold (canonical Phase 1613)",
+      "owner": "NPC_RecombinantMinor",
+      "recovery_status": "machine_code_verified",
+      "original_code_sha256": "e08a5b91b9f7e3411976303123a218fb28e6d3ff2df0690a1e8df6525b714ff7",
+      "original_code_length": 56,
+      "evidence_path": "research/phases/2026-11-27-sin-native-recombinant-minor-damage-gate-phase1613.md",
+      "additional_evidence_paths": [
+        "research/phases/2026-11-27-sin-native-recombinant-minor-metric-gate-phase1625.md",
+        "research/phases/2026-11-27-sin-gameents-transmit-minor-dedup-phase1628.md"
+      ],
+      "implementation_path": "pc/independent_slot0/native_server_recombinant_minor_damage_gate.cpp",
+      "additional_implementation_path": "pc/independent_slot0/native_server_recombinant_minor.cpp",
+      "test_path": "pc/independent_slot0/test_native_server_recombinant_minor_damage_gate.cpp",
+      "additional_test_path": "pc/independent_slot0/test_native_server_recombinant_minor.cpp"
     }
   ]
 }
