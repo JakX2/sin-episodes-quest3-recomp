@@ -247,6 +247,16 @@ target_compile_features(sin_server_gameents_win32_owned_pin_integration_test PRI
 add_test(NAME independent_server_gameents_win32_owned_pin_integration_native
   COMMAND sin_server_gameents_win32_owned_pin_integration_test)
 
+# Read-only owner-local live engine.dll edict-global monitor:
+# in public CI ONLY run synthetic RVA/snapshot/self-test, never open a game
+# process. The live --pid mode is explicit owner opt-in and SHA-pinned.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_engine_edict_owner_observer_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/observe_sin_original_engine_edict_owner.py"
+      --self-test)
+endif()
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
