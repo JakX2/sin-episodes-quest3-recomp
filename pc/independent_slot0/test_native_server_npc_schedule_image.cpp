@@ -1024,7 +1024,7 @@ int main(int argc,char** argv){
                 F* f;alignas(4) unsigned char seq[nm::scripted_sequence_extent]{},other[nm::scripted_sequence_extent]{},partner[0x1088]{},begin_action[0x1c]{},end_action[0x1c]{};
                 const ServerNpcScheduleStateApi* state=nullptr;
                 const ServerNpcScheduleBindings* schedule=nullptr;
-                unsigned restored=0,cleared=0,reads=0,lookups=0,assignments=0,begins=0,ends=0,aims=0,motion_ticks=0;
+                unsigned restored=0,cleared=0,reads=0,lookups=0,assignments=0,begins=0,ends=0,aims=0,motion_ticks=0,relocations=0;
             } q{&f};
             f.put(q.seq,0,nm::scripted_sequence_vtable);f.put(q.seq,0x378,0x9002u);
             const auto prior_slot=equipped_entries[2];const auto prior_count=selection.state.entities.count;
@@ -1240,6 +1240,17 @@ int main(int argc,char** argv){
             // From here no seed_anim, cursor writes, or finished-byte writes:
             // the recovered base cycle and original outer cadence drive it.
             q.restored=q.cleared=q.reads=0;
+            // A nonempty play token activates original 22049292..22049417
+            // on terminal cleanup, even with zero animation movement.
+            // Keep the remaining engine-owned relocation explicit; the
+            // fixture models zero displacement, and checks call ordering.
+            cleanup.root_motion_relocate=[](void* p,void* a,void* sequence) noexcept ->int{
+                auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&sequence==q.seq&&q.restored==1&&!q.cleared&&!q.relocations);
+                unsigned h=0;
+                for(unsigned off:{0x970u,0x8a8u,0x90cu}){std::memcpy(&h,q.f->actor+off,4);assert(h==0xffffffffu);}
+                std::memcpy(&h,q.seq+0x3d0,4);assert(h==0xffffffffu);
+                assert(q.seq[0x3cd]);++q.relocations;return 1;
+            };
             finish.sequence_has_motion=[](void* p,void* a,int seq,bool* value) noexcept ->int{
                 auto& q=*static_cast<SequenceFixture*>(p);assert(a==q.f->actor&&seq==2);*value=false;return 1;
             };
@@ -1277,6 +1288,7 @@ int main(int argc,char** argv){
                 const auto& animation_runtime=step_result.animation.frame.frame.runtime;
                 const auto& weapon_frame=animation_runtime.weapon_frame;
                 if(!ok)std::fprintf(stderr,"script continuous weapon frames=%u advanced=%u reselected=%u sequence_set=%u selected=%d owner=%u tail=%u\n",animation_runtime.weapon_frames,weapon_frame.advanced,weapon_frame.reselected,weapon_frame.sequence_set,weapon_frame.selected,weapon_frame.owner_live,tail_result.completed);
+                if(!ok)std::fprintf(stderr,"script terminal live=%u released=%u effects=%u handles=%u root=%u restored=%u reads=%u cleared=%u think=%u/%u\n",cleaned.script_live,cleaned.script_released,cleaned.effects_restored,cleaned.handles_cleared,cleaned.root_motion_called,q.restored,q.reads,q.cleared,step_result.think_called,step_result.think_completed);
                 assert(ok&&outer_result.completed&&outer_result.think_called&&tail_result.completed);
                 if(weapon_frame.reselected){
                     ++weapon_reselections;assert(weapon_frame.sequence_set&&weapon_frame.selected==0);
@@ -1300,7 +1312,7 @@ int main(int argc,char** argv){
                 }else{
                     assert(result.task==109);++post_ticks;
                     if(result.terminal.completed){
-                        assert(cleaned.completed&&cleaned.handles_cleared==3&&q.restored==1&&q.cleared==1&&q.reads==2);
+                        assert(cleaned.completed&&cleaned.handles_cleared==3&&cleaned.root_motion_called&&cleaned.activity_cleared&&q.relocations==1&&q.restored==1&&q.cleared==1&&q.reads==2);
                         assert(state->inspect(f.actor,sizeof(f.actor),q.schedule,&sr)&&!sr.schedule);
                         unsigned script=0;std::memcpy(&script,f.actor+0x970,4);assert(script==0xffffffffu);
                         terminated=true;break;
@@ -1318,7 +1330,7 @@ int main(int argc,char** argv){
             prepare_engaged(1,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
             f.put(f.actor,0x850,4);f.put(f.actor,0x858,4);f.put(f.actor,0x8a0,0xffffffffu);f.put(f.actor,0x8a8,0x9002u);
             f.put(f.actor,0x970,0x9002u);f.put(f.actor,0x378,0x3000u);f.put(f.actor,0x9c,100);
-            f.put(f.motor,0x14,0.f);f.put(equipped.nav,0xc,0);std::memset(equipped.path,0,sizeof(equipped.path));
+            f.put(f.actor,0x370,0.f);f.put(f.motor,0x14,0.f);f.put(equipped.nav,0xc,0);std::memset(equipped.path,0,sizeof(equipped.path));
             auto face_move=prefix_move;
             face_move.stop_path=[](void* p,void* nav,bool finished) noexcept ->int{
                 auto& q=*static_cast<EquippedThinkFixture*>(p);assert(nav==q.nav&&finished);++q.f->stop_paths;return 1;
