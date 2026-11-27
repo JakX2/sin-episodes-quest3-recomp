@@ -265,6 +265,60 @@ int main() {
        !abandoned.ForgetEdict(0)||
        !abandoned.ReserveEdict(0,stage_spare.edict,0x14,2))
         return Fail(52,"abandoned reservation not confined to its epoch");
+    // Phase 1646: same address for two distinct owner lifetimes. Ordinary
+    // pointer-pair authorization would accept both generations (address
+    // ABA); all new host-facing authorizers require the 64-bit owner epoch.
+    Registry epoch_registry;
+    Storage recycled_actor{};
+    auto old_id=Identity(recycled_actor,11);
+    old_id.edict_bytes=0x14;
+    old_id.unknown=old_id.entity;
+    old_id.unknown_bytes=sizeof(void*);
+    if(!epoch_registry.Enroll(0,old_id)||
+       !epoch_registry.BindCandidate(17,2,0))
+        return Fail(53,"initial epoch-scoped owner enrollment");
+    std::uint64_t epoch_token=0;
+    if(!epoch_registry.Begin(5,&epoch_token)||
+       !epoch_registry.ValidEdictAtEpoch(old_id.edict,11)||
+       !epoch_registry.ValidEntityAtEpoch(old_id.entity,11)||
+       !epoch_registry.ValidUnknownPairAtEpoch(old_id.edict,old_id.unknown,11)||
+       !epoch_registry.ValidPairAtEpoch(old_id.edict,old_id.entity,11)||
+       !epoch_registry.ValidTouchAtEpoch(old_id.touch,0x20,11)||
+       !epoch_registry.ValidCandidateAtEpoch(17,2,old_id.entity,11)||
+       epoch_registry.ValidUnknownPairAtEpoch(old_id.edict,old_id.unknown,0)||
+       epoch_registry.ValidPairAtEpoch(old_id.edict,old_id.entity,12)||
+       epoch_registry.ValidCandidateAtEpoch(17,2,old_id.entity,12)||
+       !epoch_registry.End(5,epoch_token))
+        return Fail(54,"initial correct/wrong generations not distinguished");
+    if(!epoch_registry.Begin(3,&epoch_token)||
+       !epoch_registry.RetireEntity(0)||
+       !epoch_registry.End(3,epoch_token))
+        return Fail(55,"old owner retirement before address reuse");
+    // Reserve the *same* edict pointer and reactivate the *same* entity and
+    // touch bytes, but with a genuinely new host-issued uint64 epoch.
+    auto new_id=old_id;
+    new_id.generation=12;
+    if(!epoch_registry.ReserveEdict(0,new_id.edict,0x14,12)||
+       !epoch_registry.ActivateReservedEntity(0,new_id)||
+       !epoch_registry.BindCandidate(17,2,0))
+        return Fail(56,"same-address newer generation activation");
+    if(!epoch_registry.Begin(5,&epoch_token)||
+       !epoch_registry.ValidUnknownPair(new_id.edict,new_id.unknown)||
+       !epoch_registry.ValidEdictAtEpoch(new_id.edict,12)||
+       epoch_registry.ValidEdictAtEpoch(new_id.edict,11)||
+       !epoch_registry.ValidEntityAtEpoch(new_id.entity,12)||
+       epoch_registry.ValidEntityAtEpoch(new_id.entity,11)||
+       !epoch_registry.ValidUnknownPairAtEpoch(new_id.edict,new_id.unknown,12)||
+       epoch_registry.ValidUnknownPairAtEpoch(new_id.edict,new_id.unknown,11)||
+       !epoch_registry.ValidPairAtEpoch(new_id.edict,new_id.entity,12)||
+       epoch_registry.ValidPairAtEpoch(new_id.edict,new_id.entity,11)||
+       !epoch_registry.ValidTouchAtEpoch(new_id.touch,0x20,12)||
+       epoch_registry.ValidTouchAtEpoch(new_id.touch,0x20,11)||
+       epoch_registry.ValidTouchAtEpoch(new_id.touch,0x100,12)||
+       !epoch_registry.ValidCandidateAtEpoch(17,2,new_id.entity,12)||
+       epoch_registry.ValidCandidateAtEpoch(17,2,new_id.entity,11)||
+       !epoch_registry.End(5,epoch_token))
+        return Fail(57,"same address stale-epoch ABA was authorized");
     std::puts("PASS owner lifecycle registry: source-backed exact CBaseEntity/IServerUnknown alias, leases, thread isolation, overlap/overflow bounds, retirement, global generations and transmit rebinding");
     return 0;
 }
