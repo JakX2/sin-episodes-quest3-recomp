@@ -214,7 +214,7 @@ def audit_original_private_engine(data):
         "owner_private_image_read_only": True,
         "original_executable_bytes_exported": False,
         "live_retail_process_attestation_verified": False,
-        "continuous_owner_edition_pin_verified": False,
+        "continuous_owner_allocation_pin_verified": False,
     }
 
 
