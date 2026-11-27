@@ -1847,6 +1847,8 @@
         nw::ServerScriptedAnimationDispatchBindings db{&studio,&eb};
         nw::ServerScriptedAnimationDispatchResult dr{};
         put(f.npc,0x970,0x3000u);put(f.npc,0x3ec,1);put(f.npc,0x3c0,0x3f800000u);put(f.npc,0x398,0u);put(f.npc,0x3e8,0x3e800000u);
+        // Earlier task cases set the finished latch; this is a fresh interval.
+        f.npc[0x3e0]=f.npc[0x3e1]=0;
         put(f.npc,0x494,77u);put(f.npc,0x498,1u);put(f.npc,0x4a0,1u);
         put(f.event_layer,0,1u);f.event_layer[5]=1;put(f.event_layer,8,2);put(f.event_layer,0xc,0x3f000000u);put(f.event_layer,0x14,0x3f800000u);put(f.event_layer,0x38,0x3e800000u);
         f.calls.clear();f.seq[0x3cc]=1;
