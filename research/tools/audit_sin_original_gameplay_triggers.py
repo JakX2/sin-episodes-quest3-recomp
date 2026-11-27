@@ -133,6 +133,12 @@ ORIGINAL_METHODS={
   "sequence_clear_condition":(0x220398a0,91,"1c8c2465a759e27e7eead05d5d31074fc077765f60b8ed55ed44617a86f97327"),
   "sequence_npc_cleanup":(0x22048fe0,1321,"e7b8ef94bef14d7f2e37ada620ffcedf852acdc4907032a62e995f9828244fd1"),
   "sequence_effect_restore":(0x2214c7f0,73,"87e6497044f192353595c5311d68bb6893fc3a1513f020fb53f748e42330956f"),
+  "sequence_animation_event_dispatch":(0x2204a3b0,64,"dc5709a51fb07962370ae0042da7a55bbba46bd1cf3524ce7fca886a8f9c1023"),
+  "sequence_animation_event1001":(0x2204a527,46,"0ac13c5666f1c2b20aaebe0d339c4bae75aeccfb4505ee42116b20e5d961160b"),
+  "sequence_animation_event1002":(0x2204a555,46,"20b71739f3fa1effb4a2eec0c8e549a0a8ac2298cefaa2d6bbfff750626385e4"),
+  "sequence_animation_event1003":(0x2204a4ec,59,"eeef3469cc079ed78a172a8753ed2675bf13bb88ef5517fce2dce247690569a9"),
+  "sequence_animation_event_atoi":(0x223a5673,88,"4790129ae4d1dc86dcba5201e7c8d359f3ed4c8b657ff5dd2f9924e58d11da94"),
+  "sequence_condition_snapshot":(0x2203b110,232,"eee6be6a992c87624488c9945a5de82c0b9b6311bf1a4a94294a9e4b5f4ad973"),
   "sequence_numbered_event":(0x221adec0,36,"667990e7ea437aaf3162218796f66917ae288409a6303b2ff78a6d40c9d82f4a"),
   "filter_test_activator":(0x2216B300,85,"6573bbfe1b919c5f45333c52c11acdc9a7bd51b89c40e39c14a4d8ef3656b6bf"),
   "base_filter_destructor":(0x2216BC40,54,"b2478b0e023b0501b74ed2f2a2aeddea39a22e0ebf7215261fd960d3b9c7425a"),
@@ -352,6 +358,7 @@ def verify_filter_factory_keys(read_u32,read_text):
 FILTER_DESTRUCTORS={0x224149a4:0x2216bc40,0x22414c3c:0x2216bd00,0x22414ed4:0x2216be40,0x2241516c:0x2216bf20}
 FILTER_REMOVAL_SLOTS=((0x14,0x22001ae0),(0x50,0x221435b0),(0x17c,0x221446f0),(0x224,0x2214a060),(0x268,0x220019f0))
 SEQUENCE_WORDS={
+    0x2204ab64:0x2204a527,0x2204ab68:0x2204a555,0x2204ab6c:0x2204a4ec,
     0x22052eb8:0x2205263b,0x22052ebc:0x22052675,0x223d9f88:0x33333333,0x223d9f8c:0x3fc33333,0x223d8f14:0x41200000,0x22052ec0:0x2205272a,0x22052ec4:0x22052788,0x22052ec8:0x2205279f,
     0x22052f24:0x2205281a,
     # RunTask 220538d0: byte table indexed by task-2, then jump table.

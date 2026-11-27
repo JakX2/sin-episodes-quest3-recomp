@@ -804,6 +804,27 @@ using CompleteScriptedSequencePlayWithCleanup=int (__cdecl *)(void*,unsigned,voi
     const ScriptedNpcCleanupBindings*,ScriptedNpcCleanupResult*) noexcept;
 using RunScriptedNpcTaskWithCleanup=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcTaskBindings*,ScriptedNpcTaskResult*,
     const ScriptedNpcCleanupBindings*,ScriptedNpcCleanupResult*) noexcept;
+// Scripted NPC animation-event cases and original 2203b110 suffix.
+// The event options span is owner-validated; unhandled events stay with
+// the existing virtual event handler.
+struct ScriptedNpcAnimationEventBindings {
+    const ScriptedSequenceInterruptBindings* interrupt;
+    const ScriptedSequenceEventBindings* outputs;
+};
+struct ScriptedNpcAnimationEventResult {
+    unsigned completed,handled,script_live,parsed;
+    int event,index;
+    ScriptedSequenceInterruptResult interrupt;
+    ScriptedSequenceEventResult output;
+};
+struct ScriptedNpcConditionSnapshotResult {
+    unsigned completed,snapshot,script_live,suppressed;
+    ScriptedSequenceInterruptResult interrupt;
+};
+inline constexpr char scripted_npc_animation_event_export[]="SiN_HandleScriptedNpcAnimationEvent";
+using HandleScriptedNpcAnimationEvent=int (__cdecl *)(void*,unsigned,int,const char*,unsigned,const ScriptedNpcAnimationEventBindings*,ScriptedNpcAnimationEventResult*) noexcept;
+inline constexpr char scripted_npc_condition_snapshot_export[]="SiN_SnapshotScriptedNpcConditions";
+using SnapshotScriptedNpcConditions=int (__cdecl *)(void*,unsigned,const ScriptedSequenceInterruptBindings*,ScriptedNpcConditionSnapshotResult*) noexcept;
 struct CampaignFilterInputBindings {
     const CampaignCustomFilterBindings* predicate;
     const native_weapon_tables::ServerEntityVoidOutputBindings* output;

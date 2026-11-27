@@ -4141,6 +4141,62 @@ int __cdecl interrupt_npc_gate(void* a,unsigned n,const ScriptedSequenceInterrup
     o->dead_actor=read_field<int>(a,0x8c)!=0;o->permitted=!o->dead_actor;o->completed=1;return 1;
 }
 const ScriptedSequenceInterruptApi interrupt_api{1,sizeof(ScriptedSequenceInterruptApi),&interrupt_set,&interrupt_query,&interrupt_suppress,&interrupt_npc_gate};
+// 223a5673 decimal parser used by event1003. Preserve the original
+// modulo-32-bit accumulation and optional sign for ASCII model options.
+bool scripted_event_index(const char* options,unsigned n,int& value) noexcept {
+    if(!options||!n||n>4096||!SinCampaignStorageReadableInternal(options,n)||!std::memchr(options,0,n))return false;
+    const auto* p=reinterpret_cast<const unsigned char*>(options);
+    while(*p==' '||(*p>=9&&*p<=13))++p;
+    const bool negative=*p=='-';
+    if(negative||*p=='+')++p;
+    unsigned bits=0;
+    while(*p>='0'&&*p<='9'){bits=bits*10u+unsigned(*p-'0');++p;}
+    if(negative)bits=0u-bits;
+    std::memcpy(&value,&bits,4);return true;
+}
+int scripted_npc_animation_event(void* npc,unsigned n,int event,const char* options,unsigned options_bytes,
+    const ScriptedNpcAnimationEventBindings* b,ScriptedNpcAnimationEventResult* o) noexcept {
+    if(!o)return 0;*o={};o->event=event;
+    unsigned vt=0;
+    if(n<0x974||!SinReadCampaignTouchMarkerInternal(npc,&vt)||!scripted_npc_marker(vt)||!SinCampaignStorageReadableInternal(npc,0x974))return 0;
+    if(event<1001||event>1003){o->completed=1;return 1;}
+    o->handled=1;
+    if(!b||!interrupt_control(b->interrupt))return 0;
+    const auto& c=*b->interrupt->control;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    void* seq=registry.Resolve(read_field<unsigned>(npc,0x970));
+    if(!seq){o->completed=1;return 1;}
+    unsigned extent=0;
+    if(!c.extent(c.context,seq,&extent)||!interrupt_storage(seq,extent))return 0;
+    o->script_live=1;
+    if(event==1001||event==1002){
+        if(!interrupt_set(seq,extent,event==1002,&o->interrupt))return 0;
+    }else{
+        if(!scripted_event_index(options,options_bytes,o->index))return 0;
+        o->parsed=1;
+        if(!scripted_sequence_event(seq,extent,o->index,b->outputs,&o->output))return 0;
+    }
+    o->completed=1;return 1;
+}
+int scripted_condition_snapshot(void* npc,unsigned n,const ScriptedSequenceInterruptBindings* b,ScriptedNpcConditionSnapshotResult* o) noexcept {
+    if(!o)return 0;*o={};unsigned vt=0;
+    if(!interrupt_control(b)||n<0x974||!SinReadCampaignTouchMarkerInternal(npc,&vt)||!scripted_npc_marker(vt)||
+       !SinCampaignStorageReadableInternal(npc,0x974))return 0;
+    using namespace sin_port::native_weapon_tables;
+    const auto* api=SiN_GetServerNpcConditionApi(1,sizeof(ServerNpcConditionApi));
+    if(!api||!api->snapshot_mask(npc,n))return 0;o->snapshot=1;
+    if(read_field<int>(npc,0x850)==4){
+        const auto& c=*b->control;
+        const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+        if(void* seq=registry.Resolve(read_field<unsigned>(npc,0x970))){
+            unsigned extent=0;
+            if(!c.extent(c.context,seq,&extent)||!interrupt_storage(seq,extent)||
+               !interrupt_suppress(seq,extent,b,&o->interrupt))return 0;
+            o->script_live=1;o->suppressed=o->interrupt.condition16||o->interrupt.condition17;
+        }
+    }
+    o->completed=1;return 1;
+}
 // 22048fe0 normal cleanup branch. Explicitly retain the complex
 // root-motion/collision leaf and the distinct initial dying branch.
 int cleanup_scripted_npc(void* npc,unsigned bytes,const ScriptedNpcCleanupBindings* b,ScriptedNpcCleanupResult* o) noexcept {
@@ -4778,4 +4834,15 @@ extern "C" int __cdecl SiN_RunScriptedNpcTaskWithCleanup(void* a,unsigned n,int 
     const sin_port::native_map::ScriptedNpcCleanupBindings* cleanup,sin_port::native_map::ScriptedNpcCleanupResult* cleaned) noexcept {
     if(!cleanup||!cleaned){if(o)*o={};if(cleaned)*cleaned={};return 0;}
     return sin_port::native_map::run_scripted_npc_task(a,n,task,b,o,cleanup,cleaned);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_HandleScriptedNpcAnimationEvent=_SiN_HandleScriptedNpcAnimationEvent")
+extern "C" int __cdecl SiN_HandleScriptedNpcAnimationEvent(void* a,unsigned n,int event,const char* options,unsigned options_bytes,
+    const sin_port::native_map::ScriptedNpcAnimationEventBindings* b,sin_port::native_map::ScriptedNpcAnimationEventResult* o) noexcept {
+    return sin_port::native_map::scripted_npc_animation_event(a,n,event,options,options_bytes,b,o);
+}
+#pragma comment(linker,"/EXPORT:SiN_SnapshotScriptedNpcConditions=_SiN_SnapshotScriptedNpcConditions")
+extern "C" int __cdecl SiN_SnapshotScriptedNpcConditions(void* a,unsigned n,const sin_port::native_map::ScriptedSequenceInterruptBindings* b,
+    sin_port::native_map::ScriptedNpcConditionSnapshotResult* o) noexcept {
+    return sin_port::native_map::scripted_condition_snapshot(a,n,b,o);
 }
