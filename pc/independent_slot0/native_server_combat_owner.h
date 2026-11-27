@@ -6,6 +6,7 @@ namespace sin_port::native_weapon_tables {
 enum class NativeCombatOwnerKind : int {Unknown=-1,Noncombat=0,Npc=1,Player=2};
 inline NativeCombatOwnerKind native_combat_owner_kind(std::uint32_t vt) noexcept {
     switch(vt){
+    case 0x2249f65cu:case 0x224a0d8cu:case 0x224a2974u:
     case 0x2248df04u:case 0x224954a4u:case 0x2249aaa4u:case 0x224a416cu:
     case 0x2248c514u:case 0x2248e83cu:case 0x2249964cu:case 0x224a4a4cu:return NativeCombatOwnerKind::Npc;
     case 0x2245222cu:case 0x224aec3cu:return NativeCombatOwnerKind::Player;
