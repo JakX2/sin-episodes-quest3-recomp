@@ -13,6 +13,7 @@
 #include <cstring>
 #include <vector>
 #include "../../pc/independent_slot0/original_interfacereg_readonly_snapshot.h"
+#include "../../pc/independent_slot0/original_client_entitylist_readonly_snapshot.h"
 #pragma comment(lib, "bcrypt.lib")
 
 #if !defined(_M_IX86) && !defined(__i386__)
@@ -215,6 +216,27 @@ bool inspect_server_game_clients_fifteen_slots(HMODULE server) noexcept {
      ok?"pinned_original_vptr_read":"vptr_or_slot_mismatch",
      matched);
  return ok;
+}
+
+// Phase1656: after exact SHA gate and owner-authorized original
+// LoadLibraryEx, inspect the distinct parent and embedded client entity-list
+// pointers. No factory virtual callbacks or original engine methods run here.
+bool inspect_client_entitylist_nine_slots(HMODULE client) noexcept {
+  namespace abi=sin_independent::original_client_entitylist_snapshot;
+  const auto base=reinterpret_cast<std::uintptr_t>(client);
+  const auto result=abi::Observe(
+      base,{nullptr,&read_original_interfacereg_dword});
+  // Redacted metadata only. Never print original pointers or native code.
+  std::printf(
+      "{\"module\":\"client\",\"event\":"
+      "\"original_client_entitylist_secondary_vtable\","
+      "\"status\":\"%s\",\"secondary_offset_bytes\":65556,"
+      "\"secondary_slots_matched\":%u,\"secondary_slots_expected\":9,"
+      "\"parent_slots_matched\":%u,\"parent_slots_expected\":3,"
+      "\"actual_method_invocations\":0}\n",
+      abi::StatusName(result.status),result.secondary_slots_matched,
+      result.parent_slots_matched);
+  return result.status==abi::Status::Verified;
 }
 
 bool inspect_game_client_exports_four_slots(HMODULE client) noexcept {
@@ -464,6 +486,9 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_game_client_exports_four_slots(module))
+  ok=false;
+ if(std::strcmp(spec.side,"client")==0 &&
+    !inspect_client_entitylist_nine_slots(module))
   ok=false;
  if(std::strcmp(spec.side,"server")==0 &&
     !inspect_server_game_clients_fifteen_slots(module))
