@@ -25,7 +25,8 @@ struct Owner {
         nested_busy=0,parallel_busy=0;
     bool pinned=false,deny_acquire=false,deny_release=false,
          bad_extent=false,bad_entity_extent=false,
-         revoke_second_validation=false,trigger_nested=false,
+         revoke_second_validation=false,revoke_third_validation=false,
+         trigger_nested=false,
          trigger_parallel=false;
     Attacher* nested_attacher=nullptr;
     Registry* nested_registry=nullptr;
@@ -91,6 +92,7 @@ static bool Validate(void* p,const GameEntsOriginalLinkSnapshot* snap)
     }
     return snap&&o.pinned&&
         (!o.revoke_second_validation||o.validation_calls!=2)&&
+        (!o.revoke_third_validation||o.validation_calls!=3)&&
         snap->pin_token==o.pin_token&&snap->epoch==o.epoch&&
         snap->edict==o.edict.data()&&snap->entity==o.entity.data()&&
         snap->touch==o.touch.data()&&snap->edict_pe32==o.edict_pe32&&
@@ -120,7 +122,7 @@ int main() {
     if(good_attacher.Attach(good_registry,0,good_id,Host(good))!=
            Status::Activated||
        good.pinned||good.acquire_calls!=1||good.end_calls!=1||
-       good.validation_calls!=2||good_attacher.Quarantined())
+       good.validation_calls!=3||good_attacher.Quarantined())
         return Fail(2,"reciprocal entity/edict/outer link attach");
     std::uint64_t lease=0;
     if(!good_registry.Begin(5,&lease)||
@@ -209,6 +211,26 @@ int main() {
     if(revoked_att.Attach(revoked_reg,0,Identity(revoked),Host(revoked))!=
        Status::Activated)
         return Fail(17,"clean pin revocation damaged reservation");
+
+    // Third validation is deliberately AFTER registry activation. A host
+    // revocation here leaves live owner metadata and requires quarantine.
+    Owner revoked_after{};
+    Registry revoked_after_reg;
+    Attacher revoked_after_att;
+    if(!Prepare(revoked_after,revoked_after_reg,950))
+        return Fail(27,"post-attach revoke fixture reserve");
+    revoked_after.revoke_third_validation=true;
+    if(revoked_after_att.Attach(revoked_after_reg,0,
+           Identity(revoked_after),Host(revoked_after))!=Status::PinRevoked||
+       !revoked_after_att.Quarantined()||revoked_after.end_calls!=1||
+       revoked_after_att.Attach(revoked_after_reg,0,
+           Identity(revoked_after),Host(revoked_after))!=Status::Quarantined||
+       revoked_after.acquire_calls!=1||
+       !revoked_after_reg.Begin(5,&lease)||
+       !revoked_after_reg.ValidUnknownPair(revoked_after.edict.data(),
+                                           revoked_after.entity.data())||
+       !revoked_after_reg.End(5,lease))
+        return Fail(28,"post-activation physical pin loss did not quarantine");
 
     Owner locked{};
     Registry locked_reg;
