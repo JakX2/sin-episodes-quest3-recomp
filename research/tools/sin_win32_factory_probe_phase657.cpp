@@ -16,6 +16,7 @@
 #include "../../pc/independent_slot0/original_client_entitylist_readonly_snapshot.h"
 #include "../../pc/independent_slot0/original_client_entitylist_state_snapshot.h"
 #include "../../pc/independent_slot0/original_client_prediction23_readonly_snapshot.h"
+#include "../../pc/independent_slot0/original_client_prediction_convar_readonly_snapshot.h"
 #pragma comment(lib, "bcrypt.lib")
 
 #if !defined(_M_IX86) && !defined(__i386__)
@@ -231,6 +232,29 @@ bool inspect_server_game_clients_fifteen_slots(HMODULE server) noexcept {
 // The prediction initializer dereferences an engine global at +0x2C;
 // NEVER call it in this owner factory probe. The game engine has not
 // initialized its dependency service in this disposable process.
+// Phase1658: read ONLY the original SHA-pinned cl_predict parent DWORD and
+// self-referenced numeric value after owner-confirmed original DllMain.
+// Never chase an external ConVar m_pParent or run prediction vtable methods.
+bool inspect_client_prediction_convar(HMODULE client) noexcept {
+  namespace cv=sin_independent::original_client_prediction_convar_snapshot;
+  const auto base=reinterpret_cast<std::uintptr_t>(client);
+  const auto result=cv::Observe(
+      base,{nullptr,&read_original_interfacereg_dword});
+  // No raw pointers, original code or private object contents printed.
+  std::printf(
+      "{\"module\":\"client\",\"event\":"
+      "\"original_cl_predict_convar_startup\","
+      "\"status\":\"%s\",\"fields_read\":%u,"
+      "\"parent_self\":%s,\"numeric_value\":%d,"
+      "\"retail_method_invocations\":0}\n",
+      cv::StatusName(result.status),result.successful_reads,
+      result.parent_is_expected_self?"true":"false",
+      static_cast<int>(result.numeric_value));
+  // An external ConVar parent may occur in an actual engine registration
+  // context; this owner-only stand-alone probe cannot classify it safely.
+  return result.status==cv::Status::VerifiedSelfParent;
+}
+
 bool inspect_client_prediction23(HMODULE client) noexcept {
   namespace pred=sin_independent::original_client_prediction23_readonly_snapshot;
   const auto base=reinterpret_cast<std::uintptr_t>(client);
@@ -534,6 +558,9 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_client_prediction23(module))
+  ok=false;
+ if(std::strcmp(spec.side,"client")==0 &&
+    !inspect_client_prediction_convar(module))
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_client_entitylist_nine_slots(module))
