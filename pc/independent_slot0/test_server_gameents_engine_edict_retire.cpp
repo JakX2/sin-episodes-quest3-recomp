@@ -24,6 +24,12 @@ static bool Authorized(void* context,const void* edict,std::size_t count) noexce
     for(const auto& item:f.elements)if(edict==&item)return true;
     return false;
 }
+static bool AuthorizedArray(void* context,const void* array,
+                            std::size_t bytes) noexcept {
+    auto& f=*static_cast<Fixture*>(context);
+    return array==f.elements&&bytes<=sizeof(f.elements)&&
+           bytes>=sizeof(EngineEdict);
+}
 static bool FreeEntity(void* context,void* edict) noexcept {
     auto& f=*static_cast<Fixture*>(context);
     ++f.freed;
@@ -43,7 +49,7 @@ static int Fail(int n,const char* why) {
 }
 int main() {
     Fixture f;
-    const EngineEdictRetireHooks h{&f,&Authorized,&FreeEntity};
+    const EngineEdictRetireHooks h{&f,&Authorized,&AuthorizedArray,&FreeEntity};
     auto& target=f.elements[1];
     if(RetireEngineEdictAt(f.elements,sizeof(f.elements),1,h)!=
        EngineEdictRetireResult::Retired||!f.valid||f.freed!=1||
@@ -61,6 +67,16 @@ int main() {
         return Fail(3,"bad edict indices accepted");
     EngineEdict rogue{};
     const auto old_flags=rogue.flags;
+    if(RetireEngineEdictAt(&rogue,sizeof(rogue),0,h)!=
+       EngineEdictRetireResult::Unauthorized||
+       rogue.flags!=old_flags||f.freed!=earlier_freed)
+        return Fail(8,"unowned engine array was accepted before index lookup");
+    EngineEdictRetireHooks incomplete=h;
+    incomplete.authorized_array=nullptr;
+    if(RetireEngineEdictAt(f.elements,sizeof(f.elements),0,incomplete)!=
+       EngineEdictRetireResult::InvalidInput||
+       f.freed!=earlier_freed)
+        return Fail(9,"unbound array ownership accepted");
     if(RetireEngineEdict(&rogue,sizeof(rogue),h)!=
        EngineEdictRetireResult::Unauthorized||
        rogue.flags!=old_flags||f.freed!=earlier_freed)

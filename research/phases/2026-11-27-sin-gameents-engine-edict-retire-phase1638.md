@@ -7,3 +7,7 @@ The new engine-side C++17 core reconstructs those bounded state transitions usin
 The standalone native Windows MSVC x86 test verifies an actual 20-byte synthetic edict layout, ordering relative to the injected server-cleanup callback, direct and indexed paths, inactive and invalid indices, foreign pointers, short extents and a refused callback. No original executable or retail engine process is used by CTest. Combined with the concrete owner registry regression, this raises the expected total native CTest count from 239 to 241, pending final CI.
 
 The engine allocator remains an external trust boundary. The original owner must keep its edict array physically stable after FreeContainingEntity returns because the engine writes additional fields afterward. No retail CreateInterface registration, Quest gameplay, physics/surface work or original DLL distribution is performed.
+
+## Array-level authorization guard
+
+The indexed synthetic adapter now also requires authorized_array(context,array,bytes) before pointer arithmetic. It refuses to compute even a bounded element address from a non-owned array. The direct entry still only needs its authenticated 0x14-byte edict pointer. The native regression checks forged array origins and missing array-authorizer callbacks without performing the server release. This is a conservative host-side safety requirement and not a new original x86 instruction.

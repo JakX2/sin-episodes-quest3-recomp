@@ -27,6 +27,9 @@ struct EngineEdictRetireHooks {
     // Trust-bearing authorizer; must check owner generation AND physical
     // extent WITHOUT dereferencing an untrusted address.
     bool (*authorized)(void*,const void*,std::size_t) noexcept=nullptr;
+    // The indexed path authenticates the ENTIRE edict array before forming
+    // even a bounded element address. Optional for the direct pointer path.
+    bool (*authorized_array)(void*,const void*,std::size_t) noexcept=nullptr;
     // Adapts the original engine-owned call to ServerGameEnts001 slot +0x0C.
     // Returns false if the independent diagnostic vtable refuses the work;
     // unlike original retail void dispatch, refusal is visible to this core.
@@ -79,8 +82,10 @@ inline EngineEdictRetireResult RetireEngineEdict(
 inline EngineEdictRetireResult RetireEngineEdictAt(
     void* array,std::size_t bytes,int index,
     const EngineEdictRetireHooks& h) noexcept {
-    if(!array||index<0||!h.Complete())
+    if(!array||index<0||!h.Complete()||!h.authorized_array)
         return EngineEdictRetireResult::InvalidInput;
+    if(!h.authorized_array(h.context,array,bytes))
+        return EngineEdictRetireResult::Unauthorized;
     const auto position=static_cast<std::size_t>(index);
     if(position>=bytes/kEngineOriginalEdictStride)
         return EngineEdictRetireResult::InvalidInput;
