@@ -38,6 +38,27 @@ REGISTRATIONS = (
      0x22443328, 0x221E8320, 0x225723F0, 0x22510658, 0x22443054),
 )
 
+# Original CServerGameEnts singleton vptr at 0x22510654 points to
+# 0x22443030. Seven pointers occupy slots +0x00 .. +0x18, followed
+# by a zero DWORD then the next vtable's MSVC RTTI complete-object
+# locator. This seven-slot count is proved by the original on-disk PE32.
+SERVER_GAMEENTS_VTABLE = 0x22443030
+SERVER_GAMEENTS_SLOTS = (
+    0x221E9360, 0x221E82D0, 0x221E9380, 0x221E82E0,
+    0x221E94B0, 0x221E82F0, 0x221E94D0,
+)
+
+def check_gameents_vtable(blob):
+    """Check all seven original PE32 virtual targets and next delimiter."""
+    if len(blob) != 8 * 4 or len(SERVER_GAMEENTS_SLOTS) != 7:
+        raise ValueError("invalid original GameEnts seven-slot extent")
+    for slot, method in enumerate(SERVER_GAMEENTS_SLOTS):
+        if u32(blob, slot * 4) != method:
+            raise ValueError("original GameEnts virtual slot changed")
+    if u32(blob, 7 * 4) != 0:
+        raise ValueError("original GameEnts next-vtable delimiter differs")
+    return len(SERVER_GAMEENTS_SLOTS)
+
 def u32(data, offset):
     return struct.unpack_from("<I", data, offset)[0]
 
@@ -147,6 +168,8 @@ def audit(data):
     check_sha(body, CREATE_INTERFACE_SHA)
     check_createinterface_body(body)
     named_exports = check_named_createinterface_export(data, pe)
+    gameents_slots = check_gameents_vtable(
+        pe.raw(SERVER_GAMEENTS_VTABLE, 8 * 4))
     verified = []
     for (name, wrapper, window_sha, name_va, creator,
          record, singleton, vtable) in REGISTRATIONS:
@@ -177,6 +200,9 @@ def audit(data):
         "original_server_CreateInterface_export_va": hex(CREATE_INTERFACE),
         "original_server_named_exports": named_exports,
         "original_registered_interface_count_verified": len(verified),
+        "original_ServerGameEnts001_virtual_slots_verified": gameents_slots,
+        "original_ServerGameEnts001_slot_targets": [
+            hex(va) for va in SERVER_GAMEENTS_SLOTS],
         "original_InterfaceReg_native_layout": layout,
         "original_interface_registrations": verified,
         "original_executable_bytes_exported": False,
@@ -197,6 +223,24 @@ def self_test():
     assert len(REGISTRATIONS) == 3
     assert tuple(row[0] for row in REGISTRATIONS) == (
         "ServerGameDLL003", "ServerGameEnts001", "ServerGameClients003")
+    vtable = b"".join(struct.pack("<I", item)
+                      for item in SERVER_GAMEENTS_SLOTS + (0,))
+    assert check_gameents_vtable(vtable) == 7
+    for i in range(len(vtable)):
+        invalid = bytearray(vtable)
+        invalid[i] ^= 1
+        try:
+            check_gameents_vtable(invalid)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("corrupted original GameEnts vtable accepted")
+    try:
+        check_gameents_vtable(vtable[:-4])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("truncated original GameEnts vtable accepted")
     dummy_head = 0x33112200
     ctor = (bytes.fromhex("8b5424048bc18b4c24088948048910") +
             bytes.fromhex("8b0d") + struct.pack("<I", dummy_head) +
@@ -251,7 +295,7 @@ def self_test():
         pass
     else:
         raise AssertionError("fake original server accepted")
-    print("PASS original-free 2006 server InterfaceReg: 12-byte linked records, three SHA-backed factory wrapper patterns, creator singleton return and corruption rejections")
+    print("PASS original-free 2006 server InterfaceReg: 12-byte linked records, three SHA-backed factory wrappers, seven GameEnts virtual slots, singleton return and corruption rejections")
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
