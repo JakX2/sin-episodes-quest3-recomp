@@ -148,6 +148,15 @@ target_compile_features(sin_server_gameents_abi_test PRIVATE cxx_std_17)
 add_test(NAME independent_server_gameents_7slot_native_abi
   COMMAND sin_server_gameents_abi_test)
 
+# Original 221e9380 ServerGameEnts001 wrapper: edict resolution, 0x54-byte
+# initialized trace, second-first dirty origin refresh and helper handoff.
+# Host owns all Source services; no retail interface factory is enabled.
+add_executable(sin_server_gameents_touch_entry_test
+  test_server_gameents_touch_entry_core.cpp)
+target_compile_features(sin_server_gameents_touch_entry_test PRIVATE cxx_std_17)
+add_test(NAME independent_server_gameents_touch_entry_native
+  COMMAND sin_server_gameents_touch_entry_test)
+
 # The first independently reconstructed real server entity-method behavior,
 # validated against synthetic x86 Source object layouts. Not exported yet:
 # MarkEntitiesAsTouching, FreeContainingEntity and CheckTransmit still need
