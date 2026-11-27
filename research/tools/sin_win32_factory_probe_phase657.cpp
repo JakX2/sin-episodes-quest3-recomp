@@ -15,6 +15,7 @@
 #include "../../pc/independent_slot0/original_interfacereg_readonly_snapshot.h"
 #include "../../pc/independent_slot0/original_client_entitylist_readonly_snapshot.h"
 #include "../../pc/independent_slot0/original_client_entitylist_state_snapshot.h"
+#include "../../pc/independent_slot0/original_client_prediction23_readonly_snapshot.h"
 #pragma comment(lib, "bcrypt.lib")
 
 #if !defined(_M_IX86) && !defined(__i386__)
@@ -225,6 +226,26 @@ bool inspect_server_game_clients_fifteen_slots(HMODULE server) noexcept {
 // Phase1657: original SHA-authenticated DllMain-only client entity list
 // readback of count/max/secondary count/highest index. Never call client
 // entitylist vtable methods or log real module addresses/raw object bytes.
+// Phase1658: after SHA-authenticated owner-original LoadLibraryEx,
+// snapshot the 23 prediction function addresses in the loaded image.
+// The prediction initializer dereferences an engine global at +0x2C;
+// NEVER call it in this owner factory probe. The game engine has not
+// initialized its dependency service in this disposable process.
+bool inspect_client_prediction23(HMODULE client) noexcept {
+  namespace pred=sin_independent::original_client_prediction23_readonly_snapshot;
+  const auto base=reinterpret_cast<std::uintptr_t>(client);
+  const auto result=pred::Observe(
+      base,{nullptr,&read_original_interfacereg_dword});
+  std::printf(
+      "{\"module\":\"client\",\"event\":"
+      "\"original_client_prediction23_vtable\","
+      "\"status\":\"%s\",\"matched_slots\":%u,"
+      "\"expected_slots\":23,\"actual_method_invocations\":0,"
+      "\"retail_engine_prediction_init_executed\":false}\n",
+      pred::StatusName(result.status),result.matched_slots);
+  return result.status==pred::Status::Verified;
+}
+
 bool inspect_client_entitylist_startup_state(HMODULE client) noexcept {
   namespace state=sin_independent::original_client_entitylist_state_snapshot;
   const auto base=reinterpret_cast<std::uintptr_t>(client);
@@ -510,6 +531,9 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_game_client_exports_four_slots(module))
+  ok=false;
+ if(std::strcmp(spec.side,"client")==0 &&
+    !inspect_client_prediction23(module))
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_client_entitylist_nine_slots(module))
