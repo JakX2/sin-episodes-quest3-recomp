@@ -12,7 +12,7 @@ int __cdecl spawn(void* a,unsigned n,const ServerMutantSpitEntityBindings* b,Ser
     if(!identity(a,n)||!b)return 0;o->projectile=a;o->bytes=n;
     if(!b->precache||!b->precache(b->context,a)||!b->movement||!b->movement(b->context,a,4,0))return 0;
     o->movement_set=1;
-    if(!b->particle_name||!b->particle_name(b->context,a,"spit_mutant")||
+    if(!b->entity_name||!b->entity_name(b->context,a,"spit_mutant")||
        !b->solid||!b->solid(b->context,a,2)||
        !b->model||!b->model(b->context,a,"models/Weapons/poison_spit/poison_spit.mdl"))return 0;
     const float mins[]{-2,-2,-2},maxs[]{2,2,2};

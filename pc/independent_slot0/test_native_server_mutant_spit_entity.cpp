@@ -27,7 +27,7 @@ int main(int argc,char** argv){
     b.dispatch_spawn=[](void* p,void* a) noexcept ->int{auto& f=*static_cast<F*>(p);assert(a==f.projectile);f.calls+='S';ServerMutantSpitEntityResult o{};return f.api->spawn(a,sizeof(f.projectile),f.b,&o);};
     b.precache=[](void* p,void*) noexcept ->int{static_cast<F*>(p)->calls+='P';return 1;};
     b.movement=[](void* p,void*,int type,int mode) noexcept ->int{assert(type==4&&!mode);static_cast<F*>(p)->calls+='M';return 1;};
-    b.particle_name=[](void* p,void*,const char* name) noexcept ->int{assert(!std::strcmp(name,"spit_mutant"));static_cast<F*>(p)->calls+='N';return 1;};
+    b.entity_name=[](void* p,void*,const char* name) noexcept ->int{assert(!std::strcmp(name,"spit_mutant"));static_cast<F*>(p)->calls+='N';return 1;};
     b.solid=[](void* p,void*,int type) noexcept ->int{assert(type==2);static_cast<F*>(p)->calls+='D';return 1;};
     b.model=[](void* p,void*,const char* name) noexcept ->int{assert(!std::strcmp(name,"models/Weapons/poison_spit/poison_spit.mdl"));static_cast<F*>(p)->calls+='L';return 1;};
     b.bounds=[](void* p,void*,const float a[3],const float b[3]) noexcept ->int{for(int i=0;i<3;++i)assert(a[i]==-2&&b[i]==2);static_cast<F*>(p)->calls+='B';return 1;};
