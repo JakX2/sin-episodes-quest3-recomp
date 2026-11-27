@@ -1,5 +1,6 @@
 #pragma once
 #include "native_server_recombinant_policy.h"
+#include "native_server_recombinant_activity_transition.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_recombinant_damage_export[]="SiN_GetServerRecombinantDamageApi";
 // Exact original six-word +2d4 argument shape; only the lifetime and
@@ -41,4 +42,29 @@ struct ServerRecombinantDamageApi {
     int (__cdecl *expire_major)(void*,unsigned,float,ServerRecombinantDamageExpiryResult*) noexcept;
 };
 using GetServerRecombinantDamageApi=const ServerRecombinantDamageApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+inline constexpr char server_recombinant_damage_pending_export[]="SiN_GetServerRecombinantDamagePendingApi";
+// Host-owned game systems stay delegated. This call-local bridge connects
+// the reconstructed Major damage/ignition +4dc request to the reconstructed
+// pending-activity lifecycle. It never advances an animation by itself.
+struct ServerRecombinantDamagePendingBindings {
+    const ServerRecombinantDamageBindings* damage;
+    const ServerRecombinantPendingActivityBindings* pending;
+};
+struct ServerRecombinantDamagePendingResult {
+    ServerRecombinantDamageResult damage;
+    ServerRecombinantIgniteResult ignition;
+    ServerRecombinantPendingActivityResult pending;
+    unsigned pending_calls;
+    int requested_activity;
+};
+struct ServerRecombinantDamagePendingApi {
+    unsigned version,size;
+    int (__cdecl *damage_major)(void*,unsigned,const void*,unsigned,float,
+        const ServerRecombinantDamagePendingBindings*,ServerRecombinantDamagePendingResult*) noexcept;
+    int (__cdecl *ignite_major)(void*,unsigned,const ServerRecombinantIgniteRequest*,
+        const ServerRecombinantDamagePendingBindings*,ServerRecombinantDamagePendingResult*) noexcept;
+};
+using GetServerRecombinantDamagePendingApi=const ServerRecombinantDamagePendingApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
 }
