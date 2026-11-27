@@ -1,4 +1,5 @@
 #include "native_server_npc_schedule_services.h"
+#include "native_server_npc_shared_task.h"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -124,6 +125,62 @@ int main(int argc,char** argv){
     assert(f.get<int>(0xfec)==2&&f.get<int>(0x79c)==global+0x76&&sout.task_calls==1&&!sout.delegated);
     assert((f.trace==std::vector<int>{40,41,30,60,60}));
     cb.original_vtable=0;f.trace.clear();assert(!sub->run(f.actor,sizeof(f.actor),10,&cb,&sout)&&f.trace.empty());
+
+    // Real maintenance -> subclass task -> shared parent -> native script.
+    {
+        namespace nm=sin_port::native_map;
+        const auto run=reinterpret_cast<RunServerNpcScriptedScheduler>(GetProcAddress(s,server_npc_scripted_scheduler_export));
+        assert(run&&!GetProcAddress(c,server_npc_scripted_scheduler_export));
+        struct ScriptFixture {
+            F* f;
+            alignas(4) unsigned char seq[nm::scripted_sequence_extent]{};
+            sin_independent::EntityHandleEntry slots[2]{};
+            float stale_now=-100.f;
+            unsigned cleaned=0,cleared=0,checks=0;
+        } x{&f};
+        unsigned char old_rows[sizeof(f.rows)],old_tasks[sizeof(f.tasks)];
+        std::memcpy(old_rows,f.rows,sizeof(f.rows));std::memcpy(old_tasks,f.tasks,sizeof(f.tasks));
+        f.put(x.seq,0,nm::scripted_sequence_vtable);f.put(x.seq,0x378,0x3000u);f.put(x.seq,0x3d4,0xffffffffu);f.put(x.seq,0xb4,4u);
+        x.slots[0].entity=reinterpret_cast<CBaseEntity*>(x.seq);x.slots[0].serial=3;
+        x.slots[1].entity=reinterpret_cast<CBaseEntity*>(f.actor);x.slots[1].serial=4;
+        auto scheduler=cb;scheduler.original_vtable=0x224954a4u;
+        scheduler.maintenance.selection.jetpack=false;scheduler.maintenance.validity.jetpack=false;
+        scheduler.maintenance.selection.state.entities={x.slots,2,nullptr,nullptr,nullptr};
+        scheduler.grunt.parent=[](void*,void*,const ServerNpcScheduleTask*,bool) noexcept ->int{assert(false);return 0;};
+        ServerNpcSharedTaskBindings shared{};
+        shared.parent=[](void*,void*,const ServerNpcScheduleTask*,bool) noexcept ->int{assert(false);return 0;};
+        nm::ScriptedSequenceControlBindings control{};control.context=&x;control.now=&x.stale_now;
+        control.extent=[](void* p,void* a,unsigned* n) noexcept ->int{
+            auto& x=*static_cast<ScriptFixture*>(p);*n=a==x.seq?sizeof(x.seq):a==x.f->actor?sizeof(x.f->actor):0;return *n!=0;
+        };
+        nm::ScriptedSequenceAnimationBindings animation{};animation.control=&control;
+        nm::ScriptedSequencePossessionBindings pos{};pos.extent=control.extent;pos.context=&x;pos.now=&x.stale_now;
+        nm::ScriptedSequenceFinishBindings finish{&animation,&pos,&x};
+        finish.cleanup_script_state=[](void* p,void* a) noexcept ->int{
+            auto& x=*static_cast<ScriptFixture*>(p);assert(a==x.f->actor&&x.f->get<unsigned>(0x96c)==2);++x.cleaned;
+            x.f->put(a,0x970,0xffffffffu);return 1;
+        };
+        finish.current_schedule=[](void* p,void* a,bool* present,int*) noexcept ->int{
+            auto& x=*static_cast<ScriptFixture*>(p);assert(a==x.f->actor);++x.checks;*present=false;return 1;
+        };
+        finish.clear_schedule=[](void* p,void* a) noexcept ->int{
+            auto& x=*static_cast<ScriptFixture*>(p);assert(a==x.f->actor&&x.cleaned==1);++x.cleared;return 1;
+        };
+        nm::ScriptedNpcTaskBindings task{&finish,nullptr,&x};
+        nm::ScriptedNpcStartTaskBindings start{&task,&x};
+        ServerNpcScriptedSchedulerBindings route{&scheduler,&shared,&task,&start};
+        ServerNpcScriptedSchedulerStats stats{};
+        f.put(f.rows[0],0,global+1);f.put(f.rows[0],8,1);f.put(f.tasks[0],0,109);f.put(f.tasks[0],4,0.f);
+        reset();f.put(f.actor,0,scheduler.original_vtable);f.put(f.actor,0x378,0x4001u);f.put(f.actor,0x970,0x3000u);
+        auto wrong=start;wrong.task=nullptr;route.start=&wrong;
+        assert(!run(f.actor,sizeof(f.actor),10,&route,&sout,&stats)&&f.trace.empty());
+        route.start=&start;
+        assert(run(f.actor,sizeof(f.actor),10,&route,&sout,&stats)&&sout.maintenance.started==1&&sout.maintenance.runs==1&&stats.starts==1&&stats.runs==1&&stats.native_starts==1&&stats.native_runs==1&&stats.last_start.script.state_written&&stats.last_run.script.waiting&&f.get<unsigned>(0x96c)==2&&!x.cleaned);
+        f.actor[0x3e0]=1;f.trace.clear();
+        assert(run(f.actor,sizeof(f.actor),10,&route,&sout,&stats)&&!stats.starts&&stats.runs==1&&stats.native_runs==1&&stats.last_run.script.terminal.completed&&stats.last_run.script.terminal.cleanup_called&&!stats.last_run.script.task_completed&&x.cleaned==1&&x.checks==1&&x.cleared==1&&f.get<unsigned>(0x970)==0xffffffffu);
+        assert(!control.entries&&!pos.entries&&control.now==&x.stale_now&&pos.now==&x.stale_now&&x.stale_now==-100.f&&!task.lifecycle);
+        std::memcpy(f.rows,old_rows,sizeof(f.rows));std::memcpy(f.tasks,old_tasks,sizeof(f.tasks));
+    }
 
     auto gsvc=reinterpret_cast<GetServerNpcScheduleServicesApi>(GetProcAddress(s,server_npc_schedule_services_export));
     assert(gsvc&&!GetProcAddress(c,server_npc_schedule_services_export)&&!gsvc(0,sizeof(ServerNpcScheduleServicesApi))&&!gsvc(1,0));
