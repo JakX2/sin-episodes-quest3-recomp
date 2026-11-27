@@ -4,6 +4,7 @@
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantRegistrationApi* __cdecl SiN_GetServerRecombinantRegistrationApi(unsigned,unsigned) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcActivityAssignmentApi* __cdecl SiN_GetServerNpcActivityAssignmentApi(unsigned,unsigned) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcTransitionApi* __cdecl SiN_GetServerNpcTransitionApi(unsigned,unsigned) noexcept;
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantTaskApi* __cdecl SiN_GetServerRecombinantTaskApi(unsigned,unsigned) noexcept;
 namespace sin_port::native_weapon_tables {
 namespace {
 template<class T>T rd(const void* p,unsigned at) noexcept {T v{};std::memcpy(&v,static_cast<const unsigned char*>(p)+at,sizeof(v));return v;}
@@ -155,6 +156,56 @@ int __cdecl composed_update(void* a,unsigned n,const ServerRecombinantPendingAct
     return pending_call(a,n,0,true,b,o);
 }
 const ServerRecombinantPendingActivityApi pending_api{1,sizeof(ServerRecombinantPendingActivityApi),&composed_pending,&composed_update};
+struct TaskActivityFrame {
+    void* actor;
+    unsigned bytes;
+    const ServerRecombinantTaskBindings& task;
+    const ServerRecombinantPendingActivityBindings& pending;
+    ServerRecombinantTaskActivityResult& result;
+};
+int __cdecl composed_major_task(void* a,unsigned n,const ServerNpcScheduleTask* t,bool running,float now,
+    const ServerRecombinantTaskActivityBindings* b,ServerRecombinantTaskActivityResult* o) noexcept {
+    if(!o)return 0;*o={};
+    if(!a||n<0xc54u||rd<unsigned>(a,0)!=recombinant_major_vtable||!t||!b||
+       !b->task||!b->task->decision||!b->task->decision->policy||!b->pending||
+       !b->pending->pending||!b->pending->activity)return 0;
+    const auto* policy=b->task->decision->policy;
+    if(b->pending->activity->policy!=policy||
+       b->pending->pending->assignment.translation.activities!=policy->activities)return 0;
+    const auto* task_api=SiN_GetServerRecombinantTaskApi(1,sizeof(ServerRecombinantTaskApi));
+    if(!task_api)return 0;
+    TaskActivityFrame frame{a,n,*b->task,*b->pending,*o};
+    auto bound=frame.task;bound.context=&frame;
+    bound.parent=[](void* p,void* a,const ServerNpcScheduleTask* t,bool run) noexcept ->int{
+        auto& f=*static_cast<TaskActivityFrame*>(p);
+        return f.actor==a&&f.task.parent&&f.task.parent(f.task.context,a,t,run);
+    };
+    bound.activity=[](void* p,void* a,int act) noexcept ->int{
+        auto& f=*static_cast<TaskActivityFrame*>(p);
+        if(f.actor!=a)return 0;
+        ++f.result.pending_calls;
+        return composed_pending(a,f.bytes,act,&f.pending,&f.result.pending);
+    };
+    bound.enemy=[](void* p,void* a,void** out) noexcept ->int{
+        auto& f=*static_cast<TaskActivityFrame*>(p);
+        return f.actor==a&&f.task.enemy&&f.task.enemy(f.task.context,a,out);
+    };
+    bound.submit_goal=[](void* p,unsigned nav,const ServerRecombinantTaskGoal* goal,int mode,bool* out) noexcept ->int{
+        auto& f=*static_cast<TaskActivityFrame*>(p);
+        return f.task.submit_goal&&f.task.submit_goal(f.task.context,nav,goal,mode,out);
+    };
+    bound.goal_enemy=[](void* p,unsigned nav,void* enemy) noexcept ->int{
+        auto& f=*static_cast<TaskActivityFrame*>(p);
+        return f.task.goal_enemy&&f.task.goal_enemy(f.task.context,nav,enemy);
+    };
+    bound.failure_token=[](void* p,const char* text,int* out) noexcept ->int{
+        auto& f=*static_cast<TaskActivityFrame*>(p);
+        return f.task.failure_token&&f.task.failure_token(f.task.context,text,out);
+    };
+    return task_api->major(a,n,t,running,now,&bound,&o->task);
+}
+const ServerRecombinantTaskActivityApi task_activity_api{1,sizeof(ServerRecombinantTaskActivityApi),&composed_major_task};
+
 
 
 }
@@ -174,4 +225,9 @@ extern "C" const sin_port::native_weapon_tables::ServerRecombinantActivityAssign
 #pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantPendingActivityApi=_SiN_GetServerRecombinantPendingActivityApi")
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantPendingActivityApi* __cdecl SiN_GetServerRecombinantPendingActivityApi(unsigned v,unsigned n) noexcept{
     using namespace sin_port::native_weapon_tables;return v==1&&n==sizeof(ServerRecombinantPendingActivityApi)?&pending_api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantTaskActivityApi=_SiN_GetServerRecombinantTaskActivityApi")
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantTaskActivityApi* __cdecl SiN_GetServerRecombinantTaskActivityApi(unsigned v,unsigned n) noexcept{
+    using namespace sin_port::native_weapon_tables;return v==1&&n==sizeof(ServerRecombinantTaskActivityApi)?&task_activity_api:nullptr;
 }

@@ -65,4 +65,24 @@ struct ServerRecombinantPendingActivityApi {
     int (__cdecl *update)(void*,unsigned,const ServerRecombinantPendingActivityBindings*,ServerRecombinantPendingActivityResult*) noexcept;
 };
 using GetServerRecombinantPendingActivityApi=const ServerRecombinantPendingActivityApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+inline constexpr char server_recombinant_task_activity_export[]="SiN_GetServerRecombinantTaskActivityApi";
+// Original Major StartTask 54/55 requests an activity through 22049c20.
+// Compose the native pending lifecycle at that call site; other task
+// services retain their original owners and context.
+struct ServerRecombinantTaskActivityBindings {
+    const ServerRecombinantTaskBindings* task;
+    const ServerRecombinantPendingActivityBindings* pending;
+};
+struct ServerRecombinantTaskActivityResult {
+    ServerRecombinantTaskResult task;
+    ServerRecombinantPendingActivityResult pending;
+    unsigned pending_calls;
+};
+struct ServerRecombinantTaskActivityApi {
+    unsigned version,size;
+    int (__cdecl *major)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,
+        const ServerRecombinantTaskActivityBindings*,ServerRecombinantTaskActivityResult*) noexcept;
+};
+using GetServerRecombinantTaskActivityApi=const ServerRecombinantTaskActivityApi* (__cdecl *)(unsigned,unsigned) noexcept;
 }
