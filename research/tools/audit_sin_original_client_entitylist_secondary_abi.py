@@ -69,6 +69,18 @@ PRIMARY_TARGETS = (0x241089D0, 0x24108A70, 0x241082A0)
 CALLEE_STACK_POP_BYTES = (4, 4, 4, 4, 4, 4, 0, 4, 0)
 PRIMARY_VPTR_WRITE_SITE = 0x241081A2
 SECONDARY_VPTR_WRITE_SITE = 0x241081A8
+# Additional PE32 RTTI pointers verified against both SHA-authenticated
+# owner-original DLLs directly. The vftable[-1] entries are COMPLETE OBJECT
+# LOCATOR metadata, not extra virtual methods.
+SECONDARY_RTTI_CELL = SECONDARY_VTABLE_VA - 4
+PRIMARY_RTTI_CELL = PRIMARY_VTABLE_VA - 4
+SECONDARY_COL_VA = 0x242E59D4
+PRIMARY_COL_VA = 0x242E5A50
+TYPE_DESCRIPTOR_VA = 0x242FA77C
+CLASS_HIERARCHY_VA = 0x242E5A40
+TYPE_DESCRIPTOR_NAME = b".?AVCClientEntityList@@\\0"
+ORIGINAL_SECONDARY_TABLE_SHA256 = "85b1a89b4c59052c027286beed20e00242cbdf428fa1559dbd666a51fe18be75"
+ORIGINAL_PRIMARY_TABLE_SHA256 = "f4ccb17ffb03a35df448ebfe6b7fcb29fec20cff98f7403121ac0bc8216bd8d3"
 
 
 def require(condition: bool, why: str) -> None:
@@ -107,6 +119,18 @@ def verify_constructor_vptr(code: bytes, offset: int, vtable_va: int,
                 b"\xC7\x86" + pack(offset))
     require(code == expected + pack(vtable_va),
             "constructor does not install the pinned vtable pointer")
+
+
+def verify_col_record(data: bytes, offset: int,
+                      type_descriptor: int,
+                      class_hierarchy: int) -> None:
+    """MSVC PE32 Complete Object Locator; no pointers are dereferenced."""
+    require(len(data) == 20, "original MSVC RTTI COL must be 20 bytes")
+    signature, suboffset, cdoffset, typeptr, classptr = struct.unpack(
+        "<IIIII", data)
+    require((signature,suboffset,cdoffset,typeptr,classptr) ==
+            (0,offset,0,type_descriptor,class_hierarchy),
+            "RTTI Complete Object Locator offset/descriptor mismatch")
 
 
 def check_prior_phase_contract() -> None:
@@ -190,12 +214,39 @@ def verify_original(client_bytes: bytes, server_bytes: bytes) -> dict:
                     label + " vtable missing relocation slot "+str(i))
             require(pe.section_of(target) == ".text",
                     label + " vtable target outside original .text")
-    # The intervening DWORD at 0x242973B4 is NOT a tenth virtual.
-    # Do not guess its RTTI role or contents without an independent audit.
-    gap_va = SECONDARY_VTABLE_VA+4*SECONDARY_VIRTUAL_COUNT
-    require(gap_va+NEXT_TABLE_GAP_BYTES == PRIMARY_VTABLE_VA and
-            pe.section_of(gap_va) == ".rdata",
-            "inter-table boundary differs")
+    # Directly authenticated original MSVC x86 RTTI evidence: BOTH
+    # vtable[-1] cells are relocated CompleteObjectLocator pointers.
+    # Secondary COL offset 0x10014, primary COL offset 0; both name the
+    # SAME original CClientEntityList type descriptor/class hierarchy.
+    require(SECONDARY_RTTI_CELL == SECONDARY_VTABLE_VA-4 and
+            PRIMARY_RTTI_CELL ==
+            SECONDARY_VTABLE_VA+4*SECONDARY_VIRTUAL_COUNT and
+            PRIMARY_RTTI_CELL+4 == PRIMARY_VTABLE_VA,
+            "RTTI boundary overlaps secondary virtuals")
+    for cell,col_va,offset in (
+        (SECONDARY_RTTI_CELL,SECONDARY_COL_VA,SECONDARY_OFFSET),
+        (PRIMARY_RTTI_CELL,PRIMARY_COL_VA,0),
+    ):
+        require(pe.section_of(cell)==".rdata" and cell in relocated and
+                pe.at(cell,4)==pack(col_va),
+                "vtable[-1] must be relocated exact original RTTI COL")
+        require(pe.section_of(col_va)==".rdata" and
+                pe.section_of(col_va+19)==".rdata" and
+                col_va+12 in relocated and col_va+16 in relocated,
+                "original RTTI COL and its two HIGHLOW pointers differ")
+        verify_col_record(pe.at(col_va,20),offset,
+                          TYPE_DESCRIPTOR_VA,CLASS_HIERARCHY_VA)
+    require(pe.section_of(TYPE_DESCRIPTOR_VA)==".data" and
+            pe.section_of(CLASS_HIERARCHY_VA)==".rdata" and
+            pe.at(TYPE_DESCRIPTOR_VA+8,len(TYPE_DESCRIPTOR_NAME))==
+            TYPE_DESCRIPTOR_NAME,
+            "original RTTI type descriptor does not name CClientEntityList")
+    require(hashlib.sha256(pe.at(SECONDARY_VTABLE_VA,36)).hexdigest()==
+            ORIGINAL_SECONDARY_TABLE_SHA256,
+            "complete 36-byte original secondary table SHA changed")
+    require(hashlib.sha256(pe.at(PRIMARY_VTABLE_VA,12)).hexdigest()==
+            ORIGINAL_PRIMARY_TABLE_SHA256,
+            "complete 12-byte original parent table SHA changed")
     # The original singleton exists in the virtual/unbacked .data image;
     # reading its on-disk vptr would be an invalid fabricated runtime state.
     require(pe.section_of(PARENT_VA) == ".data" and
@@ -218,7 +269,14 @@ def verify_original(client_bytes: bytes, server_bytes: bytes) -> dict:
         "separate_parent_vtable_va": hex(PRIMARY_VTABLE_VA),
         "separate_parent_virtual_slots_verified": PRIMARY_VIRTUAL_COUNT,
         "inter_table_gap_bytes": NEXT_TABLE_GAP_BYTES,
-        "gap_dword_role_authenticated": False,
+        "rtti_col_metadata_authenticated": True,
+        "secondary_rtti_col_va": hex(SECONDARY_COL_VA),
+        "secondary_rtti_offset_bytes": SECONDARY_OFFSET,
+        "primary_rtti_col_va": hex(PRIMARY_COL_VA),
+        "primary_rtti_offset_bytes": 0,
+        "shared_rtti_type_descriptor_va": hex(TYPE_DESCRIPTOR_VA),
+        "shared_rtti_class_hierarchy_va": hex(CLASS_HIERARCHY_VA),
+        "original_secondary_whole_vtable_digest_authenticated": True,
         "new_original_native_functions_recovered": 0,
         "original_native_methods_executed": 0,
         "independent_client_interface_registered": False,
@@ -280,12 +338,26 @@ def self_test() -> None:
             damaged[i] ^= 1
             reject(lambda data=bytes(damaged):verify_constructor_vptr(
                 data,offset,vt,is_primary), "constructor byte "+str(i))
+    # A fictional RTTI COL fixture, not the retail RTTI records.
+    for offset in (0, SECONDARY_OFFSET):
+        col = struct.pack("<IIIII",0,offset,0,0x63150000,0x63160000)
+        verify_col_record(col,offset,0x63150000,0x63160000)
+        for i in range(len(col)):
+            damaged = bytearray(col)
+            damaged[i] ^= 0x01
+            reject(lambda data=bytes(damaged):verify_col_record(
+                data,offset,0x63150000,0x63160000),
+                "synthetic RTTI COL byte "+str(i))
+    reject(lambda:verify_col_record(b"",SECONDARY_OFFSET,
+                                   0x63150000,0x63160000),
+           "truncated original RTTI COL")
     reject(lambda:verify_original(b"synthetic-client",b"synthetic-server"),
            "forged original PE32 file hashes")
     print("PASS Phase1656 original-free VClientEntityList003: independent "
           "Phase226/228/229/230/231 cross-contract, exact nine secondary "
           "virtuals, separate three-slot parent, +0x10014 this-adjustment, "
-          "RET4/RET0 inventory, corrupt-every-pointer/constructor/factory "
+          "RET4/RET0 inventory, SHA-pinned pair of RTTI COL records, "
+          "corrupt-every-pointer/constructor/factory/RTTI "
           "fixture and fake original-SHA refusal")
 
 
