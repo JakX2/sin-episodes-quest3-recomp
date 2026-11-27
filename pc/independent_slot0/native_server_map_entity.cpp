@@ -2,6 +2,7 @@
 #include "native_server_npc_active_weapon_step.h"
 #include "native_server_activity_assignment.h"
 #include "native_server_npc_task_lifecycle.h"
+extern "C" const sin_port::native_weapon_tables::ServerNpcActivityTranslateApi* __cdecl SiN_GetServerNpcActivityTranslateApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcConditionApi* __cdecl SiN_GetServerNpcConditionApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcTaskLifecycleApi* __cdecl SiN_GetServerNpcTaskLifecycleApi(std::uint32_t,std::uint32_t) noexcept;
 extern "C" const sin_port::native_weapon_tables::ServerNpcActivityAssignmentApi* __cdecl SiN_GetServerNpcActivityAssignmentApi(std::uint32_t,std::uint32_t) noexcept;
@@ -4126,6 +4127,118 @@ int start_scripted_npc_arrival(void* npc,unsigned bytes,int task,const ScriptedN
     }
     o->completed=1;return 1;
 }
+// 2204ff10: original script-specific goal construction, not pathfinding.
+int start_scripted_npc_move(void* npc,unsigned bytes,int task,const ScriptedNpcMoveBindings* b,ScriptedNpcMoveResult* o) noexcept {
+    if(!o)return 0;*o={};o->task=task;o->activity=o->translated_activity=-1;o->goal_handle=0xffffffffu;
+    unsigned marker=0;
+    if(!b||!b->control||!b->lifecycle||(task<9||task>11)||bytes<0xbf4||
+       !SinReadCampaignTouchMarkerInternal(npc,&marker)||!scripted_npc_marker(marker)||
+       !SinCampaignStorageReadableInternal(npc,bytes))return 0;
+    const auto& c=*b->control;
+    if(!c.now||!std::isfinite(*c.now)||!c.extent||c.entry_count>sin_independent::kEntityHandleCapacity||(!c.entries&&c.entry_count))return 0;
+    static thread_local bool active=false;if(active)return 0;
+    struct Guard{bool& flag;~Guard(){flag=false;}} guard{active};active=true;
+    using namespace sin_port::native_weapon_tables;
+    const auto* life=SiN_GetServerNpcTaskLifecycleApi(1,sizeof(ServerNpcTaskLifecycleApi));
+    const auto* translation=SiN_GetServerNpcActivityTranslateApi(1,sizeof(ServerNpcActivityTranslateApi));
+    if(!life)return 0;
+    const sin_independent::EntityHandleView registry(c.entries,c.entry_count);
+    auto complete=[&](){
+        ServerNpcTaskLifecycleResult r{};++o->completion_calls;
+        if(!life->complete(npc,bytes,*c.now,false,b->lifecycle,&r))return false;
+        o->task_completed=r.completed;o->status=r.status;return true;
+    };
+    auto fail=[&](int code){
+        ServerNpcTaskLifecycleResult r{};o->failed_code=code;
+        if(!life->fail(npc,bytes,*c.now,code,b->lifecycle,&r))return false;
+        o->task_failed=r.failed;return true;
+    };
+    auto finish=[&](){
+        write_field(npc,0x974,-1);write_field(npc,0x978,0u);o->arrival_cleared=1;
+        if(!complete())return 0;o->completed=1;return 1;
+    };
+    auto goal_resolve=[&](){return registry.Resolve(read_field<unsigned>(npc,0x8a8));};
+    auto readable=[&](void* entity,unsigned need){
+        unsigned n=0;return entity&&c.extent(c.context,entity,&n)&&n>=need&&SinCampaignStorageReadableInternal(entity,need);
+    };
+    auto refresh=[&](void* entity){
+        if(!(read_field<unsigned>(entity,0xb8)&0x800u))return true;
+        if(!b->refresh_transform||!b->refresh_transform(b->context,entity))return false;++o->refreshes;return true;
+    };
+    o->goal_handle=read_field<unsigned>(npc,0x8a8);
+    void* target=goal_resolve();o->goal_live=target!=nullptr;
+    if(!target){if(!fail(1))return 0;return finish();}
+    if(!readable(target,0x360)||!refresh(target))return 0;
+    float d[3]{};
+    for(unsigned i=0;i<3;++i){
+        d[i]=static_cast<float>(double(read_field<float>(target,0x2bc+4*i))-read_field<float>(npc,0x360+4*i));
+        if(!std::isfinite(d[i]))return 0;
+    }
+    const float squared=static_cast<float>(double(d[2])*d[2]+double(d[1])*d[1]+double(d[0])*d[0]);
+    if(!std::isfinite(squared))return 0;o->distance=std::sqrt(squared);
+    if(o->distance<32.f){
+        o->near=1;if(b->near_notice)b->near_notice(b->context,npc);
+        // Original 22050021 calls TaskComplete before the common epilogue.
+        if(!complete())return 0;return finish();
+    }
+    o->activity=task==9?6:task==10?10:6;
+    if(task==11){
+        void* seq=registry.Resolve(read_field<unsigned>(npc,0x970));
+        if(seq){
+            unsigned vt=0;if(!readable(seq,scripted_sequence_extent)||!SinReadCampaignTouchMarkerInternal(seq,&vt)||vt!=scripted_sequence_vtable)return 0;
+            o->custom_token=read_field<unsigned>(seq,0x3a0);
+        }
+        // 2204fa20: named activity takes priority; then named sequence;
+        // absent name/script falls back to +980's custom-sequence flag.
+        if(o->custom_token){
+            int activity=-1;if(!b->activity_lookup||!b->activity_lookup(b->context,npc,o->custom_token,&activity))return 0;
+            ++o->activity_lookups;
+            if(activity!=-1)o->activity=activity;
+            else{
+                seq=registry.Resolve(read_field<unsigned>(npc,0x970));
+                unsigned vt=0;if(!readable(seq,scripted_sequence_extent)||!SinReadCampaignTouchMarkerInternal(seq,&vt)||vt!=scripted_sequence_vtable)return 0;
+                const unsigned token=read_field<unsigned>(seq,0x3a0);
+                int sequence=-1;if(!b->sequence_lookup||!b->sequence_lookup(b->context,npc,token?token:0x223d47a8u,&sequence))return 0;
+                ++o->sequence_lookups;o->activity=sequence==-1?6:15;
+            }
+        }else if(read_field<unsigned>(npc,0x980))o->activity=15;
+    }
+    if(o->activity!=15){
+        ServerNpcActivityTranslateResult r{};
+        if(!translation||!b->translation||!translation->translate(npc,bytes,o->activity,b->translation,&r))return 0;
+        o->translated=1;o->translated_activity=r.activity;
+        // The original checks the translated value only for -1. The
+        // descriptor stores the original requested activity.
+        if(r.activity==-1){if(!complete())return 0;return finish();}
+    }
+    if(!goal_resolve()){if(!fail(1))return 0;return finish();}
+    auto& goal=o->goal;
+    const float invalid=std::numeric_limits<float>::max();
+    goal={1,{invalid,invalid,invalid},-1,o->activity,-1,-1,-1.f,-1.f,0,b->goal_owner_word};
+    if(read_field<int>(npc,0x850)==4){
+        const int id=read_field<int>(npc,0x974);const unsigned token=read_field<unsigned>(npc,0x978);
+        if(id!=-1)goal.arrival_activity=id;
+        else if(token){
+            if(!b->sequence_lookup||!b->sequence_lookup(b->context,npc,token,&goal.arrival_sequence))return 0;
+            ++o->sequence_lookups;
+        }
+    }
+    auto nav=[&](void*& out){
+        const auto token=read_field<unsigned>(npc,0x8f8);unsigned n=0;out=nullptr;
+        return token&&b->storage&&b->storage(b->context,token,&out,&n)&&out&&n>=0x28&&SinCampaignStorageReadableInternal(out,0x28);
+    };
+    void* navigator=nullptr;bool accepted=false;
+    if(!nav(navigator)||!b->set_goal||!b->set_goal(b->context,navigator,&goal,4,&accepted))return 0;
+    o->goal_requested=1;o->goal_accepted=accepted;
+    if(!accepted){if(!fail(11))return 0;return finish();}
+    // Original re-reads both navigator and target after SetGoal.
+    if(!nav(navigator))return 0;
+    target=goal_resolve();if(!readable(target,0x360)||!refresh(target))return 0;
+    float angles[3]{};
+    for(unsigned i=0;i<3;++i){angles[i]=read_field<float>(target,0x354+4*i);if(!std::isfinite(angles[i]))return 0;}
+    if(!b->arrival_angles||!b->arrival_angles(b->context,navigator,angles))return 0;o->angles_written=1;
+    return finish();
+}
 bool interrupt_storage(void* a,unsigned n) noexcept {
     unsigned vt=0;
     return n>=scripted_sequence_extent&&SinReadCampaignTouchMarkerInternal(a,&vt)&&vt==scripted_sequence_vtable&&
@@ -4862,6 +4975,12 @@ extern "C" int __cdecl SiN_StartScriptedNpcMotionTask(void* a,unsigned n,int tas
 extern "C" int __cdecl SiN_StartScriptedNpcArrivalTask(void* a,unsigned n,int task,
     const sin_port::native_map::ScriptedNpcArrivalBindings* b,sin_port::native_map::ScriptedNpcArrivalResult* o) noexcept {
     return sin_port::native_map::start_scripted_npc_arrival(a,n,task,b,o);
+}
+
+#pragma comment(linker,"/EXPORT:SiN_StartScriptedNpcMoveTask=_SiN_StartScriptedNpcMoveTask")
+extern "C" int __cdecl SiN_StartScriptedNpcMoveTask(void* a,unsigned n,int task,
+    const sin_port::native_map::ScriptedNpcMoveBindings* b,sin_port::native_map::ScriptedNpcMoveResult* o) noexcept {
+    return sin_port::native_map::start_scripted_npc_move(a,n,task,b,o);
 }
 
 #pragma comment(linker,"/EXPORT:SiN_GetScriptedSequenceInterruptApi=_SiN_GetScriptedSequenceInterruptApi")

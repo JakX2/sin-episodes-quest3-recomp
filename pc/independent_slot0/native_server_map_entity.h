@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "native_server_dynamic_resupply.h"
-namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; struct ServerNpcActivityAssignmentBindings; struct ServerNpcTaskLifecycleBindings; struct ServerNpcConditionMapBindings; }
+namespace sin_port::native_weapon_tables { struct ServerEntityVoidOutputBindings; struct ServerEntityNamedEventQueueBindings; struct ServerNpcOuterCadenceBindings; struct ServerEntitySearchBindings; struct ServerNpcActivityAssignmentBindings; struct ServerNpcActivityTranslateBindings; struct ServerNpcTaskLifecycleBindings; struct ServerNpcConditionMapBindings; }
 namespace sin_port::native_map {
 inline constexpr char export_name[]="SiN_GetServerMapEntityApi";
 inline constexpr unsigned token_capacity=2048;
@@ -770,6 +770,39 @@ struct ScriptedNpcArrivalResult {
 };
 inline constexpr char scripted_npc_arrival_export[]="SiN_StartScriptedNpcArrivalTask";
 using StartScriptedNpcArrivalTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcArrivalBindings*,ScriptedNpcArrivalResult*) noexcept;
+// Original shared Start9/10/11, 2204ff10. The typed 0x30-byte goal
+// request preserves the original 2204bc20 constructor's field layout.
+struct ScriptedNpcMoveGoal {
+    unsigned kind;
+    float position[3];
+    int target,activity,arrival_activity,arrival_sequence;
+    float distance,tolerance;
+    unsigned flags,owner_word;
+};
+static_assert(sizeof(ScriptedNpcMoveGoal)==0x30);
+struct ScriptedNpcMoveBindings {
+    const ScriptedSequenceControlBindings* control;
+    const native_weapon_tables::ServerNpcTaskLifecycleBindings* lifecycle;
+    const native_weapon_tables::ServerNpcActivityTranslateBindings* translation;
+    void* context;
+    unsigned goal_owner_word; // live word originally at 224de6f8
+    int (__cdecl *refresh_transform)(void*,void*) noexcept; // 2213fa60
+    int (__cdecl *activity_lookup)(void*,void*,unsigned,int*) noexcept; // 220ecb40
+    int (__cdecl *sequence_lookup)(void*,void*,unsigned,int*) noexcept; // 220ecb90
+    int (__cdecl *storage)(void*,unsigned,void**,unsigned*) noexcept;
+    int (__cdecl *set_goal)(void*,void*,const ScriptedNpcMoveGoal*,int,bool*) noexcept; // navigator +14(goal,4)
+    int (__cdecl *arrival_angles)(void*,void*,const float[3]) noexcept; // 22073fd0
+    void (__cdecl *near_notice)(void*,void*) noexcept; // optional print
+};
+struct ScriptedNpcMoveResult {
+    unsigned completed,goal_handle,goal_live,refreshes,near,custom_token,activity_lookups,sequence_lookups,
+        translated,goal_requested,goal_accepted,angles_written,arrival_cleared,completion_calls,task_completed,task_failed;
+    int task,activity,translated_activity,failed_code,status;
+    float distance;
+    ScriptedNpcMoveGoal goal;
+};
+inline constexpr char scripted_npc_move_export[]="SiN_StartScriptedNpcMoveTask";
+using StartScriptedNpcMoveTask=int (__cdecl *)(void*,unsigned,int,const ScriptedNpcMoveBindings*,ScriptedNpcMoveResult*) noexcept;
 // Original sequence interruptibility setter, query, condition suppression,
 // and the NPC's state-sensitive gate. Not a generic combat policy.
 struct ScriptedSequenceInterruptBindings {
