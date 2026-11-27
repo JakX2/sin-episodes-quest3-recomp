@@ -71,9 +71,9 @@ int main() {
        EngineEdictRetireResult::Unauthorized||
        rogue.flags!=old_flags||f.freed!=earlier_freed)
         return Fail(8,"unowned engine array was accepted before index lookup");
-    EngineEdictRetireHooks incomplete=h;
-    incomplete.authorized_array=nullptr;
-    if(RetireEngineEdictAt(f.elements,sizeof(f.elements),0,incomplete)!=
+    EngineEdictRetireHooks incomplete_hooks=h;
+    incomplete_hooks.authorized_array=nullptr;
+    if(RetireEngineEdictAt(f.elements,sizeof(f.elements),0,incomplete_hooks)!=
        EngineEdictRetireResult::InvalidInput||
        f.freed!=earlier_freed)
         return Fail(9,"unbound array ownership accepted");
