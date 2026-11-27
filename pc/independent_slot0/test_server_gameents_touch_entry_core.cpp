@@ -127,6 +127,7 @@ int main() {
         Entity actor{7,true,{1.f,2.f,3.f}};
         Edict ea{&actor},eb{&actor};
         unsigned refreshes=0,live_reads=0,marks=0;
+        bool clear_dirty_in_init=false;
         std::string calls;
     } alias;
     GameEntsTouchEntryHooks alias_hooks{
@@ -142,6 +143,11 @@ int main() {
         },
         [](void* p,GameEntsTouchTrace* trace) noexcept ->bool {
             auto& x=*static_cast<Alias*>(p);x.calls+='I';
+            if(x.clear_dirty_in_init){
+                x.actor.dirty=false;
+                x.actor.origin[0]=4.f;x.actor.origin[1]=6.f;
+                x.actor.origin[2]=8.f;
+            }
             trace->WriteFloat(0x2c,1.f);return true;
         },
         [](void* p,GameEntsTouchEntity* view) noexcept ->bool {
@@ -188,6 +194,28 @@ int main() {
        alias.calls!="ABIRM"||alias.refreshes!=1||alias.live_reads||
        out.second_refreshes!=1||out.first_refreshes||alias.marks!=1)
         return fail(13,"legacy same-actor alias protects against stale first snapshot");
+    // Retail reads SECOND +b8 only AFTER the trace initializer.
+    // If an owner initializer changes that live flag, stale snapshots
+    // must not cause an unnecessary origin refresh.
+    alias.actor.dirty=true;
+    alias.actor.origin[0]=1.f;alias.actor.origin[1]=2.f;alias.actor.origin[2]=3.f;
+    alias.refreshes=alias.live_reads=alias.marks=0;alias.calls.clear();
+    alias.clear_dirty_in_init=true;
+    alias_hooks.sync_live_origin=
+        [](void* p,GameEntsTouchEntity* view) noexcept ->bool {
+            auto& x=*static_cast<Alias*>(p);
+            if(view->opaque!=&x.actor)return false;
+            ++x.live_reads;
+            view->dirty_origin=x.actor.dirty;
+            for(int i=0;i<3;++i)view->origin[i]=x.actor.origin[i];
+            return true;
+        };
+    if(MarkEntitiesAsTouchingEntry(&alias.ea,&alias.eb,alias_hooks,out)
+       !=GameEntsTouchEntryStatus::Completed ||
+       alias.calls!="ABIM"||alias.refreshes||alias.live_reads!=4||
+       out.second_refreshes||out.first_refreshes||alias.marks!=1||
+       out.midpoint[0]!=4.f||out.midpoint[1]!=6.f||out.midpoint[2]!=8.f)
+        return fail(14,"trace initialization precedes live second-origin dirty check");
     std::puts("PASS original-gameents touch entry: 2-edict resolution, 0x54 trace, refresh order, midpoint, host failure boundaries");
     return 0;
 }
