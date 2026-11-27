@@ -1604,3 +1604,14 @@ target_compile_features(sin_client_entitylist_nine_method_bounded_reads_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_client_entitylist_nine_method_bounded_reads_native
   COMMAND sin_client_entitylist_nine_method_bounded_reads_test)
+
+
+# Phase 1657: four original client entity-list singleton startup counters,
+# observed read-only after SHA-gated original DllMain in owner mode.
+# CI uses ONLY invented DWORD memory and bounds/failure mutations.
+add_executable(sin_original_client_entitylist_startup_state_test
+  test_original_client_entitylist_state_snapshot.cpp)
+target_compile_features(sin_original_client_entitylist_startup_state_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_entitylist_startup_state_snapshot_native
+  COMMAND sin_original_client_entitylist_startup_state_test)
