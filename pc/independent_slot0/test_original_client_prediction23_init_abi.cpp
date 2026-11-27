@@ -17,6 +17,21 @@ int fail(int code,const char* why) {
         code,why);
     return code;
 }
+bool invoke_getter_no_args(void* receiver,void* method,
+                           std::uint32_t& result) noexcept {
+    std::uintptr_t before=0u,after=0u;
+    std::uint32_t returned=0u;
+    __asm {
+        mov before,esp
+        mov ecx,receiver
+        mov eax,method
+        call eax
+        mov returned,eax
+        mov after,esp
+    }
+    result=returned;
+    return before==after;
+}
 bool invoke_init_no_args(void* receiver,void* method) noexcept {
     std::uintptr_t before=0u,after=0u;
     __asm {
@@ -117,6 +132,37 @@ int main() {
        receiver->highest()!=-1 || receiver->value_a()!=0u ||
        receiver->value_b()!=0u)
         return fail(18,"second prediction reset not idempotent");
+    // Three further whole-SHA-authenticated original prediction
+    // getter virtuals use byte returns in AL or a DWORD in EAX.
+    if(receiver->member8_address()-owner_address!=
+           api::kOriginalGetterSlot15Offset ||
+       receiver->member9_address()-owner_address!=
+           api::kOriginalGetterSlot16Offset ||
+       receiver->memberC_address()-owner_address!=
+           api::kOriginalGetterSlot17Offset)
+        return fail(19,"native prediction getter PE32 offsets differ");
+    receiver->prime_early_fields(0x80u,0xF5u,0xDEADBEEFu);
+    std::uint32_t value=0u;
+    if(!invoke_getter_no_args(receiver,vtable[15],value) ||
+       (value&0xFFu)!=0x80u)
+        return fail(20,"slot15 byte this+8 return/RET0 ABI differs");
+    if(!invoke_getter_no_args(receiver,vtable[16],value) ||
+       (value&0xFFu)!=0xF5u)
+        return fail(21,"slot16 byte this+9 return/RET0 ABI differs");
+    if(!invoke_getter_no_args(receiver,vtable[17],value) ||
+       value!=0xDEADBEEFu)
+        return fail(22,"slot17 DWORD this+0xC return/RET0 ABI differs");
+    // Changing these bytes must NOT change the independent reset
+    // fields or cl_predict-dependent prediction flag.
+    receiver->prime_early_fields(0u,1u,0x10203040u);
+    if(!invoke_getter_no_args(receiver,vtable[15],value) ||
+       (value&0xFFu)!=0u ||
+       !invoke_getter_no_args(receiver,vtable[16],value) ||
+       (value&0xFFu)!=1u ||
+       !invoke_getter_no_args(receiver,vtable[17],value) ||
+       value!=0x10203040u ||
+       receiver->highest()!=-1 || receiver->enabled()!=0u)
+        return fail(23,"tiny getter state mixing, alias or ABI drift");
     // Important distinction: original native slot1 has NO null check.
     // The test's null-ConVar refusal is a deliberate safety deviation.
     if(api::events.destructor_calls!=0u)
@@ -132,6 +178,7 @@ int main() {
               "cl_predict m_pParent+0x18 / m_nValue+0x2C "
               "to-this+0x10 boolean conversion, "
               "null-ConVar refusal, original slot2 shutdown empty RET, "
-              "slot7 +0x24/+0x28/+0x2C reset, and local ownership");
+              "slot7 +0x24/+0x28/+0x2C reset, slots15-17 tiny getters, "
+              "and local ownership");
     return 0;
 }
