@@ -18,7 +18,9 @@ int __cdecl evaluate(void* actor,unsigned bytes,const void* info,unsigned info_b
     o->damage=rd<float>(info,0x2c);o->damage_read=1;
     // The FCOMP + (AH & 0x41) branch accepts strictly greater-than;
     // equal, below and unordered (NaN) all return false.
-    o->accepted=std::isfinite(o->damage)&&o->damage>o->threshold;
+    // The original x87 strict-greater compare accepts +infinity, rejects
+    // NaN and -infinity. Do not impose an extra finite-only filter.
+    o->accepted=o->damage>o->threshold;
     o->completed=1;return 1;
 }
 const ServerRecombinantMinorDamageGateApi api{1,sizeof(ServerRecombinantMinorDamageGateApi),&evaluate};
