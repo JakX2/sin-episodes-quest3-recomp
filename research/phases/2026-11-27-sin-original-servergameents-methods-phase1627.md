@@ -2,7 +2,7 @@
 
 ## Evidence provenance
 
-Read-only `objdump` and bounded PE32 reads of the **owner-local original** 2006 `server.dll`; SHA-256 `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`, image base `0x22000000`. The Phase 1626 seven-slot vtable inventory is the foundation. The two large method bodies were already authenticated there; **do not count their 653 bytes again** as new distinct methods. This phase recovers their original branch/call ordering and authenticates a related helper chain. It provides source-level models and one new Windows x86 synthetic test, *not* an engine plugin or in-game behavior.
+Read-only `objdump` and bounded PE32 reads of the **owner-local original** 2006 `server.dll`; SHA-256 `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`, image base `0x22000000`. The Phase 1626 seven-slot vtable inventory is the foundation. The two large method bodies were already authenticated there; **do not count their 653 bytes again** as new distinct methods. This phase recovers their original branch/call ordering and authenticates a related helper chain. The helper bodies cover 45 + 106 + 526 + 128 = **805 authenticated instruction bytes**; this is a method-region count only, not a claim that none were previously examined elsewhere. It provides source-level models and one new Windows x86 synthetic test, *not* an engine plugin or in-game behavior.
 
 | Region | Original VA | Whole bytes | Full SHA-256 |
 | --- | --- | ---: | --- |
@@ -11,6 +11,7 @@ Read-only `objdump` and bounded PE32 reads of the **owner-local original** 2006 
 | trace initializer | `0x22285a10` | 45 | `35e66fcdbd33a37b6440a98ed9b363478da2322bc6fc388461ddb5e0edd2a28d` |
 | pair contact helper | `0x22221080` | 106 | `7b7c2ab2d13044215c84ceac8a39306ea31cb1e17f142be6ce2e64771252b5d3` |
 | directed contact helper | `0x2221f350` | 526 | `bbdebe8fad62ff42eb88b6b282addbd23be90161aca0a7fd5aec4a814ced8dff` |
+| global trace-prefix copy helper | `0x2206e2c0` | 128 | `383458ce02ffe087f4aa8fb8a3d4d68a761eeae74a77673b6e259949dad6f47d` |
 
 All five functions end at observed `INT3` boundaries. Source-like snippets below express **reconstructed control flow**, not original source code.
 
@@ -44,7 +45,7 @@ void MarkEntitiesAsTouching(edict_t* firstEdict, edict_t* secondEdict) {
 
 ## Directed contact helper chain
 
-At `0x22221080`, the helper passes the trace record to a global context initializer `0x2206e2c0`, copies several trace fields `+0x38..+0x50` to globals `0x22574b30..0x22574b48`, then invokes **the same method `0x2221f350` in both directions**, first with the first entity as receiver and second as target (call `0x222210d8`), then second as receiver and first as target (call `0x222210e0`). The original 526-byte directed helper checks identity, parent handles (generation-aware), flags and existing links before allocating/updating a contact link and triggering callbacks. Its full helper semantics are *not* replaced by this phase; the existing `server_touch_mark_core.h` and `server_reciprocal_contact_core.h` remain higher-level independent models.
+At `0x22221080`, the helper passes the trace record to a byte-copy helper `0x2206e2c0`, which copies exactly the first **0x38 bytes** of the trace to engine-owned global `0x22574af8`. It separately copies several trace fields `+0x38..+0x50` to globals `0x22574b30..0x22574b48`, then invokes **the same method `0x2221f350` in both directions**, first with the first entity as receiver and second as target (call `0x222210d8`), then second as receiver and first as target (call `0x222210e0`). The original 526-byte directed helper checks identity, parent handles (generation-aware), flags and existing links before allocating/updating a contact link and triggering callbacks. Its full helper semantics are *not* replaced by this phase; the existing `server_touch_mark_core.h` and `server_reciprocal_contact_core.h` remain higher-level independent models.
 
 ## `CheckTransmit` original control-flow audit
 
