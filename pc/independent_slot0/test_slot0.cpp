@@ -298,7 +298,7 @@ int main(int argc, char** argv) {
     for (unsigned slot = 0; slot < 48u; ++slot) {
         if (!slots[slot] || !owned(dll, slots[slot])) {
             std::fprintf(stderr,
-                         "replacement VClient011 slot %u not DLL-owned\\n",
+                         "replacement VClient011 slot %u not DLL-owned\n",
                          slot);
             return fail(79, "VClient011 complete 48-slot owner boundary");
         }
