@@ -1,0 +1,11 @@
+# Phase 1624: Class-aware native target-point integration in original Minor spit
+
+This is a composition phase, not a claim of newly discovered retail code. It builds on Phase 1623's authenticated Recombinant Minor virtual `+0x1d4` override `0x2237b420`, which writes `(origin.x,origin.y,origin.z+6)`, and Phase 1604's recovered Minor spit logic `0x2237c360`.
+
+Original `server.dll` call-site proof: at `0x2237c3c3`, Minor spit invokes virtual `+0x1d4` **on the currently resolved enemy**, using the vector output pointer, rather than calling the local Minor actor method. The enemy is obtained by the actor's virtual `+0x154`, and may be player, NPC or another class. Therefore a blanket substitution of the Minor override for `ServerRecombinantEventBindings::target_point` would be incorrect.
+
+The separate `SiN_GetServerRecombinantSpitClassPointApi` wraps only the enemy, target-point and RNG callbacks of the existing `SiN_GetServerRecombinantSpitApi`. Before inspecting a target vtable, it asks the actual host to validate its byte extent. If the class identity matches the original Minor vtable and has at least `0x2c8` bytes, it calls the Phase 1623 native +0x1d4 implementation, preserving the original host's dirty-origin refresh. Other classes continue through their existing generic engine-owned target-point callback. It checks that the target belongs to the most recently resolved enemy, retains all other existing spit services and contexts, and does not change the original spit ABI.
+
+The loaded Windows regression verifies both Minor and non-Minor target execution through a complete spit attempt, correct ballistic target Z after subtracting the original ten units, exact callback order, no generic fallback on a failed Minor-origin service, no dereference when extent <4, invalid bindings/actor identity and insufficient source actor size. The synthetic fixture still owns the projectile, effects, ballistic and engine services.
+
+Original SHA-256 verified retail server: `568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650`. No original binary bytes committed, no generic Source physics, surface/material, model or prop recreation, and no claim of game startup or Quest execution. CI pending.

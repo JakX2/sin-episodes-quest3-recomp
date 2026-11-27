@@ -35,4 +35,28 @@ struct ServerRecombinantSpitApi {
     int (__cdecl *execute)(void*,unsigned,float,const ServerRecombinantSpitBindings*,ServerRecombinantSpitResult*) noexcept;
 };
 using GetServerRecombinantSpitApi=const ServerRecombinantSpitApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
+inline constexpr char server_recombinant_spit_class_point_export[]="SiN_GetServerRecombinantSpitClassPointApi";
+// Class-aware binding for original 2237c3c3 virtual +1d4 enemy point.
+// Other entity classes retain their existing engine-owned virtual service.
+struct ServerRecombinantSpitClassPointBindings {
+    const ServerRecombinantSpitBindings* spit;
+    const ServerRecombinantMinorOriginPointBindings* minor_point;
+    void* context;
+    int (__cdecl *extent)(void*,void*,unsigned*) noexcept; // owner proves enemy extent
+};
+struct ServerRecombinantSpitClassPointResult {
+    ServerRecombinantSpitResult spit;
+    ServerRecombinantMinorOriginPointResult minor_point;
+    unsigned point_calls,minor_calls,delegated_calls;
+};
+struct ServerRecombinantSpitClassPointApi {
+    unsigned version,size;
+    int (__cdecl *execute)(void*,unsigned,float,
+        const ServerRecombinantSpitClassPointBindings*,
+        ServerRecombinantSpitClassPointResult*) noexcept;
+};
+using GetServerRecombinantSpitClassPointApi=
+    const ServerRecombinantSpitClassPointApi* (__cdecl *)(unsigned,unsigned) noexcept;
+
 }

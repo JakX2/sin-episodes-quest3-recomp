@@ -1,4 +1,5 @@
 #include "native_server_recombinant_spit.h"
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantMinorOriginPointApi* __cdecl SiN_GetServerRecombinantMinorOriginPointApi(unsigned,unsigned) noexcept;
 #include <cmath>
 #include <cstring>
 namespace sin_port::native_weapon_tables {
@@ -54,9 +55,71 @@ int __cdecl execute(void* a,unsigned n,float now,const ServerRecombinantSpitBind
     wr(a,0xc44,o->probability);o->probability_written=o->completed=1;return 1;
 }
 const ServerRecombinantSpitApi api{1,sizeof(ServerRecombinantSpitApi),&execute};
+
+struct ClassPointFrame {
+    void* actor;
+    void* last_enemy;
+    const ServerRecombinantSpitClassPointBindings& bindings;
+    const ServerRecombinantEventBindings& original;
+    ServerRecombinantSpitClassPointResult& result;
+};
+int __cdecl class_enemy(void* p,void* actor,void** out) noexcept {
+    auto& f=*static_cast<ClassPointFrame*>(p);
+    if(actor!=f.actor||!f.original.enemy)return 0;
+    const int ok=f.original.enemy(f.original.context,actor,out);
+    if(ok&&out)f.last_enemy=*out;
+    return ok;
+}
+int __cdecl class_random(void* p,float lo,float hi,float* out) noexcept {
+    auto& f=*static_cast<ClassPointFrame*>(p);
+    return f.original.random&&f.original.random(f.original.context,lo,hi,out);
+}
+int __cdecl class_target_point(void* p,void* entity,float value[3]) noexcept {
+    auto& f=*static_cast<ClassPointFrame*>(p);
+    if(!entity||entity!=f.last_enemy||!value)return 0;
+    ++f.result.point_calls;
+    unsigned bytes=0;
+    if(!f.bindings.extent||!f.bindings.extent(f.bindings.context,entity,&bytes)||bytes<4)return 0;
+    const unsigned vt=rd<unsigned>(entity,0);
+    if(vt==recombinant_minor_vtable){
+        ++f.result.minor_calls;
+        const auto* native=SiN_GetServerRecombinantMinorOriginPointApi(
+            1,sizeof(ServerRecombinantMinorOriginPointApi));
+        return native&&f.bindings.minor_point&&
+            native->point(entity,bytes,value,f.bindings.minor_point,&f.result.minor_point);
+    }
+    ++f.result.delegated_calls;
+    return f.original.target_point&&
+        f.original.target_point(f.original.context,entity,value);
+}
+int __cdecl execute_class_point(void* actor,unsigned bytes,float now,
+    const ServerRecombinantSpitClassPointBindings* b,
+    ServerRecombinantSpitClassPointResult* out) noexcept {
+    if(!out)return 0;*out={};
+    if(!actor||bytes<0xc50u||rd<unsigned>(actor,0)!=recombinant_minor_vtable||
+       !b||!b->spit||!b->spit->event||!b->extent)return 0;
+    auto& original=*b->spit->event;
+    ClassPointFrame frame{actor,nullptr,*b,original,*out};
+    auto event=original;
+    event.context=&frame;event.enemy=&class_enemy;
+    event.target_point=&class_target_point;event.random=&class_random;
+    auto spit=*b->spit;spit.event=&event;
+    return execute(actor,bytes,now,&spit,&out->spit);
+}
+const ServerRecombinantSpitClassPointApi class_point_api{
+    1,sizeof(ServerRecombinantSpitClassPointApi),&execute_class_point
+};
+
 }
 }
 #pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantSpitApi=_SiN_GetServerRecombinantSpitApi")
 extern "C" const sin_port::native_weapon_tables::ServerRecombinantSpitApi* __cdecl SiN_GetServerRecombinantSpitApi(unsigned v,unsigned n) noexcept{
     using namespace sin_port::native_weapon_tables;return v==1&&n==sizeof(ServerRecombinantSpitApi)?&api:nullptr;
+}
+
+#pragma comment(linker,"/EXPORT:SiN_GetServerRecombinantSpitClassPointApi=_SiN_GetServerRecombinantSpitClassPointApi")
+extern "C" const sin_port::native_weapon_tables::ServerRecombinantSpitClassPointApi* __cdecl
+SiN_GetServerRecombinantSpitClassPointApi(unsigned version,unsigned size) noexcept {
+    using namespace sin_port::native_weapon_tables;
+    return version==1&&size==sizeof(ServerRecombinantSpitClassPointApi)?&class_point_api:nullptr;
 }
