@@ -14,6 +14,7 @@
 #include <vector>
 #include "../../pc/independent_slot0/original_interfacereg_readonly_snapshot.h"
 #include "../../pc/independent_slot0/original_client_entitylist_readonly_snapshot.h"
+#include "../../pc/independent_slot0/original_client_entitylist_state_snapshot.h"
 #pragma comment(lib, "bcrypt.lib")
 
 #if !defined(_M_IX86) && !defined(__i386__)
@@ -221,6 +222,29 @@ bool inspect_server_game_clients_fifteen_slots(HMODULE server) noexcept {
 // Phase1656: after exact SHA gate and owner-authorized original
 // LoadLibraryEx, inspect the distinct parent and embedded client entity-list
 // pointers. No factory virtual callbacks or original engine methods run here.
+// Phase1657: original SHA-authenticated DllMain-only client entity list
+// readback of count/max/secondary count/highest index. Never call client
+// entitylist vtable methods or log real module addresses/raw object bytes.
+bool inspect_client_entitylist_startup_state(HMODULE client) noexcept {
+  namespace state=sin_independent::original_client_entitylist_state_snapshot;
+  const auto base=reinterpret_cast<std::uintptr_t>(client);
+  const auto result=state::Observe(
+      base,{nullptr,&read_original_interfacereg_dword});
+  std::printf(
+      "{\"module\":\"client\",\"event\":"
+      "\"original_client_entitylist_startup_state\","
+      "\"status\":\"%s\",\"fields_read\":%u,"
+      "\"networked_count\":%u,\"max_entities\":%u,"
+      "\"secondary_flagged_count\":%u,\"highest_live_index\":%d,"
+      "\"actual_method_invocations\":0}\n",
+      state::StatusName(result.status),result.successful_reads,
+      static_cast<unsigned>(result.networked_count),
+      static_cast<unsigned>(result.max_entities),
+      static_cast<unsigned>(result.secondary_flagged_count),
+      static_cast<int>(result.highest_live_index));
+  return result.status==state::Status::Valid;
+}
+
 bool inspect_client_entitylist_nine_slots(HMODULE client) noexcept {
   namespace abi=sin_independent::original_client_entitylist_snapshot;
   const auto base=reinterpret_cast<std::uintptr_t>(client);
@@ -489,6 +513,9 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_client_entitylist_nine_slots(module))
+  ok=false;
+ if(std::strcmp(spec.side,"client")==0 &&
+    !inspect_client_entitylist_startup_state(module))
   ok=false;
  if(std::strcmp(spec.side,"server")==0 &&
     !inspect_server_game_clients_fifteen_slots(module))
