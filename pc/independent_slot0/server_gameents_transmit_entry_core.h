@@ -34,6 +34,7 @@ struct GameEntsTransmitEntryResult {
 
 inline GameEntsTransmitEntryStatus CheckTransmitEntry(
     const void* recipient_info,const std::uint16_t* indices,int count,
+    std::size_t index_storage_count,
     const GameEntsTransmitEntryHooks& hooks,
     GameEntsTransmitEntryResult& result) noexcept {
     result={};
@@ -60,7 +61,10 @@ inline GameEntsTransmitEntryStatus CheckTransmitEntry(
         result.policy_status=TransmitResult::Completed;
         return GameEntsTransmitEntryStatus::Completed;
     }
-    if(!indices||!hooks.bitsets||!hooks.policy.Complete())
+    // Unlike the trusted retail engine, this independent entry requires
+    // an explicit bound for the index array before reading any element.
+    if(!indices||static_cast<std::size_t>(count)>index_storage_count||
+       !hooks.bitsets||!hooks.policy.Complete())
         return GameEntsTransmitEntryStatus::InvalidInput;
     TransmitBits selected{},always{};
     ++result.bitset_calls;
