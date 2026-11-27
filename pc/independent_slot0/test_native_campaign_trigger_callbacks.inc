@@ -1565,7 +1565,8 @@
     {
         namespace nw=sin_port::native_weapon_tables;
         struct TaskFixture {
-            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{};
+            alignas(4) unsigned char seq[scripted_sequence_extent]{},npc[0x1028]{},desc[0x48]{},component[9]{};
+            bool component_handles=false;
             sin_independent::EntityHandleEntry entries[2]{};
             float now=12.f;std::string calls;
         } f;
@@ -1613,4 +1614,25 @@
         assert(run(f.npc,sizeof(f.npc),110,&b,&o)&&o.task_failed&&f.calls=="ACXWWFWF");
         assert(!run(f.npc,sizeof(f.npc),108,&b,&o)&&o.aim_called&&f.calls=="ACXWWFWFA");
         assert(!run(f.npc,sizeof(f.npc),107,&b,&o));
+        const auto shared=reinterpret_cast<nw::ExecuteServerNpcSharedScriptedTask>(GetProcAddress(server,nw::server_npc_shared_scripted_task_export));
+        assert(shared&&!GetProcAddress(client,nw::server_npc_shared_scripted_task_export));
+        nw::ServerNpcSharedTaskBindings sb{};sb.context=&f;sb.lifecycle=life;
+        sb.component_storage=[](void* p,unsigned tok,void** out,unsigned* n) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(tok==77);*out=f.component;*n=sizeof(f.component);return 1;
+        };
+        sb.component_task=[](void* p,unsigned tok,const nw::ServerNpcScheduleTask* task,bool running) noexcept ->int{
+            auto& f=*static_cast<TaskFixture*>(p);assert(tok==77&&task->id==106&&running&&f.component[8]);f.calls+='B';f.component[8]=f.component_handles;return 1;
+        };
+        sb.parent=[](void* p,void*,const nw::ServerNpcScheduleTask* task,bool) noexcept ->int{
+            assert(task->id==107);static_cast<TaskFixture*>(p)->calls+='P';return 1;
+        };
+        nw::ServerNpcSharedScriptedTaskResult so{};nw::ServerNpcScheduleTask task{106,0};
+        put(f.npc,0xc18,77u);f.calls.clear();f.component_handles=true;
+        auto route=b;route.lifecycle=nullptr; // shared lifecycle is authoritative
+        assert(shared(f.npc,sizeof(f.npc),&task,true,f.now,&sb,&route,&so)&&so.shared.component_handled&&!so.shared.native&&!so.script.completed&&f.calls=="B");
+        f.component_handles=false;
+        assert(shared(f.npc,sizeof(f.npc),&task,true,f.now,&sb,&route,&so)&&so.shared.component_called&&so.shared.native&&so.script.missing&&so.shared.lifecycle.completed&&f.calls=="BBW");
+        put(f.npc,0xc18,0u);task.id=107;
+        assert(shared(f.npc,sizeof(f.npc),&task,true,f.now,&sb,&route,&so)&&so.shared.parent_called&&!so.shared.native&&f.calls=="BBWP");
+        task.id=106;assert(!shared(f.npc,sizeof(f.npc),&task,true,f.now+1,&sb,&route,&so)&&f.calls=="BBWP");
     }

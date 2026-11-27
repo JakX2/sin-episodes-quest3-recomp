@@ -1,0 +1,3 @@
+# Phase 1552: shared dispatcher scripted RunTask route
+
+Extend execute_impl after its original active component gate with a separate opted-in scripted route. Component-handled calls skip native body; unsupported tasks use existing fallback. Native scripted task lifecycle is rebound to shared authoritative lifecycle; clock mismatch refuses. Loaded test covers component handled/declined, missing script task completion, generic fallback and mismatched clock. Old API structs unchanged. This is the shared dispatcher boundary, not yet the full schedule maintenance path. CI pending.

@@ -1,6 +1,7 @@
 #pragma once
 #include "native_server_grunt_task_dispatch.h"
 #include "native_server_npc_schedule_resolution.h"
+#include "native_server_map_entity.h"
 namespace sin_port::native_weapon_tables {
 inline constexpr char server_npc_shared_task_export[]="SiN_GetServerNpcSharedTaskApi";
 struct ServerNpcSharedTaskBindings {
@@ -36,6 +37,15 @@ struct ServerNpcSharedTaskApi {
     int (__cdecl *execute)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,const ServerNpcSharedTaskBindings*,ServerNpcSharedTaskResult*) noexcept;
 };
 using GetServerNpcSharedTaskApi=const ServerNpcSharedTaskApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Opt-in scripted NPC task dispatcher retains the original component
+// delegation gate. Other shared tasks still use the ordinary dispatcher.
+struct ServerNpcSharedScriptedTaskResult {
+    ServerNpcSharedTaskResult shared;
+    native_map::ScriptedNpcTaskResult script;
+};
+inline constexpr char server_npc_shared_scripted_task_export[]="SiN_ExecuteServerNpcSharedScriptedTask";
+using ExecuteServerNpcSharedScriptedTask=int (__cdecl *)(void*,unsigned,const ServerNpcScheduleTask*,bool,float,
+    const ServerNpcSharedTaskBindings*,const native_map::ScriptedNpcTaskBindings*,ServerNpcSharedScriptedTaskResult*) noexcept;
 // Facing service extends the shared dispatcher without altering the v1 ABI.
 inline constexpr char server_npc_shared_facing_export[]="SiN_GetServerNpcSharedFacingApi";
 struct ServerNpcSharedFacingBindings {
