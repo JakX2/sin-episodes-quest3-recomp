@@ -183,7 +183,7 @@ private:
     };
     static bool WellFormed(const GameEntsOwnerIdentity& v) noexcept {
         return v.edict&&v.entity&&v.unknown&&v.touch&&v.generation!=0&&
-            v.edict_bytes>=0x10&&v.entity_bytes>=0x170&&
+            v.edict_bytes>=0x14&&v.entity_bytes>=0x170&&
             v.unknown_bytes>=sizeof(void*)&&v.touch_bytes>0;
     }
     static bool SharesAddress(const GameEntsOwnerIdentity& a,

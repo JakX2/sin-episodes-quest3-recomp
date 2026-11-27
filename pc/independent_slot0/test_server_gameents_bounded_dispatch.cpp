@@ -16,6 +16,7 @@ struct edict_t {
     std::uint32_t flags=0x65, serial=0;
     IServerNetworkable* networkable=nullptr;
     sin_independent::ServerUnknownAbi* unknown=nullptr;
+    std::uint32_t next_free=0x12345678;
 };
 class CBaseEntity {
 public:
@@ -25,6 +26,8 @@ public:
 };
 struct CCheckTransmitInfo {unsigned char bytes[0x2010]{};};
 static_assert(offsetof(edict_t,unknown)==0x0c,"retail edict unknown offset");
+static_assert(offsetof(edict_t,next_free)==0x10,"retail engine edict free-link offset");
+static_assert(sizeof(edict_t)==0x14,"retail engine 20-byte edict array stride");
 static_assert(offsetof(CBaseEntity,edict)==0x16c,"retail entity edict offset");
 static_assert(sizeof(void*)==4,"original PE32 only");
 using namespace sin_independent;

@@ -20,12 +20,13 @@ int main() {
     Registry r;
     Storage a{},b{},c{};
     auto first=Identity(a,1);
+    first.edict_bytes=0x14; // authenticated original edict array stride
     auto second=Identity(b,2);
     auto third=Identity(c,3);
     if(!r.Enroll(0,first)||!r.Enroll(1,second))
         return Fail(1,"initial enrollment denied");
     if(r.Enroll(2,first))return Fail(2,"duplicate live address enrolled");
-    auto short_edict=third;short_edict.edict_bytes=0x0f;
+    auto short_edict=third;short_edict.edict_bytes=0x13;
     if(r.Enroll(2,short_edict))return Fail(3,"short edict prefix enrolled");
     auto short_entity=third;short_entity.entity_bytes=0x16f;
     if(r.Enroll(2,short_entity))return Fail(4,"short entity prefix enrolled");
