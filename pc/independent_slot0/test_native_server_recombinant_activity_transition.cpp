@@ -138,6 +138,30 @@ int main(int argc,char** argv){
         f.get<int>(0x878)==6&&f.calls=="WVR");
     f.calls.clear();
     assert(composed->request(f.actor,sizeof(f.actor),10,&cb,&co)&&co.assignment.skipped&&!co.transition_calls&&f.calls=="Q");
+
+    // Exercise a non-skipped request through the already recovered scripted
+    // activity selection route; the class override is a no-op for activity15.
+    ServerActivityCompositeView empty_view{};
+    struct Selection {F* fixture;const ServerActivityCompositeView* view;} selection{&f,&empty_view};
+    ab.translation.context=&selection;ab.translation.activities=&dictionary;
+    ab.translation.metadata=[](void* p,void* a,const ServerActivityCompositeView** out) noexcept ->int{
+        auto& s=*static_cast<Selection*>(p);assert(a==s.fixture->actor);s.fixture->calls+='Q';*out=s.view;return 1;
+    };
+    ab.translation.weapon=[](void*,void*,int act,bool* required,int* out) noexcept ->int{
+        *required=false;*out=act;return 1;
+    };
+    ab.translation.other=[](void*,void*,int act,int* out) noexcept ->int{*out=act;return 1;};
+    ab.translation.scripted_sequence=[](void*,void*,int* out) noexcept ->int{*out=0;return 1;};
+    f.calls.clear();host.next=15;
+    assert(composed->request(f.actor,sizeof(f.actor),15,&cb,&co)&&co.assignment.assigned&&
+        co.transition_calls==1&&co.transition.completed&&!co.transition.scalar_calls&&
+        f.get<int>(0x878)==15&&f.get<int>(0x880)==15&&f.get<int>(0x884)==0&&f.calls=="QWVC");
+    // A later failure is not a transaction rollback: publication occurs
+    // before notifying the component, exactly as the underlying assignment.
+    f.put(0x878,6);f.calls.clear();f.draw=.125f;host.fail_component=true;
+    assert(!direct(10)&&co.transition.completed&&co.assignment.activity_changed&&
+        !co.assignment.assigned&&f.get<int>(0x878)==10&&f.calls=="WVRMC");
+    host.fail_component=false;
     // Wrong actor or assignment class is rejected before any callbacks.
     f.calls.clear();f.put(0,0u);
     assert(!direct(1)&&!co.transition_calls&&f.calls.empty());
