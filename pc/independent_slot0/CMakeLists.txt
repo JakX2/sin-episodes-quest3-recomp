@@ -328,6 +328,16 @@ target_compile_features(sin_original_gameclientexports_abi_test PRIVATE cxx_std_
 add_test(NAME independent_original_gameclientexports_4slot_native_abi
   COMMAND sin_original_gameclientexports_abi_test)
 
+# Phase 1655: exact original ServerGameClients003 15-slot ABI and
+# the already implemented native server GetPlayerLimits ret 0x0C boundary.
+# Public CI uses only invented PE32 pointer records and machine words.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_server_gameclients15_playerlimits_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_server_gameclients_playerlimits.py"
+      --self-test)
+endif()
+
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
 add_executable(sin_server_gameents_transmit_entry_test
