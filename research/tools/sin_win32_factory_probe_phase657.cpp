@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include "../../pc/independent_slot0/original_interfacereg_readonly_snapshot.h"
 #pragma comment(lib, "bcrypt.lib")
 
 #if !defined(_M_IX86) && !defined(__i386__)
@@ -157,6 +158,45 @@ bool read_current_process_byte(std::uintptr_t address,std::uint8_t& value) noexc
      reinterpret_cast<LPCVOID>(address),&value,sizeof(value),&got)!=0 &&
      got==sizeof(value);
 }
+// Phase1653: read-only observation of the original 12-byte InterfaceReg
+// linked list after DllMain. This is SEPARATE from Phase659's app-system
+// registry and from game entity class factories. Do not invoke creator
+// functions or any virtual methods. The SHA of the original DLL is already
+// required by inspect() BEFORE LoadLibraryEx calls this observer.
+bool read_original_interfacereg_dword(
+    void*,std::uintptr_t address,std::uint32_t* value) noexcept {
+ if(!value)return false;
+ return read_current_process_dword(address,*value);
+}
+bool read_original_interfacereg_byte(
+    void*,std::uintptr_t address,std::uint8_t* value) noexcept {
+ if(!value)return false;
+ return read_current_process_byte(address,*value);
+}
+bool inspect_original_interface_registry(
+    HMODULE original,const ModuleExpected& module) noexcept {
+ namespace abi=sin_independent::original_interfacereg_snapshot;
+ const auto base=reinterpret_cast<std::uintptr_t>(original);
+ const auto layout=std::strcmp(module.side,"client")==0 ?
+       abi::OriginalClientLayout(base) : abi::OriginalServerLayout(base);
+ const auto result=abi::Observe(
+     layout,{nullptr,&read_original_interfacereg_dword,
+                      &read_original_interfacereg_byte});
+ // No raw pointers, original executable bytes, or third-party interface
+ // names are printed. Counts and status labels are the only observations.
+ std::printf(
+     "{\"module\":\"%s\",\"event\":\"original_interfacereg_snapshot\","
+     "\"status\":\"%s\",\"entries\":%u,\"expected\":%u,"
+     "\"priority_found\":%u,\"priority_expected\":%u,"
+     "\"continuous_owner_pin_proven\":false}\n",
+     module.side,abi::StatusName(result.status),
+     static_cast<unsigned int>(result.entries),
+     static_cast<unsigned int>(layout.expected_count),
+     static_cast<unsigned int>(result.priority_found),
+     static_cast<unsigned int>(layout.priority_count));
+ return result.accepted();
+}
+
 bool inspect_server_autogame_systems(HMODULE original_server) noexcept {
  const auto base=reinterpret_cast<std::uintptr_t>(original_server);
  constexpr std::uintptr_t head_rva=0x572cc0u,flag_rva=0x572cb8u;
@@ -342,6 +382,8 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
    if(!miss_ok)ok=false;
   }
  }
+ if(!inspect_original_interface_registry(module,spec))
+  ok=false;
  if(std::strcmp(spec.side,"client")==0 && !inspect_client_registration_list(module))
   ok=false;
  if(std::strcmp(spec.side,"server")==0 && !inspect_server_autogame_systems(module))
