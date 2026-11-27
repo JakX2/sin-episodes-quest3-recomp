@@ -373,8 +373,33 @@ def self_test():
     assert summary([first,first,first]) == (3,0)
     assert hashlib.sha256(b"abc").hexdigest() == (
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    # Verify the actual Win32Reader gate, not just the standalone code
+    # verifier, using fake in-process instruction windows and no game PID.
+    from types import SimpleNamespace
+    from attest_sin_original_engine_live_allocator_code import (
+        WITNESSES, expected_instruction)
+    memory = {
+        synthetic_loaded_base + witness.va - IMAGE_BASE:
+            expected_instruction(witness, synthetic_loaded_base)
+        for witness in WITNESSES
+    }
+    fake = SimpleNamespace(
+        engine_base=synthetic_loaded_base,
+        engine_size=0x900000,
+        read_bytes=lambda at, length: memory[at][:length])
+    report = Win32Reader.attest_loaded_allocator_code(fake)
+    assert report.accepted and report.code_windows_checked == 20
+    first_code_address = synthetic_loaded_base + WITNESSES[0].va - IMAGE_BASE
+    pristine = memory[first_code_address]
+    memory[first_code_address] = bytes([pristine[0] ^ 1]) + pristine[1:]
+    try:
+        Win32Reader.attest_loaded_allocator_code(fake)
+    except RuntimeError as err:
+        assert "select_protected_last" in str(err)
+    else:
+        raise AssertionError("Win32Reader accepted tampered live code")
     test_win32_readonly_api_on_self()
-    print("PASS original-free engine edict owner observer: 4 SHA-grounded global RVAs, shifted image bases, torn/unreadable states, overflow, observed-only relocation accounting and optional Windows read-only self process API")
+    print("PASS original-free engine edict owner observer: 4 SHA-grounded global RVAs, shifted image bases, torn/unreadable states, opcode-attestation gate refusal, overflow and optional Windows read-only self process API")
 
 
 def main():
