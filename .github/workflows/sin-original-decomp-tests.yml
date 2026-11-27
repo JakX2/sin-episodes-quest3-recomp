@@ -60,6 +60,7 @@ on:
       - 'research/tools/observe_sin_original_engine_edict_owner.py'
       - 'research/tools/observe_sin_original_engine_edict_records.py'
       - 'research/tools/attest_sin_original_engine_live_allocator_code.py'
+      - 'research/tools/audit_sin_original_server_interfacereg_abi.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -221,3 +222,6 @@ jobs:
 
       - name: Attest rebased original engine x86 allocator instructions in synthetic memory
         run: python research/tools/attest_sin_original_engine_live_allocator_code.py --self-test
+
+      - name: Verify original server.dll static InterfaceReg constructor and three game-facing factories
+        run: python research/tools/audit_sin_original_server_interfacereg_abi.py --self-test
