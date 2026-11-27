@@ -178,6 +178,45 @@ bool read_original_interfacereg_byte(
 // GameClientExports001 singleton vptr and all four virtual function RVAs.
 // The exact original client.dll SHA is verified by inspect() before
 // LoadLibraryEx; this code never invokes a vtable function or pointer.
+// Phase1655: SHA-authenticated original server module's 15-slot
+// ServerGameClients003 singleton. This is post-original-DllMain readback;
+// never invoke virtual callbacks, especially client-connect callbacks.
+// The originating server.dll full-file SHA is verified BEFORE LoadLibraryEx.
+bool inspect_server_game_clients_fifteen_slots(HMODULE server) noexcept {
+ const auto base=reinterpret_cast<std::uintptr_t>(server);
+ constexpr std::uintptr_t singleton_rva=0x510658u;
+ constexpr std::uintptr_t vtable_rva=0x443054u;
+ constexpr std::uint32_t method_rvas[15]={
+     0x1e63f0u,0x1e8330u,0x1ea330u,0x1ea3a0u,0x1e8340u,
+     0x1e9650u,0x1e8510u,0x1e8370u,0x1e9c00u,0x1ea600u,
+     0x1e84d0u,0x1e85b0u,0x1e8530u,0x1e8520u,0x1e85e0u
+ };
+ std::uint32_t pointer=0u;
+ bool ok=read_current_process_dword(base+singleton_rva,pointer)&&
+         static_cast<std::uintptr_t>(pointer)==base+vtable_rva;
+ unsigned matched=0u;
+ for(unsigned i=0u;ok&&i<15u;++i) {
+    std::uint32_t target=0u;
+    if(!read_current_process_dword(base+vtable_rva+i*4u,target)) {
+       ok=false;
+       break;
+    }
+    if(static_cast<std::uintptr_t>(target)!=base+method_rvas[i]) {
+       ok=false;
+       break;
+    }
+    ++matched;
+ }
+ std::printf(
+     "{\"module\":\"server\",\"event\":"
+     "\"original_servergameclients_vtable\","
+     "\"status\":\"%s\",\"matched_slots\":%u,"
+     "\"expected_slots\":15,\"actual_method_invocations\":0}\n",
+     ok?"pinned_original_vptr_read":"vptr_or_slot_mismatch",
+     matched);
+ return ok;
+}
+
 bool inspect_game_client_exports_four_slots(HMODULE client) noexcept {
  const auto base=reinterpret_cast<std::uintptr_t>(client);
  constexpr std::uintptr_t singleton_rva=0x2fa4b0u;
@@ -425,6 +464,9 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_game_client_exports_four_slots(module))
+  ok=false;
+ if(std::strcmp(spec.side,"server")==0 &&
+    !inspect_server_game_clients_fifteen_slots(module))
   ok=false;
  if(std::strcmp(spec.side,"client")==0 && !inspect_client_registration_list(module))
   ok=false;

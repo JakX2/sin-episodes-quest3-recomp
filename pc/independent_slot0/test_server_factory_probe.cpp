@@ -148,6 +148,31 @@ int main(int argc,char** argv) {
     reinterpret_cast<Limits>(clientsTable[0])(objects[2],low,high,def);
     if(low!=1||high!=32||def!=1)return fail("original player limits");
 
+    // Exact SHA-authenticated original method at VA 0x221E63F0 has three
+    // DWORD reference inputs in __thiscall order, then RET 0x0C. Exercise
+    // the currently implemented independent DLL's ACTUAL virtual slot
+    // through raw MSVC x86 assembly as an independent stack-cleanup check.
+    int rawMin=-1,rawMax=-1,rawDefault=-1;
+    int* minOutput=&rawMin;
+    int* maxOutput=&rawMax;
+    int* defaultOutput=&rawDefault;
+    void* clientSelf=objects[2];
+    void* limitsMethod=clientsTable[0];
+    DWORD stackBefore=0,stackAfter=0;
+    __asm {
+        mov stackBefore,esp
+        push defaultOutput
+        push maxOutput
+        push minOutput
+        mov ecx,clientSelf
+        mov eax,limitsMethod
+        call eax
+        mov stackAfter,esp
+    }
+    if(stackBefore!=stackAfter||rawMin!=1||rawMax!=32||
+       rawDefault!=1)
+        return fail("original GetPlayerLimits native ret12 ABI");
+
     // The server's actual slot 9 uses a loaded vstdlib command-line
     // singleton. This synthetic DLL lives outside the gameplay artifact.
     HMODULE fixture=LoadLibraryA(argv[2]);

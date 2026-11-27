@@ -305,6 +305,15 @@ add_executable(sin_original_interfacereg_owner_probe
   ../../research/tools/sin_win32_factory_probe_phase657.cpp)
 target_compile_features(sin_original_interfacereg_owner_probe PRIVATE cxx_std_17)
 target_link_libraries(sin_original_interfacereg_owner_probe PRIVATE bcrypt)
+set_target_properties(sin_original_interfacereg_owner_probe PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+# The original DLLs remain outside CI. This only tests the guardrails of
+# the packaged owner-original factory probe launcher.
+add_test(NAME independent_owner_original_factory_package_guardrails
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Run-OwnerOriginalInterfaceFactoryProbe.ps1"
+    -SelfTest)
 
 add_executable(sin_original_interfacereg_readonly_snapshot_test
   test_original_interfacereg_readonly_snapshot.cpp)
@@ -327,6 +336,16 @@ add_executable(sin_original_gameclientexports_abi_test
 target_compile_features(sin_original_gameclientexports_abi_test PRIVATE cxx_std_17)
 add_test(NAME independent_original_gameclientexports_4slot_native_abi
   COMMAND sin_original_gameclientexports_abi_test)
+
+# Phase 1655: exact original ServerGameClients003 15-slot ABI and
+# the already implemented native server GetPlayerLimits ret 0x0C boundary.
+# Public CI uses only invented PE32 pointer records and machine words.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_server_gameclients15_playerlimits_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_server_gameclients_playerlimits.py"
+      --self-test)
+endif()
 
 # Original CheckTransmit entry, with host-owned stable PE32 table and
 # bitset mappings. Shares the existing transmit policy; factory disabled.
