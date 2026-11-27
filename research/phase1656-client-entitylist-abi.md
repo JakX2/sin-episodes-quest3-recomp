@@ -30,9 +30,32 @@ The containing constructor writes the primary final vptr at `0x241081A2`
 and secondary final vptr at `0x241081A8`. Previous owner-authenticated
 audits cover the six-byte factory, both construction stores, per-cell PE32
 HIGHLOW relocations, selected complete method hashes and native RET
-instructions. There are four bytes between the nine-pointer secondary table
-and the beginning of the primary table. **These four bytes are not a tenth
-secondary virtual.** Their exact role is not reclassified here.
+instructions.
+
+**New, directly authenticated Phase 1656 RTTI result:** the four-byte
+inter-table word at `0x242973B4` is the primary vftable's `[-1]`
+Microsoft C++ Complete Object Locator pointer, not a tenth secondary
+virtual. The original RTTI is independently consistent with the separate
+secondary subobject:
+
+| RTTI evidence | Original virtual address | Verified fields |
+|---|---:|---|
+| Secondary vtable[-1] pointer | `0x2429738C` | `0x242E59D4` |
+| Secondary Complete Object Locator | `0x242E59D4` | signature 0, offset `0x10014`, cdOffset 0 |
+| Primary vtable[-1] pointer | `0x242973B4` | `0x242E5A50` |
+| Primary Complete Object Locator | `0x242E5A50` | signature 0, offset 0, cdOffset 0 |
+| Shared TypeDescriptor | `0x242FA77C` | MSVC name `.?AVCClientEntityList@@` |
+| Shared ClassHierarchyDescriptor | `0x242E5A40` | Relocated from both locator records |
+
+Both vtable[-1] and both COL descriptor pointer fields carry PE32
+HIGHLOW relocations. These findings were checked against the exact
+SHA-matched owner originals from the Drive `SE1/bin.zip` archive,
+without executing any original code.
+
+Original whole 36-byte secondary vtable SHA-256:
+`85b1a89b4c59052c027286beed20e00242cbdf428fa1559dbd666a51fe18be75`.
+Original whole 12-byte primary vtable SHA-256:
+`f4ccb17ffb03a35df448ebfe6b7fcb29fec20cff98f7403121ac0bc8216bd8d3`.
 
 ### Secondary virtual order
 
@@ -58,13 +81,15 @@ deleting destructor, **not** secondary slot 0.
    (`research/tools/audit_sin_original_client_entitylist_secondary_abi.py`):
    refuses files with either wrong entire SHA; checks all nine secondary and
    all three parent pointers against previous independently authenticated
-   phases, relocated factory and constructor pointer operands, and separate
-   runtime virtual `.data` objects. Reuses all earlier whole-method hash
-   audits. Does not execute original game code.
+   phases, relocated factory and constructor pointer operands, both
+   original 20-byte RTTI Complete Object Locators, the shared descriptor
+   name, two whole vtable SHA-256s, and separate runtime virtual `.data`
+   objects. Reuses all earlier whole-method hash audits. Does not execute
+   original game code.
 2. **Portable original-free mutation self-test**:
    invented pointer windows, one-byte corruption of all 12 table cells,
    swap/truncation/extra-slot errors, forged factory return, constructor
-   mutations and fake original-SHA refusal.
+   and RTTI COL mutations, and fake original-SHA refusal.
 3. **Native MSVC x86 ABI fixture**:
    compiler-generated, independently owned primary and secondary objects;
    verifies +`0x10014` identity, all nine actual vtable positions,
