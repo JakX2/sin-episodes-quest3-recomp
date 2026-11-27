@@ -59,6 +59,7 @@ on:
       - 'research/tests/test_audit_sin_original_rifle_grenade_factories.py'
       - 'research/tools/observe_sin_original_engine_edict_owner.py'
       - 'research/tools/observe_sin_original_engine_edict_records.py'
+      - 'research/tools/attest_sin_original_engine_live_allocator_code.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -217,3 +218,6 @@ jobs:
 
       - name: Test selected original 2006 PE32 edict serial, flags and reuse-time reads (synthetic only)
         run: python research/tools/observe_sin_original_engine_edict_records.py --self-test
+
+      - name: Attest rebased original engine x86 allocator instructions in synthetic memory
+        run: python research/tools/attest_sin_original_engine_live_allocator_code.py --self-test
