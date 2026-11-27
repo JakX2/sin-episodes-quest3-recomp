@@ -20,7 +20,8 @@ struct Fixture {
     std::string calls;
     GameEntsTouchTrace published_trace{};
     bool published=false,fail_publish=false;
-    unsigned allocations=0,freed=0,starts=0,touches=0,refreshes=0;
+    unsigned allocations=0,freed=0,starts=0,touches=0,refreshes=0,
+             ended=0,roots_destroyed=0;
     bool missing_first=false,missing_second=false,fail_resolve=false,
          fail_init=false,fail_second_refresh=false,fail_first_refresh=false,
          leave_dirty=false,fail_second_alloc=false,valid=true,
@@ -106,6 +107,39 @@ static void Touch(CBaseEntity* owner,CBaseEntity* partner,void* ctx) noexcept {
     auto& f=*static_cast<Fixture*>(ctx);f.calls+='T';++f.touches;
     if(!owner||!partner||owner==partner)f.valid=false;
 }
+// The lifecycle is now created by the original GameEnts touch entry,
+// not by manually inserted fixture nodes. Release must unlink both new
+// reciprocal links, then keep the remote touch sentinel available.
+static void EndContact(CBaseEntity* owner,CBaseEntity* partner,void* ctx) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);f.calls+='E';++f.ended;
+    if(owner!=&f.b||partner!=&f.a||f.state.cleanupDataObjects)f.valid=false;
+}
+static void ReleaseContactNode(ContactNode* node,ContactKind kind,void* ctx) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);f.calls+='F';++f.freed;
+    if(kind!=ContactKind::Touch)f.valid=false;
+    delete node;
+}
+static void DestroyContactRoot(CBaseEntity* owner,ContactNode* root,
+                               ContactKind kind,void* ctx) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);f.calls+='D';++f.roots_destroyed;
+    if(kind!=ContactKind::Touch||!f.state.cleanupDataObjects||
+       (owner==&f.a&&root!=&f.ra)||(owner==&f.b&&root!=&f.rb)||
+       (owner!=&f.a&&owner!=&f.b))f.valid=false;
+    root->next=root->previous=root;
+}
+static void NotifyContact(CBaseEntity* owner,CBaseEntity* partner,
+                          ContactKind kind,void* ctx) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);
+    if(owner!=&f.a||partner!=&f.b||kind!=ContactKind::Touch) {
+        f.valid=false;return;
+    }
+    EntityHandleView registry(f.registry.data(),f.registry.size());
+    ReciprocalHooks hooks{&EndContact,nullptr,&ReleaseContactNode,
+                          &DestroyContactRoot,&f};
+    if(RemoveReciprocalContact(owner,partner,kind,f.second.contacts,
+                              f.state,registry,hooks)!=ReciprocalResult::Removed)
+        f.valid=false;
+}
 static GameEntsContactBridgeHooks Hooks(Fixture& f) noexcept {
     return {&f,&Resolve,&Init,&Publish,&f.state,f.registry.data(),f.registry.size(),
             {&Refresh,&Allocate,&Free,&Start,&Touch,&f}};
@@ -148,6 +182,31 @@ int main() {
        f.ra.next->stamp!=11||f.rb.next->stamp!=13||
        f.state.touchAllocated!=2)
         return Fail(2,"repeated pair reuses links with no second origin refresh");
+    // Exercise the real composition path over a complete lifecycle:
+    // original edict touch -> repeat -> bulk departure -> reciprocal unlink
+    // -> recreate through the SAME original edict touch entry again.
+    f.calls.clear();
+    EntityHandleView view(f.registry.data(),f.registry.size());
+    ContactCleanupHooks cleanup{&NotifyContact,&ReleaseContactNode,
+                                &DestroyContactRoot,&f};
+    if(RemoveContactList(&f.a,ContactKind::Touch,f.first.contacts,
+        f.state,f.first.touchStamp,view,cleanup)!=ContactCleanupResult::Removed||
+       !f.valid||f.calls!="EFFD"||f.freed!=2||f.ended!=1||
+       f.roots_destroyed!=1||f.state.touchAllocated||
+       !f.state.cleanupDataObjects||f.first.contacts.present||
+       f.first.contacts.root||f.first.touchStamp||
+       !f.second.contacts.present||f.second.contacts.root!=&f.rb||
+       f.rb.next!=&f.rb||f.rb.previous!=&f.rb)
+        return Fail(20,"original-edict-generated touch pair must clean up reciprocally");
+    f.first.contacts={&f.ra,true};f.first.touchStamp=15;
+    if(Run(f,out)!=GameEntsTouchEntryStatus::Completed ||
+       !f.valid||f.calls!="ABIPNNSS"||
+       out.contact_status!=TouchMarkResult::Recorded||
+       f.state.touchAllocated!=2||f.allocations!=4||
+       f.starts!=4||f.ra.next->stamp!=15||
+       !ValidateReciprocalChain(&f.ra,2)||
+       !ValidateReciprocalChain(&f.rb,2))
+        return Fail(21,"new pair after completed bulk and reciprocal teardown");
     Fixture same;
     same.calls.clear();
     if(MarkEntitiesAsTouchingWithContactGraph(&same.ea,&same.ea,Hooks(same),out)
