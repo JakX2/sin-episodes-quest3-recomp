@@ -18,6 +18,8 @@ struct Fixture {
     TouchEntity first{},second{};
     ContactCleanupState state{};
     std::string calls;
+    GameEntsTouchTrace published_trace{};
+    bool published=false,fail_publish=false;
     unsigned allocations=0,freed=0,starts=0,touches=0,refreshes=0;
     bool missing_first=false,missing_second=false,fail_resolve=false,
          fail_init=false,fail_second_refresh=false,fail_first_refresh=false,
@@ -59,6 +61,15 @@ static bool Init(void* ctx,GameEntsTouchTrace* trace) noexcept {
     trace->WriteFloat(0x2c,1.f);trace->WriteFloat(0x3c,42.f);
     return true;
 }
+static bool Publish(void* ctx,const GameEntsTouchTrace* trace) noexcept {
+    auto& f=*static_cast<Fixture*>(ctx);f.calls+='P';
+    if(f.fail_publish)return false;
+    f.published_trace=*trace;
+    if(trace->ReadFloat(0x2c)!=1.f||trace->ReadFloat(0x3c)!=42.f)
+        f.valid=false;
+    f.published=true;
+    return true;
+}
 static bool Refresh(TouchEntity& t,void* ctx) noexcept {
     auto& f=*static_cast<Fixture*>(ctx);
     const bool is_first=t.entity==&f.a;
@@ -81,18 +92,18 @@ static void Free(ContactNode* n,void* ctx) noexcept {
 }
 static void Start(CBaseEntity* owner,CBaseEntity* partner,void* ctx) noexcept {
     auto& f=*static_cast<Fixture*>(ctx);f.calls+='S';++f.starts;
-    if(!owner||!partner||owner==partner)f.valid=false;
+    if(!owner||!partner||owner==partner||!f.published)f.valid=false;
 }
 static void Touch(CBaseEntity* owner,CBaseEntity* partner,void* ctx) noexcept {
     auto& f=*static_cast<Fixture*>(ctx);f.calls+='T';++f.touches;
     if(!owner||!partner||owner==partner)f.valid=false;
 }
 static GameEntsContactBridgeHooks Hooks(Fixture& f) noexcept {
-    return {&f,&Resolve,&Init,&f.state,f.registry.data(),f.registry.size(),
+    return {&f,&Resolve,&Init,&Publish,&f.state,f.registry.data(),f.registry.size(),
             {&Refresh,&Allocate,&Free,&Start,&Touch,&f}};
 }
 static GameEntsTouchEntryStatus Run(Fixture& f,GameEntsContactBridgeResult& out) {
-    f.calls.clear();
+    f.calls.clear();f.published=false;
     return MarkEntitiesAsTouchingWithContactGraph(&f.ea,&f.eb,Hooks(f),out);
 }
 static int Fail(int i,const char* why) {
@@ -103,10 +114,12 @@ int main() {
     GameEntsContactBridgeResult out{};
     Fixture f;
     if(Run(f,out)!=GameEntsTouchEntryStatus::Completed ||
-       !f.valid||f.calls!="ABI21NNSS"||
+       !f.valid||f.calls!="ABI21PNNSS"||
        out.entry.resolved!=2||out.entry.trace_initialized!=1||
        out.entry.second_refreshes!=1||out.entry.first_refreshes!=1||
        out.resolved_calls!=2||out.refresh_calls!=2||out.contact_calls!=1||
+       out.publish_calls!=1||!f.published||
+       f.published_trace.ReadFloat(0x0c)!=5.f||
        out.contact_status!=TouchMarkResult::Recorded||
        out.entry.trace.ReadFloat(0x0c)!=5.f||
        out.entry.trace.ReadFloat(0x10)!=7.f||
@@ -121,7 +134,7 @@ int main() {
         return Fail(1,"original edict trace/dirty refresh -> directed reciprocal links");
     f.first.touchStamp=11;f.second.touchStamp=13;
     if(Run(f,out)!=GameEntsTouchEntryStatus::Completed ||
-       f.calls!="ABITT"||out.refresh_calls!=0||
+       f.calls!="ABIPTT"||out.refresh_calls!=0||
        out.contact_status!=TouchMarkResult::Recorded||
        f.allocations!=2||f.touches!=2||f.starts!=2||
        f.ra.next->stamp!=11||f.rb.next->stamp!=13||
@@ -131,7 +144,7 @@ int main() {
     same.calls.clear();
     if(MarkEntitiesAsTouchingWithContactGraph(&same.ea,&same.ea,Hooks(same),out)
        !=GameEntsTouchEntryStatus::Completed ||
-       same.calls!="AAI11"||out.refresh_calls!=2)
+       same.calls!="AAI11P"||out.refresh_calls!=2)
         return Fail(3,"same entity still follows two original dirty snapshots");
     // Same edict resolves twice to the same TouchEntity, and its dirty
     // origin is refreshed exactly once during the second argument path.
@@ -164,26 +177,38 @@ int main() {
         return Fail(9,"owner must clear dirty state to prevent double-refresh");
     Fixture parent;parent.first.parent=parent.second.handle;
     if(Run(parent,out)!=GameEntsTouchEntryStatus::Completed||
-       parent.calls!="ABI21"||out.contact_status!=TouchMarkResult::Ignored||
+       parent.calls!="ABI21P"||out.contact_status!=TouchMarkResult::Ignored||
        parent.allocations||parent.state.touchAllocated)
         return Fail(10,"parent touch ignores pair without error or mutation");
     Fixture failed_nodes;failed_nodes.fail_second_alloc=true;
     if(Run(failed_nodes,out)!=GameEntsTouchEntryStatus::HostFailure||
-       failed_nodes.calls!="ABI21NNF"||
+       failed_nodes.calls!="ABI21PNNF"||
        out.contact_status!=TouchMarkResult::AllocationFailed||
        failed_nodes.state.touchAllocated||failed_nodes.freed!=1||
        failed_nodes.ra.next!=&failed_nodes.ra||
        failed_nodes.rb.next!=&failed_nodes.rb)
         return Fail(11,"second node failure rolls back first unlinked node");
+    Fixture publish;publish.fail_publish=true;
+    if(Run(publish,out)!=GameEntsTouchEntryStatus::HostFailure||
+       publish.calls!="ABI21P"||out.publish_calls!=1||
+       out.contact_status!=TouchMarkResult::InvalidInput||
+       publish.state.touchAllocated||publish.allocations||publish.published)
+        return Fail(15,"global trace publication refusal prevents either contact");
     Fixture invalid;invalid.registry[2].serial=3;
     if(Run(invalid,out)!=GameEntsTouchEntryStatus::HostFailure||
-       invalid.calls!="ABI21"||out.contact_status!=TouchMarkResult::InvalidInput||
+       invalid.calls!="ABI21P"||out.contact_status!=TouchMarkResult::InvalidInput||
        invalid.allocations||invalid.state.touchAllocated)
         return Fail(12,"stale generation prevents contact list mutation");
     Fixture resolve;resolve.fail_resolve=true;
     if(Run(resolve,out)!=GameEntsTouchEntryStatus::HostFailure||
        resolve.calls!="A"||out.contact_calls)
         return Fail(13,"host edict resolution failure");
+    Fixture missing_publish;auto no_publish=Hooks(missing_publish);
+    no_publish.publish_trace=nullptr;
+    if(MarkEntitiesAsTouchingWithContactGraph(&missing_publish.ea,
+         &missing_publish.eb,no_publish,out)
+       !=GameEntsTouchEntryStatus::InvalidInput||!missing_publish.calls.empty())
+        return Fail(16,"missing original global trace publisher fails closed");
     Fixture missing;auto h=Hooks(missing);h.touch.refreshOrigin=nullptr;
     if(MarkEntitiesAsTouchingWithContactGraph(&missing.ea,&missing.eb,h,out)
        !=GameEntsTouchEntryStatus::InvalidInput||
