@@ -991,6 +991,23 @@ int main(int argc,char** argv){
             ServerNpcScriptWeaponEventFrameResult full_frame{};
             assert(scripted_frame(f.actor,sizeof(f.actor),&input,&bound,&full_frame,&events,&seq_out)&&seq_out.handled==2&&!seq_out.failed&&seq_out.last.event==1002&&q.seq[0x3cc]);
             assert(full_frame.frame.frame.npc_events==2&&full_frame.frame.frame.weapon_events==1&&full_frame.frame.frame.handled==3&&equipped.shots==1&&!control.entries&&!control.now);
+            // The same native event route must also work inside the outer
+            // update before its next AI deadline, without running a task.
+            const auto get_combined=reinterpret_cast<GetServerNpcOuterScriptedEventsUpdateApi>(GetProcAddress(s,server_npc_outer_scripts_events_export));
+            assert(get_combined&&!GetProcAddress(c,server_npc_outer_scripts_events_export)&&!get_combined(0,sizeof(ServerNpcOuterScriptedEventsUpdateApi))&&!get_combined(1,0));
+            const auto* combined=get_combined(1,sizeof(ServerNpcOuterScriptedEventsUpdateApi));assert(combined);
+            auto anim=script_animation;anim.control=&control;
+            auto finish=script_finish;finish.animation=&anim;
+            auto task=script_run;task.finish=&finish;
+            auto start=script_start;start.task=&task;
+            auto services=script_services;services.run=&task;services.start=&start;
+            prepare_engaged(1,0);f.put(equipped.weapon,0,0x2247ab9cu);f.put(f.actor,0x6cc,0x7001u);
+            f.put(f.actor,0x970,0x9002u);f.put(f.actor,0x864,80.f);f.put(f.actor,0x910,0x7f7fffffu);f.put(f.actor,0x74,1520);
+            stamp=0;equipped.shots=equipped.sounds=equipped.prepares=equipped.flashes=0;
+            seed_anim(76.125f);q.seq[0x3cc]=0;
+            const ServerNpcRunAnimationInput next{76.125f,false,false};
+            assert(combined->ground(f.actor,sizeof(f.actor),&next,.05f,&step_bind,&outer_bind,&step_result,&tail_result,&outer_result,&services,&events,&seq_out)&&outer_result.completed&&outer_result.active_called&&!outer_result.think_called&&tail_result.completed);
+            assert(seq_out.handled==2&&!seq_out.failed&&q.seq[0x3cc]&&equipped.shots==1&&!script_stats.runs&&!script_stats.starts);
             meta.scripted=false;equipped_entries[2]=prior_slot;selection.state.entities.count=prior_count;
         }
         // Real due-think wake route, using the original proximity branch

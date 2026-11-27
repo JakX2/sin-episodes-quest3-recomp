@@ -279,6 +279,15 @@ struct ServerNpcOuterScriptedUpdateApi {
     int (__cdecl *jet)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveJetWeaponStepBindings*,const ServerNpcOuterUpdateBindings*,ServerNpcActiveJetWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterUpdateResult*,const ServerNpcScriptedThinkServices*) noexcept;
 };
 using GetServerNpcOuterScriptedUpdateApi=const ServerNpcOuterScriptedUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
+// Combined opt-in scheduler and animation event route. Existing outer
+// scripted and regular outer APIs retain their exact argument layouts.
+inline constexpr char server_npc_outer_scripts_events_export[]="SiN_GetServerNpcOuterScriptedEventsUpdateApi";
+struct ServerNpcOuterScriptedEventsUpdateApi {
+    std::uint32_t version,size;
+    int (__cdecl *ground)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveWeaponStepBindings*,const ServerNpcOuterUpdateBindings*,ServerNpcActiveWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterUpdateResult*,const ServerNpcScriptedThinkServices*,const native_map::ScriptedNpcAnimationEventBindings*,ServerNpcScriptedWeaponFrameResult*) noexcept;
+    int (__cdecl *jet)(void*,unsigned,const ServerNpcRunAnimationInput*,float,const ServerNpcActiveJetWeaponStepBindings*,const ServerNpcOuterUpdateBindings*,ServerNpcActiveJetWeaponStepResult*,ServerNpcActivePostAnimationResult*,ServerNpcOuterUpdateResult*,const ServerNpcScriptedThinkServices*,const native_map::ScriptedNpcAnimationEventBindings*,ServerNpcScriptedWeaponFrameResult*) noexcept;
+};
+using GetServerNpcOuterScriptedEventsUpdateApi=const ServerNpcOuterScriptedEventsUpdateApi* (__cdecl *)(std::uint32_t,std::uint32_t) noexcept;
 inline constexpr char server_npc_wake_policy_export[]="SiN_GetServerNpcWakePolicyApi";
 struct ServerNpcWakePolicyBindings {
     ServerNpcConditionMapBindings conditions;

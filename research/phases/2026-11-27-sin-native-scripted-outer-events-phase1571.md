@@ -1,0 +1,3 @@
+# Phase 1571: combined scripted scheduler and animation outer update
+
+New versioned outer API threads phase1570 native script animation route through the existing full weapon-frame execution, including non-due animation-only frames. Scheduler and animation services require identical original control pointer, then each synchronous route independently rebinds the authoritative registry and current clock without mutating owner bindings. Retain all admission, cadence, and weapon behavior; all prior API layouts stay unchanged. Loaded regression authored for future deadline with two native interruption events, one real weapon shot, no scheduler task call, and normal post-animation tail. CI pending.
