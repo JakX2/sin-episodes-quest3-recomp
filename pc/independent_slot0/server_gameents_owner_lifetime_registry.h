@@ -145,6 +145,15 @@ public:
             if(item.entity_live&&item.value.unknown==ptr)return true;
         return false;
     }
+    bool ValidUnknownPair(const void* edict,
+                          const void* unknown) const noexcept {
+        std::lock_guard<std::mutex> guard(mu_);
+        if(!OwnedLease()||!edict||!unknown)return false;
+        for(const auto& item:slots_)
+            if(item.edict_owned&&item.entity_live&&
+               item.value.edict==edict&&item.value.unknown==unknown)return true;
+        return false;
+    }
     bool ValidTouch(const void* ptr,std::size_t required_bytes) const noexcept {
         std::lock_guard<std::mutex> guard(mu_);
         if(!OwnedLease()||!ptr||!required_bytes)return false;

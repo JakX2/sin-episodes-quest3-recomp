@@ -36,6 +36,11 @@ struct GameEntsBoundedOwner {
     // Authenticate live unknown-interface dispatch target and synthetic
     // TouchEntity storage before any virtual call or field dereference.
     bool (*valid_unknown)(void*,const ServerUnknownAbi*) noexcept=nullptr;
+    // The unknown object must belong to this EXACT edict generation before
+    // issuing its +0x14 virtual GetBaseEntity dispatch. A valid unknown
+    // pointer from a second owned actor is not sufficient.
+    bool (*valid_unknown_pair)(void*,const edict_t*,
+                               const ServerUnknownAbi*) noexcept=nullptr;
     bool (*valid_touch)(void*,const TouchEntity*) noexcept=nullptr;
     // Must prove that this edict and entity refer to the SAME live owner
     // generation, not merely two individually approved heap addresses.
@@ -54,7 +59,8 @@ struct GameEntsBoundedOwner {
     GameEntsTransmitEntryHooks transmit{};
     bool Complete() const noexcept {
         return begin_access&&end_access&&
-            valid_edict&&valid_entity&&valid_unknown&&valid_touch&&
+            valid_edict&&valid_entity&&valid_unknown&&
+            valid_unknown_pair&&valid_touch&&
             valid_pair&&valid_candidate&&transmit_extent&&
             touch.resolve&&touch.init_trace&&touch.publish_trace&&
             touch.contacts&&touch.entries&&touch.entry_count&&
@@ -280,7 +286,9 @@ private:
         ServerUnknownAbi* unknown=nullptr;
         const auto* bytes=reinterpret_cast<const unsigned char*>(edict);
         std::memcpy(&unknown,bytes+kOriginalEdictUnknownOffset,sizeof(unknown));
-        return !unknown||owner_.valid_unknown(owner_.context,unknown);
+        return !unknown||
+            (owner_.valid_unknown(owner_.context,unknown)&&
+             owner_.valid_unknown_pair(owner_.context,edict,unknown));
     }
 
     // The model's host services can call back into game interfaces. Do not

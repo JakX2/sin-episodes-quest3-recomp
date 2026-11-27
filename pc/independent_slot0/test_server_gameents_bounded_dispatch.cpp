@@ -172,6 +172,18 @@ static bool ValidUnknown(void* p,const ServerUnknownAbi* unknown) noexcept {
     return f.owner_registry.ValidUnknown(unknown)&&
         (unknown==&f.first_unknown||unknown==&f.second_unknown);
 }
+static bool ValidUnknownPair(void* p,const edict_t* edict,
+                             const ServerUnknownAbi* unknown) noexcept {
+    auto& f=*static_cast<Fixture*>(p);
+    if(!f.lease_active)f.valid=false;
+    // The registry supplies the owner generation association; the direct
+    // fixture pair cross-check also guards against a synthetic serial edit.
+    return f.owner_registry.ValidUnknownPair(edict,unknown)&&
+        ((edict==&f.ea&&unknown==&f.first_unknown&&
+          f.ea.serial==f.registry[1].serial)||
+         (edict==&f.eb&&unknown==&f.second_unknown&&
+          f.eb.serial==f.registry[2].serial));
+}
 static bool ValidTouch(void* p,const TouchEntity* touch) noexcept {
     auto& f=*static_cast<Fixture*>(p);
     if(!f.lease_active)f.valid=false;
@@ -404,7 +416,8 @@ static GameEntsBoundedOwner Hooks(Fixture& f) noexcept {
     h.context=&f;
     h.begin_access=&BeginOwnerAccess;h.end_access=&EndOwnerAccess;
     h.valid_edict=&ValidEdict;h.valid_entity=&ValidEntity;
-    h.valid_unknown=&ValidUnknown;h.valid_touch=&ValidTouch;
+    h.valid_unknown=&ValidUnknown;
+    h.valid_unknown_pair=&ValidUnknownPair;h.valid_touch=&ValidTouch;
     h.valid_pair=&ValidPair;h.valid_candidate=&ValidCandidate;
     h.transmit_extent=&Extent;
     h.touch={&f,&ResolveTouch,&Init,&Publish,&f.contacts,
@@ -464,6 +477,10 @@ int main() {
     no_unknown.valid_unknown=nullptr;
     if(ServerGameEntsBoundedDispatch(no_unknown).Ready())
         return Fail(31,"missing unknown-interface ownership gate");
+    GameEntsBoundedOwner no_unknown_pair=Hooks(f);
+    no_unknown_pair.valid_unknown_pair=nullptr;
+    if(ServerGameEntsBoundedDispatch(no_unknown_pair).Ready())
+        return Fail(66,"missing edict/unknown association callback was accepted");
     GameEntsBoundedOwner no_touch=Hooks(f);
     no_touch.valid_touch=nullptr;
     if(ServerGameEntsBoundedDispatch(no_touch).Ready())
@@ -550,18 +567,22 @@ int main() {
     // A trusted *other* unknown can return a trusted *other* entity.
     // Neither identity may authorize release or touch for the wrong edict.
     f.ea.unknown=&f.second_unknown;
+    const unsigned foreign_calls_before=f.second_unknown.calls;
     if(v->EdictToBaseEntity(&f.ea)!=nullptr||
-       game->Report().status!=GameEntsDispatchResult::Unauthorized)
-        return Fail(51,"foreign mapping through owned unknown rejected");
+       game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       f.second_unknown.calls!=foreign_calls_before)
+        return Fail(51,"owned but crosswired unknown must not be dispatched");
     v->FreeContainingEntity(&f.ea);
     if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
        f.ea.unknown!=&f.second_unknown||f.ea.flags!=0x65||
+       f.second_unknown.calls!=foreign_calls_before||
        !f.calls.empty()||f.deleted)
         return Fail(52,"cross-wired unknown cannot free another owned entity");
     v->MarkEntitiesAsTouching(&f.ea,&f.eb);
-    if(game->Report().status!=GameEntsDispatchResult::HostFailure||
-       f.calls!="A"||f.allocated||f.starts)
-        return Fail(53,"cross-wired unknown must fail before contact mutation");
+    if(game->Report().status!=GameEntsDispatchResult::Unauthorized||
+       f.second_unknown.calls!=foreign_calls_before||
+       !f.calls.empty()||f.allocated||f.starts)
+        return Fail(53,"cross-wired unknown must fail before touch resolution");
     f.ea.unknown=&f.first_unknown;
     f.calls.clear();
     // Simulate retirement and reuse of the same memory at a new generation

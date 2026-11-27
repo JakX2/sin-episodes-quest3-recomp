@@ -57,9 +57,11 @@ int main() {
     if(!r.ValidEdict(first.edict)||!r.ValidEntity(first.entity)||
        !r.ValidUnknown(first.unknown)||!r.ValidTouch(first.touch,0x90)||
        !r.ValidPair(first.edict,first.entity)||
+       !r.ValidUnknownPair(first.edict,first.unknown)||
        !r.ValidCandidate(91,2,second.entity))
         return Fail(9,"registered live bytes not authenticated under lease");
     if(r.ValidPair(first.edict,second.entity)||
+       r.ValidUnknownPair(first.edict,second.unknown)||
        r.ValidCandidate(91,2,first.entity)||r.ValidTouch(first.touch,0x91))
         return Fail(10,"cross-wired entity or short touch extent accepted");
     if(r.Enroll(2,third)||r.BindCandidate(94,2,0)||
