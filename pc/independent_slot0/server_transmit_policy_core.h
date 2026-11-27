@@ -51,20 +51,24 @@ struct TransmitHooks {
         return shouldTransmit && area && inPvs && setTransmit;
     }
 };
-enum class TransmitResult { Completed, MissingRecipient, InvalidInput };
+enum class TransmitResult { Completed, MissingRecipient, InvalidInput, HostFailure };
 
 // Independent policy. Caller resolves the recipient and supplies stable
 // typed entities; callback implementations own networking/PVS state.
 // Preflight validates all indices before any writes or calls, unlike the
 // trusted original engine data path. Missing entities are skipped rather
 // than invoking a virtual function through an invalid pointer.
-inline TransmitResult CheckTransmit(
-    const TransmitEntry* entries,std::size_t entryCount,
-    const std::uint16_t* indices,std::size_t indexCount,
-    TransmitContext& ctx,const TransmitHooks& hooks) noexcept {
+// Shared policy loop for both typed records and the bounded original PE32
+// record adapter. Entity resolution is deferred until the direct-bit and
+// already-selected branches have been excluded.
+template<class ReadFlags,class ResolveEntity>
+inline TransmitResult CheckTransmitAccess(
+    std::size_t entryCount,const std::uint16_t* indices,std::size_t indexCount,
+    TransmitContext& ctx,const TransmitHooks& hooks,
+    ReadFlags readFlags,ResolveEntity resolveEntity) noexcept {
     if(!ctx.recipient.valid) return TransmitResult::MissingRecipient;
     if(indexCount==0) return TransmitResult::Completed;
-    if(!entries || !indices || !hooks.Complete())
+    if(!indices || !hooks.Complete())
         return TransmitResult::InvalidInput;
     for(std::size_t i=0;i<indexCount;++i) {
         const auto index=indices[i];
@@ -77,7 +81,7 @@ inline TransmitResult CheckTransmit(
     const auto recipient=ctx.recipient;
     for(std::size_t i=0;i<indexCount;++i) {
         const std::size_t index=indices[i];
-        auto mode=entries[index].flags&kTransmitMask;
+        auto mode=readFlags(index)&kTransmitMask;
         if((mode&kTransmitDontSend) || ctx.selected.Test(index)) continue;
         if(mode&kTransmitAlways) {
             // Original fast path sets bits directly; it does NOT invoke
@@ -86,7 +90,8 @@ inline TransmitResult CheckTransmit(
             if(recipient.hltv) ctx.always.Set(index);
             continue;
         }
-        auto* entity=entries[index].entity;
+        CBaseEntity* entity=nullptr;
+        if(!resolveEntity(index,entity)) return TransmitResult::HostFailure;
         if(!entity) continue;
         if(mode==kTransmitFullCheck) {
             mode=hooks.shouldTransmit(entity,ctx,hooks.context);
@@ -104,5 +109,18 @@ inline TransmitResult CheckTransmit(
         }
     }
     return TransmitResult::Completed;
+}
+// Existing typed entry ABI remains available, sharing the same decision loop.
+inline TransmitResult CheckTransmit(
+    const TransmitEntry* entries,std::size_t entryCount,
+    const std::uint16_t* indices,std::size_t indexCount,
+    TransmitContext& ctx,const TransmitHooks& hooks) noexcept {
+    if(!ctx.recipient.valid) return TransmitResult::MissingRecipient;
+    if(indexCount && !entries) return TransmitResult::InvalidInput;
+    return CheckTransmitAccess(entryCount,indices,indexCount,ctx,hooks,
+        [entries](std::size_t i) noexcept {return entries[i].flags;},
+        [entries](std::size_t i,CBaseEntity*& entity) noexcept {
+            entity=entries[i].entity;return true;
+        });
 }
 } // namespace sin_independent
