@@ -9,3 +9,9 @@ The underlying semantic identity of the input float and of the singleton's +0x17
 Loaded Windows fixture covers true and false owner responses, strict >10 threshold at equality and both sides, NaN and +/- infinity, short-circuit with null candidate, invalid/undersized candidate, provider failure, wrong actor class, truncated actor, missing manager callback and version/size export guards. No new CTest target is added; the existing `independent_server_recombinant_minor_native` executable gains cases.
 
 No original executable bytes or proprietary DLLs committed. No generic Source physics, surface/material, model/prop loading or rendering implementation. A passing synthetic DLL load is not proof of retail-engine boot or Android/Quest 3 gameplay.
+
+## Offline original evidence auditor
+
+`python research/tools/audit_sin_original_recombinant_minor_metric_gate.py --self-test` validates the PE32 VA mapper and synthetic corruption rejection without needing original commercial content. With the owner-local original present, use `python research/tools/audit_sin_original_recombinant_minor_metric_gate.py --server /path/to/server.dll --self-test` to authenticate the exact file SHA, vtable slot, complete method hash, original threshold, critical instruction witnesses and targeted corruption rejection. Output is metadata JSON, never raw executable bytes.
+
+The original-byte witness offsets and SHA were independently checked against the locally extracted SHA-matching owner original before this verifier was committed. The newly created auditor itself still requires normal execution validation.
