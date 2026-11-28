@@ -290,7 +290,7 @@ jobs:
             # generated elements, executed as portable Bionic metadata only.
             adb push build-android-emulator-x86_64/sin_original_client_nested_array_table_tests /data/local/tmp/sin_client_class_catalog/sin_original_client_nested_array_table_tests
             adb shell 'cd /data/local/tmp/sin_client_class_catalog && chmod 700 sin_original_client_nested_array_table_tests && ./sin_original_client_nested_array_table_tests' | tr -d '\r' | tee build-android-emulator-x86_64/client-nested-array-bionic-output.txt
-            grep -Fxq 'PASS Phase1697 original 11 dynamic nested array source shapes: 579 generated elements, type5 outer, 0/1 element templates, exact x86 counts/strides/offsets and mutation refusal; no retail RecvTable pointers' build-android-emulator-x86_64/client-nested-array-bionic-output.txt
+            grep -Fxq 'PASS Phase1697 original 11 dynamic nested array source shapes: 579 generated elements, type5 outer, 0/1 element templates, child-relative native offsets and parent base kept distinct; no retail RecvTable pointers' build-android-emulator-x86_64/client-nested-array-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -329,7 +329,7 @@ jobs:
           grep -Fxq 'PASS source sound-name route: ASCII Q_stristr tokens, emitter fallback, first-spelling pool ownership and clear' build-android-emulator-x86_64/client-sound-name-bionic-output.txt
           grep -Fxq 'PASS original 191 ClientClass metadata order and pointer topology; 149 entities, 42 temp events, strict invalid source refusal; retail slot5 remains gated' build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
           grep -Fxq 'PASS Phase1697 191-source-class metadata + 939 synthetic type-safe property graph: nested type5, 60-byte stride contract, +17 visited cycles, 1024 root refusal, unknown types fail closed; no executable retail RecvTable pointers' build-android-emulator-x86_64/client-recvtable-preflight-bionic-output.txt
-          grep -Fxq 'PASS Phase1697 original 11 dynamic nested array source shapes: 579 generated elements, type5 outer, 0/1 element templates, exact x86 counts/strides/offsets and mutation refusal; no retail RecvTable pointers' build-android-emulator-x86_64/client-nested-array-bionic-output.txt
+          grep -Fxq 'PASS Phase1697 original 11 dynamic nested array source shapes: 579 generated elements, type5 outer, 0/1 element templates, child-relative native offsets and parent base kept distinct; no retail RecvTable pointers' build-android-emulator-x86_64/client-nested-array-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
