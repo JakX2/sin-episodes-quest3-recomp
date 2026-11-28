@@ -6518,3 +6518,22 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
   endif()
 endif()
+
+
+# Phase1700: source-backed PE32 OWNED TOKEN receive-table memory image.
+# This is a safe simulated 32-bit memory layout, not executable 2006
+# ClientClass, RecvProxy, factory callback, or original retail DLL.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_native32_recvtable_image_tests
+    tests/test_original_client_native32_recvtable_image.cpp)
+  target_include_directories(sin_original_client_native32_recvtable_image_tests PRIVATE include)
+  target_compile_features(sin_original_client_native32_recvtable_image_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_native32_recvtable_image_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_native32_recvtable_image_tests
+      COMMAND sin_original_client_native32_recvtable_image_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
+  endif()
+endif()
