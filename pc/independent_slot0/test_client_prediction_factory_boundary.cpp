@@ -284,6 +284,7 @@ int main(int argc,char** argv) {
     // All default tests must preserve production refusal even when
     // an owner environment from a previous test remains set.
     if(!setenv("SIN_INDEPENDENT_CLIENT_PREDICTION_FACTORY_PROBE","0") ||
+       !setenv("SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE","0") ||
        !setenv("SIN_INDEPENDENT_TRACE_FILE","0") ||
        !setenv("SIN_INDEPENDENT_TRACE_SESSION",nullptr) ||
        !setenv("SIN_INDEPENDENT_CLIENT_SOUND_PROBE","0"))
