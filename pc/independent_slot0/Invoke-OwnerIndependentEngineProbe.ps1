@@ -57,6 +57,89 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# Native Toolhelp32 is required for a 64-bit PowerShell host inspecting the
+# 32-bit SiN game. On the owner's retail original run, $child.Modules returned
+# only five WOW64-related entries while Toolhelp32 returned 162 including all
+# three original game DLLs. Load the helper once; never infer no-load from the
+# managed enumerator's apparently successful (but incomplete) snapshot.
+if (-not ('SinOwnerNativeModuleReader' -as [type])) {
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public sealed class SinOwnerNativeModuleEntry {
+    public string Name;
+    public string FullPath;
+}
+public sealed class SinOwnerNativeModuleSnapshot {
+    public int Error;
+    public List<SinOwnerNativeModuleEntry> Modules = new List<SinOwnerNativeModuleEntry>();
+}
+public static class SinOwnerNativeModuleReader {
+    private const uint TH32CS_SNAPMODULE = 0x00000008;
+    private const uint TH32CS_SNAPMODULE32 = 0x00000010;
+    private static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MODULEENTRY32W {
+        public uint dwSize;
+        public uint th32ModuleID;
+        public uint th32ProcessID;
+        public uint GlblcntUsage;
+        public uint ProccntUsage;
+        public IntPtr modBaseAddr;
+        public uint modBaseSize;
+        public IntPtr hModule;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string szModule;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szExePath;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "Module32FirstW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Module32FirstW(IntPtr snapshot, ref MODULEENTRY32W entry);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "Module32NextW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Module32NextW(IntPtr snapshot, ref MODULEENTRY32W entry);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    public static SinOwnerNativeModuleSnapshot Read(int pid) {
+        var result = new SinOwnerNativeModuleSnapshot();
+        var handle = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, (uint)pid);
+        if (handle == INVALID_HANDLE_VALUE) {
+            result.Error = Marshal.GetLastWin32Error();
+            return result;
+        }
+        try {
+            var entry = new MODULEENTRY32W();
+            entry.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32W));
+            if (!Module32FirstW(handle, ref entry)) {
+                result.Error = Marshal.GetLastWin32Error();
+                return result;
+            }
+            do {
+                result.Modules.Add(new SinOwnerNativeModuleEntry {
+                    Name = entry.szModule,
+                    FullPath = entry.szExePath
+                });
+                entry.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32W));
+            } while (Module32NextW(handle, ref entry));
+            // ERROR_NO_MORE_FILES (18) means Module32NextW finished normally.
+            int lastError = Marshal.GetLastWin32Error();
+            if (lastError != 18 && lastError != 0) result.Error = lastError;
+            return result;
+        } finally {
+            CloseHandle(handle);
+        }
+    }
+}
+'@
+}
+
 $HashPins = @(
     @{ Name='server.dll'; Hash='568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650' },
     @{ Name='client.dll'; Hash='6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d' }
@@ -522,10 +605,16 @@ try {
         # an early exit or access-denied enumeration is NOT evidence that
         # the engine did not load either DLL.
         $observedModules = @{}
+        $observedManagedModules = @{}
+        $observedNativeModules = @{}
         $moduleInspectionSucceeded = $false
         $moduleInspectionFailures = 0
         $moduleInspectionSamples = 0
         $moduleInspectionFirstError = $null
+        $nativeModuleSuccesses = 0
+        $nativeModuleFailures = 0
+        $nativeModuleMaxCount = 0
+        $nativeModuleFirstError = $null
         $watch = [System.Diagnostics.Stopwatch]::StartNew()
         # Inspect immediately, including a process that has already exited.
         # The old HasExited loop guard skipped the first sample entirely for
@@ -538,7 +627,9 @@ try {
                     foreach ($step in $plan) {
                         if ([string]::Equals($module.FileName,$step.Live,
                                 [System.StringComparison]::OrdinalIgnoreCase)) {
-                            $observedModules[[System.IO.Path]::GetFileName($step.Live)] = $true
+                            $name = [System.IO.Path]::GetFileName($step.Live)
+                            $observedModules[$name] = $true
+                            $observedManagedModules[$name] = $true
                         }
                     }
                 }
@@ -547,6 +638,36 @@ try {
                 $moduleInspectionFailures++
                 if ($null -eq $moduleInspectionFirstError) {
                     $moduleInspectionFirstError = $_.Exception.GetType().Name
+                }
+            }
+            # Independent Win32 snapshot. Managed Process.Modules in a 64-bit
+            # host can report only WOW64 loader scaffolding for a 32-bit game.
+            try {
+                $nativeSnapshot = [SinOwnerNativeModuleReader]::Read($child.Id)
+                $nativeModuleMaxCount = [Math]::Max(
+                    $nativeModuleMaxCount, $nativeSnapshot.Modules.Count)
+                if ($nativeSnapshot.Error -ne 0) {
+                    $nativeModuleFailures++
+                    if ($null -eq $nativeModuleFirstError) {
+                        $nativeModuleFirstError = [string]$nativeSnapshot.Error
+                    }
+                } else {
+                    $nativeModuleSuccesses++
+                    foreach ($module in $nativeSnapshot.Modules) {
+                        foreach ($step in $plan) {
+                            if ([string]::Equals($module.FullPath,$step.Live,
+                                    [System.StringComparison]::OrdinalIgnoreCase)) {
+                                $name = [System.IO.Path]::GetFileName($step.Live)
+                                $observedModules[$name] = $true
+                                $observedNativeModules[$name] = $true
+                            }
+                        }
+                    }
+                }
+            } catch {
+                $nativeModuleFailures++
+                if ($null -eq $nativeModuleFirstError) {
+                    $nativeModuleFirstError = $_.Exception.GetType().Name
                 }
             }
             $child.Refresh()
@@ -570,10 +691,18 @@ try {
             } else {
                 Write-Output ("OWNER_ENGINE_MODULE_NOT_OBSERVED: {0}" -f $name)
             }
+            # The retail-original V2 census proved that a successful managed
+            # call can still contain only 5 WOW64 scaffolding modules.
+            Write-Output ("OWNER_ENGINE_MODULE_SOURCE: {0} managed={1} native={2}" -f
+                $name,$observedManagedModules.ContainsKey($name),
+                $observedNativeModules.ContainsKey($name))
         }
         Write-Output ("OWNER_ENGINE_MODULE_INSPECTION: success={0} failures={1} samples={2} first_error={3}" -f
             $moduleInspectionSucceeded,$moduleInspectionFailures,$moduleInspectionSamples,
             $(if ($null -eq $moduleInspectionFirstError) { 'none' } else { $moduleInspectionFirstError }))
+        Write-Output ("OWNER_ENGINE_MODULE_NATIVE_INSPECTION: successes={0} failures={1} max_count={2} first_error={3}" -f
+            $nativeModuleSuccesses,$nativeModuleFailures,$nativeModuleMaxCount,
+            $(if ($null -eq $nativeModuleFirstError) { 'none' } else { $nativeModuleFirstError }))
         Write-Output ("OWNER_ENGINE_EXIT_CODE: {0}" -f $child.ExitCode)
         # A process can terminate before a single module snapshot or trace.
         # Preserve the actual signed Win32 exit status, then decode common
@@ -733,6 +862,6 @@ try {
     $verdictScript = Join-Path $PSScriptRoot 'Get-OwnerIndependentStartupVerdict.ps1'
     & $verdictScript -Session $session -LogDirectory ([System.IO.Path]::GetTempPath())
     if ($logs.Count -eq 0) {
-        Write-Warning "No independent startup trace observed. The retail executable may not have loaded the game DLLs."
+        Write-Warning "No in-process independent startup trace observed. DLL module samples alone cannot prove CreateInterface or VClient011.Init execution. Check module evidence and restoration status."
     }
 }

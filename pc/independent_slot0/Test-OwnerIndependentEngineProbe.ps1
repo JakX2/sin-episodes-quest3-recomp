@@ -23,6 +23,15 @@ $launcherText = [System.IO.File]::ReadAllText(
     (Resolve-Path -LiteralPath $Launcher).ProviderPath)
 foreach ($required in @(
     '$child.Modules',
+    'TH32CS_SNAPMODULE32',
+    'Module32FirstW',
+    '[SinOwnerNativeModuleReader]::Read($child.Id)',
+    'OWNER_ENGINE_MODULE_NATIVE_INSPECTION:',
+    'OWNER_ENGINE_MODULE_SOURCE:',
+    '$observedNativeModules',
+    '$observedManagedModules',
+    '$nativeModuleSuccesses',
+    '$nativeModuleMaxCount',
     'OWNER_ENGINE_MODULE_OBSERVED:',
     'OWNER_ENGINE_MODULE_NOT_OBSERVED:',
     'OWNER_ENGINE_MODULE_INSPECTION:',
@@ -51,6 +60,9 @@ if (-not $launcherText.Contains('samples={2} first_error={3}')) {
 }
 if ($launcherText.Contains('OWNER_ENGINE_MODULE_MISSING:')) {
     throw 'Module polling must not infer absence from an unobserved sample'
+}
+if ($launcherText.Contains('The retail executable may not have loaded the game DLLs.')) {
+    throw 'A missing startup trace must not imply missing game DLLs'
 }
 # The actual owner's first retail test exited its tracked PID with zero
 # while Windows still locked client.dll. The cleanup exception used to hide
@@ -135,6 +147,19 @@ try {
     Reject 'marker content mismatch' $true
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
+
+    # Live synthetic host census with no retail game launched: verify native
+    # Toolhelp32 actually enumerates the parent PowerShell process.
+    $selfSnapshot = [SinOwnerNativeModuleReader]::Read($PID)
+    if ($selfSnapshot.Error -ne 0 -or $selfSnapshot.Modules.Count -lt 3) {
+        throw ('Native Toolhelp32 self-snapshot failed: ' + $selfSnapshot.Error)
+    }
+    $selfExe = @($selfSnapshot.Modules | Where-Object {
+        $_.Name -match '^(powershell|pwsh)\.exe$'
+    })
+    if ($selfExe.Count -eq 0) {
+        throw 'Native Toolhelp32 self-snapshot missed its own PowerShell executable'
+    }
 
 
     # Phase1691: nonterminal source VSoundEmitter001 Connect is
