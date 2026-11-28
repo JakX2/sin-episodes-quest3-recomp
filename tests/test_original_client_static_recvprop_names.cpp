@@ -16,6 +16,7 @@
 namespace image32=sin_compat::original_client_native32_recvtable_image;
 namespace catalog=sin_compat::original_client_class_catalog;
 namespace src=sin_compat::original_client_native32_recvtable_manifest;
+namespace sourceProxies=sin_compat::original_client_source_proxy_catalog;
 
 template<class F> void MustRefuse(F&& action) {
     bool rejected=false;
@@ -108,6 +109,70 @@ int main(int argc,char** argv) {
     assert(image.arena.Read32(overlay+44u)==0u);
     assert(image.arena.Read32(overlay+40u)==0u); // callback/child unresolved
     assert(!image.CanExposeToRetailEngine());
+
+    // Phase1706 original x86 constructor source identities: 1082
+    // canonical callbacks, 999 standard, 83 proprietary special.
+    // These are NOT executable function pointers in owned memory.
+    static_assert(sourceProxies::FullyClassifiedCanonicalRoutes());
+    assert(!sourceProxies::CanExposeToRetailEngine());
+    std::size_t canonicalProxies=0u,standardProxies=0u,customProxies=0u,
+                guardedSpecialConstructors=0u;
+    std::size_t primitiveMutationTable=src::kStaticTables;
+    std::size_t primitiveMutationSlot=0u;
+    for(std::size_t table=0u;table<src::kStaticTables;++table)
+        for(std::size_t slot=0u;slot<src::kCounts[table];++slot) {
+            const auto idx=src::kTypePrefixes[table]+slot;
+            const auto nativeType=src::kTypes[idx];
+            const auto va=image.OriginalSourceConstructorProxyVA(table,slot);
+            const auto prop=image.staticPropArrayTokens[table]+
+                static_cast<std::uint32_t>(slot*src::kOriginalRecvPropStride);
+            if(va==0u) {
+                ++guardedSpecialConstructors;
+                assert(nativeType==4u || nativeType==5u);
+                continue;
+            }
+            ++canonicalProxies;
+            if(sourceProxies::IsStandardOriginalSourceVA(va))
+                ++standardProxies;
+            else ++customProxies;
+            // Do not publish original 32-bit PE32 executable VA as a
+            // host callback or as a fake runnable Android function.
+            assert(image.arena.Read32(prop+8u)==0u); // original flags
+            assert(image.arena.Read32(prop+(nativeType==5u?36u:32u))==0u);
+            if(primitiveMutationTable==src::kStaticTables &&
+               table<191u && nativeType==0u) {
+                primitiveMutationTable=table;
+                primitiveMutationSlot=slot;
+            }
+        }
+    assert(canonicalProxies==1082u && standardProxies==999u &&
+           customProxies==83u && guardedSpecialConstructors==28u);
+    assert(image.OriginalSourceConstructorProxyVA(0u,0u)==0x24126CE0u);
+    assert(image.OriginalSourceConstructorProxyVA(32u,1u)==0x241A8DB0u);
+    assert(image.OriginalSourceConstructorProxyVA(81u,4u)==0u);
+    assert(primitiveMutationTable<src::kStaticTables);
+    // Mutating native function-pointer slots to a genuine original
+    // source x86 executable VA must not make this a live engine ABI.
+    {
+        const auto prop=image.staticPropArrayTokens[primitiveMutationTable]+
+            static_cast<std::uint32_t>(primitiveMutationSlot*60u);
+        const auto sourceVA=image.OriginalSourceConstructorProxyVA(
+            primitiveMutationTable,primitiveMutationSlot);
+        assert(sourceVA!=0u && image.arena.Read32(prop+32u)==0u);
+        image.arena.Write32(prop+32u,sourceVA);
+        MustRefuse([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(prop+32u,0u);
+        image.arena.Write32(prop+8u,1u);
+        MustRefuse([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(prop+8u,0u);
+    }
+    {
+        const auto prop=image.staticPropArrayTokens[0u];
+        assert(image.arena.Read32(prop+36u)==0u);
+        image.arena.Write32(prop+36u,0x24126CE0u);
+        MustRefuse([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(prop+36u,0u);
+    }
 
     const auto rooted=image.WalkFromClientClassRoots();
     assert(rooted.visitedTables==224u);
