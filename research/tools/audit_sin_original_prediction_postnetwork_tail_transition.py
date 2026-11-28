@@ -53,7 +53,7 @@ def witness_chunks(*,predict_va:int,helper_va:int,
     return (
         (0x38B,b"\x8B\x0D"+struct.pack("<I",predict_va)+
             bytes.fromhex("39792c8a43100f95c23ad0")),
-        (0x39D,bytes.fromhex("5e741884c075078bcb")),
+        (0x39C,bytes.fromhex("5e741884c075078bcb")),
         (0x3A5,relcall(HELPER_CALL_SITE,helper_va)),
         (0x3AA,bytes.fromhex("897b28897b2cc74324ffffffff")),
         (0x3B7,b"\xA1"+struct.pack("<I",predict_va)+
