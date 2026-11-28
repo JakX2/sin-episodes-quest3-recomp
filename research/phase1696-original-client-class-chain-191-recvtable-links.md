@@ -65,6 +65,32 @@ These are now **names**, not 939 authenticated serialized field data types, nati
 
 The full 939-slot metadata export is **owner-private and opt-in**, via `--full-json`: the tool only accepts this option together with the SHA-pinned unchanged original client.dll. Output includes all source class names, table names, slot indices, constructor route labels and the original x86 member offset where proven. No executable original function bytes are written. It is not safe to pass these source VA labels to the retail engine or to an Android ARM64 module. Do not return this catalog as a live `ClientClass*` to the retail engine. Slot5 remains intentionally guarded until its ABI can be satisfied.
 
+
+## Original retail engine: three whole-method-authenticated class-table consumers
+
+The source provenance here includes the owner's unchanged original Windows `engine.dll` SHA256 `f3add5b41300e6d709fd0b492bfcdd37b9b3d20d9744f874c0b860bf021cec81`, cross-checked against the previously identified exact original client DLL. **Three distinct original engine functions totaling 248 executable bytes** are now independently complete-function SHA-256 authenticated, with original INT3 padding and source virtual/call edges:
+
+| Original engine VA | Whole method size | Whole SHA256 | Actual caller behavior |
+| --- | ---: | --- | --- |
+| `0x20023B90` | 21 bytes | `0808ab9dc4dac55fd566a74eb7d4ab3907da8e333853c1541a2caa134c05e7cf` | Forward client getter to `VClient011` virtual +0x14 (slot5); otherwise return fallback head `0x203E4024` |
+| `0x20023BB0` | 125 bytes | `22716dfdf8b6996b7da5305f3dcf23b27ee181688459cbb27758d3807ae8a869` | Query real client class head, walk node+0x10, stage each RecvTable pointer from node+0x0C and pass them sequentially to `0x20085630` |
+| `0x20085630` | 102 bytes | `09a4446ebba475508d1b87121e2df0c63752e1d60850150fe0e453b7f9f3a347` | Validate/mark original native RecvTable and recursively walk nested RecvProp tables |
+
+Original engine client-object global is `0x203E4010`. The table collector calls virtual byte offset `+0x14` at source `0x20023BCA`, then follows real source class-list pointers: **RecvTable pointer at class-node byte +0x0C** and **next linked node pointer at +0x10**. It compares count to 1024 before staging into a 4096-byte stack region, calling an original error callback when the count reaches 1024. The callback's return semantics have **not** been proven: a safe portable reconstruction must reject exceeding 1024 rather than letting an unexpected returning logger overflow the stack.
+
+The recursive engine function receives one `RecvTable*` argument. It checks byte **table+0x11** and skips tables already marked, checks the original field **table+0x08**, then marks byte **table+0x11 = 1** before descending. It invokes helper `0x20086930` with an original context; that helper's complete C++ semantics have not been independently recovered here. It obtains original **property array pointer at table+0x00**, **property count at table+0x04**, advances entries with **60-byte stride (0x3C)**, and for property **type 5** (the value at RecvProp +0x04) reads its **nested RecvTable* at RecvProp+0x28** and recursively calls itself from source `0x2008567F`.
+
+**Direct consequence for slot5:** even a correctly linked list of 191 metadata-only nodes is insufficient. The actual engine traverses the table pointers, expects mutable native table state at +0x11, and may recursively follow nested table pointers. We intentionally keep `VClient011.slot5` terminal until genuine table allocation, type/proxy fields, recursion and class factories are all source-backed and independently tested. These constraints do not require reopening the user's excluded physics, model, prop or renderer work.
+
+Read-only original verification:
+
+```sh
+python research/tools/audit_sin_original_engine_clientclass_consumers.py --client /private/client.dll --engine /private/engine.dll
+```
+
+Public original-free synthetic mutation checks run through `--self-test` and native Win32 CTest. The full original engine methods and all cited call/branch instruction witnesses were inspected privately; **no original game executable bytes were committed**.
+
+
 ## Verification
 
 Public, commercial-file-free checks:
@@ -73,6 +99,7 @@ Public, commercial-file-free checks:
 python research/tools/audit_sin_original_client_class_registry.py --self-test --catalog research/manifests/original_client_class_catalog_phase1696.tsv
 python research/tools/audit_sin_original_client_class_recvtable_links.py --self-test
 python research/tools/audit_sin_original_client_class_recvprop_names.py --self-test
+python research/tools/audit_sin_original_engine_clientclass_consumers.py --self-test
 g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_class_catalog.cpp -o /tmp/sin-class-catalog
 /tmp/sin-class-catalog research/manifests/original_client_class_catalog_phase1696.tsv
 ```
