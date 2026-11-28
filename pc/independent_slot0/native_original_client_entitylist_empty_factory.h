@@ -69,8 +69,8 @@ using RefuseCallback=void (*)(const char*) noexcept;
 struct RawRecord {
     void* unknown=nullptr;
     std::uint32_t serial=0u;
-    std::uint32_t private_field_8=0u;
-    std::uint32_t private_field_c=0u;
+    RawRecord* intrusive_next=nullptr; // original constructor [slot+8]
+    RawRecord* intrusive_prev=nullptr; // original constructor [slot+12]
 };
 struct MirrorRecord {
     void* networkable=nullptr;
@@ -216,7 +216,20 @@ public:
     }
 
     Secondary* BindEmpty() noexcept {
-        raw_.fill(RawRecord{});
+        // Original base ctor at 0x24127E80 loops all 4096
+        // raw entries, writing each record's own address into
+        // its +0x08/+0x0C intrusive links before publishing
+        // the owner. Its serial generation calls original
+        // vstdlib RandomInt then masks 0x7FFF. We intentionally
+        // use deterministic zero serials and do NOT claim the
+        // original linked free-list heads, random state, or
+        // gameplay entity allocation are reconstructed.
+        for(auto& slot:raw_) {
+            slot.unknown=nullptr;
+            slot.serial=0u; // host-only deterministic value
+            slot.intrusive_next=&slot;
+            slot.intrusive_prev=&slot;
+        }
         secondary_.BindEmpty();
         return &secondary_;
     }
