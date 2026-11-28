@@ -1,0 +1,41 @@
+name: SiN Phase1727 CWorld lazy static lifecycle
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sin-original-client-world-lazy-static-phase1727.yml'
+      - 'include/sin_compat/original_client_world_lazy_static_phase1727.hpp'
+      - 'tests/test_original_client_world_lazy_static_phase1727.cpp'
+      - 'research/tools/audit_sin_original_client_world_lazy_static_phase1727.py'
+      - 'research/tools/audit_sin_original_client_world_embedded_word_phase1726.py'
+  workflow_dispatch:
+
+jobs:
+  strict-original-free-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source-only SHA identity and mutation refusal
+        run: python3 research/tools/audit_sin_original_client_world_lazy_static_phase1727.py --self-test
+      - name: Strict portable GCC and Clang C++17
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_lazy_static_phase1727.cpp -o /tmp/sin-phase1727-gcc
+          /tmp/sin-phase1727-gcc
+          clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_lazy_static_phase1727.cpp -o /tmp/sin-phase1727-clang
+          /tmp/sin-phase1727-clang
+      - name: Address and UndefinedBehavior Sanitizer
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_world_lazy_static_phase1727.cpp -o /tmp/sin-phase1727-san
+          /tmp/sin-phase1727-san
+  native32-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Compile and run Win32 source lifecycle
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /W4 /WX /EHsc /Iinclude tests\test_original_client_world_lazy_static_phase1727.cpp /Fe:sin-phase1727.exe
+          sin-phase1727.exe
