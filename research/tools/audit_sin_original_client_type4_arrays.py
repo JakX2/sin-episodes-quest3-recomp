@@ -48,10 +48,10 @@ def need(condition: bool, message: str) -> None:
 
 def original_free_header(path: Path):
     content = path.read_text(encoding="utf-8")
-    match = re.search(r"kSourceArrays\\s*\\{\\{(.*?)\\}\\};", content, re.S)
+    match = re.search(r"kSourceArrays\s*\{\{(.*?)\}\};", content, re.S)
     need(match is not None, "native type4 array header missing source list")
     pat = re.compile(
-        r'\\{(\\d+)u,(\\d+)u,(\\d+)u,(\\d+)u,("(?:[^"\\\\]|\\\\.)*"),(true|false)\\}'
+        r'\{(\d+)u,(\d+)u,(\d+)u,(\d+)u,("(?:[^"\\]|\\.)*"),(true|false)\}'
     )
     found = []
     for m in pat.finditer(match.group(1)):
