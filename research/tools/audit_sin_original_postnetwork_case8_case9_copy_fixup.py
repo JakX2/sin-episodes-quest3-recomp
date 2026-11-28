@@ -62,26 +62,26 @@ def witnesses(case:str):
     common=(
         (0x00,bytes.fromhex("807d2c00")),
         (0x08,bytes.fromhex("74")),
-        (0x09,bytes.fromhex("83f801")),
-        (0x0E,bytes.fromhex("8bce")),
+        (0x0A,bytes.fromhex("83f801")),
+        (0x0F,bytes.fromhex("8bce")),
     )
     if case=="8":
         return common+(
-            (0x10,bytes.fromhex("8bd1c1e9028bf3")),
-            (0x17,bytes.fromhex("f3a5")),
-            (0x19,bytes.fromhex("8bca83e103")),
-            (0x1E,bytes.fromhex("f3a4")),
-            (0x20,bytes.fromhex("8b7c242c")),
-            (0x24,bytes.fromhex("8b74241c")),
+            (0x11,bytes.fromhex("8bd1c1e9028bf3")),
+            (0x18,bytes.fromhex("f3a5")),
+            (0x1A,bytes.fromhex("8bca83e103")),
+            (0x1F,bytes.fromhex("f3a4")),
+            (0x21,bytes.fromhex("8b7c242c")),
+            (0x25,bytes.fromhex("8b74241c")),
         )
     return common+(
-        (0x10,bytes.fromhex("8bc1c1e9028bf3")),
-        (0x17,bytes.fromhex("f3a5")),
-        (0x19,bytes.fromhex("8bc883e103")),
-        (0x1E,bytes.fromhex("f3a4")),
-        (0x20,bytes.fromhex("8b7c242c")),
-        (0x24,bytes.fromhex("8bf0")),
-        (0x26,bytes.fromhex("8b442430")),
+        (0x11,bytes.fromhex("8bc1c1e9028bf3")),
+        (0x18,bytes.fromhex("f3a5")),
+        (0x1A,bytes.fromhex("8bc883e103")),
+        (0x1F,bytes.fromhex("f3a4")),
+        (0x21,bytes.fromhex("8b7c242c")),
+        (0x25,bytes.fromhex("8bf0")),
+        (0x27,bytes.fromhex("8b442430")),
     )
 
 def verify_sparse(blob:bytes,length:int,w,name:str)->int:
