@@ -2291,3 +2291,54 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_leaf_factory_boundary.py"
       --self-test)
 endif()
+
+
+# Phase1696: real retail VClient011.slot5 returns a 191-record linked
+# ClientClass registry. Only metadata and safe host pointers here.
+add_executable(sin_original_client_class_catalog_native_test
+  ../../tests/test_original_client_class_catalog.cpp)
+target_include_directories(sin_original_client_class_catalog_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_class_catalog_native_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_class_catalog_native
+  COMMAND sin_original_client_class_catalog_native_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_class_registry_source_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_class_registry.py"
+      --self-test --catalog
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")
+endif()
+
+# Phase1696: all 191 source-authenticated class->RecvTable constructor
+# matches (939 declared 60-byte RecvProp slots) with DTKeypad exception.
+# This CTest is synthetic only; owner original is NEVER a CI dependency.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_class_recvtables_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_class_recvtable_links.py"
+      --self-test)
+endif()
+
+# Phase1696: all 939 class-attached original RecvProp NAMES are
+# SHA-authenticated (916 native ctor names and 23 array helpers).
+# Types, proxies and live wire ABI remain UNSUPPORTED.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_all_recvprop_names_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_class_recvprop_names.py"
+      --self-test)
+endif()
+
+# Phase1696: authenticate the three COMPLETE original engine source
+# methods consuming VClient011.slot5 and recursively traversing the
+# 191 class RecvTables. Public CTest uses invented CALL mutations only,
+# no commercial original game binary or engine runtime boot.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_engine_clientclass_consumers_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_engine_clientclass_consumers.py"
+      --self-test)
+endif()

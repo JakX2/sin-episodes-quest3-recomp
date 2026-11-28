@@ -6388,3 +6388,23 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_sound_name_tests)
   endif()
 endif()
+
+
+# Phase1696: CHLClient::GetAllClasses (original VClient011 slot5)
+# references 191 source-authenticated CRT-prepended ClassNodes.
+# This portable test parses the independently authored catalog, not
+# unsafe PE32 pointers or synthesized runtime RecvTables.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_class_catalog_tests
+    tests/test_original_client_class_catalog.cpp)
+  target_include_directories(sin_original_client_class_catalog_tests PRIVATE include)
+  target_compile_features(sin_original_client_class_catalog_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_class_catalog_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_class_catalog_tests
+      COMMAND sin_original_client_class_catalog_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
+  endif()
+endif()

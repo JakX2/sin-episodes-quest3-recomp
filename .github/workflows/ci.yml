@@ -74,6 +74,7 @@ jobs:
             build-android-arm64/sin_android_source_bsp_entities_tests
             build-android-arm64/sin_original_client_game_string_pool_tests
             build-android-arm64/sin_original_client_sound_name_tests
+            build-android-arm64/sin_original_client_class_catalog_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -270,6 +271,14 @@ jobs:
             adb push build-android-emulator-x86_64/sin_original_client_sound_name_tests /data/local/tmp/sin_client_sound_name/sin_original_client_sound_name_tests
             adb shell 'cd /data/local/tmp/sin_client_sound_name && chmod 700 sin_original_client_sound_name_tests && ./sin_original_client_sound_name_tests' | tr -d '\r' | tee build-android-emulator-x86_64/client-sound-name-bionic-output.txt
             grep -Fxq 'PASS source sound-name route: ASCII Q_stristr tokens, emitter fallback, first-spelling pool ownership and clear' build-android-emulator-x86_64/client-sound-name-bionic-output.txt
+            # Phase1696: run original source-authenticated 191-class
+            # metadata list under Android Bionic. No original DLL, runtime
+            # RecvTable, renderer, or gameplay engine is loaded.
+            adb shell mkdir -p /data/local/tmp/sin_client_class_catalog
+            adb push build-android-emulator-x86_64/sin_original_client_class_catalog_tests /data/local/tmp/sin_client_class_catalog/sin_original_client_class_catalog_tests
+            adb push research/manifests/original_client_class_catalog_phase1696.tsv /data/local/tmp/sin_client_class_catalog/original_client_class_catalog_phase1696.tsv
+            adb shell 'cd /data/local/tmp/sin_client_class_catalog && chmod 700 sin_original_client_class_catalog_tests && ./sin_original_client_class_catalog_tests original_client_class_catalog_phase1696.tsv' | tr -d '\r' | tee build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
+            grep -Fxq 'PASS original 191 ClientClass metadata order and pointer topology; 149 entities, 42 temp events, strict invalid source refusal; retail slot5 remains gated' build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -306,6 +315,7 @@ jobs:
           grep -Fxq 'PASS: Source BSP entity text reaches generation-safe host create/keyvalue/spawn/activate lifecycle (mock host only)' build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
           grep -Fxq 'PASS CGameStringPool: first spelling/pointer identity, C-locale case fold, owned allocation, lookup-only misses, 65535 unique capacity, stable pointers and level clear' build-android-emulator-x86_64/client-game-string-pool-bionic-output.txt
           grep -Fxq 'PASS source sound-name route: ASCII Q_stristr tokens, emitter fallback, first-spelling pool ownership and clear' build-android-emulator-x86_64/client-sound-name-bionic-output.txt
+          grep -Fxq 'PASS original 191 ClientClass metadata order and pointer topology; 149 entities, 42 temp events, strict invalid source refusal; retail slot5 remains gated' build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -337,5 +347,6 @@ jobs:
             build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
             build-android-emulator-x86_64/client-game-string-pool-bionic-output.txt
             build-android-emulator-x86_64/client-sound-name-bionic-output.txt
+            build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
           if-no-files-found: error
           retention-days: 7

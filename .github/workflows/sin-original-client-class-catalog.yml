@@ -1,0 +1,33 @@
+name: SiN original 191-client-class head registry audit
+
+on:
+  pull_request:
+    paths:
+      - "research/tools/audit_sin_original_client_class_registry.py"
+      - "research/tools/audit_sin_original_client_class_recvprop_names.py"
+      - "research/tools/audit_sin_original_engine_clientclass_consumers.py"
+      - "research/tools/audit_sin_original_client_class_recvtable_links.py"
+      - "research/manifests/original_client_class_catalog_phase1696.tsv"
+      - "include/sin_compat/original_client_class_catalog.hpp"
+      - "tests/test_original_client_class_catalog.cpp"
+      - ".github/workflows/sin-original-client-class-catalog.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-source-and-catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source-only mutations and SHA-pinned 191-row metadata
+        run: |
+          python research/tools/audit_sin_original_client_class_registry.py --self-test --catalog research/manifests/original_client_class_catalog_phase1696.tsv
+          python research/tools/audit_sin_original_client_class_recvtable_links.py --self-test
+          python research/tools/audit_sin_original_client_class_recvprop_names.py --self-test
+          python research/tools/audit_sin_original_engine_clientclass_consumers.py --self-test
+      - name: Strict C++17 portable 191-class topology and fail-closed regression
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_class_catalog.cpp -o /tmp/sin-original-client-class-catalog
+          /tmp/sin-original-client-class-catalog research/manifests/original_client_class_catalog_phase1696.tsv
