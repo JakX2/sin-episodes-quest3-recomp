@@ -62,6 +62,12 @@ The original 11 caller-side count/stride/first-offset operands, independently ch
 | `CBaseAnimating.m_flEncodedController` | 4 | 4 | 1644 | 1 |
 | **Total** | **579** | | | |
 
+### Native child-relative offsets versus original parent-object offsets
+
+The original 351-byte array builder at `0x24126E90` explicitly executes **`xor ebp, ebp` at 0x24126F6B**, **`mov [edx+0x2C], ebp` at 0x24126F7D**, followed by **`add ebp, [esp+0x5C]` at 0x24126F87**. Consequently, the *actual* native RecvProp member-offset field at byte **+44** in each **generated child descriptor** is **0, stride, 2×stride, ...**, relative to the nested table, not a fully adjusted object address. The caller-supplied original 2006 PE32 offset (e.g. `m_iPing` at **2212**) belongs to the **outer type-5 parent property**, whose nested relative offsets start at zero. An effective entity-object byte position may be **derived** as outer base + child-local offset, but that derived sum must **not** be written to original child descriptor +44.
+
+**Source-specific examples:** `CPlayerResource.m_iPing` has 33 child offsets `0,4,...,128`, with *derived* parent-object positions `2212,2216,...,2340`. `CBreakableSurface.m_RawPanelBitVec` has 256 child offsets `0,1,...,255`, while its derived parent-object positions are `1236...1491`. The updated portable builder stores the two fields separately (`originalChildRelativeMemberOffset`, `derivedParentObjectX86Offset`), and the native/Android tests assert both. Earlier source metadata exports that called the derived sum a native child member offset must be interpreted using this correction.
+
 ### All 579 generated element names source-authenticated
 
 Original function `0x24126F80` loads each generated element name pointer from the real, position-indexed 256-entry pointer table at original PE32 `0x242FB110`, using `[table + elementIndex*4]`, then writes the resolved pointer to the 60-byte generated descriptor's name field at `0x24126F8B`. The entire **1,024-byte original table SHA256** is `7f419caa89c32a637e4f7b7b81f247e232fcc55d1673721e6a3c9dd46d040506`. Every one of its original entries dereferences to a verified NUL-terminated ASCII `000` through `255` in original `.rdata` (newline-delimited name SHA256 `e139eda07b5876a36e7be3471540c112ecbc58b7cfdd1e33f54c4c4c4fc958c4`). This is **actual original data**, not a naming assumption borrowed from a Source SDK.
