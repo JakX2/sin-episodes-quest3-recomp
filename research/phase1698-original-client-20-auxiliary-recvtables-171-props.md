@@ -40,6 +40,14 @@ Authentic native calls to original constructor `0x24126A30` describe **214 sourc
 
 The 171 auxiliary properties plus the previously authenticated 939 class-attached properties account for **1,110 explicitly source-declared static RecvProp slots across all 211 static tables**. This does **not** count the 579 dynamically generated child array elements as static slots, nor does it mean those extra tables are ClientClasses.
 
+### The 192nd source-proven static nested RecvTable edge
+
+Phase1697 proved the original **191 ordinary type-5 nested links** originating from directly registered ClientClass tables. The last ordinary nested link is inside the auxiliary table **`DT_LocalPlayerExclusive`**: its property **`m_Local`** invokes original type-5 constructor `0x24126B50` at source CALL **`0x240D38FB`**, with the **actual child table** `DT_Local` at original client VA **`0x24338E74`** and original x86 parent-object member offset **`0x0D68`**. The parent table's original VA is **`0x24338E8C`**.
+
+The original SHA-pinned source witness at `0x240D38E5` is a literal PUSH of `0x24338E74`, then zero and member offset `0x0D68`; at `0x240D38F1` the compiler pushes the property descriptor destination, name and a direct relative CALL to the original native nested-table helper. This was rechecked byte-for-byte against the unchanged source file, without importing proprietary original executable bytes into the repository.
+
+There are now **192/192 source-accounted ordinary static nested-table edges** across the 211 statically constructed table objects: 191 from ClientClass-attached tables and **one from auxiliary RecvTable data**. This 192 total intentionally **excludes** the dynamic nested-array constructors (including the four auxiliary special constructors and the 11 class array constructors), which require their separately generated child table ownership rules.
+
 ## Exact source names, original x86 constructor paths and types
 
 Of the 171 auxiliary properties, **166** use the canonical native `PUSH property name; PUSH 60-byte output descriptor; direct relative CALL to constructor` sequence. Their actual original constructor targets map to native type0/1/2 or type5. The previously unaudited `0x241A8D80` wrapper is **40 complete original executable bytes**, whole-method SHA256 `dc0a086f0f7bf32f2fe82a62e9dc92feb353d5374adc583b78cf6ef4d1a773a9`, and its real `0x241A8D9C` CALL to `0x24126DF0` proves native type0 rather than an invented new type.
