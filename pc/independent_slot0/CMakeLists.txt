@@ -1681,3 +1681,20 @@ target_compile_features(sin_original_client_local_player_readonly_snapshot_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_local_player_readonly_snapshot_native
   COMMAND sin_original_client_local_player_readonly_snapshot_test)
+
+
+# Phase1661: exact-original SHA-authenticated CPrediction slots9-12
+# C_BasePlayer virtual return/send and mirrored triple-DWORD callbacks.
+# Public CI uses only invented x86 opcode windows and owned C++ mocks.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_prediction_player_orientation_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_prediction_player_orientation_slots.py"
+      --self-test)
+endif()
+add_executable(sin_original_client_prediction_player_orientation_slots_test
+  test_original_client_prediction_player_orientation_slots.cpp)
+target_compile_features(sin_original_client_prediction_player_orientation_slots_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_prediction_player_orientation_slots_native
+  COMMAND sin_original_client_prediction_player_orientation_slots_test)

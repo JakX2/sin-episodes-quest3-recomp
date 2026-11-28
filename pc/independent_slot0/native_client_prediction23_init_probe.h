@@ -41,6 +41,18 @@ constexpr unsigned kOriginalHostFlagSlot=8u;
 constexpr unsigned kOriginalHostViewSlot=13u;
 constexpr unsigned kOriginalHostFlagOffset=0x1DCu;
 constexpr unsigned kOriginalHostViewOffset=0xF04u;
+constexpr unsigned kOriginalPlayerGetterA=9u;
+constexpr unsigned kOriginalPlayerSetterA=10u;
+constexpr unsigned kOriginalPlayerGetterB=11u;
+constexpr unsigned kOriginalPlayerSetterB=12u;
+constexpr unsigned kOriginalPlayerVcallGetA=0xE4u;
+constexpr unsigned kOriginalPlayerVcallSetA=0xE8u;
+constexpr unsigned kOriginalPlayerVcallGetB=0xECu;
+constexpr unsigned kOriginalPlayerVcallSetB=0xF0u;
+constexpr unsigned kOriginalPlayerMirrorA=0x2C8u;
+constexpr unsigned kOriginalPlayerMirrorB=0x2D4u;
+constexpr unsigned kOriginalPlayerNotifierA=0x22Cu;
+constexpr unsigned kOriginalPlayerNotifierB=0x268u;
 constexpr unsigned kOriginalVirtualCount=23u;
 
 // Only invented ConVar storage is accepted. Original ConVar constructor
@@ -76,11 +88,34 @@ static_assert(offsetof(HostSnapshot,field1dc)==kOriginalHostFlagOffset,
 static_assert(offsetof(HostSnapshot,view)==kOriginalHostViewOffset,
               "native prediction host slot13 vector offset drift");
 
+// Artificial callbacks represent only the original C_BasePlayer virtual
+// methods and embedded notifier at authentic byte offsets. They are NOT
+// original player objects or claims about the engine's object layouts.
+// The original setter callback executes BEFORE mirror fields are copied,
+// and the notifier callback executes AFTER that copy.
+struct OrientationOps {
+    void* user=nullptr;
+    using Getter=const ViewBits3* (*)(void*) noexcept;
+    using Setter=void (*)(void*,ViewBits3*) noexcept;
+    using Mirror=void (*)(void*,const ViewBits3*) noexcept;
+    using Notify=void (*)(void*) noexcept;
+    Getter get_a=nullptr;
+    Setter set_a=nullptr;
+    Getter get_b=nullptr;
+    Setter set_b=nullptr;
+    Mirror mirror_a=nullptr;
+    Mirror mirror_b=nullptr;
+    Notify notify_a=nullptr;
+    Notify notify_b=nullptr;
+};
+
 struct Events {
     unsigned init_calls=0u;
     unsigned missing_provider_refusals=0u;
     unsigned destructor_calls=0u;
     unsigned missing_output_refusals=0u;
+    unsigned missing_orientation_callbacks=0u;
+    unsigned missing_orientation_inputs=0u;
 };
 inline Events events{};
 
@@ -122,10 +157,64 @@ public:
     virtual std::uint32_t __thiscall GetHostField1DC() noexcept {
         return view_host_?view_host_->field1dc:0u;
     }
-    virtual std::uint32_t __thiscall UnknownSlot09() noexcept {return 0xA009u;}
-    virtual std::uint32_t __thiscall UnknownSlot10() noexcept {return 0xA00Au;}
-    virtual std::uint32_t __thiscall UnknownSlot11() noexcept {return 0xA00Bu;}
-    virtual std::uint32_t __thiscall UnknownSlot12() noexcept {return 0xA00Cu;}
+    // Retail getter slots9/11: if no active C_BasePlayer, zero three
+    // output DWORDs. Otherwise call player vptr +0xE4/+0xEC for the
+    // returned pointer and copy three words into caller's OUT buffer.
+    // The safe synthetic fixture refuses NULL output or returned vector.
+    virtual void __thiscall CopyOrientationA(ViewBits3* out) noexcept {
+        if(!out) {++events.missing_output_refusals;return;}
+        *out=ViewBits3{};
+        if(!orientation_.user)return;
+        if(!orientation_.get_a) {
+            ++events.missing_orientation_callbacks;return;
+        }
+        const auto* src=orientation_.get_a(orientation_.user);
+        if(!src) {
+            ++events.missing_orientation_callbacks;return;
+        }
+        *out=*src;
+    }
+    // Retail setter slot10: if player present, call player vptr +0xE8
+    // FIRST, copy three (possibly mutated) caller DWORDs into player
+    // +0x2C8/+0x2CC/+0x2D0, THEN invoke embedded player+0x22C
+    // notifier's vptr +0x0C. Caller stack cleanup is RET4.
+    virtual void __thiscall SetOrientationA(ViewBits3* in) noexcept {
+        if(!orientation_.user)return;
+        if(!in) {++events.missing_orientation_inputs;return;}
+        if(!orientation_.set_a || !orientation_.mirror_a ||
+           !orientation_.notify_a) {
+            ++events.missing_orientation_callbacks;return;
+        }
+        orientation_.set_a(orientation_.user,in);
+        orientation_.mirror_a(orientation_.user,in);
+        orientation_.notify_a(orientation_.user);
+    }
+    virtual void __thiscall CopyOrientationB(ViewBits3* out) noexcept {
+        if(!out) {++events.missing_output_refusals;return;}
+        *out=ViewBits3{};
+        if(!orientation_.user)return;
+        if(!orientation_.get_b) {
+            ++events.missing_orientation_callbacks;return;
+        }
+        const auto* src=orientation_.get_b(orientation_.user);
+        if(!src) {
+            ++events.missing_orientation_callbacks;return;
+        }
+        *out=*src;
+    }
+    // Retail setter slot12: player vptr +0xF0; 3 mirrored DWORDs
+    // player+0x2D4/+0x2D8/+0x2DC; notifier at player+0x268.
+    virtual void __thiscall SetOrientationB(ViewBits3* in) noexcept {
+        if(!orientation_.user)return;
+        if(!in) {++events.missing_orientation_inputs;return;}
+        if(!orientation_.set_b || !orientation_.mirror_b ||
+           !orientation_.notify_b) {
+            ++events.missing_orientation_callbacks;return;
+        }
+        orientation_.set_b(orientation_.user,in);
+        orientation_.mirror_b(orientation_.user,in);
+        orientation_.notify_b(orientation_.user);
+    }
     // Retail slot13 writes 12 bytes into its single caller-provided
     // output pointer; when host global is missing, writes all zero.
     // The independent fixture rejects an absent output pointer instead
@@ -155,6 +244,9 @@ public:
     }
     void set_cl_predict(const ConVarView* cl_predict) noexcept {
         cl_predict_=cl_predict;
+    }
+    void set_orientation_ops(OrientationOps ops) noexcept {
+        orientation_=ops;
     }
     void set_view_host(const HostSnapshot* host) noexcept {
         view_host_=host;
@@ -207,6 +299,7 @@ private:
     std::uint32_t cleared_a_=0u;
     std::uint32_t cleared_b_=0u;
     const HostSnapshot* view_host_=nullptr; // diagnostic host pointer only
+    OrientationOps orientation_{}; // synthetic callback contract only
 };
 
 static_assert(sizeof(void*)==4u,"original 2006 PE32 pointer width");
@@ -240,6 +333,16 @@ static_assert(std::is_same<decltype(&Prediction23Fixture::GetHostField1DC),
               std::is_same<decltype(&Prediction23Fixture::CopyHostView),
               HostVectorGetter>::value,
               "original prediction slot8 RET0 / slot13 RET4 x86 contracts");
+using OrientationRef=void (__thiscall Prediction23Fixture::*)(ViewBits3*) noexcept;
+static_assert(std::is_same<decltype(&Prediction23Fixture::CopyOrientationA),
+              OrientationRef>::value &&
+              std::is_same<decltype(&Prediction23Fixture::SetOrientationA),
+              OrientationRef>::value &&
+              std::is_same<decltype(&Prediction23Fixture::CopyOrientationB),
+              OrientationRef>::value &&
+              std::is_same<decltype(&Prediction23Fixture::SetOrientationB),
+              OrientationRef>::value,
+              "native prediction slots9-12 each take one Vec3 pointer RET4");
 
 } // namespace client_prediction23_diagnostic
 } // namespace sin_independent
