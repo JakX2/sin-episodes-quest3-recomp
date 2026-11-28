@@ -68,6 +68,7 @@ on:
       - 'research/tools/audit_sin_original_client_prediction23_abi.py'
       - 'research/tools/audit_sin_original_client_prediction_view_readers.py'
       - 'research/tools/audit_sin_original_client_prediction_player_orientation_slots.py'
+      - 'research/tools/audit_sin_original_cbaseplayer_orientation_native_methods.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -253,3 +254,6 @@ jobs:
 
       - name: Authenticate original CPrediction player slots9-12 getters/setters and mirrors (synthetic only)
         run: python research/tools/audit_sin_original_client_prediction_player_orientation_slots.py --self-test
+
+      - name: Authenticate original C_BasePlayer native slots57-60 and x87 orientation changed semantics (synthetic only)
+        run: python research/tools/audit_sin_original_cbaseplayer_orientation_native_methods.py --self-test
