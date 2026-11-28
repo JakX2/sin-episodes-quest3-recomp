@@ -42,7 +42,13 @@ static void verify_exact_shaped_elements_and_boundaries() {
         for(std::size_t i=0;i<ready.elements.size();++i) {
             assert(ready.elements[i].elementIndex==i);
             assert(ready.elements[i].nativeType==source.elementNativeType);
-            assert(ready.elements[i].originalX86MemberOffset==
+            // Original nested descriptor field +44 contains child-local
+            // byte offsets (0,stride,2*stride...), NEVER entity absolute.
+            assert(ready.elements[i].originalChildRelativeMemberOffset==
+                   i*source.byteStride);
+            // Derived parent object address is useful diagnostic metadata,
+            // not a value written into native child RecvProp +44.
+            assert(ready.elements[i].derivedParentObjectX86Offset==
                    source.firstX86Offset+i*source.byteStride);
             const auto& originalName=ready.elements[i].originalElementName;
             assert(originalName[0]==static_cast<char>('0'+(i/100u)));
@@ -52,11 +58,14 @@ static void verify_exact_shaped_elements_and_boundaries() {
             assert(std::string(originalName.data()).size()==3u);
         }
         assert(std::string(ready.elements.front().originalElementName.data())=="000");
-        assert(ready.elements.front().originalX86MemberOffset==
+        assert(ready.elements.front().originalChildRelativeMemberOffset==0u);
+        assert(ready.elements.front().derivedParentObjectX86Offset==
                source.firstX86Offset);
         if(source.elements==256u)
             assert(std::string(ready.elements.back().originalElementName.data())=="255");
-        assert(ready.elements.back().originalX86MemberOffset==
+        assert(ready.elements.back().originalChildRelativeMemberOffset==
+               (source.elements-1u)*source.byteStride);
+        assert(ready.elements.back().derivedParentObjectX86Offset==
                source.firstX86Offset+
                (source.elements-1u)*source.byteStride);
         sum+=source.elements;
@@ -97,17 +106,20 @@ static void verify_exact_shaped_elements_and_boundaries() {
     const auto* pose=arrays::FindShape("CBaseAnimating","m_flPoseParameter");
     assert(ping && surface && pose);
     assert(ping->elements==33 && ping->byteStride==4 &&
-           arrays::Build(*ping).elements.back().originalX86MemberOffset==2340);
+           arrays::Build(*ping).elements.back().originalChildRelativeMemberOffset==128 &&
+           arrays::Build(*ping).elements.back().derivedParentObjectX86Offset==2340);
     assert(surface->elements==256 && surface->byteStride==1 &&
-           arrays::Build(*surface).elements.back().originalX86MemberOffset==1491);
+           arrays::Build(*surface).elements.back().originalChildRelativeMemberOffset==255 &&
+           arrays::Build(*surface).elements.back().derivedParentObjectX86Offset==1491);
     assert(pose->elements==24 && pose->byteStride==4 &&
-           arrays::Build(*pose).elements.back().originalX86MemberOffset==1444);
+           arrays::Build(*pose).elements.back().originalChildRelativeMemberOffset==92 &&
+           arrays::Build(*pose).elements.back().derivedParentObjectX86Offset==1444);
     assert(!arrays::FindShape("CNPC_GruntBase","m_notOriginal"));
 }
 
 int main() {
     check_original_native_source_values();
     verify_exact_shaped_elements_and_boundaries();
-    std::puts("PASS Phase1697 original 11 dynamic nested array source shapes: 579 generated elements, type5 outer, 0/1 element templates, exact x86 counts/strides/offsets and mutation refusal; no retail RecvTable pointers");
+    std::puts("PASS Phase1697 original 11 dynamic nested array source shapes: 579 generated elements, type5 outer, 0/1 element templates, child-relative native offsets and parent base kept distinct; no retail RecvTable pointers");
     return 0;
 }
