@@ -2308,5 +2308,6 @@ if(Python3_Interpreter_FOUND)
   add_test(NAME independent_original_client_class_registry_source_audit_synthetic
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_class_registry.py"
-      --self-test)
+      --self-test --catalog
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")
 endif()
