@@ -17,6 +17,7 @@
 #include "../../pc/independent_slot0/original_client_entitylist_state_snapshot.h"
 #include "../../pc/independent_slot0/original_client_prediction23_readonly_snapshot.h"
 #include "../../pc/independent_slot0/original_client_prediction_convar_readonly_snapshot.h"
+#include "../../pc/independent_slot0/original_client_local_player_readonly_snapshot.h"
 #pragma comment(lib, "bcrypt.lib")
 
 #if !defined(_M_IX86) && !defined(__i386__)
@@ -268,6 +269,41 @@ bool inspect_client_prediction23(HMODULE client) noexcept {
       "\"retail_engine_prediction_init_executed\":false}\n",
       pred::StatusName(result.status),result.matched_slots);
   return result.status==pred::Status::Verified;
+}
+
+// Phase1660: after owner-original full SHA gate and optional DllMain,
+// inspect the original local C_BasePlayer pointer with exactly bounded
+// DWORD reads. Never invoke C_BasePlayer or prediction virtual methods.
+// The normal pre-engine DLL-load state has NO player and is not an error.
+// A live subclass with a distinct vptr is not treated as exact base
+// C_BasePlayer, and its fields are never read from this probe.
+bool inspect_client_local_player_readonly(HMODULE client) noexcept {
+  namespace lp=sin_independent::original_client_local_player_readonly_snapshot;
+  const auto base=reinterpret_cast<std::uintptr_t>(client);
+  const auto result=lp::Observe(
+      base,{nullptr,&read_original_interfacereg_dword});
+  // No raw pointers, view coordinates, float bits or memory addresses
+  // are printed. This is metadata about snapshot verification only.
+  const unsigned nonzero_view_words=
+      static_cast<unsigned>(result.vector_bits[0]!=0u)+
+      static_cast<unsigned>(result.vector_bits[1]!=0u)+
+      static_cast<unsigned>(result.vector_bits[2]!=0u);
+  std::printf(
+      "{\"module\":\"client\",\"event\":"
+      "\"original_local_cbaseplayer_prediction_view_snapshot\","
+      "\"status\":\"%s\",\"dwords_read\":%u,"
+      "\"primary_vptr_match\":%s,\"scalar_nonzero\":%s,"
+      "\"nonzero_view_words\":%u,\"retail_method_invocations\":0,"
+      "\"retail_virtual_invocations\":0}\n",
+      lp::StatusName(result.status),result.successful_reads,
+      result.exact_primary_vptr_match?"true":"false",
+      result.scalar!=0u?"true":"false",nonzero_view_words);
+  // An owner probe is deliberately loaded without a running engine,
+  // so there is normally no current local player. A present player
+  // is supported only when its EXACT 2006 base-class primary vptr
+  // matched on both reads, and the owner global was unchanged.
+  return result.status==lp::Status::NoLocalPlayer ||
+         result.status==lp::Status::VerifiedExactBasePlayer;
 }
 
 bool inspect_client_entitylist_startup_state(HMODULE client) noexcept {
@@ -561,6 +597,9 @@ bool inspect(const char* path,const ModuleExpected& spec) noexcept {
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_client_prediction_convar(module))
+  ok=false;
+ if(std::strcmp(spec.side,"client")==0 &&
+    !inspect_client_local_player_readonly(module))
   ok=false;
  if(std::strcmp(spec.side,"client")==0 &&
     !inspect_client_entitylist_nine_slots(module))
