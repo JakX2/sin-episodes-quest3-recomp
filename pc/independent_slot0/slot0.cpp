@@ -21,6 +21,7 @@
 #include "native_client_prediction_convar_registration.h"
 #include "native_original_client_entitylist_empty_factory.h"
 #include "native_original_client_centerprint_cold_factory.h"
+#include "native_original_client_leaf_cold_factory.h"
 #include "client_screen_random_core.h"
 #include "client_cvar_probe.h"
 #include "client_owned_startup_probe.h"
@@ -339,6 +340,44 @@ static bool bindColdClientCenterprint() noexcept {
     g_centerprintReady=true;
     diagnostic("client-centerprint-cold-bound",
                "nullable-service:8-slots");
+    return true;
+}
+
+// Phase1695 owner-proven retail boundary: after VClientPrediction001,
+// VClientEntityList003 and VCENTERPRINT002 the original engine asks
+// for ClientLeafSystem001. Source factory returns the PRIMARY object,
+// not the secondary AutoGameSystem +4 subobject. This opt-in stub
+// supplies exactly the original vtable COUNTS and cold-subobject offsets;
+// ALL 35 virtual methods are fatal until their original behavior/ABI is
+// recovered. No leaf renderer, visibility or model pipeline is modeled.
+namespace native_leaf=sin_independent::native_client_leaf_cold_factory;
+static native_leaf::Cold* g_clientLeafOwner=nullptr;
+static bool g_clientLeafReady=false;
+static bool clientLeafFactoryProbeEnabled() noexcept {
+    char flag[2]={};
+    return clientCenterprintFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_LEAF_FACTORY_PROBE",
+            flag,sizeof(flag))==1 && flag[0]=='1';
+}
+static bool bindColdClientLeaf() noexcept {
+    if(!clientLeafFactoryProbeEnabled() ||
+       !g_centerprintReady || !g_centerprintOwner ||
+       !g_centerprintOwner->Active())return false;
+    HMODULE retainedModule=nullptr;
+    if(!GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|
+            GET_MODULE_HANDLE_EX_FLAG_PIN,
+            reinterpret_cast<LPCSTR>(&bindColdClientLeaf),
+            &retainedModule) || !retainedModule)return false;
+    if(!g_clientLeafOwner)
+        g_clientLeafOwner=new(std::nothrow)
+            native_leaf::Cold(&stopUnsupported);
+    if(!g_clientLeafOwner || !g_clientLeafOwner->SourceColdOffsets())
+        return false;
+    g_clientLeafOwner->BindCold();
+    g_clientLeafReady=true;
+    diagnostic("client-leaf-cold-bound","primary:22:auto+4:12:third+8:1");
     return true;
 }
 // Phase1691: unlike name-only VSoundEmitter001 factory acquisition,
@@ -1376,6 +1415,8 @@ public:
         if(g_entityListOwner)g_entityListOwner->Revoke();
         g_centerprintReady=false;
         if(g_centerprintOwner)g_centerprintOwner->Revoke();
+        g_clientLeafReady=false;
+        if(g_clientLeafOwner)g_clientLeafOwner->Revoke();
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
@@ -1459,6 +1500,20 @@ public:
                                "entitylist-or-owner-lifetime");
                     return 0;
                 }
+                if(clientLeafFactoryProbeEnabled() &&
+                   !bindColdClientLeaf()) {
+                    g_clientLeafReady=false;
+                    if(g_clientLeafOwner)g_clientLeafOwner->Revoke();
+                    g_centerprintReady=false;
+                    if(g_centerprintOwner)g_centerprintOwner->Revoke();
+                    g_entityListReady=false;
+                    if(g_entityListOwner)g_entityListOwner->Revoke();
+                    g_predictionOwnerReady=false;
+                    owner->Revoke();
+                    diagnostic("client-leaf-cold-refused",
+                               "centerprint-or-owner-layout");
+                    return 0;
+                }
                 seen_=true;
                 diagnostic("prediction-bound","cl_predict-parent-value");
                 return 1; // Explicit opt-in; remaining callbacks guard.
@@ -1480,6 +1535,8 @@ public:
         if(g_entityListOwner)g_entityListOwner->Revoke();
         g_centerprintReady=false;
         if(g_centerprintOwner)g_centerprintOwner->Revoke();
+        g_clientLeafReady=false;
+        if(g_clientLeafOwner)g_clientLeafOwner->Revoke();
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
         g_slot33Ready=false;
         g_slot33Reader={};
@@ -2229,6 +2286,14 @@ extern "C" __declspec(dllexport) void* __cdecl CreateInterface(
        g_entityListReady && g_entityListOwner &&
        g_entityListOwner->Active())
         result=static_cast<void*>(g_centerprintOwner);
+    if(!result && name &&
+       std::strcmp(name,native_leaf::kInterfaceName)==0 &&
+       clientLeafFactoryProbeEnabled() &&
+       g_clientLeafReady && g_clientLeafOwner &&
+       g_clientLeafOwner->Active() &&
+       g_centerprintReady && g_centerprintOwner &&
+       g_centerprintOwner->Active())
+        result=g_clientLeafOwner->Interface();
 #endif
 #if defined(SIN_ROLE_server)
     if (!result && name && extraFactoriesEnabled()) {
