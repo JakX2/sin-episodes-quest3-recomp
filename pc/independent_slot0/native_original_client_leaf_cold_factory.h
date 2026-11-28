@@ -11,6 +11,7 @@
 // NEVER return and never invent a source ABI/result for unknown slots.
 // This is an opt-in NEGOTIATION boundary, not a functional leaf service.
 #include <cstddef>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 
@@ -65,15 +66,24 @@ private:
     }
     template<unsigned I>
     [[noreturn]] static void __fastcall PrimaryGuard(void* self,void*) noexcept {
-        Refuse(self,0u,"ClientLeafSystem001.primary.virtual-unimplemented");
+        char label[104]={};
+        (void)std::snprintf(label,sizeof(label),
+                            "ClientLeafSystem001.primary.slot%u.unimplemented",I);
+        Refuse(self,0u,label);
     }
     template<unsigned I>
     [[noreturn]] static void __fastcall AutoGuard(void* self,void*) noexcept {
-        Refuse(self,4u,"ClientLeafSystem001.auto-game-system.virtual-unimplemented");
+        char label[104]={};
+        (void)std::snprintf(label,sizeof(label),
+                            "ClientLeafSystem001.auto-game-system.slot%u.unimplemented",I);
+        Refuse(self,4u,label);
     }
     template<unsigned I>
     [[noreturn]] static void __fastcall AuxGuard(void* self,void*) noexcept {
-        Refuse(self,8u,"ClientLeafSystem001.third-subobject.virtual-unimplemented");
+        char label[104]={};
+        (void)std::snprintf(label,sizeof(label),
+                            "ClientLeafSystem001.third-subobject.slot%u.unimplemented",I);
+        Refuse(self,8u,label);
     }
     inline static FatalThunk kPrimary[kOriginalPrimarySlots]={
         &Cold::PrimaryGuard<0>,
