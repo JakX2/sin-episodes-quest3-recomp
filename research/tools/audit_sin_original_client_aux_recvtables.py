@@ -35,8 +35,8 @@ ADDITIONAL_INTEGER_WRAPPER=0x241A8D80
 ADDITIONAL_INTEGER_WRAPPER_SIZE=40
 ADDITIONAL_INTEGER_WRAPPER_SHA="dc0a086f0f7bf32f2fe82a62e9dc92feb353d5374adc583b78cf6ef4d1a773a9"
 ORIGINAL_OVERLAY_ARRAY_FACTORY=0x241271B0
-ORIGINAL_OVERLAY_FACTORY_BYTES=657
-ORIGINAL_OVERLAY_FACTORY_SHA="b2e9bf21b248f751855489484f6ac04d4a8809473406e3287701a1ed4188c670"
+ORIGINAL_OVERLAY_FACTORY_BYTES=621
+ORIGINAL_OVERLAY_FACTORY_SHA="a41703fce2d6cd865d2457b21738fa927ee63cda2ca34b473188d213528df4c6"
 
 # Original source debugger-independent noncanonical constructors.
 # (source child table name, 0-based property slot, original property name,
@@ -151,9 +151,10 @@ def verify(client: bytes, *, full_inventory: bool = False) -> dict:
     need(hashlib.sha256(pe.at(ORIGINAL_OVERLAY_ARRAY_FACTORY,
                               ORIGINAL_OVERLAY_FACTORY_BYTES)).hexdigest()
          ==ORIGINAL_OVERLAY_FACTORY_SHA and
-         pe.at(ORIGINAL_OVERLAY_ARRAY_FACTORY+ORIGINAL_OVERLAY_FACTORY_BYTES,8)
-         ==b"\xCC"*8,
-         "full original 657-byte overlay array constructor digest/boundary changed")
+         pe.at(ORIGINAL_OVERLAY_ARRAY_FACTORY+ORIGINAL_OVERLAY_FACTORY_BYTES,3)
+         ==b"\xCC"*3 and
+         pe.at(0x24127420,3)==b"\x56\x8B\xF1",
+         "native 621-byte overlay function and next-method boundary changed")
     need(pe.at(ORIGINAL_OVERLAY_ARRAY_FACTORY,6)==b"\x81\xEC\x84\x00\x00\x00"
          and pe.at(0x241271E2,8)==b"\xC7\x44\x24\x24\x05\x00\x00\x00",
          "original special overlay nested RecvProp type5 write altered")
