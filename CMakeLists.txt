@@ -6781,3 +6781,22 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_142_entity_allocator_prologues_phase1718.csv")
   endif()
 endif()
+
+
+# Phase1719: source original 40-byte zero-initializing allocator SUCCESS
+# path. Owns synthetic buffers, never calls original 0x2416F8F0 or
+# uses original 2006 PE32 creator pointers, constructors, vtables.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_source_zero_init_allocator_tests
+    tests/test_original_client_source_zero_init_allocator.cpp)
+  target_include_directories(sin_original_client_source_zero_init_allocator_tests PRIVATE include)
+  target_compile_features(sin_original_client_source_zero_init_allocator_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_source_zero_init_allocator_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_source_zero_init_allocator_tests
+      COMMAND sin_original_client_source_zero_init_allocator_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
+  endif()
+endif()
