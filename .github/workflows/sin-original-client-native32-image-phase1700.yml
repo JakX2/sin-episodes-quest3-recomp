@@ -7,6 +7,9 @@ on:
       - "include/sin_compat/original_client_native_member_offsets.hpp"
       - "include/sin_compat/original_client_native_type4_array_fields.hpp"
       - "include/sin_compat/original_client_source_proxy_catalog.hpp"
+      - "include/sin_compat/original_client_standard_recvproxy_host.hpp"
+      - "tests/test_original_client_standard_recvproxy_host.cpp"
+      - "research/tools/audit_sin_original_client_standard_string_datatable_proxies.py"
       - "research/tools/audit_sin_original_client_source_proxy_catalog.py"
       - "research/manifests/original_client_static_recvprops_phase1704.csv"
       - "research/tools/audit_sin_original_client_static_recvprop_names.py"
@@ -37,15 +40,20 @@ jobs:
           python research/tools/audit_sin_original_client_static_recvprop_names.py --self-test
           python research/tools/audit_sin_original_client_overlay_zero_field.py --self-test
           python research/tools/audit_sin_original_client_source_proxy_catalog.py --self-test
+          python research/tools/audit_sin_original_client_standard_string_datatable_proxies.py --self-test
       - name: Strict C++17 compile and run real 2006 source schema in owned token arena
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
           /tmp/sin-native32-owned-image research/manifests/original_client_class_catalog_phase1696.tsv
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_static_recvprop_names.cpp -o /tmp/sin-original-client-names
           /tmp/sin-original-client-names research/manifests/original_client_class_catalog_phase1696.tsv research/manifests/original_client_static_recvprops_phase1704.csv
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_standard_recvproxy_host.cpp -o /tmp/sin-standard-recvproxy-host
+          /tmp/sin-standard-recvproxy-host
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
           /tmp/sin-native32-owned-image-san research/manifests/original_client_class_catalog_phase1696.tsv
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_static_recvprop_names.cpp -o /tmp/sin-original-client-names-san
           /tmp/sin-original-client-names-san research/manifests/original_client_class_catalog_phase1696.tsv research/manifests/original_client_static_recvprops_phase1704.csv
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_standard_recvproxy_host.cpp -o /tmp/sin-standard-recvproxy-host-san
+          /tmp/sin-standard-recvproxy-host-san
