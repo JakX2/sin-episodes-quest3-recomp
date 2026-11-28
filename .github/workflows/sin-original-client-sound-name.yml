@@ -1,0 +1,25 @@
+name: SiN original client audio name/pool source and portable regression
+
+on:
+  pull_request:
+    paths:
+      - "research/tools/audit_sin_original_client_sound_name_pool.py"
+      - "include/sin_compat/original_client_sound_name.hpp"
+      - "tests/test_original_client_sound_name.cpp"
+      - ".github/workflows/sin-original-client-sound-name.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-audit-and-portable-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original-free synthetic source edges and wrong-hash refusals
+        run: python research/tools/audit_sin_original_client_sound_name_pool.py --self-test
+      - name: Compile strict original client audio name/pool regression
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_sound_name.cpp -o /tmp/sin-original-client-sound-name-test
+          /tmp/sin-original-client-sound-name-test
