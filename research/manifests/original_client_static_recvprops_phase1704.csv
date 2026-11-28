@@ -966,7 +966,7 @@ table_ordinal,table,property_slot,name,native_type,plus44_value,plus44_semantics
 196,DT_Animationlayer,2,prevcycle,1,4,member_offset,0x240bfb5a
 196,DT_Animationlayer,3,weight,1,8,member_offset,0x240bfb74
 196,DT_Animationlayer,4,order,0,12,member_offset,0x240bfb8b
-197,DT_OverlayVars,0,m_AnimOverlay,5,,special_overlay_unresolved,0x240c36e1
+197,DT_OverlayVars,0,m_AnimOverlay,5,0,special_overlay_zero_initialized,0x240c36e1
 198,DT_BCCLocalPlayerExclusive,0,m_flNextAttack,1,3064,member_offset,0x240c3797
 198,DT_BCCLocalPlayerExclusive,1,m_hMyWeapons,5,3200,generated_outer_parent_base,0x240c37ea
 199,DT_AnimTimeMustBeFirst,0,m_flAnimTime,0,100,member_offset,0x240c4472
