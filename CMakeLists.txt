@@ -6372,3 +6372,19 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_game_string_pool_tests)
   endif()
 endif()
+
+# Phase1694: non-rendering original client audio name routing, using the
+# Phase1692 source-derived owned CGameStringPool. No retail DLL required.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_sound_name_tests
+    tests/test_original_client_sound_name.cpp)
+  target_include_directories(sin_original_client_sound_name_tests PRIVATE include)
+  target_compile_features(sin_original_client_sound_name_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_sound_name_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_sound_name_tests
+      COMMAND sin_original_client_sound_name_tests)
+  endif()
+endif()
