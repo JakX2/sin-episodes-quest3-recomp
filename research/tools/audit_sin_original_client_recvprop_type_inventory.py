@@ -49,6 +49,10 @@ WRAPPER_HELPERS = {
 # the OUTER descriptor at native stack+4 before copying 60 bytes.
 # This is a genuine nested-table constructor, NOT an unknown type.
 COPIED_DESCRIPTOR_HELPER = 0x24126E90
+ORIGINAL_ARRAY_ELEMENT_NAME_TABLE = 0x242FB110
+ORIGINAL_ARRAY_NAME_POINTERS = 256
+ORIGINAL_ARRAY_NAME_TABLE_SHA = "7f419caa89c32a637e4f7b7b81f247e232fcc55d1673721e6a3c9dd46d040506"
+ORIGINAL_ARRAY_ELEMENT_NAME_SHA = "e139eda07b5876a36e7be3471540c112ecbc58b7cfdd1e33f54c4c4fc958c4"
 EXPECTED_TAG_COUNTS = {
     TYPE_INTEGER: 339,
     TYPE_FLOAT: 238,
@@ -169,6 +173,34 @@ def verify_native_factories(pe: PEImage) -> None:
          "original nested-array 60-byte element descriptor copy altered")
     need(pe.at(0x24126FE0, 7)[-2:] == b"\xF3\xA5",
          "original array-to-nested-table final 60-byte output copy missing")
+    # Each dynamically created element descriptor gets its name from an
+    # actual source x86 indexed pointer table: original 0x24126F80
+    # loads [0x242FB110 + element_index*4] and +0x24126F8B stores that
+    # pointer into the element's name DWORD +0. The original data
+    # resolves to exactly "000" .. "255" (no inferred Source SDK rules).
+    need(pe.section_of(ORIGINAL_ARRAY_ELEMENT_NAME_TABLE) == ".data",
+         "original 256-name indexed pointer table relocated")
+    pointer_bytes = pe.at(
+        ORIGINAL_ARRAY_ELEMENT_NAME_TABLE,ORIGINAL_ARRAY_NAME_POINTERS*4)
+    need(hashlib.sha256(pointer_bytes).hexdigest() ==
+         ORIGINAL_ARRAY_NAME_TABLE_SHA,
+         "full original 256-pointer generated element name table changed")
+    names = []
+    for index in range(ORIGINAL_ARRAY_NAME_POINTERS):
+        source_ptr = struct.unpack_from("<I",pointer_bytes,index*4)[0]
+        need(pe.section_of(source_ptr) == ".rdata",
+             "generated element indexed name pointer outside original constants")
+        value = pe.at(source_ptr,4)
+        need(value == f"{index:03d}".encode("ascii") + b"\x00",
+             "source generated original element name mismatch")
+        names.append(value[:3].decode("ascii"))
+    need(hashlib.sha256(("\n".join(names)+"\n").encode("ascii")).hexdigest()
+         == ORIGINAL_ARRAY_ELEMENT_NAME_SHA,
+         "all 256 original generated element names changed")
+    need(pe.at(0x24126F80,7) ==
+         b"\x8B\x0C\x85" + struct.pack("<I",ORIGINAL_ARRAY_ELEMENT_NAME_TABLE)
+         and pe.at(0x24126F8B,2) == b"\x89\x0A",
+         "original nested array element name table lookup/store changed")
     for site, target in SOURCE_WRAPPER_CALLS:
         raw = pe.at(site, 5)
         need(raw[0] == 0xE8 and
@@ -233,6 +265,8 @@ def recover_dynamic_array_shape(pe: PEImage, client_class: str,
         "source_array_builder_va": hex(COPIED_DESCRIPTOR_HELPER),
         "source_initializer_callsite_va": hex(site+7),
         "source_element_template_callsite_va": hex(candidates[-1][0]),
+        "original_element_name_table_va": hex(ORIGINAL_ARRAY_ELEMENT_NAME_TABLE),
+        "original_generated_element_names": [f"{i:03d}" for i in range(count)],
         "limitations": "Element names/proxy or child RecvTable lifetime not emulated.",
     }
 
@@ -303,6 +337,8 @@ def verify(original_client: bytes, *, full_inventory: bool = False) -> dict:
         "source_dynamic_nested_array_shapes": dynamic_array_shapes,
         "total_source_dynamic_nested_array_elements":
             sum(x["source_element_count"] for x in dynamic_array_shapes),
+        "original_generated_name_table_entries": ORIGINAL_ARRAY_NAME_POINTERS,
+        "original_generated_name_table_sha256": ORIGINAL_ARRAY_NAME_TABLE_SHA,
         "limits": ("All 939 type DWORDs originate in original constructor code. "
                    "The eleven array-copy paths are actually nested-table type 5; "
                    "their dynamic subtable contents and proxy functions remain "
