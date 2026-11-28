@@ -75,6 +75,7 @@ on:
       - 'research/tools/audit_sin_original_prediction_disabled_fallback.py'
       - 'research/tools/audit_sin_original_predictable_entity_teardown.py'
       - 'research/tools/audit_sin_original_prediction_postnetwork_slot6.py'
+      - 'research/tools/audit_sin_original_postnetwork_entity_compare.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -281,3 +282,6 @@ jobs:
 
       - name: Authenticate original PostNetworkDataReceived slot6 reconciliation prefix (synthetic only)
         run: python research/tools/audit_sin_original_prediction_postnetwork_slot6.py --self-test
+
+      - name: Authenticate original C_BaseEntity PostNetwork result and 90-DWORD ring (synthetic only)
+        run: python research/tools/audit_sin_original_postnetwork_entity_compare.py --self-test
