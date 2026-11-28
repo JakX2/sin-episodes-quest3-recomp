@@ -6876,3 +6876,23 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
   endif()
 endif()
+
+
+# Phase1724: original COMPLETE 191 registered ClientClass native x86
+# creator function BODY SHA fingerprints, source-only evidence.
+# 42 temp +118 canonical +24 noncanonical +7 exceptional.
+# No original executable methods, VTables or live creator ABI.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_all_creator_body_fingerprints_tests
+    tests/test_original_client_all_creator_body_fingerprints.cpp)
+  target_include_directories(sin_original_client_all_creator_body_fingerprints_tests PRIVATE include)
+  target_compile_features(sin_original_client_all_creator_body_fingerprints_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_all_creator_body_fingerprints_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_all_creator_body_fingerprints_tests
+      COMMAND sin_original_client_all_creator_body_fingerprints_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
+  endif()
+endif()
