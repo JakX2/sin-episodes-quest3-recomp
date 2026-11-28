@@ -1652,3 +1652,20 @@ target_compile_features(sin_original_cl_predict_convar_readonly_snapshot_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_cl_predict_convar_readonly_snapshot_native
   COMMAND sin_original_cl_predict_convar_readonly_snapshot_test)
+
+
+# Phase1659: authenticated retail CPrediction slots8/13 host-side scalar
+# and out-pointer 3-DWORD vector reads. The native fixture owns all data,
+# never invokes original game code or registers VClientPrediction001.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_prediction_host_view_abi_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_prediction_view_readers.py"
+      --self-test)
+endif()
+add_executable(sin_original_client_prediction_host_view_slots_test
+  test_original_client_prediction_host_view_slots.cpp)
+target_compile_features(sin_original_client_prediction_host_view_slots_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_prediction_host_view_slots8_13_native
+  COMMAND sin_original_client_prediction_host_view_slots_test)
