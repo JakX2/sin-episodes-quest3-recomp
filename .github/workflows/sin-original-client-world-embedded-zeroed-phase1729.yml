@@ -1,0 +1,40 @@
+name: SiN Phase1729 CWorld embedded zeroed constructor
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sin-original-client-world-embedded-zeroed-phase1729.yml'
+      - 'include/sin_compat/original_client_world_interpolator_zeroed_phase1729.hpp'
+      - 'tests/test_original_client_world_interpolator_zeroed_phase1729.cpp'
+      - 'research/tools/audit_sin_original_client_world_interpolator_zeroed_phase1729.py'
+  workflow_dispatch:
+
+jobs:
+  strict-original-free-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Original-free virtual-dispatch and SHA mutation preflight
+        run: python3 research/tools/audit_sin_original_client_world_interpolator_zeroed_phase1729.py --self-test
+      - name: Strict GCC + Clang portable C++17 zeroed embedded object
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_interpolator_zeroed_phase1729.cpp -o /tmp/sin-phase1729-gcc
+          /tmp/sin-phase1729-gcc
+          clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_interpolator_zeroed_phase1729.cpp -o /tmp/sin-phase1729-clang
+          /tmp/sin-phase1729-clang
+      - name: AddressSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_world_interpolator_zeroed_phase1729.cpp -o /tmp/sin-phase1729-san
+          /tmp/sin-phase1729-san
+  native32-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Win32 C++17 zero-allocated subobject snapshot
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /W4 /WX /EHsc /Iinclude tests\test_original_client_world_interpolator_zeroed_phase1729.cpp /Fe:sin-phase1729.exe
+          sin-phase1729.exe
