@@ -2331,3 +2331,14 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_class_recvprop_names.py"
       --self-test)
 endif()
+
+# Phase1696: authenticate the three COMPLETE original engine source
+# methods consuming VClient011.slot5 and recursively traversing the
+# 191 class RecvTables. Public CTest uses invented CALL mutations only,
+# no commercial original game binary or engine runtime boot.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_engine_clientclass_consumers_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_engine_clientclass_consumers.py"
+      --self-test)
+endif()
