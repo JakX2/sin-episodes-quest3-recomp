@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <string_view>
 using namespace sin_compat::original_client_sound_name;
 
@@ -20,7 +21,8 @@ int main() {
     assert(HasLiteralFileToken("prefix.wav.trailing"));
     assert(HasLiteralFileToken(".wav"));
     assert(!HasLiteralFileToken("ambient.ogg"));
-    assert(!HasLiteralFileToken("ambience.wavless"));
+    assert(HasLiteralFileToken("ambience.wavless")); // substring, NOT extension validation
+    assert(!HasLiteralFileToken("ambience_wavefile"));
     assert(!HasLiteralFileToken("mp3"));
     assert(!HasLiteralFileToken(""));
     assert(!ContainsAsciiFold("short",".wav"));
@@ -53,7 +55,7 @@ int main() {
     assert(invalid.route==Route::InvalidInput && resolverCalls==2);
     invalid=Bind(pool,"ok",std::string_view(embedded,4),resolver);
     assert(invalid.route==Route::InvalidInput && resolverCalls==2);
-    assert(pool.Size()==5);
+    assert(pool.Size()==6);
     // Pool pointers must survive insertion, but never be used after Clear.
     for(int i=0;i<320;++i) {
         auto r=Bind(pool,"other.wav"+std::to_string(i),"",resolver);
