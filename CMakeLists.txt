@@ -6593,3 +6593,22 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_standard_recvproxy_router_tests)
   endif()
 endif()
+
+
+# Phase1709: two original source-identical x86 49-byte handle and
+# moveparent RecvProxies, source 30+5 custom integer callback sites.
+# This is a safe OWNED host transformation and never a live retail
+# executable x86 callback or VClient011.slot5 network registry.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_custom_handle_proxy_tests
+    tests/test_original_client_custom_handle_proxy.cpp)
+  target_include_directories(sin_original_client_custom_handle_proxy_tests PRIVATE include)
+  target_compile_features(sin_original_client_custom_handle_proxy_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_custom_handle_proxy_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_custom_handle_proxy_tests
+      COMMAND sin_original_client_custom_handle_proxy_tests)
+  endif()
+endif()
