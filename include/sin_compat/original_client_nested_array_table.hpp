@@ -25,6 +25,11 @@ inline constexpr std::uint32_t kOriginalOuterNativeType=5u;
 inline constexpr std::uint32_t kOriginalIntegerElementType=0u;
 inline constexpr std::uint32_t kOriginalFloatElementType=1u;
 inline constexpr std::size_t kSourceElementOffsetField=44u;
+inline constexpr std::uint32_t kOriginalElementNamePointerTableVA=0x242fb110u;
+inline constexpr std::size_t kOriginalElementNamePointerCount=256u;
+// Original complete 1024-byte PE32 name-pointer array SHA256:
+// 7f419caa89c32a637e4f7b7b81f247e232fcc55d1673721e6a3c9dd46d040506
+// Each original pointer dereferences to a name from "000" to "255".
 
 struct Shape final {
     std::string_view clientClass;
@@ -57,6 +62,9 @@ struct Element final {
     std::uint32_t elementIndex=0;
     std::uint32_t originalX86MemberOffset=0;
     std::uint32_t nativeType=0;
+    // Source-authenticated 3-digit original indexed RecvProp name,
+    // always NUL terminated. This is NOT a native pointer.
+    std::array<char,4> originalElementName{{'0','0','0','\0'}};
 };
 
 struct BuiltMetadata final {
@@ -97,10 +105,17 @@ inline BuiltMetadata Build(const Shape& input) {
         return out;
     out.elements.reserve(input.elements);
     for(std::uint32_t i=0u;i<input.elements;++i) {
+        const std::array<char,4> originalName{{
+            static_cast<char>('0'+(i/100u)),
+            static_cast<char>('0'+((i/10u)%10u)),
+            static_cast<char>('0'+(i%10u)),
+            '\0'
+        }};
         out.elements.push_back({
             i,
             input.firstX86Offset+i*input.byteStride,
-            input.elementNativeType
+            input.elementNativeType,
+            originalName
         });
     }
     out.valid=true;
