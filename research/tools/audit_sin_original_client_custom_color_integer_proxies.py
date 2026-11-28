@@ -16,9 +16,9 @@ from audit_sin_original_client_source_proxy_catalog import public_header
 
 SOURCE_METHODS=(
     (0x241A8BF0,38,
-     "d60b249c0c261174c934cd38641d46656fd299741af2b43b3bc4cd7e944a5a1b",4),
+     "d60b249c0c261174c934cd38641d46656fd299741af2b43b3bc4cd7e944a5a1b",4,0x241A8C20),
     (0x241A8C20,17,
-     "bbea8c9b7a7fce6219d595fb3305ce6b6137f5186e171df2ab93d3fe23323582",5),
+     "bbea8c9b7a7fce6219d595fb3305ce6b6137f5186e171df2ab93d3fe23323582",5,0x241A8C40),
 )
 SOURCE_COLOR_CODE=bytes.fromhex(
     "8b4424048b40048b4c240c8bd0c1ea1888118bd0"
@@ -33,7 +33,7 @@ def require(ok,why):
 
 def verify_catalog(header:Path):
     addresses=public_header(header)
-    for va,length,digest,expected_calls in SOURCE_METHODS:
+    for va,length,digest,expected_calls,nextVA in SOURCE_METHODS:
         require(addresses.count(va)==expected_calls,
                 f"source callback VA {va:#x} caller count drift")
     require(len(SOURCE_COLOR_CODE)==38 and len(SOURCE_DECREMENT_CODE)==17,
@@ -55,7 +55,7 @@ def verify_original(path:Path):
         body=at(va,length)
         require(hashlib.sha256(body).hexdigest()==digest,
                 f"source 2006 complete method SHA changed {va:#x}")
-        require(at(va+length,(0x40-length))==b"\xCC"*(0x40-length),
+        require(at(va+length,(nextVA-va-length))==b"\xCC"*(nextVA-va-length),
                 f"original method padding drift {va:#x}")
     require(at(SOURCE_METHODS[0][0],38)==SOURCE_COLOR_CODE,
             "original received DWORD color byte order changed")
@@ -76,7 +76,7 @@ def main():
             "choose --self-test or --client /private/client.dll")
     verify_catalog(args.header)
     if args.self_test:
-        for va,length,digest,count in SOURCE_METHODS:
+        for va,length,digest,count,nextVA in SOURCE_METHODS:
             require(hashlib.sha256(b"\x90"*length).hexdigest()!=digest,
                     "invented native method unexpectedly authenticated")
         print("PASS Phase1710 source-free 4+5 original custom callback routes "
