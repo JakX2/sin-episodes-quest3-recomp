@@ -63,3 +63,9 @@ The archive is never bundled into public GitHub Actions. Its hashes and extracte
 
 This is audio-related, SiN-specific client gameplay behavior, **not** an HL2-equivalent physics, model/prop, surface-properties or renderer task. The next steps are identifying original direct callers of the 341-byte initializer, typed semantics of the input parameter provider to `0x241BF5F0`, and the actual engine-facing emitter interface semantics for slots +0x78 and +0x1C. A source-order sound-name model is not a complete CSoundPatch class, successfully initialized independent `client.dll`, actual audio playback, first rendered frame, APK or Quest 3 execution.
 
+
+## Four confirmed original allocation/caller pathways
+
+A whole-file relative-CALL scan of the SHA-pinned client was checked against original native instruction boundaries: source callsites `0x241C018D`, `0x241C02B6`, `0x241C03A0` and `0x241C047E` all invoke the **same** 341-byte `0x241BF880` initializer. The enclosing original routines allocate a 0x64-byte owned record, initialize fields and pass a five-argument block to the common routine. Their complete function sizes, return semantics and allocation cleanup have **not** been separately authenticated for this phase, so the four callsites add graph evidence but **zero newly counted complete-method bytes**. The private audit verifies each direct rel32 CALL target.
+
+The portable sound-name header also includes only the explicitly observed start-of-`0x241BF5F0` flag policy: base bit 1, then OR bit 2 if provider slot +4 reports true, OR bit 4 if provider slot +8 reports true. The native vtable itself and subsequent record enumeration remain outside this semantic adapter. The regression checks all four Boolean combinations and actual call order.
