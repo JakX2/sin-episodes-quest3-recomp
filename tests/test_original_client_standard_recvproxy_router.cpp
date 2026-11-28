@@ -17,6 +17,7 @@ namespace strings=sin_compat::original_client_source_string_sizes;
 namespace schema=sin_compat::original_client_native32_recvtable_manifest;
 namespace handle=sin_compat::original_client_custom_handle_proxy;
 namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
+namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
 
 int main() {
     static_assert(source::FullyClassifiedCanonicalRoutes());
@@ -168,6 +169,56 @@ int main() {
         }
     }
 
+    // Phase1711: source custom movetype and movecollide use ORIGINAL
+    // object hardcoded +0x144/+0x148, not their RecvProp +44 (=0).
+    // Default-FOV conditionally resets +0x2C only when +0x38 changes.
+    static_assert(moveFov::kSourceCustomAssignments==3u);
+    static_assert(moveFov::SourceRoutesMatch());
+    static_assert(!moveFov::CanPublishRetailProxyPointers());
+    setRawHandle(0x10203040u);
+    {
+        const auto before=object;
+        const auto tokenBefore=tableToken;
+        assert(router::ApplySourceStandardProperty(
+            120u,17u,incoming,object,tableToken)==router::Status::Applied);
+        assert(readSourceDword(0x144u)==0x10203040u);
+        assert(readSourceDword(0x148u)==0u);
+        assert(object[0x143u]==before[0x143u]);
+        assert(object[0x14cu]==before[0x14cu]);
+        assert(tableToken==tokenBefore);
+    }
+    {
+        const auto before=object;
+        const auto tokenBefore=tableToken;
+        assert(router::ApplySourceStandardProperty(
+            120u,18u,incoming,object,tableToken)==router::Status::Applied);
+        assert(readSourceDword(0x148u)==0x10203040u);
+        assert(readSourceDword(0x144u)==0x10203040u);
+        assert(object[0x14cu]==before[0x14cu]);
+        assert(tableToken==tokenBefore);
+    }
+    {
+        // Prepopulate native m_iDefaultFOV at +0x38 and the reset DWORD
+        // at +0x2C with nonzero values: equal values must NOT reset.
+        for(std::size_t k=0u;k<4u;++k) {
+            object[0x38u+k]=static_cast<std::uint8_t>(
+                0x10203040u>>(k*8u));
+            object[0x2Cu+k]=static_cast<std::uint8_t>(
+                0x11223344u>>(k*8u));
+        }
+        const auto beforeEqual=object;
+        assert(router::ApplySourceStandardProperty(
+            202u,4u,incoming,object,tableToken)==router::Status::Applied);
+        assert(object==beforeEqual);
+        setRawHandle(0x55667788u);
+        assert(router::ApplySourceStandardProperty(
+            202u,4u,incoming,object,tableToken)==router::Status::Applied);
+        assert(readSourceDword(0x38u)==0x55667788u);
+        assert(readSourceDword(0x2Cu)==0u);
+        assert(object[0x2Bu]==beforeEqual[0x2Bu]);
+        assert(object[0x3Cu]==beforeEqual[0x3Cu]);
+    }
+
     // A genuinely custom, as-yet-unported FOV callback, native type4
     // special array, and animation overlay must all remain unsupported.
     {
@@ -198,7 +249,8 @@ int main() {
     // rather than exercising only hand-picked primitive proxy examples.
     std::size_t applied=0u,custom=0u,special=0u,
                 standard=0u,handleAssignments=0u,moveparentAssignments=0u,
-                colorAssignments=0u,decrementAssignments=0u;
+                colorAssignments=0u,decrementAssignments=0u,
+                movementFovAssignments=0u;
     for(std::size_t t=0u;t<schema::kStaticTables;++t)
         for(std::size_t p=0u;p<schema::kCounts[t];++p) {
             const auto outcome=router::ApplySourceStandardProperty(
@@ -219,6 +271,10 @@ int main() {
                     ++colorAssignments;
                 else ++decrementAssignments;
                 assert(outcome==router::Status::Applied);
+            }else if(moveFov::IsOriginalMovementOrFovProxy(va)) {
+                ++applied;
+                ++movementFovAssignments;
+                assert(outcome==router::Status::Applied);
             }else if(!source::IsStandardOriginalSourceVA(va)) {
                 ++custom;
                 assert(outcome==router::Status::UnsupportedSourceCallback);
@@ -231,7 +287,8 @@ int main() {
     assert(standard==999u && handleAssignments==35u &&
            moveparentAssignments==5u);
     assert(colorAssignments==4u && decrementAssignments==5u);
-    assert(applied==1043u && custom==39u && special==28u);
+    assert(movementFovAssignments==3u);
+    assert(applied==1046u && custom==36u && special==28u);
 
     // Small buffers must never allow an otherwise valid source +44
     // member offset to write beyond the owned host object.
@@ -245,8 +302,9 @@ int main() {
         assert(tiny==old && tableToken==token);
     }
     assert(!router::CanPublishRetailProxyPointers());
-    std::puts("PASS Phase1710 999 source-standard + 35 handles + "
-              "4 color + 5 decrement original receiver routes on bounded "
-              "host objects; 39 custom / 28 special blocked, NO slot5");
+    std::puts("PASS Phase1711 999 source-standard + 35 handles + "
+              "4 color + 5 decrement + 3 movement/FOV source receiver "
+              "routes on bounded host objects; 36 custom / 28 special "
+              "blocked, NO slot5");
     return 0;
 }

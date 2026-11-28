@@ -17,6 +17,7 @@
 #include "sin_compat/original_client_standard_recvproxy_host.hpp"
 #include "sin_compat/original_client_custom_handle_proxy.hpp"
 #include "sin_compat/original_client_custom_color_integer_proxies.hpp"
+#include "sin_compat/original_client_custom_movement_fov_proxies.hpp"
 
 namespace sin_compat::original_client_standard_recvproxy_router {
 namespace manifest=sin_compat::original_client_native32_recvtable_manifest;
@@ -27,6 +28,7 @@ namespace copies=sin_compat::original_client_recvprop_proxies_factories;
 namespace owned=sin_compat::original_client_standard_recvproxy_host;
 namespace handle=sin_compat::original_client_custom_handle_proxy;
 namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
+namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
 
 struct DecodedOwnedInput final {
     // The original CRecvProxyData union value begins at byte +4.
@@ -47,8 +49,9 @@ inline constexpr bool CanPublishRetailProxyPointers() noexcept {return false;}
 // source-backed families; 35 source-proven original custom handle/moveparent
 // assignments use their exact reconstructed 49-byte method behavior.
 // Phase1710 now adds four byte-reordering color assignments and five
-// original integer decrement assignments. The remaining 39 custom and
-// all 28 specialized routes stay blocked.
+// original integer decrement assignments. Phase1711 handles three original direct movement/FOV
+// state changes, bringing host-reconstructed routes to 1046; the remaining
+// 36 custom and all 28 special constructor paths stay blocked.
 // This is still a bounded, HOST-OWNED function, not live Source networking.
 inline Status ApplySourceStandardProperty(
     std::size_t sourceTableOrdinal,std::size_t slot,
@@ -64,7 +67,8 @@ inline Status ApplySourceStandardProperty(
     if(nativeSourceVA==0u ||
        (!source::IsStandardOriginalSourceVA(nativeSourceVA) &&
         !handle::IsOriginalHandleProxy(nativeSourceVA) &&
-        !colorInt::IsOriginalCustomColorOrDecrement(nativeSourceVA)))
+        !colorInt::IsOriginalCustomColorOrDecrement(nativeSourceVA) &&
+        !moveFov::IsOriginalMovementOrFovProxy(nativeSourceVA)))
         return Status::UnsupportedSourceCallback;
 
     if(nativeType==5u && nativeSourceVA==owned::kOriginalDataTableProxyVA) {
@@ -72,6 +76,24 @@ inline Status ApplySourceStandardProperty(
                                     dataTableOutputToken);
         return Status::Applied;
     }
+    // Phase1711: three source-attested custom callbacks use fixed
+    // object fields independent of their RecvProp +44 metadata. In
+    // particular movetype/movecollide have original +44=0 but write to
+    // object+0x144/+0x148, so generic offset-based copying is WRONG.
+    // The FOV callback additionally resets +0x2C only when +0x38
+    // actually changes. The helper validates all fields before writing.
+    if(moveFov::IsOriginalMovementOrFovProxy(nativeSourceVA)) {
+        if(nativeType!=0u)return Status::UnsupportedSourceCallback;
+        const auto applied=moveFov::ApplySourceOriginalEffect(
+            sourceTableOrdinal,slot,nativeSourceVA,
+            incoming.originalProxyData,originalObjectBytes);
+        if(applied==moveFov::Status::Applied)
+            return Status::Applied;
+        if(applied==moveFov::Status::RefusedBadOwnedMemory)
+            return Status::RefusedBadOwnedMemory;
+        return Status::UnsupportedSourceCallback;
+    }
+
     const auto offset=members::kSourceNativeMemberOffsets[index];
     if(offset==members::kNotDirectlyRecovered)
         return Status::RefusedBadOwnedMemory;
