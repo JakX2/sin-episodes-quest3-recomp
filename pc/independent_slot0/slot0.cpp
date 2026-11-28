@@ -18,6 +18,7 @@
 #if defined(SIN_ROLE_client)
 #include "client_material_startup_core.h"
 #include "native_client_prediction_factory_boundary.h"
+#include "native_client_prediction_convar_registration.h"
 #include "client_screen_random_core.h"
 #include "client_cvar_probe.h"
 #include "client_owned_startup_probe.h"
@@ -250,6 +251,16 @@ static bool clientPredictionFactoryProbeEnabled() noexcept {
 namespace pred_factory=sin_independent::native_client_prediction_factory;
 static pred_factory::Boundary* g_predictionOwner=nullptr;
 static bool g_predictionOwnerReady=false;
+namespace owned_predict=
+    sin_independent::native_client_prediction_convar_registration;
+static owned_predict::Owner* g_predictionConVarOwner=nullptr;
+static bool clientPredictionCvarRegistrationEnabled() noexcept {
+    char flag[2]={};
+    return clientPredictionFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE",
+            flag,sizeof(flag))==1 && flag[0]=='1';
+}
 static pred_factory::Boundary* ensurePredictionOwner() noexcept {
     if(!g_predictionOwner)
         g_predictionOwner=new(std::nothrow)
@@ -282,6 +293,38 @@ static bool readablePredictionSource(const void* pointer,
 // or register any ConVar. The original slot1 checks cl_predict's
 // m_pParent->m_nValue; our native owner SNAPSHOTS that number rather
 // than retaining an untrusted game-engine ConVar pointer.
+// Perform only owner-gated engine registration when the original
+// cl_predict is truly absent. The native ConVar is independently
+// owned and never freed after any external registration attempt.
+// This is a timing adaptation from original static constructor to
+// client Init, and only the owner diagnostic launch can enable it.
+static bool registerMissingPredictionConVar(void* engineCvar) noexcept {
+    if(!clientPredictionCvarRegistrationEnabled() ||
+       !readablePredictionSource(engineCvar,sizeof(void*)))
+        return false;
+    const void* const* table=nullptr;
+    std::memcpy(&table,engineCvar,sizeof(table));
+    if(!readablePredictionSource(table,4u*sizeof(void*)))
+        return false;
+    void* reg=nullptr;
+    void* find=nullptr;
+    std::memcpy(&reg,table+0u,sizeof(reg));
+    std::memcpy(&find,table+3u,sizeof(find));
+    if(!reg || !find)return false;
+    if(!g_predictionConVarOwner)
+        g_predictionConVarOwner=new(std::nothrow)
+            owned_predict::Owner();
+    if(!g_predictionConVarOwner)return false;
+    const bool registered=
+        g_predictionConVarOwner->RegisterMissing(
+           engineCvar,
+           reinterpret_cast<owned_predict::Owner::Register>(reg),
+           reinterpret_cast<owned_predict::Owner::Find>(find));
+    diagnostic(registered?
+        "prediction-convar-registered":"prediction-convar-register-refused",
+        owned_predict::kOriginalName);
+    return registered;
+}
 static bool readPredictionNumeric(void* engineCvar,
                                   std::int32_t& result) noexcept {
     result=0;
@@ -1227,7 +1270,11 @@ public:
         if(clientPredictionFactoryProbeEnabled()) {
             std::int32_t numeric=0;
             auto* owner=ensurePredictionOwner();
-            if(owner && readPredictionNumeric(cvar,numeric)) {
+            bool gotNumeric=owner && readPredictionNumeric(cvar,numeric);
+            if(owner && !gotNumeric &&
+               registerMissingPredictionConVar(cvar))
+                gotNumeric=readPredictionNumeric(cvar,numeric);
+            if(owner && gotNumeric) {
                 owner->BindSourceNumeric(numeric);
                 g_predictionOwnerReady=true;
                 seen_=true;
