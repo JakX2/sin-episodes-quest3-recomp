@@ -48,6 +48,21 @@ Full ordered 191-class-to-RecvTable source mapping fingerprint:
 
 `0ba3a72d88cbf5e0881232cf39a3b00ded5bcf59e73f280a4e73502ca7869fbc`
 
+
+## All 939 original client RecvProp names recovered, not just slot counts
+
+A further read-only SHA-pinned original PE32 scan resolves **939/939 attached class property names** in the exact class head-to-tail order, preserving each table's original declared slot index. The ordered class|table|slot|name fingerprint is:
+
+`ca5f6949f6b477a4257e8357a7009e0908a016dc9838e5ec3746c3cc1a770b31`
+
+**916** named slots originate in the common native `push property-name; push 60-byte RecvProp destination; call constructor` instruction sequence. **23** more are genuine alternate original construction patterns: **12** use an array helper at `0x24126BD0` and **11** use a `rep movsd` / array-copy operation followed by a helper at `0x24126E90`. Requiring the canonical push/push/call sequence for every slot would falsely report these 23 properties as missing. For example, the seven consecutive `CPlayerResource` properties `m_iPing`, `m_iScore`, `m_iDeaths`, `m_bConnected`, `m_iTeam`, `m_bAlive`, `m_iHealth` use the array-copy construction.
+
+Important SiN-specific source fields recovered on `CNPC_GruntBase`: `baseclass` at original x86 object offset 0; `m_receivedDecapitatingBlow` at original x86 offset **3444**; and `m_decapitateVelocity` at original x86 offset **3448**. Those are raw 2006 PE32 offsets, *not* automatically valid ARM64 or Quest offsets. The source `CKeypad` nonstandard `DTKeypad` table has three genuine property names, `baseclass`, `m_bDisabled` and `m_combination`. The native literal for `CTeam`'s fifth property is exactly `"player_array"` including the quotation marks; retain that original literal instead of normalizing it.
+
+The new `research/tools/audit_sin_original_client_class_recvprop_names.py` audits the full owner-original DLL SHA, all 191 original RecvTable links, all 939 explicit property slots and the 916/12/11 split, and checks the whole name-sequence fingerprint. It reports selected source constructor callsites and the original **limited** numeric x86 offsets where uniquely determined. The public `--self-test` refuses fabricated original DLL identity and checks the alternate-name scanner, while **only a private owner-original run** verifies original instruction bodies. No original DLL bytes are copied into public CI.
+
+These are now **names**, not 939 authenticated serialized field data types, native RecvProxy signatures, nested-table semantics, class IDs or runnable original entity factories. Do not return this catalog as a live `ClientClass*` to the retail engine. Slot5 remains intentionally guarded until its ABI can be satisfied.
+
 ## Verification
 
 Public, commercial-file-free checks:
@@ -55,6 +70,7 @@ Public, commercial-file-free checks:
 ```sh
 python research/tools/audit_sin_original_client_class_registry.py --self-test --catalog research/manifests/original_client_class_catalog_phase1696.tsv
 python research/tools/audit_sin_original_client_class_recvtable_links.py --self-test
+python research/tools/audit_sin_original_client_class_recvprop_names.py --self-test
 g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_class_catalog.cpp -o /tmp/sin-class-catalog
 /tmp/sin-class-catalog research/manifests/original_client_class_catalog_phase1696.tsv
 ```
@@ -64,6 +80,7 @@ Private, user-owned original binary read-only checks:
 ```sh
 python research/tools/audit_sin_original_client_class_registry.py --client /private/client.dll --catalog research/manifests/original_client_class_catalog_phase1696.tsv
 python research/tools/audit_sin_original_client_class_recvtable_links.py --client /private/client.dll
+python research/tools/audit_sin_original_client_class_recvprop_names.py --client /private/client.dll
 ```
 
 Both new synthetic Python audits and the identical native C++ catalog test are registered in standalone Windows MSVC x86 CTest and focused Linux CI. The original binaries **never** enter GitHub Actions. A green synthetic test is not a real retail-engine class registry test.
