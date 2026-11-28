@@ -2403,3 +2403,22 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_aux_recvtables.py"
       --self-test)
 endif()
+
+
+# Phase1699: original owner-private PE32 auxiliary nested array source
+# constraints. Synthetic executable NEVER calls the original engine
+# and NEVER returns a fake VClient011.slot5 pointer.
+add_executable(sin_original_client_aux_dynamic_receivers_native_test
+  ../../tests/test_original_client_aux_dynamic_receivers.cpp)
+target_include_directories(sin_original_client_aux_dynamic_receivers_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_aux_dynamic_receivers_native_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_aux_dynamic_receivers_native
+  COMMAND sin_original_client_aux_dynamic_receivers_native_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_aux_dynamic_receivers_source_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_aux_dynamic_receivers.py"
+      --self-test)
+endif()
