@@ -20,6 +20,7 @@ namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
 namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
 namespace scale=sin_compat::original_client_custom_scale_transition_proxies;
 namespace team=sin_compat::original_client_custom_team_array_element_proxy;
+namespace gamerules=sin_compat::original_client_custom_gamerules_datatable_proxy;
 
 int main() {
     static_assert(source::FullyClassifiedCanonicalRoutes());
@@ -259,13 +260,21 @@ int main() {
     static_assert(team::SourceRoutesMatch());
     static_assert(team::kSourceCustomAssignments==1u);
     static_assert(!team::CanPublishRetailProxyPointers());
+    static_assert(gamerules::SourceRoutesMatch());
+    static_assert(gamerules::kSourceCustomAssignments==1u);
+    static_assert(!gamerules::CanPublishRetailProxyPointers());
     std::size_t applied=0u,custom=0u,special=0u,
                 standard=0u,handleAssignments=0u,moveparentAssignments=0u,
                 colorAssignments=0u,decrementAssignments=0u,
                 movementFovAssignments=0u,scaleAssignments=0u,
-                teamArrayAssignments=0u;
+                teamArrayAssignments=0u,gamerulesAssignments=0u;
     for(std::size_t t=0u;t<schema::kStaticTables;++t)
         for(std::size_t p=0u;p<schema::kCounts[t];++p) {
+            if(t==gamerules::kOriginalTableOrdinal &&
+               p==gamerules::kOriginalPropertySlot) {
+                incoming.hasAuthenticatedGameRulesSingleton=true;
+                incoming.ownedGameRulesSingletonToken=0x10002000u;
+            }
             if(t==team::kSourceTableOrdinal && p==team::kSourceSlot) {
                 // Source Team+0x480 must hold a bounded synthetic
                 // array token, not another original PE32 pointer or
@@ -305,6 +314,11 @@ int main() {
                 ++applied;
                 ++teamArrayAssignments;
                 assert(outcome==router::Status::Applied);
+            }else if(gamerules::IsOriginalGameRulesProxy(va)) {
+                ++applied;
+                ++gamerulesAssignments;
+                assert(outcome==router::Status::Applied);
+                assert(tableToken==0x10002000u);
             }else if(!source::IsStandardOriginalSourceVA(va)) {
                 ++custom;
                 assert(outcome==router::Status::UnsupportedSourceCallback);
@@ -318,8 +332,8 @@ int main() {
            moveparentAssignments==5u);
     assert(colorAssignments==4u && decrementAssignments==5u);
     assert(movementFovAssignments==3u && scaleAssignments==2u);
-    assert(teamArrayAssignments==1u);
-    assert(applied==1049u && custom==33u && special==28u);
+    assert(teamArrayAssignments==1u && gamerulesAssignments==1u);
+    assert(applied==1050u && custom==32u && special==28u);
 
     // Small buffers must never allow an otherwise valid source +44
     // member offset to write beyond the owned host object.
@@ -333,8 +347,9 @@ int main() {
         assert(tiny==old && tableToken==token);
     }
     assert(!router::CanPublishRetailProxyPointers());
-    std::puts("PASS Phase1713 999 standard + 35 handles + 4 color + 5 "
+    std::puts("PASS Phase1714 999 standard + 35 handles + 4 color + 5 "
               "decrement + 3 movement/FOV + 2 x87 scale + 1 Team element "
-              "receiver routes; 33 custom / 28 special blocked, NO slot5");
+              "+ 1 GameRules singleton routes; 32 custom / 28 special "
+              "blocked, NO retail slot5");
     return 0;
 }
