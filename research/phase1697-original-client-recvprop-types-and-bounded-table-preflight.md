@@ -40,6 +40,33 @@ The original type-2/3/4/5 factories at VAs `0x24126A60` (109 bytes), `0x24126AD0
 
 Previously authenticated bytes are **not counted twice**. The five complete type-2/3/4/5/array-to-nested-table factory methods total **792 original bytes** (109+117+102+113+351), separately from the already authenticated Phase251 type-zero and type-one methods. This metadata milestone does not assert these bytes are novel across all older historical research without exhaustive duplicate checks.
 
+
+### Exact original eleven dynamically constructed nested arrays
+
+Whole-function original `0x24126E90` also exposes its generated **child** table layout. It computes `count * 60` bytes for element descriptors using the original integer arithmetic, calls original allocator `0x2416FCF0`, initializes each 60-byte element from the prepared template, writes the element's member offset at **descriptor+0x2C**, increments the offset by the **caller-supplied byte stride** after each element, and separately requests **0x14 (20) bytes** for the child RecvTable. The outer property is type **5**, pointing to that child table. The element template is first constructed with original type-0 integer factory `0x24126DF0` or type-1 float factory `0x24126D80` immediately before the dynamic array call.
+
+The original 11 caller-side count/stride/first-offset operands, independently checked against the exact whole-DLL SHA256, are:
+
+| Original class and property | Elements | Byte stride | First original x86 offset | Element native type |
+| --- | ---: | ---: | ---: | ---: |
+| `CPlayerResource.m_iPing` | 33 | 4 | 2212 | 0 |
+| `CPlayerResource.m_iScore` | 33 | 4 | 2344 | 0 |
+| `CPlayerResource.m_iDeaths` | 33 | 4 | 2476 | 0 |
+| `CPlayerResource.m_bConnected` | 33 | 1 | 2608 | 0 |
+| `CPlayerResource.m_iTeam` | 33 | 4 | 2644 | 0 |
+| `CPlayerResource.m_bAlive` | 33 | 1 | 2776 | 0 |
+| `CPlayerResource.m_iHealth` | 33 | 4 | 2812 | 0 |
+| `CBreakableSurface.m_RawPanelBitVec` | 256 | 1 | 1236 | 0 |
+| `CBaseFlex.m_flexWeight` | 64 | 4 | 2144 | 1 |
+| `CBaseAnimating.m_flPoseParameter` | 24 | 4 | 1352 | 1 |
+| `CBaseAnimating.m_flEncodedController` | 4 | 4 | 1644 | 1 |
+| **Total** | **579** | | | |
+
+These **579 generated inner elements** are additional to the 939 class-attached outer descriptors. This is source-backed structure and sizing, not a reconstruction of actual packet bit widths, proxy callback bodies, runtime allocation ownership or child-table network layout across systems.
+
+`include/sin_compat/original_client_nested_array_table.hpp` implements a C++17 **host metadata** version of these exact shapes, with source name/count/width/offset/type identity checks, native offset-overflow checks and generated element-offset calculations. It cannot produce game-owned RecvProp pointers. Native and Android regression tests independently verify all 11 shapes, all 579 element offsets, mutation refusal and a graph walk of all 11 parent/child table pairs. The C++ tests never execute original proprietary code and do not claim a running Android/Quest game.
+
+
 ## Portable bounded RecvTable graph preflight
 
 `include/sin_compat/original_client_recvtable_preflight.hpp` models the **original engine's actual traversal constraints**, with no assumed renderer or Windows DLL pointer ownership:
@@ -62,6 +89,8 @@ Public tests without commercial game binaries:
 python research/tools/audit_sin_original_client_recvprop_type_inventory.py --self-test
 g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_recvtable_preflight.cpp -o /tmp/sin-original-nettable-preflight
 /tmp/sin-original-nettable-preflight research/manifests/original_client_class_catalog_phase1696.tsv
+g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_nested_array_table.cpp -o /tmp/sin-original-nested-arrays
+/tmp/sin-original-nested-arrays
 ```
 
 Private, user-owned original file only:
