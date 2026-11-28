@@ -92,10 +92,14 @@ def verify_original(path:Path):
         need(n>=0 and 0<=off<=len(code)-n,
              f"original CWorld native code address out of .text: {va:#x}")
         return code[off:off+n]
-    def method(va,n,sha,pad):
+    def method(va,n,sha,pad,ret8=False):
         block=read(va,n)
+        # World virtual +0x94 is a thiscall-style RET 8; the
+        # original bootstrap/getter/shutdown functions use RET.
+        correct_return=(block[-3:]==b"\xC2\x08\x00") if ret8 else (
+            block[-1:]==b"\xC3")
         need(hashlib.sha256(block).hexdigest()==sha and
-             block[-1]==0xC3 and read(va+n,pad)==b"\xCC"*pad,
+             correct_return and read(va+n,pad)==b"\xCC"*pad,
              f"complete source original CWorld method/padding drift {va:#x}")
         need(read(va+n+pad,1)!=b"\xCC",
              "original CWorld native method boundary too short")
@@ -110,7 +114,7 @@ def verify_original(path:Path):
                   SOURCE_GETTER_SHA,10)
     wrapper=method(SOURCE_WORLD_VIRTUAL94_WRAPPER_VA,
                    SOURCE_WORLD_VIRTUAL94_WRAPPER_BYTES,
-                   SOURCE_WORLD_VIRTUAL94_WRAPPER_SHA,4)
+                   SOURCE_WORLD_VIRTUAL94_WRAPPER_SHA,4,ret8=True)
     need(wrapper[3:13]==bytes.fromhex("c7868004000000000000") and
          wrapper[-3:]==b"\xC2\x08\x00",
          "original world-specific virtual94 wrapper lost +0x480 clear or RET8")
