@@ -62,13 +62,6 @@ static void test_owned_arena_refusal() {
     assert(arena.Read8(name+13u)==0u);
 }
 
-static classes::Catalog load_true_source_class_order(const char* manifest) {
-    // Catalog is intentionally non-copyable and non-movable, so callers
-    // load directly into a stable instance instead of moving owned
-    // linked-node pointers. This function merely demonstrates refusal.
-    (void)manifest;
-    throw std::logic_error("do not move source-linked Catalog");
-}
 static void test_exact_native32_image(const char* sourceManifest) {
     std::ifstream original(sourceManifest);
     assert(original.good());
