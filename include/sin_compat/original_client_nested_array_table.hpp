@@ -2,8 +2,10 @@
 // Phase1697: original 2006 PE32 0x24126E90 builds an OUTER RecvProp of
 // type 5 (nested table) from a source element RecvProp template.
 // It dynamically allocates count * 60-byte elements, copies a template
-// to each, updates member offset at each element +0x2C by byte stride,
-// and allocates an original 20-byte child RecvTable.
+// to each, writes element +0x2C offsets 0, stride, 2*stride, ... RELATIVE
+// TO THE CHILD TABLE (ebp starts at 0 at source 0x24126F6B), and
+// allocates an original 20-byte child RecvTable. The outer property
+// carries the original entity base offset; these are distinct fields.
 //
 // This C++17 implementation ONLY constructs safe HOST METADATA, never
 // an original Windows RecvProp, RecvTable, factory pointer or callback.
@@ -60,7 +62,14 @@ inline constexpr std::array<Shape,kSourceArrayShapeCount> kOriginalShapes{{
 
 struct Element final {
     std::uint32_t elementIndex=0;
-    std::uint32_t originalX86MemberOffset=0;
+    // Actual original 60-byte generated RecvProp +0x2C: zero-based
+    // offset relative to its DYNAMIC CHILD RecvTable, not a CBaseEntity
+    // absolute field offset. Source: 0x24126F6B xor ebp,ebp;
+    // 0x24126F7D mov [edx+0x2C],ebp; +0x24126F87 add ebp,stride.
+    std::uint32_t originalChildRelativeMemberOffset=0;
+    // Derived lookup convenience ONLY: outer original PE32 field base
+    // plus child-relative offset. NOT stored in native child descriptor.
+    std::uint32_t derivedParentObjectX86Offset=0;
     std::uint32_t nativeType=0;
     // Source-authenticated 3-digit original indexed RecvProp name,
     // always NUL terminated. This is NOT a native pointer.
@@ -83,7 +92,8 @@ inline const Shape* FindShape(std::string_view owner,
 }
 
 // Accept only an EXACT source-observed shape, not an arbitrary inferred
-// std::vector length or a guessed pointer. Bounds protect native offsets,
+// std::vector length or a guessed pointer. Bounds protect both child
+// relative offsets and derived (outer-base + child-relative) values,
 // count * 60 allocation and pointer lifetime on Android/desktop alike.
 inline BuiltMetadata Build(const Shape& input) {
     BuiltMetadata out{};
@@ -113,6 +123,7 @@ inline BuiltMetadata Build(const Shape& input) {
         }};
         out.elements.push_back({
             i,
+            i*input.byteStride,
             input.firstX86Offset+i*input.byteStride,
             input.elementNativeType,
             originalName
