@@ -72,6 +72,7 @@ jobs:
             build-android-arm64/sin_android_original_scene_playback_tests
             build-android-arm64/libsin_source_bsp_entities.a
             build-android-arm64/sin_android_source_bsp_entities_tests
+            build-android-arm64/sin_original_client_game_string_pool_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -257,6 +258,11 @@ jobs:
             adb push build-android-emulator-x86_64/sin_android_source_map_runtime_tests /data/local/tmp/sin_source_map_runtime/sin_android_source_map_runtime_tests
             adb shell 'cd /data/local/tmp/sin_source_map_runtime && chmod 700 sin_android_source_map_runtime_tests && ./sin_android_source_map_runtime_tests' | tr -d '\r' | tee build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
             grep -Fxq 'PASS: Source BSP entity text reaches generation-safe host create/keyvalue/spawn/activate lifecycle (mock host only)' build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
+            # Phase1692: execute the exact recovered pooled-string implementation.
+            adb shell mkdir -p /data/local/tmp/sin_client_game_string_pool
+            adb push build-android-emulator-x86_64/sin_original_client_game_string_pool_tests /data/local/tmp/sin_client_game_string_pool/sin_original_client_game_string_pool_tests
+            adb shell 'cd /data/local/tmp/sin_client_game_string_pool && chmod 700 sin_original_client_game_string_pool_tests && ./sin_original_client_game_string_pool_tests' | tr -d '\r' | tee build-android-emulator-x86_64/client-game-string-pool-bionic-output.txt
+            grep -Fxq 'PASS CGameStringPool: first spelling/pointer identity, C-locale case fold, owned allocation, lookup-only misses, 65535 unique capacity, stable pointers and level clear' build-android-emulator-x86_64/client-game-string-pool-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -291,6 +297,7 @@ jobs:
           grep -Fxq 'PASS: original SiN client viewmodel origin-offset composition (portable math only)' build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
           grep -Fxq 'PASS: Source BSP v19/v20 entity-lump reader (portable parser only)' build-android-emulator-x86_64/source-bsp-entities-bionic-output.txt
           grep -Fxq 'PASS: Source BSP entity text reaches generation-safe host create/keyvalue/spawn/activate lifecycle (mock host only)' build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
+          grep -Fxq 'PASS CGameStringPool: first spelling/pointer identity, C-locale case fold, owned allocation, lookup-only misses, 65535 unique capacity, stable pointers and level clear' build-android-emulator-x86_64/client-game-string-pool-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -320,5 +327,6 @@ jobs:
             build-android-emulator-x86_64/viewmodel-origin-offset-bionic-output.txt
             build-android-emulator-x86_64/source-bsp-entities-bionic-output.txt
             build-android-emulator-x86_64/source-map-runtime-bionic-output.txt
+            build-android-emulator-x86_64/client-game-string-pool-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
