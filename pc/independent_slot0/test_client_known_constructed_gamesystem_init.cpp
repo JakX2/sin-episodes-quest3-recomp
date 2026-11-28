@@ -25,6 +25,24 @@ int main(){
     auto outcome=r.Initialize();
     if(!outcome.succeeded() || outcome.initialized_count!=3 ||
        r.registered_size()!=3)return 3;
+    // Real source CGameStringPool is first in the original direct
+    // startup registry. Its original Init is a no-op true, NOT
+    // permission to discard strings interned before registration.
+    char name[]="SinTEK_Enemy";
+    const char* interned=strings.Intern(name);
+    if(!interned || interned==name ||
+       strings.Intern("sintek_enemy")!=interned ||
+       strings.Find("SINTEK_ENEMY")!=interned ||
+       strings.Size()!=1u || !strings.Init() ||
+       strings.Find("sintek_enemy")!=interned)return 10;
+    name[0]='X';
+    if(std::strcmp(interned,"SinTEK_Enemy"))return 11;
+    strings.ClearOnOriginalSlot5();
+    if(strings.Size()!=0u || strings.Find("sintek_enemy") ||
+       strings.Intern("") || strings.Intern(nullptr))return 12;
+    const char* again=strings.Intern("sintek_enemy");
+    if(!again || std::strcmp(again,"sintek_enemy") ||
+       strings.Find("SINTEK_ENEMY")!=again)return 13;
     Provider first{},second{};
     first.field=0x12345678;second.field=0xABCDEF90;
     constexpr std::size_t kObjectBytes=0x9000;
