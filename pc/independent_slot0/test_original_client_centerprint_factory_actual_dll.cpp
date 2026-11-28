@@ -79,6 +79,13 @@ struct FakeSoundEmitter {
 };
 FakeSoundEmitter g_sound{};
 std::uint32_t g_ignoredFactory=0u;
+// Three deliberately malformed, CALLER-owned Source interface
+// shapes. Never execute these as native C++ methods: the
+// shipping DLL must reject them before its first virtual call.
+unsigned g_soundFactoryMode=0u;
+void* g_nonExecutableVtable[1]{&g_ignoredFactory};
+void* g_nonExecutableSoundObject=g_nonExecutableVtable;
+void* g_nullVtableSoundObject=nullptr;
 unsigned g_factoryCalls=0u;
 unsigned g_factoryErrors=0u;
 unsigned g_physicsQueries=0u;
@@ -89,8 +96,15 @@ void* __cdecl appFactory(const char* name,int* status) {
     ++g_factoryCalls;
     if(name && std::strcmp(name,"VEngineCvar002")==0)
         return &g_cvar;
-    if(name && std::strcmp(name,"VSoundEmitter001")==0)
+    if(name && std::strcmp(name,"VSoundEmitter001")==0) {
+        if(g_soundFactoryMode==1u)
+            return reinterpret_cast<void*>(0x1u);
+        if(g_soundFactoryMode==2u)
+            return &g_nonExecutableSoundObject;
+        if(g_soundFactoryMode==3u)
+            return &g_nullVtableSoundObject;
         return &g_sound;
+    }
     return &g_ignoredFactory;
 }
 void* __cdecl physicsFactory(const char*,int*) {
@@ -403,6 +417,26 @@ int main(int argc,char** argv) {
        create("VClientEntityList003",nullptr) ||
        create(api::kInterfaceName,nullptr))
         return fail(27,"retail source sound Connect=false must refuse before factory publication");
+    // The real engine is trusted only up to the exact ABI
+    // evidence supplied. Non-null VSoundEmitter001 from its
+    // CreateInterface is NOT sufficient: forged pointers,
+    // a non-executable virtual0 target, or a null vfptr must
+    // refuse safely with original Init=0 and no native vcall.
+    g_sound.allowed=true;
+    for(unsigned mode=1u;mode<=3u;++mode) {
+        g_soundFactoryMode=mode;
+        g_sound.connects=0u;
+        g_sound.last=nullptr;
+        g_factoryCalls=g_factoryErrors=g_physicsQueries=0u;
+        if(!call_client_init(client,table[0],0) ||
+           g_factoryErrors || g_factoryCalls!=kFactoryNamesCount ||
+           g_sound.connects!=0u || g_sound.last!=nullptr ||
+           create("VClientPrediction001",nullptr) ||
+           create("VClientEntityList003",nullptr) ||
+           create(api::kInterfaceName,nullptr))
+            return fail(29,"forged sound vptr/native nonexecutable callback was not refused before Connect");
+    }
+    g_soundFactoryMode=0u;
     // A real native virtual Connect true now permits the
     // SAME x86 VClient011.Init to reacquire the cl_predict
     // source parent, prediction, entity list and cold centerprint.
