@@ -1766,3 +1766,20 @@ target_compile_features(sin_original_prediction_packet_entity_pair_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_prediction_packet_pair_native
   COMMAND sin_original_prediction_packet_entity_pair_test)
+
+
+# Phase1666: original CPrediction disabled-cl_predict direct fallback
+# 0x24195720, native backward client entity cleanup and two counters.
+# Tests only synthetic owned entities/vtables and original SHA witnesses.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_disabled_shutdown_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_disabled_fallback.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_disabled_shutdown_test
+  test_original_prediction_disabled_shutdown.cpp)
+target_compile_features(sin_original_prediction_disabled_shutdown_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_prediction_disabled_shutdown_native
+  COMMAND sin_original_prediction_disabled_shutdown_test)

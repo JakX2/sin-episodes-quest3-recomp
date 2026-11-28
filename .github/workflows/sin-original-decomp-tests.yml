@@ -72,6 +72,7 @@ on:
       - 'research/tools/audit_sin_original_prediction_view_setter_slot14.py'
       - 'research/tools/audit_sin_original_prediction_update_slot3_scratch.py'
       - 'research/tools/audit_sin_original_prediction_packet_entity_pair.py'
+      - 'research/tools/audit_sin_original_prediction_disabled_fallback.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -269,3 +270,6 @@ jobs:
 
       - name: Authenticate original CPrediction Pre/PostEntityPacketReceived and entity-list virtuals (synthetic only)
         run: python research/tools/audit_sin_original_prediction_packet_entity_pair.py --self-test
+
+      - name: Authenticate original disabled-prediction reverse predictable/client-created shutdown (synthetic only)
+        run: python research/tools/audit_sin_original_prediction_disabled_fallback.py --self-test
