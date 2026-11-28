@@ -18,7 +18,7 @@
 // any synthetic dereference; no original game memory is read.
 // Original case8/9 remaining diagnostic/copy helpers are OPAQUE.
 #pragma once
-#include "native_original_postnetwork_type_switch.h"
+#include "native_original_postnetwork_scalar_formatters.h"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -62,8 +62,13 @@ struct CorrectionEvents {
     unsigned corrected_bytes=0u;
 };
 
+// The previously source-pinned formatter object is a single
+// zero-offset nonvirtual parent: original this+0x00..0x34
+// fields are unchanged and host-only callbacks follow.
+// This enables native RET12 compare and native RET16 preview
+// on the same invented object without shadow copies of state.
 struct ComparatorFixture :
-    original_postnetwork_type_switch::Fixture {
+    original_postnetwork_scalar_formatters::Fixture {
     // All following fields live BEYOND the previously source-pinned
     // this+0x25 byte. No original dispatcher layout is changed.
     original_postnetwork_type_switch::Record* safe_current_record=nullptr;
