@@ -16,6 +16,7 @@ namespace source=sin_compat::original_client_source_proxy_catalog;
 namespace strings=sin_compat::original_client_source_string_sizes;
 namespace schema=sin_compat::original_client_native32_recvtable_manifest;
 namespace handle=sin_compat::original_client_custom_handle_proxy;
+namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
 
 int main() {
     static_assert(source::FullyClassifiedCanonicalRoutes());
@@ -129,6 +130,44 @@ int main() {
             assert(tableToken==tokenBefore);
         }
     }
+    // Phase1710 source x86 custom callback 0x241A8BF0 reverses the
+    // input DWORD byte order (38-byte method), while 0x241A8C20
+    // decrements that raw DWORD (17-byte method), modulo native32.
+    static_assert(colorInt::kSourceColorProperties==4u);
+    static_assert(colorInt::kSourceDecrementProperties==5u);
+    static_assert(!colorInt::CanPublishRetailProxyPointers());
+    for(const auto raw:std::array<std::uint32_t,4>{{
+             0x11223344u,0x00000000u,0xFFFFFFFFu,0x80000001u}}) {
+        setRawHandle(raw);
+        {
+            constexpr std::size_t kColorOffset=92u;
+            const auto before=object;
+            const auto beforeToken=tableToken;
+            assert(router::ApplySourceStandardProperty(
+                83u,0u,incoming,object,tableToken)
+                ==router::Status::Applied);
+            const auto expected=colorInt::SourceColorBytes(raw);
+            for(std::size_t i=0u;i<4u;++i)
+                assert(object[kColorOffset+i]==expected[i]);
+            assert(object[kColorOffset-1u]==before[kColorOffset-1u]);
+            assert(object[kColorOffset+4u]==before[kColorOffset+4u]);
+            assert(tableToken==beforeToken);
+        }
+        {
+            constexpr std::size_t kDecOffset=3428u;
+            const auto before=object;
+            const auto beforeToken=tableToken;
+            assert(router::ApplySourceStandardProperty(
+                42u,1u,incoming,object,tableToken)
+                ==router::Status::Applied);
+            assert(readSourceDword(kDecOffset)==
+                   colorInt::SourceDecrementDword(raw));
+            assert(object[kDecOffset-1u]==before[kDecOffset-1u]);
+            assert(object[kDecOffset+4u]==before[kDecOffset+4u]);
+            assert(tableToken==beforeToken);
+        }
+    }
+
     // A genuinely custom, as-yet-unported FOV callback, native type4
     // special array, and animation overlay must all remain unsupported.
     {
@@ -158,7 +197,8 @@ int main() {
     // Prove the whole REAL source 211-table/1110-property classification
     // rather than exercising only hand-picked primitive proxy examples.
     std::size_t applied=0u,custom=0u,special=0u,
-                standard=0u,handleAssignments=0u,moveparentAssignments=0u;
+                standard=0u,handleAssignments=0u,moveparentAssignments=0u,
+                colorAssignments=0u,decrementAssignments=0u;
     for(std::size_t t=0u;t<schema::kStaticTables;++t)
         for(std::size_t p=0u;p<schema::kCounts[t];++p) {
             const auto outcome=router::ApplySourceStandardProperty(
@@ -173,6 +213,12 @@ int main() {
                 if(va==handle::kNativeMoveParentProxyVA)
                     ++moveparentAssignments;
                 assert(outcome==router::Status::Applied);
+            }else if(colorInt::IsOriginalCustomColorOrDecrement(va)) {
+                ++applied;
+                if(va==colorInt::kNativeColorByteReverseVA)
+                    ++colorAssignments;
+                else ++decrementAssignments;
+                assert(outcome==router::Status::Applied);
             }else if(!source::IsStandardOriginalSourceVA(va)) {
                 ++custom;
                 assert(outcome==router::Status::UnsupportedSourceCallback);
@@ -184,7 +230,8 @@ int main() {
         }
     assert(standard==999u && handleAssignments==35u &&
            moveparentAssignments==5u);
-    assert(applied==1034u && custom==48u && special==28u);
+    assert(colorAssignments==4u && decrementAssignments==5u);
+    assert(applied==1043u && custom==39u && special==28u);
 
     // Small buffers must never allow an otherwise valid source +44
     // member offset to write beyond the owned host object.
@@ -198,8 +245,8 @@ int main() {
         assert(tiny==old && tableToken==token);
     }
     assert(!router::CanPublishRetailProxyPointers());
-    std::puts("PASS Phase1709 999 source-standard plus 35 native source "
-              "handle/moveparent proxies dispatched to bounded objects; "
-              "48 custom and 28 special remain blocked, NO retail slot5");
+    std::puts("PASS Phase1710 999 source-standard + 35 handles + "
+              "4 color + 5 decrement original receiver routes on bounded "
+              "host objects; 39 custom / 28 special blocked, NO slot5");
     return 0;
 }
