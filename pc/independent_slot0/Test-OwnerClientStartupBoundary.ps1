@@ -30,6 +30,7 @@ param(
     [switch]$EnableClientPredictionCvarRegisterProbe,
     [switch]$EnableClientEntityListFactoryProbe,
     [switch]$EnableClientCenterprintFactoryProbe,
+    [switch]$EnableClientLeafFactoryProbe,
     [switch]$EnableClientSoundConnectContinueProbe,
     [switch]$DisposableTestCopyConfirmed
 )
@@ -48,7 +49,7 @@ if ($ProbeRole -cne 'Client' -or
     $IndependentBin -cne (Join-Path $PSScriptRoot 'bin')) {
     throw 'Incorrect client-only startup parameters'
 }
-Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value 'client-only-factory-and-sound'
+Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value $(if ($EnableClientLeafFactoryProbe) {'client-plus-leaf-cold'} else {'client-only-factory-and-sound'})
 '@ | Set-Content -LiteralPath $stub
     $required=@(
         'bin/client.dll','bin/server.dll',
@@ -96,6 +97,12 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value 'client-o
         if ((Get-Content -LiteralPath $called -Raw).Trim() -cne 'client-only-factory-and-sound') {
             throw 'Incorrect client-only delegation'
         }
+        Remove-Item -LiteralPath $called -ErrorAction SilentlyContinue
+        & $run -GameRoot $game -GameArguments '-console -game SE1' -TimeoutSeconds 45 -DisposableTestCopyConfirmed -EnableClientLeafFactoryProbe | Out-Null
+        if (-not (Test-Path -LiteralPath $called) -or
+            (Get-Content -LiteralPath $called -Raw).Trim() -cne 'client-plus-leaf-cold') {
+            throw 'Explicit client-leaf opt-in did not reach isolated guard stub'
+        }
         $client=Join-Path $bundle 'bin/client.dll'
         Add-Content -LiteralPath $client -Value 'tampered'
         Reject '*Bundle integrity mismatch*' $true
@@ -108,7 +115,7 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value 'client-o
         $hashes.Remove('bin/server.dll')
         @{schema=1;commit=$commit;files=$hashes}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath
         Reject '*manifest file count*' $true
-        Write-Output 'PASS synthetic client-only startup bundle exact flags, SHA pins, and fail-closed paths'
+        Write-Output 'PASS synthetic client-only startup bundle leaf opt-in, exact flags, SHA pins, and fail-closed paths'
     } finally { $env:SIN_CLIENT_STARTUP_SYNTH_GAME=$old }
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
