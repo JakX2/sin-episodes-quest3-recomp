@@ -144,6 +144,11 @@ struct alignas(4) Fixture {
     std::uint32_t original_unknown28=0u; // this+0x28
     std::uint8_t correction_byte=0u;     // this+0x2C
     std::uint8_t original_unknown2D[3]{}; // +0x2D..+0x2F
+    // Phase1675: original 0x24198360/0x24198380 both compare
+    // DWORD [this+0x34] against original [this+0x18].
+    // Reserve +0x30 and +0x34 BEFORE host-owned callbacks.
+    std::uint32_t original_unknown30=0u; // this+0x30
+    std::uint32_t diagnostic_record=0u;   // this+0x34
 
     DispatchOps ops{};
     DispatchEvents events{};
@@ -253,7 +258,8 @@ static_assert(offsetof(Fixture,option)==kOriginalThisOptionOffset &&
               offsetof(Fixture,current_node)==kOriginalThisNodeOffset &&
               offsetof(Fixture,copied_option)==kOriginalThisOptionCopyOffset &&
               offsetof(Fixture,active)==kOriginalThisActiveOffset &&
-              offsetof(Fixture,correction_byte)==0x2Cu,
+              offsetof(Fixture,correction_byte)==0x2Cu &&
+              offsetof(Fixture,diagnostic_record)==0x34u,
               "original 2006 PE32 dispatcher entry/dispatch member offsets differ");
 
 } // namespace original_postnetwork_type_switch
