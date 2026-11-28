@@ -91,6 +91,25 @@ SOURCE_WRAPPER_CALLS = (
     (0x241A8CD9, 0x24126DF0),
     (0x241A8D4C, 0x24126D80),
 )
+
+# Exact original 2006 PE32 array element counts, byte strides and
+# original x86 object offsets. The 351B helper allocates 60*n bytes for
+# generated element RecvProps and a separate 20-byte child RecvTable.
+# These eleven shapes have been independently observed at callsites.
+EXPECTED_DYNAMIC_ARRAY_SHAPES = {
+    ("CPlayerResource", "m_iPing"): (33, 4, 2212, TYPE_INTEGER),
+    ("CPlayerResource", "m_iScore"): (33, 4, 2344, TYPE_INTEGER),
+    ("CPlayerResource", "m_iDeaths"): (33, 4, 2476, TYPE_INTEGER),
+    ("CPlayerResource", "m_bConnected"): (33, 1, 2608, TYPE_INTEGER),
+    ("CPlayerResource", "m_iTeam"): (33, 4, 2644, TYPE_INTEGER),
+    ("CPlayerResource", "m_bAlive"): (33, 1, 2776, TYPE_INTEGER),
+    ("CPlayerResource", "m_iHealth"): (33, 4, 2812, TYPE_INTEGER),
+    ("CBreakableSurface", "m_RawPanelBitVec"): (256, 1, 1236, TYPE_INTEGER),
+    ("CBaseFlex", "m_flexWeight"): (64, 4, 2144, TYPE_FLOAT),
+    ("CBaseAnimating", "m_flPoseParameter"): (24, 4, 1352, TYPE_FLOAT),
+    ("CBaseAnimating", "m_flEncodedController"): (4, 4, 1644, TYPE_FLOAT),
+}
+
 KNOWN_TYPE_LABELS = {
     0: "integer", 1: "float", 2: "vector3",
     3: "string", 4: "array", 5: "nested-table",
@@ -140,6 +159,11 @@ def verify_native_factories(pe: PEImage) -> None:
     need(pe.at(0x24126EE7, 8) ==
          b"\xC7\x44\x24\x18\x05\x00\x00\x00",
          "original 351-byte copied-array constructor did not set native type 5")
+    need(pe.at(0x24126F7D, 3) == b"\x89\x6A\x2C" and
+         pe.at(0x24126F87, 4) == b"\x03\x6C\x24\x5C",
+         "original nested array element member-offset/byte-stride update changed")
+    need(pe.at(0x24126FAB, 2) == b"\x6A\x14",
+         "original dynamically allocated 20-byte child RecvTable request changed")
     need(pe.at(0x24126F70, 13).startswith(
          b"\x8B\xFA\xB9\x0F\x00\x00\x00\x8D\x74\x24\x64\xF3\xA5"),
          "original nested-array 60-byte element descriptor copy altered")
@@ -150,6 +174,67 @@ def verify_native_factories(pe: PEImage) -> None:
         need(raw[0] == 0xE8 and
              site + 5 + struct.unpack("<i", raw[1:])[0] == target,
              f"original nested type-wrapper call target drift {site:#x}")
+
+
+
+def recover_dynamic_array_shape(pe: PEImage, client_class: str,
+                                prop: dict) -> dict:
+    key = client_class, prop["source_property_name"]
+    need(key in EXPECTED_DYNAMIC_ARRAY_SHAPES,
+         "unrecognized original dynamically created nested-array property")
+    count, width, offset, template_type = EXPECTED_DYNAMIC_ARRAY_SHAPES[key]
+    site = int(prop["source_callsite_va"], 16)
+    need(pe.at(site, 1) == b"\x68" and
+         pe.section_of(struct.unpack("<I", pe.at(site+1, 4))[0]) == ".data",
+         "dynamic table caller did not push real original descriptor destination")
+    need(pe.at(site+5, 3) == b"\xF3\xA5\xE8",
+         "dynamic table caller missing native rep movsd followed by CALL")
+    rel = struct.unpack("<i", pe.at(site+8, 4))[0]
+    need(site + 12 + rel == COPIED_DESCRIPTOR_HELPER,
+         "dynamic table caller no longer calls original type5 array builder")
+    before = pe.at(site-56, 56)
+    shapes = []
+    for i in range(len(before)-12):
+        # Original x86 uses PUSH short count/width or PUSH DWORD count.
+        if before[i] == 0x6A and before[i+2:i+3] == b"\x6A" and \
+           before[i+4:i+5] == b"\x68":
+            shapes.append((before[i+1],before[i+3],
+                           struct.unpack_from("<I", before,i+5)[0]))
+        if before[i] == 0x68 and before[i+5:i+6] == b"\x6A" and \
+           before[i+7:i+8] == b"\x68":
+            shapes.append((struct.unpack_from("<I",before,i+1)[0],
+                           before[i+6],struct.unpack_from("<I",before,i+8)[0]))
+    need(shapes.count((count,width,offset)) == 1,
+         "dynamic table original array count/stride/base-offset changed")
+    # Confirm the direct source elementary RecvProp constructor (type0 or
+    # type1) called immediately before preparing the wrapper descriptor.
+    candidates = []
+    for at in range(site-95,site-5):
+        raw = pe.at(at, 5)
+        if raw[0] != 0xE8:
+            continue
+        target = at + 5 + struct.unpack("<i",raw[1:])[0]
+        if target in (0x24126DF0,0x24126D80):
+            candidates.append((at,target))
+    need(bool(candidates) and
+         candidates[-1][1] == (0x24126DF0 if template_type==TYPE_INTEGER
+                              else 0x24126D80),
+         "dynamic table source element template type changed")
+    need(count > 0 and 1 <= width <= 4 and offset <= 65536,
+         "unsafe inferred original nested array shape")
+    return {
+        "client_class": client_class,
+        "outer_property_name": prop["source_property_name"],
+        "outer_native_type": TYPE_NESTED_TABLE,
+        "element_native_type": template_type,
+        "source_element_count": count,
+        "source_element_width_bytes": width,
+        "original_x86_first_element_offset": offset,
+        "source_array_builder_va": hex(COPIED_DESCRIPTOR_HELPER),
+        "source_initializer_callsite_va": hex(site+7),
+        "source_element_template_callsite_va": hex(candidates[-1][0]),
+        "limitations": "Element names/proxy or child RecvTable lifetime not emulated.",
+    }
 
 
 def verify(original_client: bytes, *, full_inventory: bool = False) -> dict:
@@ -163,6 +248,7 @@ def verify(original_client: bytes, *, full_inventory: bool = False) -> dict:
     rows = []
     counts: Counter[int | None] = Counter()
     nested_array_wrappers = 0
+    dynamic_array_shapes = []
     for cls in metadata:
         for prop in cls["properties"]:
             source_va = int(prop["source_constructor_va"], 16)
@@ -188,6 +274,9 @@ def verify(original_client: bytes, *, full_inventory: bool = False) -> dict:
                 f'{prop["source_constructor_va"]}|{route}\n')
             if route == "array-copy":
                 nested_array_wrappers += 1
+                shape = recover_dynamic_array_shape(pe,cls["client_class_name"],prop)
+                dynamic_array_shapes.append(shape)
+                prop["original_dynamic_array_shape"] = shape
             prop["original_native_property_type"] = native_type
             prop["source_property_type_label"] = field["source_property_type_label"]
     need(dict(counts) == EXPECTED_TAG_COUNTS,
@@ -211,6 +300,9 @@ def verify(original_client: bytes, *, full_inventory: bool = False) -> dict:
         },
         "type_fingerprint_sha256": sha,
         "unresolved_slots": [],
+        "source_dynamic_nested_array_shapes": dynamic_array_shapes,
+        "total_source_dynamic_nested_array_elements":
+            sum(x["source_element_count"] for x in dynamic_array_shapes),
         "limits": ("All 939 type DWORDs originate in original constructor code. "
                    "The eleven array-copy paths are actually nested-table type 5; "
                    "their dynamic subtable contents and proxy functions remain "
