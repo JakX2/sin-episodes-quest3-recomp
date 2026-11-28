@@ -19,6 +19,7 @@ $requests = New-Object System.Collections.Generic.List[string]
 $factoryResults = New-Object System.Collections.Generic.List[string]
 $predictionFactoryEvents = New-Object System.Collections.Generic.List[string]
 $predictionConVarEvents = New-Object System.Collections.Generic.List[string]
+$entityListFactoryEvents = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
@@ -200,6 +201,12 @@ foreach ($log in $logs) {
             $phase -in @('prediction-convar-registered',
                           'prediction-convar-register-refused')) {
             $predictionConVarEvents.Add(("{0}:client:{1}:{2}" -f
+                $log.Name,$phase,$version))
+        }
+        if ($role -eq 'client' -and
+            $phase -in @('client-entitylist-empty-bound',
+                          'client-entitylist-empty-refused')) {
+            $entityListFactoryEvents.Add(("{0}:client:{1}:{2}" -f
                 $log.Name,$phase,$version))
         }
         if ($role -eq 'client' -and $version -eq 'VSoundEmitter001') {
@@ -1127,6 +1134,13 @@ if ($predictionFactoryEvents.Count -gt 0) {
 if ($predictionConVarEvents.Count -gt 0) {
     Write-Output ("OWNER_CLIENT_PREDICTION_CONVAR_REGISTRATION: {0}" -f
         ($predictionConVarEvents -join ','))
+}
+if ($entityListFactoryEvents.Count -gt 0) {
+    # The source-correct empty entity-list interface is only a
+    # diagnostic factory boundary. Parent entity registration is
+    # fatal, so this is never proof of live gameplay entities.
+    Write-Output ("OWNER_CLIENT_ENTITYLIST_EMPTY_FACTORY_BOUNDARY: {0}" -f
+        ($entityListFactoryEvents -join ','))
 }
 if ($unsupportedCallbacks.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_UNSUPPORTED_CALLBACKS: {0}" -f ($unsupportedCallbacks -join ','))
