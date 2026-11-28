@@ -99,6 +99,16 @@ int main(int argc,char** argv) {
     assert(image.arena.Read32(team+48u)==0u);
     assert(image.arena.Read32(team+52u)==32u);
 
+    // Phase1705 original 621-byte overlay constructor zeroes its native
+    // descriptor byte +44 before copying 60 bytes. The parent object
+    // offset 0x7A4 belongs to an auxiliary callback record, NOT +44.
+    const auto overlay=image.unresolvedOverlayDescriptorToken;
+    assert(overlay==image.staticPropArrayTokens[197u]);
+    assert(image.arena.Read32(overlay+4u)==5u);
+    assert(image.arena.Read32(overlay+44u)==0u);
+    assert(image.arena.Read32(overlay+40u)==0u); // callback/child unresolved
+    assert(!image.CanExposeToRetailEngine());
+
     const auto rooted=image.WalkFromClientClassRoots();
     assert(rooted.visitedTables==224u);
     assert(rooted.visitedProperties==1796u);
@@ -106,6 +116,14 @@ int main(int argc,char** argv) {
     const auto all=image.WalkAllStaticTables();
     assert(all.visitedTables==225u && all.visitedProperties==1801u);
 
+    // The source-proven special overlay has +44 ZERO, even though its
+    // type5 child table and callbacks remain intentionally unimplemented.
+    {
+        const auto overlay=image.unresolvedOverlayDescriptorToken;
+        image.arena.Write32(overlay+44u,0x7A4u);
+        MustRefuse([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(overlay+44u,0u);
+    }
     // Every reached name must be original, not just a readable token.
     {
         const auto prop=image.staticPropArrayTokens[0u];

@@ -8,6 +8,7 @@ on:
       - "include/sin_compat/original_client_native_type4_array_fields.hpp"
       - "research/manifests/original_client_static_recvprops_phase1704.csv"
       - "research/tools/audit_sin_original_client_static_recvprop_names.py"
+      - "research/tools/audit_sin_original_client_overlay_zero_field.py"
       - "tests/test_original_client_static_recvprop_names.cpp"
       - "research/tools/audit_sin_original_client_type4_arrays.py"
       - "research/tools/audit_sin_original_client_member_offsets.py"
@@ -32,6 +33,7 @@ jobs:
           python research/tools/audit_sin_original_client_member_offsets.py --self-test
           python research/tools/audit_sin_original_client_type4_arrays.py --self-test
           python research/tools/audit_sin_original_client_static_recvprop_names.py --self-test
+          python research/tools/audit_sin_original_client_overlay_zero_field.py --self-test
       - name: Strict C++17 compile and run real 2006 source schema in owned token arena
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
