@@ -192,6 +192,24 @@ def verify(client: bytes, *, full_inventory: bool = False) -> dict:
     verify_special(pe,table_map,found)
     need(len(found)==AUX_PROP_SLOTS,
          "not all 171 original auxiliary RecvProps have authentic constructors")
+    # The only ordinary static type5 property inside an auxiliary
+    # table is DT_LocalPlayerExclusive.m_Local. Its original 2006 x86
+    # code PUSHes actual 0x24338E74 DT_Local child table + 0x0D68
+    # original member offset, then invokes exact type5 constructor.
+    # This brings original 191 class + 1 auxiliary ordinary static
+    # nested RecvTable links to 192 source-attested static edges.
+    local_player = next(t for t in auxiliary
+                        if t["name"]=="DT_LocalPlayerExclusive")
+    local = found[local_player["props_va"]]
+    need(local["name"]=="m_Local" and local["native_type"]==TYPE_NESTED_TABLE
+         and local["source_constructor_va"]==hex(0x24126B50)
+         and local["source_callsite_va"]==hex(0x240D38F1),
+         "original auxiliary m_Local type5 nested source differs")
+    need(pe.at(0x240D38E5,12)==
+         b"\x68"+struct.pack("<I",0x24338E74)+
+         b"\x6A\x00\x68"+struct.pack("<I",0x0D68),
+         "original m_Local direct child pointer / member offset changed")
+    rel32(pe,0x240D38FB,0x24126B50)
     result_tables=[]
     type_counts=Counter()
     route_counts=Counter()
@@ -230,6 +248,16 @@ def verify(client: bytes, *, full_inventory: bool = False) -> dict:
        "class_attached_original_prop_slots":939,
        "auxiliary_original_prop_slots":AUX_PROP_SLOTS,
        "complete_original_static_prop_slots":1110,
+       "class_attached_original_ordinary_static_nested_edges":191,
+       "auxiliary_original_ordinary_static_nested_edges":1,
+       "all_source_proven_ordinary_static_nested_edges":192,
+       "source_auxiliary_nested_table_edge":{
+           "parent":"DT_LocalPlayerExclusive",
+           "property":"m_Local",
+           "child":"DT_Local",
+           "child_original_va":"0x24338e74",
+           "original_x86_member_offset":0x0D68,
+       },
        "auxiliary_native_type_counts":{str(k):type_counts[k] for k in sorted(type_counts)},
        "auxiliary_source_constructor_routes":dict(route_counts),
        "full_ordered_aux_slots_sha256":digest,
