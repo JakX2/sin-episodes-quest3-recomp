@@ -86,7 +86,7 @@ def witness_chunks(*,base:int,group:int,name:int,
         (0x2E,bytes.fromhex("3bef0f9f44240f")),
         (0x3E,bytes.fromhex("896b2c897b30")),
         (0x44,b"\xA1"+pack(player)),
-        (0x54,b"\x0F\x84"+rel32(base+0x53,base+0x3FA)),
+        (0x54,b"\x0F\x84"+struct.pack("<i",(base+0x3FA)-(base+0x54+6))),
         (0x5A,b"\xA1"+pack(predict)+bytes.fromhex("39782c")),
         (0x63,b"\x0F\x84"+struct.pack("<i",0x2419640C-(POST_NETWORK_VA+0x63+6))),
         (0x69,b"\x8B\x0D"+pack(optimize)+
@@ -98,7 +98,7 @@ def witness_chunks(*,base:int,group:int,name:int,
               rel32(base+0xD7,predictable)),
         (0xE0,b"\x55\x8B\xCF\xE8"+
               rel32(base+0xE3,reconcile)),
-        (0xE9,bytes.fromhex("84c07407c7433001000000")),
+        (0xE8,bytes.fromhex("84c07407c7433001000000")),
         (0x250,bytes.fromhex("83c6013b74242c89742424")),
         (0x25B,b"\x0F\x8C"+struct.pack("<i",
               (base+0xC0)-(base+0x25B+6))),
@@ -108,7 +108,7 @@ def witness_chunks(*,base:int,group:int,name:int,
               bytes.fromhex("39782c0f95c1884b10")),
         (0x3FA,b"\x8B\x0D"+pack(current)+b"\xFF\x15"+
               pack(exit_scope)),
-        (0x405,bytes.fromhex("5f5d5b83c47cc20400")),
+        (0x406,bytes.fromhex("5f5d5b83c47cc20400")),
     )
 
 def verify_sparse(blob:bytes,length:int,w,context:str)->int:
