@@ -43,6 +43,13 @@ SOURCE_SHUTDOWN_SHA="71721cdd2db6d9210f6b335faca52209973d792a0aa0b802c0c73062413
 SOURCE_GETTER_LENGTH=6
 SOURCE_GETTER_SHA="b07f64b7fbb5a63cfd4816fcc0481ce9f61be29ae5eae77d80f758bd319a0d06"
 SOURCE_NATIVE_VTABLES=(0x2429632C,0x242962C4,0x2429628C,0x24296274)
+SOURCE_WORLD_VIRTUAL94_WRAPPER_VA=0x240FCB10
+SOURCE_WORLD_VIRTUAL94_WRAPPER_BYTES=44
+SOURCE_WORLD_VIRTUAL94_WRAPPER_SHA="305044e8173fc81a50952318532ec1a5638e4c956dc056285e048ef92448b35d"
+SOURCE_WORLD_LOCAL_CLEAR_OFFSET=0x480
+SOURCE_WORLD_PREINIT_FIRST_VA=0x24085750
+SOURCE_WORLD_PREINIT_SECOND_VA=0x24129480
+SOURCE_COMMON_NETWORK_INIT_VA=0x240C8FE0
 SOURCE_INIT_VIRTUAL94=0x240FCB10
 SOURCE_INIT_VIRTUAL44=0x24054E80
 SOURCE_SECONDARY_VIRTUAL0=0x24054EC0
@@ -101,6 +108,20 @@ def verify_original(path:Path):
                     SOURCE_SHUTDOWN_SHA,5)
     getter=method(SOURCE_GETTER_VA,SOURCE_GETTER_LENGTH,
                   SOURCE_GETTER_SHA,10)
+    wrapper=method(SOURCE_WORLD_VIRTUAL94_WRAPPER_VA,
+                   SOURCE_WORLD_VIRTUAL94_WRAPPER_BYTES,
+                   SOURCE_WORLD_VIRTUAL94_WRAPPER_SHA,4)
+    need(wrapper[3:13]==bytes.fromhex("c7868004000000000000") and
+         wrapper[-3:]==b"\xC2\x08\x00",
+         "original world-specific virtual94 wrapper lost +0x480 clear or RET8")
+    for off,target in ((13,SOURCE_WORLD_PREINIT_FIRST_VA),
+                       (18,SOURCE_WORLD_PREINIT_SECOND_VA),
+                       (35,SOURCE_COMMON_NETWORK_INIT_VA)):
+        originalcall=wrapper[off:off+5]
+        need(originalcall[0]==0xE8 and
+             SOURCE_WORLD_VIRTUAL94_WRAPPER_VA+off+5+
+             struct.unpack_from("<i",originalcall,1)[0]==target,
+             "world-only +0x94 virtual wrapper dependency E8 target changed")
     need(getter==b"\xA1"+struct.pack("<I",SOURCE_GLOBAL)+b"\xC3",
          "original CWorld getter not exactly MOV EAX,global;RET")
     need(creator[:10]==bytes.fromhex("8b5424088b0df4f33324") and
@@ -142,7 +163,7 @@ def verify_original(path:Path):
          vtable_at(primary,0x44)==SOURCE_INIT_VIRTUAL44 and
          vtable_at(secondary,0)==SOURCE_SECONDARY_VIRTUAL0,
          "CWorld primary/secondary original virtual target drift")
-    print("PASS Phase1725 owner-original CWorld 74B/27B/6B/40B "
+    print("PASS Phase1725 owner-original CWorld 74B/27B/6B/40B/44B "
           "startup/shutdown/getter/creator methods, original 1200B "
           "zeroing allocation, RTTI vtables and client lifecycle callers")
 
@@ -168,7 +189,8 @@ def main():
                   args.creator_catalog,args.common_manifest,args.common_header)
     if args.self_test:
         for length,sha in ((74,SOURCE_STARTUP_SHA),(27,SOURCE_SHUTDOWN_SHA),
-                           (6,SOURCE_GETTER_SHA),(40,SOURCE_CREATOR_SHA)):
+                           (6,SOURCE_GETTER_SHA),(40,SOURCE_CREATOR_SHA),
+                           (44,SOURCE_WORLD_VIRTUAL94_WRAPPER_SHA)):
             need(hashlib.sha256(b"\x90"*length).hexdigest()!=sha,
                  "fabricated source CWorld native method falsely authenticated")
         print("PASS Phase1725 original-free source CWorld singleton global "
