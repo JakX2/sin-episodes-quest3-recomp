@@ -75,6 +75,7 @@ jobs:
             build-android-arm64/sin_original_client_game_string_pool_tests
             build-android-arm64/sin_original_client_sound_name_tests
             build-android-arm64/sin_original_client_class_catalog_tests
+            build-android-arm64/sin_original_client_recvtable_preflight_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -279,6 +280,11 @@ jobs:
             adb push research/manifests/original_client_class_catalog_phase1696.tsv /data/local/tmp/sin_client_class_catalog/original_client_class_catalog_phase1696.tsv
             adb shell 'cd /data/local/tmp/sin_client_class_catalog && chmod 700 sin_original_client_class_catalog_tests && ./sin_original_client_class_catalog_tests original_client_class_catalog_phase1696.tsv' | tr -d '\r' | tee build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
             grep -Fxq 'PASS original 191 ClientClass metadata order and pointer topology; 149 entities, 42 temp events, strict invalid source refusal; retail slot5 remains gated' build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
+            # Phase1697: execute bounded original native RecvTable
+            # metadata topology on Bionic; synthetic fields NOT game packets.
+            adb push build-android-emulator-x86_64/sin_original_client_recvtable_preflight_tests /data/local/tmp/sin_client_class_catalog/sin_original_client_recvtable_preflight_tests
+            adb shell 'cd /data/local/tmp/sin_client_class_catalog && chmod 700 sin_original_client_recvtable_preflight_tests && ./sin_original_client_recvtable_preflight_tests original_client_class_catalog_phase1696.tsv' | tr -d '\r' | tee build-android-emulator-x86_64/client-recvtable-preflight-bionic-output.txt
+            grep -Fxq 'PASS Phase1697 191-source-class metadata + 939 synthetic type-safe property graph: nested type5, 60-byte stride contract, +17 visited cycles, 1024 root refusal, unknown types fail closed; no executable retail RecvTable pointers' build-android-emulator-x86_64/client-recvtable-preflight-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -316,6 +322,7 @@ jobs:
           grep -Fxq 'PASS CGameStringPool: first spelling/pointer identity, C-locale case fold, owned allocation, lookup-only misses, 65535 unique capacity, stable pointers and level clear' build-android-emulator-x86_64/client-game-string-pool-bionic-output.txt
           grep -Fxq 'PASS source sound-name route: ASCII Q_stristr tokens, emitter fallback, first-spelling pool ownership and clear' build-android-emulator-x86_64/client-sound-name-bionic-output.txt
           grep -Fxq 'PASS original 191 ClientClass metadata order and pointer topology; 149 entities, 42 temp events, strict invalid source refusal; retail slot5 remains gated' build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
+          grep -Fxq 'PASS Phase1697 191-source-class metadata + 939 synthetic type-safe property graph: nested type5, 60-byte stride contract, +17 visited cycles, 1024 root refusal, unknown types fail closed; no executable retail RecvTable pointers' build-android-emulator-x86_64/client-recvtable-preflight-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -348,5 +355,6 @@ jobs:
             build-android-emulator-x86_64/client-game-string-pool-bionic-output.txt
             build-android-emulator-x86_64/client-sound-name-bionic-output.txt
             build-android-emulator-x86_64/client-class-catalog-bionic-output.txt
+            build-android-emulator-x86_64/client-recvtable-preflight-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
