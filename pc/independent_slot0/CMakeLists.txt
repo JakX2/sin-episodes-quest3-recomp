@@ -1948,3 +1948,18 @@ target_compile_features(sin_original_postnetwork_scalar_formatters_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_scalar_formatters_native
   COMMAND sin_original_postnetwork_scalar_formatters_test)
+
+
+# Phase1676: compose the independently original-SHA-reviewed type7
+# signed-short compare, conditional word copy and diagnostics model
+# (Phase218) with Phase1672 MSVC x86 typed dispatcher and Phase1675
+# native RET16 selected-record short preview. This is original-free
+# integration coverage, NOT newly reverse-engineered original bytes.
+add_executable(sin_original_postnetwork_type7_integrated_test
+  test_original_postnetwork_type7_integrated.cpp)
+target_compile_features(sin_original_postnetwork_type7_integrated_test
+  PRIVATE cxx_std_17)
+target_include_directories(sin_original_postnetwork_type7_integrated_test
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+add_test(NAME independent_original_postnetwork_type7_integrated_native
+  COMMAND sin_original_postnetwork_type7_integrated_test)
