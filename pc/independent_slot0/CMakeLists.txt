@@ -1978,3 +1978,21 @@ target_include_directories(sin_original_postnetwork_case8_case9_integrated_test
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
 add_test(NAME independent_original_postnetwork_case8_case9_integrated_native
   COMMAND sin_original_postnetwork_case8_case9_integrated_test)
+
+
+# Phase1678: SHA-authenticated original 93-byte 0x24197FE0
+# CDECL RET0 formatter. Native original-free Win32 x86 verifies
+# nested RET16 -> CDECL stack and safe synthetic Q_vsnprintf/Msg
+# callback, original this+0x38 and selected record+0x04 identity.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_cdecl_msg_formatter_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_cdecl_msg_formatter.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_cdecl_msg_formatter_test
+  test_original_postnetwork_cdecl_msg_formatter.cpp)
+target_compile_features(sin_original_postnetwork_cdecl_msg_formatter_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_cdecl_msg_formatter_native
+  COMMAND sin_original_postnetwork_cdecl_msg_formatter_test)
