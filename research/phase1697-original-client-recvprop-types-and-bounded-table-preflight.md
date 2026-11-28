@@ -103,9 +103,34 @@ Private, user-owned original file only:
 
 ```sh
 python research/tools/audit_sin_original_client_recvprop_type_inventory.py --client /private/client.dll --full-json /private/sin-recvprop-types-metadata.json
+python research/tools/audit_sin_original_client_nested_recvtable_targets.py --client /private/client.dll --full-json /private/sin-static-recvtable-links.json
 ```
 
 The `--full-json` report lists source class names, all original property names, original x86 offsets where verified, native numeric type tags where authenticated and null for the remaining eleven. It contains no executable original game code and must not be used as a live engine network decoder. **All 939 native type tags are now classified; none should be silently mapped to newer Source SDK enum numbers.**
+
+
+## All 191 static nested RecvTable pointers recovered from original callers
+
+A complete original SHA-pinned `client.dll` analysis now resolves the **191 ordinary type-5 parent/child links** in all 191 class-attached source RecvTables. This is separate from the **11 dynamic array type-5 properties**, which allocate their own generated child tables through original `0x24126E90`.
+
+The direct original x86 `push property_name; push descriptor; call 0x24126B50` callsite is authenticated per nested property. The **preceding argument sequence** shows the child table address with exact source proof:
+
+| Native source pointer form | Original caller behavior | Number of links |
+|---|---|---:|
+| Indirect | `mov eax, [global]; push 0x24126CE0; push eax`, where the 4-byte global contains a source table pointer | **171** |
+| Direct | Literal `push original RecvTable VA` and source offset argument, with or without a 32-bit offset PUSH | **20** |
+| **Total** | Every original ordinary type-5 class property | **191** |
+
+These 191 edges reference **46 unique** source static RecvTable objects. **28** are registered class-attached tables and **18** are independently constructed auxiliary subtables, all among the previously authenticated **211** original constructor-registered static RecvTable objects. For instance, original `CNPC_GruntBase.baseclass` refers to `DT_AI_BaseNPC`, `CBasePlayer.localdata` refers to `DT_LocalPlayerExclusive`, `CSE1Proxy.se1_gamerules_data` refers to `DT_SE1GameRules`, `CEntityParticleTrail.m_Info` refers to `DT_EntityParticleTrailInfo`, and `CEnvWind.m_EnvWindShared` refers to `DT_EnvWindShared`.
+
+The recovered class-attached subgraph is acyclic with maximum source depth **9** table levels. This fact does not prove that the *remaining auxiliary subtable network* is acyclic, since their individual inner property edges still require analysis. The engine's visited flag and strict graph traversal must remain in place.
+
+The ordered `class|table|slot|property|callsite|childName|childVA|directOrGlobal|operandSite|globalOrDash` source manifest fingerprint, independently checked against the exact whole retail binary SHA256, is:
+
+`1ae2fc278381df74ab9d08179168169d87756f6e3f59dc86956c2ea6d2689242`
+
+A new `research/tools/audit_sin_original_client_nested_recvtable_targets.py` reproduces this full original-source verification, checks 171 indirect and 20 direct native caller stack patterns, all 191 child table names and actual `.data` VAs, and refuses any mismatches or extra edges. Its public `--self-test` uses invented metadata only; the true original audit requires `--client /private/client.dll`. The user-private JSON export can include the complete 191-edge metadata list and the 579 dynamic child-element records; neither can be linked as a real native ClientClass structure until all needed owner-original callbacks are reconstructed.
+
 
 ## Critical remaining work
 
