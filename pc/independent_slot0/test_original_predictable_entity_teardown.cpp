@@ -347,7 +347,7 @@ int main() {
        trace.visited[0]!=2 ||
        trace.visited[1]!=1 ||
        trace.visited[2]!=0 ||
-       !trace.matches("NgfHUIFVTgfCgfHUIFVTSD",23u))
+       !trace.matches("NgfHUIFVTgfCgfHUIFVTSD",22u))
         return fail(6,"Pre disabled packet fallback -> two native 18-slot entity teardowns");
     trace.reset();
     packet_ops.cl_predict=1;
