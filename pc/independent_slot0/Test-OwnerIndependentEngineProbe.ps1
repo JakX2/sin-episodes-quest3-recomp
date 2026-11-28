@@ -27,6 +27,9 @@ foreach ($required in @(
     'Module32FirstW',
     '[SinOwnerNativeModuleReader]::Read($child.Id)',
     'OWNER_ENGINE_MODULE_NATIVE_INSPECTION:',
+    'OWNER_ENGINE_MODULE_SOURCE:',
+    '$observedNativeModules',
+    '$observedManagedModules',
     '$nativeModuleSuccesses',
     '$nativeModuleMaxCount',
     'OWNER_ENGINE_MODULE_OBSERVED:',
@@ -57,6 +60,9 @@ if (-not $launcherText.Contains('samples={2} first_error={3}')) {
 }
 if ($launcherText.Contains('OWNER_ENGINE_MODULE_MISSING:')) {
     throw 'Module polling must not infer absence from an unobserved sample'
+}
+if ($launcherText.Contains('The retail executable may not have loaded the game DLLs.')) {
+    throw 'A missing startup trace must not imply missing game DLLs'
 }
 # The actual owner's first retail test exited its tracked PID with zero
 # while Windows still locked client.dll. The cleanup exception used to hide
