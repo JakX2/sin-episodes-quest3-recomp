@@ -15,6 +15,7 @@
 #include "sin_compat/original_client_source_proxy_catalog.hpp"
 #include "sin_compat/original_client_source_string_sizes.hpp"
 #include "sin_compat/original_client_standard_recvproxy_host.hpp"
+#include "sin_compat/original_client_custom_handle_proxy.hpp"
 
 namespace sin_compat::original_client_standard_recvproxy_router {
 namespace manifest=sin_compat::original_client_native32_recvtable_manifest;
@@ -23,6 +24,7 @@ namespace source=sin_compat::original_client_source_proxy_catalog;
 namespace strings=sin_compat::original_client_source_string_sizes;
 namespace copies=sin_compat::original_client_recvprop_proxies_factories;
 namespace owned=sin_compat::original_client_standard_recvproxy_host;
+namespace handle=sin_compat::original_client_custom_handle_proxy;
 
 struct DecodedOwnedInput final {
     // The original CRecvProxyData union value begins at byte +4.
@@ -39,9 +41,11 @@ enum class Status : std::uint8_t {
 
 inline constexpr bool CanPublishRetailProxyPointers() noexcept {return false;}
 
-// All 999 original source-standard callback identities can dispatch
-// through the seven source-backed method families. The 83 custom and
-// 28 specialized methods NEVER silently fall back to raw memcpy.
+// Phase1709: the 999 original standard identities dispatch through seven
+// source-backed families; 35 source-proven original custom handle/moveparent
+// assignments use their exact reconstructed 49-byte method behavior.
+// The remaining 48 custom and all 28 specialized routes stay blocked.
+// This is still a bounded, HOST-OWNED function, not live Source networking.
 inline Status ApplySourceStandardProperty(
     std::size_t sourceTableOrdinal,std::size_t slot,
     const DecodedOwnedInput& incoming,
@@ -53,7 +57,9 @@ inline Status ApplySourceStandardProperty(
     const auto index=manifest::kTypePrefixes[sourceTableOrdinal]+slot;
     const auto nativeType=manifest::kTypes[index];
     const auto nativeSourceVA=source::SourceVAForSlot(sourceTableOrdinal,slot);
-    if(nativeSourceVA==0u || !source::IsStandardOriginalSourceVA(nativeSourceVA))
+    if(nativeSourceVA==0u ||
+       (!source::IsStandardOriginalSourceVA(nativeSourceVA) &&
+        !handle::IsOriginalHandleProxy(nativeSourceVA)))
         return Status::UnsupportedSourceCallback;
 
     if(nativeType==5u && nativeSourceVA==owned::kOriginalDataTableProxyVA) {
@@ -67,6 +73,27 @@ inline Status ApplySourceStandardProperty(
     const auto start=static_cast<std::size_t>(offset);
     if(start>originalObjectBytes.size())
         return Status::RefusedBadOwnedMemory;
+
+    if(handle::IsOriginalHandleProxy(nativeSourceVA)) {
+        // Original handle and moveparent callbacks take 32-bit decoded
+        // raw value from native CRecvProxyData+4. They perform signed
+        // SAR 11, SHL 12, OR index11 and invalid-handle special case.
+        // On this host the *source* is an OWNED sixteen-byte record and
+        // the destination is bounded original member byte storage.
+        if(nativeType!=0u)return Status::UnsupportedSourceCallback;
+        constexpr std::size_t kWidth=4u;
+        if(kWidth>originalObjectBytes.size()-start)
+            return Status::RefusedBadOwnedMemory;
+        std::uint32_t raw=0u;
+        for(std::size_t i=0u;i<kWidth;++i)
+            raw|=std::uint32_t(incoming.originalProxyData[
+                handle::kOriginalSourceValueOffset+i])<<(i*8u);
+        const auto mapped=handle::DecodeSourceHandle(raw);
+        for(std::size_t i=0u;i<kWidth;++i)
+            originalObjectBytes[start+i]=
+                static_cast<std::uint8_t>(mapped>>(i*8u));
+        return Status::Applied;
+    }
 
     if(nativeType==3u && nativeSourceVA==owned::kOriginalStringProxyVA) {
         const auto capacity=strings::SourceCapacity(sourceTableOrdinal,slot);
