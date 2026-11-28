@@ -263,6 +263,10 @@ public:
     }
     void set_view_host(const HostSnapshot* host) noexcept {
         view_host_=host;
+        // Switching to a read-only attachment revokes any previous
+        // synthetic write authority. Never retain a dangling mutable
+        // pointer when an owner chooses the original Phase1659 API.
+        writable_view_host_=nullptr;
     }
     void set_writable_host_view(HostSnapshot* host) noexcept {
         // Explicit read/write ownership is separate from the Phase1659
