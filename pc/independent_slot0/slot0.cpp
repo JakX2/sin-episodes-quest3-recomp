@@ -341,6 +341,20 @@ static bool bindColdClientCenterprint() noexcept {
                "nullable-service:8-slots");
     return true;
 }
+// Phase1691: unlike name-only VSoundEmitter001 factory acquisition,
+// the source original VClient011.Init at 0x240FE31B actually invokes
+// the emitter's first virtual Connect(appSystemFactory) and tests the
+// native bool at 0x240FE322..0x240FE324. A false result branches to
+// original Init failure at 0x240FE59E. Reuse the already authenticated
+// native sound-emitter adapter, but ONLY in a new explicit owner
+// continuation gate. Existing standalone sound probe remains terminal.
+static bool clientSoundConnectContinueProbeEnabled() noexcept {
+    char flag[2]={};
+    return clientPredictionFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_SOUND_CONNECT_CONTINUE_PROBE",
+            flag,sizeof(flag))==1 && flag[0]=='1';
+}
 static bool clientPredictionCvarRegistrationEnabled() noexcept {
     char flag[2]={};
     return clientPredictionFactoryProbeEnabled() &&
@@ -1363,6 +1377,21 @@ public:
             if(connected && clientMaterialProbeEnabled())
                 stopAfterClientMaterialProbe(appSystemFactory,materials,engine,uniform,cvar);
             stopAfterClientSoundProbe(connected);
+        }
+        // Original 2006 PE32 Init source invokes the sound emitter
+        // Connect callback immediately after the twenty-first
+        // required factory acquisition, and can fail before any
+        // prediction or entity-list interfaces are requested.
+        // Do not assume a returned VSoundEmitter001 pointer alone
+        // means a successfully connected sound app system.
+        if(clientSoundConnectContinueProbeEnabled()) {
+            if(!connectSound(sound,appSystemFactory)) {
+                diagnostic("client-sound-connect-continue-refused",
+                           "VSoundEmitter001");
+                return 0;
+            }
+            diagnostic("client-sound-connect-continued",
+                       "VSoundEmitter001");
         }
 #endif
         // Explicit owner diagnostic only. This advances the same
