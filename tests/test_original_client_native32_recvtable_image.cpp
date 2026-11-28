@@ -191,6 +191,49 @@ static void test_exact_native32_image(const char* sourceManifest) {
     assert(!walk.CompleteRetailRecursion());
     assert(!image.CanExposeToRetailEngine());
 
+    // This is the AUTHENTIC startup equivalent of original engine
+    // 0x20023BB0: start from the real 191 VClient011 class heads,
+    // not the exhaustive 211 static table inventory. It reaches 210
+    // original static tables plus 14 source-generated children. Only
+    // original auxiliary ordinal196 (DT_Animationlayer, 5 properties)
+    // is not a reachable standalone table through these source links.
+    const auto sourceStartup=image.WalkFromClientClassRoots();
+    assert(sourceStartup.visitedTables==224u);       // 210 +14
+    assert(sourceStartup.visitedProperties==1796u);  // 1110 -5 +691
+    assert(sourceStartup.traversedNativeType5==207u);
+    assert(sourceStartup.blockedUnimplementedNativeType5==1u);
+    assert(sourceStartup.duplicateSubtableReferences>0u);
+    assert(!sourceStartup.CompleteRetailRecursion());
+
+    // Prove the source one-table discrepancy rather than merely
+    // hardcoding 224/225. DT_Animationlayer's descriptor is unreachable
+    // from the original 191 class roots. Mutating it invalidates a
+    // full inventory traversal, but cannot change a rooted startup walk.
+    {
+        const auto unreferencedAuxProp=image.staticPropArrayTokens[196u];
+        assert(schema::kCounts[196u]==5u);
+        const auto originalType=image.arena.Read32(unreferencedAuxProp+4u);
+        image.arena.Write32(unreferencedAuxProp+4u,99u);
+        const auto rooted=image.WalkFromClientClassRoots();
+        assert(rooted.visitedTables==224u &&
+               rooted.visitedProperties==1796u);
+        expect_exception([&]{(void)image.WalkAllStaticTables();});
+        image.arena.Write32(unreferencedAuxProp+4u,originalType);
+    }
+    // A fake native class-table pointer or broken linked-class next
+    // must not be accepted as a valid 191-root startup call.
+    {
+        const auto first=image.classNodeTokens[0];
+        const auto oldTable=image.arena.Read32(first+12u);
+        image.arena.Write32(first+12u,0x2437F720u);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(first+12u,oldTable);
+        const auto oldNext=image.arena.Read32(first+16u);
+        image.arena.Write32(first+16u,0u);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(first+16u,oldNext);
+    }
+
     // Changes in source-mapped pointers/counts/type values are REFUSED,
     // not silently treated as a successful engine table traversal.
     {
@@ -223,12 +266,16 @@ static void test_exact_native32_image(const char* sourceManifest) {
     assert(repaired.visitedTables==225u &&
            repaired.visitedProperties==1801u &&
            repaired.blockedUnimplementedNativeType5==1u);
+    const auto repairedStartup=image.WalkFromClientClassRoots();
+    assert(repairedStartup.visitedTables==224u &&
+           repairedStartup.visitedProperties==1796u &&
+           repairedStartup.blockedUnimplementedNativeType5==1u);
 }
 int main(int argc,char** argv) {
     assert(argc==2);
     check_original_source_counts();
     test_owned_arena_refusal();
     test_exact_native32_image(argv[1]);
-    std::puts("PASS Phase1700 2006 PE32 owned-token ABI image: 191 real class nodes, 211 static tables, 1110 original static RecvProps, 14 generated tables / 691 child props, 207 type5 edges with one blocked overlay; NO retail client slot5 exposure");
+    std::puts("PASS Phase1700 PE32 owned-token schema: 191 class roots -> 224 startup tables / 1796 props, all 211 static -> 225 inventory tables / 1801 props; 207 source type5 edges, one blocked overlay, NO retail client slot5");
     return 0;
 }
