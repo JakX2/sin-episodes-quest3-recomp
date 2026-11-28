@@ -34,6 +34,7 @@
 #include "sin_compat/original_client_aux_dynamic_receivers.hpp"
 #include "sin_compat/original_client_native_member_offsets.hpp"
 #include "sin_compat/original_client_native_type4_array_fields.hpp"
+#include "sin_compat/original_client_source_proxy_catalog.hpp"
 
 namespace sin_compat::original_client_native32_recvtable_image {
 namespace src=sin_compat::original_client_native32_recvtable_manifest;
@@ -44,6 +45,7 @@ namespace auxArrays=sin_compat::original_client_aux_dynamic_receivers;
 namespace links=sin_compat::original_client_static_recvtable_links;
 namespace sourceOffsets=sin_compat::original_client_native_member_offsets;
 namespace nativeArrays=sin_compat::original_client_native_type4_array_fields;
+namespace sourceProxies=sin_compat::original_client_source_proxy_catalog;
 
 inline constexpr std::uint32_t kArenaBaseVA=0x10000000u;
 inline constexpr std::uint32_t kNativeRecvPropTypeOffset=4u;
@@ -164,6 +166,13 @@ struct Image final {
 
     // This branch is ALWAYS closed until all native Win32 creator/proxy
     // callbacks, 2006 RecvTables and lifecycle rules are implemented.
+    // Source callback VA is a source-only *identity*, never a callable
+    // Win32 or Android pointer. Neither the host arena nor retail
+    // RecvProp +32/+36 ever receives these original executable VAs.
+    std::uint32_t OriginalSourceConstructorProxyVA(
+        std::size_t tableOrdinal,std::size_t propertySlot) const {
+        return sourceProxies::SourceVAForSlot(tableOrdinal,propertySlot);
+    }
     bool CanExposeToRetailEngine() const noexcept {return false;}
 
     static Image Build(const classes::Catalog& catalog) {
@@ -558,6 +567,21 @@ private:
                 if(knownOffset!=sourceOffsets::kNotDirectlyRecovered &&
                    arena.Read32(p+kNativeRecvPropMemberOffset)!=knownOffset)
                     throw std::logic_error("original PE32 member offset drift");
+                // Original constructor +8 flags are zero on all 1082
+                // canonical input paths; +32 is RecvVarProxyFn for
+                // primitive types and +36 is DataTableProxyFn for type5.
+                // Keep both fields NULL in host-only images: original
+                // 2006 PE32 code addresses cannot be run or passed to
+                // another engine. Exact source VAs live in the parallel
+                // constexpr catalog, not inside unsafe pointer fields.
+                const auto sourceProxy=sourceProxies::SourceVAForSlot(i,j);
+                if(sourceProxy!=0u) {
+                    const auto callbackOffset=originalType==5u?36u:32u;
+                    if(arena.Read32(p+8u)!=0u ||
+                       arena.Read32(p+callbackOffset)!=0u)
+                        throw std::logic_error(
+                            "original constructor callback/flags not executable");
+                }
                 if(originalType==4u) {
                     unsigned matches=0u;
                     for(const auto& array:nativeArrays::kSourceArrays) {
