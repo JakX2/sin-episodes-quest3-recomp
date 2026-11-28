@@ -6,13 +6,16 @@ This work uses the user's exact **unmodified** original 2006 PE32 `SE1/bin.zip` 
 
 Unlike Phase 1691's 21 engine interface queries or Phase 1692's owned `CGameStringPool`, the target here is a **genuine original game client caller of that pool**. The previously documented VGUI/HUD helper `0x241EDFB0` is **not** counted again: it was already recovered in original Phase 540/541, and its duplicate PR was explicitly closed.
 
-The new source audit is `research/tools/audit_sin_original_client_sound_name_pool.py`. It authenticates three **complete, distinct original methods** (577 bytes total) including their exact next-byte INT3 boundaries:
+The new source audit is `research/tools/audit_sin_original_client_sound_name_pool.py`. It authenticates six **complete, distinct original methods** (1,376 bytes total) including their exact next-byte INT3 boundaries:
 
 | Original client VA | Length | Whole-method SHA256 | Native behavior |
 | --- | ---: | --- | --- |
 | `0x241BF880` | 341 | `020c1810c4b24ab08688d946bf5f784fcd467938aa66c9bf8928d77b9abc1cf5` | Original audio-name setup; extension-token routing, interned owner fields and subsequent parameter initialization |
 | `0x241BCC50` | 41 | `2cc1aeb6d3d13d2e5f6f437f360ed3a958d665c3ffb0fae99cb7b7f517c142fc` | Original sound-emitter global virtual calls, first +0x78 then +0x1C |
 | `0x241BF5F0` | 195 | `ee6abaccb339549ba4ef800f200a39c408d80adc8ad9b1ef54a882a8fed80b1a` | Initialize per-sound parameter flags, query provider slots, enumerate and copy indexed records |
+| `0x241C01A0` | 290 | `61215820358176a1c53e6fbb1b28fff51f7039308ac3b3f750bde8f56b2265ed` | Native sound record creation and original numeric parameter conversion before shared sound-name initialization |
+| `0x241C02D0` | 220 | `3c1135ed68e80e85178fd951f93652ce847c625d44878b211b006f693e720bad` | Alternate sound record creator with pooled handle lookup and source parameter translation |
+| `0x241C03B0` | 289 | `e535cfee079f01106cebacc156ef0e2fccfff932f5ec9468fdda3af4a2658019` | Source sound record constructor with two post-init parameter updates |
 
 Their native direct CALL edges, branch destinations, interface-global values and object offsets were inspected against the owner's exact original bytes. This is newly inspected original code, **not** a reconstructed DLL successfully executing that code.
 
@@ -66,6 +69,6 @@ This is audio-related, SiN-specific client gameplay behavior, **not** an HL2-equ
 
 ## Four confirmed original allocation/caller pathways
 
-A whole-file relative-CALL scan of the SHA-pinned client was checked against original native instruction boundaries: source callsites `0x241C018D`, `0x241C02B6`, `0x241C03A0` and `0x241C047E` all invoke the **same** 341-byte `0x241BF880` initializer. The enclosing original routines allocate a 0x64-byte owned record, initialize fields and pass a five-argument block to the common routine. Their complete function sizes, return semantics and allocation cleanup have **not** been separately authenticated for this phase, so the four callsites add graph evidence but **zero newly counted complete-method bytes**. The private audit verifies each direct rel32 CALL target.
+A whole-file relative-CALL scan of the SHA-pinned client was checked against original native instruction boundaries: source callsites `0x241C018D`, `0x241C02B6`, `0x241C03A0` and `0x241C047E` all invoke the **same** 341-byte `0x241BF880` initializer. The enclosing original routines allocate a 0x64-byte owned record, initialize fields and pass a five-argument block to the common routine. Three of those enclosing routines are now **individually whole-method authenticated**: `0x241C01A0` (290B), `0x241C02D0` (220B) and `0x241C03B0` (289B), totaling another 799 original bytes. The earlier fourth caller at `0x241C018D` is source-verified by direct CALL, but its enclosing full function is not yet a counted recovered method. All three creator variants request **0x64 bytes** through original `0x241703E0`, initialize an object field `+0x48` with original descriptor pointer `0x242A7108`, and increment global `0x243757F8`. The first two creator ABI exits are `ret 0x14` (five DWORD stack arguments); the third is `ret 0x0C` (three DWORD stack arguments) after calling original `0x241BE4A0` twice and ORing two source flags in `this+0x3C`. Allocator failure consequences, the record type, and exact higher-level method names remain unresolved. Counting only fully authenticated methods raises this phase to **six complete original methods / 1,376 bytes**. The private audit verifies each direct rel32 CALL target.
 
 The portable sound-name header also includes only the explicitly observed start-of-`0x241BF5F0` flag policy: base bit 1, then OR bit 2 if provider slot +4 reports true, OR bit 4 if provider slot +8 reports true. The native vtable itself and subsequent record enumeration remain outside this semantic adapter. The regression checks all four Boolean combinations and actual call order.
