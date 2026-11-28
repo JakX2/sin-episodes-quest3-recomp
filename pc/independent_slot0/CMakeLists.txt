@@ -2422,3 +2422,14 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_aux_dynamic_receivers.py"
       --self-test)
 endif()
+
+
+# Phase1699: 2 authentic overlay proxy code bodies, source byte offsets,
+# but only owner-hosted arithmetic validation, not function execution.
+add_executable(sin_original_client_overlay_proxy_offset_native_test
+  ../../tests/test_original_client_overlay_proxy_offset.cpp)
+target_include_directories(sin_original_client_overlay_proxy_offset_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_overlay_proxy_offset_native_test PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_overlay_proxy_offset_native
+  COMMAND sin_original_client_overlay_proxy_offset_native_test)
