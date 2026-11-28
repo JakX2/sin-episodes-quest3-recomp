@@ -6720,3 +6720,24 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_custom_beam_speed_proxy_tests)
   endif()
 endif()
+
+
+# Phase1716: original 191 ClientClass source creator address identities
+# (149 entity, 42 temp-event). The owned native32 20-byte class image
+# intentionally keeps both +0 and +4 callback pointers NULL.
+# NO original PE32 executable creator callbacks can run on Android/PC.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_creator_source_map_tests
+    tests/test_original_client_creator_source_map.cpp)
+  target_include_directories(sin_original_client_creator_source_map_tests PRIVATE include)
+  target_compile_features(sin_original_client_creator_source_map_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_creator_source_map_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_creator_source_map_tests
+      COMMAND sin_original_client_creator_source_map_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv"
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_creator_source_map_phase1716.csv")
+  endif()
+endif()
