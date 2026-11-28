@@ -26,6 +26,13 @@ METHODS = (
      "sound_emitter_two_virtual_calls"),
     (0x241BF5F0, 195, "ee6abaccb339549ba4ef800f200a39c408d80adc8ad9b1ef54a882a8fed80b1a",
      "caller_parameter_record_flags_and_list_copy"),
+    # Three independently identified original source object-creation methods.
+    (0x241C01A0, 290, "61215820358176a1c53e6fbb1b28fff51f7039308ac3b3f750bde8f56b2265ed",
+     "sound_record_creator_with_numeric_conversion"),
+    (0x241C02D0, 220, "3c1135ed68e80e85178fd951f93652ce847c625d44878b211b006f693e720bad",
+     "sound_record_creator_with_pooled_handle"),
+    (0x241C03B0, 289, "e535cfee079f01106cebacc156ef0e2fccfff932f5ec9468fdda3af4a2658019",
+     "sound_record_creator_with_two_parameter_updates"),
 )
 SOUND_GLOBAL = 0x2433F6E4
 STRISTR_IAT = 0x24276238
@@ -93,6 +100,39 @@ def verify(server: bytes, client: bytes) -> dict:
     # Real native client constructor/setup callers, NOT guessed SDK methods.
     for site in INITIALIZER_CALLERS:
         rel_call(pe.at, site, 0x241BF880)
+
+    # Three entire native creator methods (the fourth direct callsite is
+    # proven above, but its enclosing full function is NOT claimed here).
+    # All request 0x64 object bytes from the same native allocator and
+    # initialize named-parameter object storage before common Init.
+    for begin, alloc_site, vtptr_site, counter_site in (
+        (0x241C01A2, 0x241C01A9, 0x241C01D2, 0x241C01EB),
+        (0x241C02D2, 0x241C02D9, 0x241C0302, 0x241C031B),
+        (0x241C03B3, 0x241C03BA, 0x241C03E2, 0x241C03FB),
+    ):
+        need_bytes(pe, begin, b"\x6A\x64", "original 0x64-byte record allocation request")
+        rel_call(pe.at, alloc_site, 0x241703E0)
+        need_bytes(pe, vtptr_site,
+                   b"\xC7\x40\x48" + struct.pack("<I", 0x242A7108),
+                   "original +0x48 record descriptor pointer")
+        need_bytes(pe, counter_site,
+                   b"\x83\x05" + struct.pack("<I", 0x243757F8) + b"\x01",
+                   "original allocated-record count increment")
+    # Two creator variants return with 5 stack arguments; the third,
+    # after two float/parameter updates, returns with 3. Do NOT infer
+    # full higher-level signatures or pretend null allocator safety.
+    for address, tail in (
+        (0x241C02BF, b"\xC2\x14\x00"),
+        (0x241C03A9, b"\xC2\x14\x00"),
+        (0x241C04CE, b"\xC2\x0C\x00"),
+    ):
+        need_bytes(pe, address, tail, "creator source ABI tail")
+    rel_call(pe.at, 0x241C04AC, 0x241BE4A0)
+    rel_call(pe.at, 0x241C04C4, 0x241BE4A0)
+    need_bytes(pe, 0x241C0486, b"\x83\x4E\x3C\x01",
+               "creator 3 parameter source flag 1")
+    need_bytes(pe, 0x241C04B4, b"\x83\x4E\x3C\x02",
+               "creator 3 parameter source flag 2")
 
     # Only when neither substring is present, the caller routes through
     # two ORIGINAL VSoundEmitter001 virtual methods (+0x78 then +0x1C).
