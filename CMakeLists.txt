@@ -6800,3 +6800,22 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
   endif()
 endif()
+
+
+# Phase1720: source-only 79B original PE32 allocator interface
+# dispatcher and 90B context resolver. Host plans vtable+4 vs vtable+0
+# without executing native callbacks, pointers, heap or slot5.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_source_allocator_dispatch_tests
+    tests/test_original_client_source_allocator_dispatch.cpp)
+  target_include_directories(sin_original_client_source_allocator_dispatch_tests PRIVATE include)
+  target_compile_features(sin_original_client_source_allocator_dispatch_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_source_allocator_dispatch_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_source_allocator_dispatch_tests
+      COMMAND sin_original_client_source_allocator_dispatch_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
+  endif()
+endif()
