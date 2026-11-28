@@ -116,6 +116,7 @@ struct Events {
     unsigned missing_output_refusals=0u;
     unsigned missing_orientation_callbacks=0u;
     unsigned missing_orientation_inputs=0u;
+    unsigned missing_view_setter_inputs=0u;
 };
 inline Events events{};
 
@@ -226,7 +227,19 @@ public:
         }
         *out=view_host_?view_host_->view:ViewBits3{};
     }
-    virtual std::uint32_t __thiscall UnknownSlot14() noexcept {return 0xA00Eu;}
+    // Retail CPrediction slot14 is the 18-byte client-global player
+    // guard and an x86 tail JMP to nonvirtual C_BasePlayer
+    // 0x240D22E0. The player method copies the supplied three DWORDs
+    // into the SAME +0xF04/+0xF08/+0xF0C fields read by slot13.
+    // The safe original-free fixture refuses NULL source pointers.
+    virtual void __thiscall SetHostView(ViewBits3* input) noexcept {
+        if(!writable_view_host_)return;
+        if(!input) {
+            ++events.missing_view_setter_inputs;
+            return;
+        }
+        writable_view_host_->view=*input;
+    }
     // Retail slots15/16 read individual BYTEs at +8/+9 via AL,
     // and slot17 reads a DWORD at +0xC via EAX. All are RET0.
     virtual std::uint8_t __thiscall GetMember8() noexcept {return member8_;}
@@ -249,6 +262,12 @@ public:
         orientation_=ops;
     }
     void set_view_host(const HostSnapshot* host) noexcept {
+        view_host_=host;
+    }
+    void set_writable_host_view(HostSnapshot* host) noexcept {
+        // Explicit read/write ownership is separate from the Phase1659
+        // read-only host attachment; cannot cast away its constness.
+        writable_view_host_=host;
         view_host_=host;
     }
     void prime_early_fields(std::uint8_t a,std::uint8_t b,
@@ -299,6 +318,7 @@ private:
     std::uint32_t cleared_a_=0u;
     std::uint32_t cleared_b_=0u;
     const HostSnapshot* view_host_=nullptr; // diagnostic host pointer only
+    HostSnapshot* writable_view_host_=nullptr; // synthetic owned write only
     OrientationOps orientation_{}; // synthetic callback contract only
 };
 
@@ -343,6 +363,9 @@ static_assert(std::is_same<decltype(&Prediction23Fixture::CopyOrientationA),
               std::is_same<decltype(&Prediction23Fixture::SetOrientationB),
               OrientationRef>::value,
               "native prediction slots9-12 each take one Vec3 pointer RET4");
+static_assert(std::is_same<decltype(&Prediction23Fixture::SetHostView),
+              OrientationRef>::value,
+              "native CPrediction slot14 takes one Vec3 pointer, RET4");
 
 } // namespace client_prediction23_diagnostic
 } // namespace sin_independent
