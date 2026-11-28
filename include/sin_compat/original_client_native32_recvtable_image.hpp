@@ -30,6 +30,7 @@
 #include "sin_compat/original_client_native32_recvtable_manifest.hpp"
 #include "sin_compat/original_client_nested_array_table.hpp"
 #include "sin_compat/original_client_aux_dynamic_receivers.hpp"
+#include "sin_compat/original_client_native_member_offsets.hpp"
 
 namespace sin_compat::original_client_native32_recvtable_image {
 namespace src=sin_compat::original_client_native32_recvtable_manifest;
@@ -38,6 +39,7 @@ namespace aux=sin_compat::original_client_aux_recvtable_metadata;
 namespace classArrays=sin_compat::original_client_nested_array_table;
 namespace auxArrays=sin_compat::original_client_aux_dynamic_receivers;
 namespace links=sin_compat::original_client_static_recvtable_links;
+namespace sourceOffsets=sin_compat::original_client_native_member_offsets;
 
 inline constexpr std::uint32_t kArenaBaseVA=0x10000000u;
 inline constexpr std::uint32_t kNativeRecvPropTypeOffset=4u;
@@ -179,6 +181,14 @@ struct Image final {
                 const auto prop=image.staticPropArrayTokens[i]+
                     static_cast<std::uint32_t>(j*src::kOriginalRecvPropStride);
                 image.arena.Write32(prop+kNativeRecvPropTypeOffset,type);
+                // 1082 original native member offsets come directly from
+                // source constructor immediates. Special constructors stay
+                // unresolved here: generated arrays are populated below.
+                const auto sourceSlot=src::kTypePrefixes[i]+j;
+                const auto sourceOffset=sourceOffsets::kSourceNativeMemberOffsets[sourceSlot];
+                if(sourceOffset!=sourceOffsets::kNotDirectlyRecovered)
+                    image.arena.Write32(prop+kNativeRecvPropMemberOffset,
+                                        sourceOffset);
             }
         }
         std::array<std::uint8_t,src::kStaticPropertySlots> assigned{};
@@ -361,6 +371,11 @@ private:
                 const auto originalType=src::kTypes[src::kTypePrefixes[i]+j];
                 if(arena.Read32(p+kNativeRecvPropTypeOffset)!=originalType)
                     throw std::logic_error("source RecvProp native type drift");
+                const auto knownOffset=sourceOffsets::kSourceNativeMemberOffsets[
+                    src::kTypePrefixes[i]+j];
+                if(knownOffset!=sourceOffsets::kNotDirectlyRecovered &&
+                   arena.Read32(p+kNativeRecvPropMemberOffset)!=knownOffset)
+                    throw std::logic_error("original PE32 member offset drift");
                 if(originalType!=5u)continue;
                 std::uint32_t expectedChild=0u;
                 unsigned routes=0u;

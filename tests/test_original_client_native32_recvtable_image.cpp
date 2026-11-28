@@ -18,6 +18,7 @@ namespace classes=sin_compat::original_client_class_catalog;
 namespace staticLinks=sin_compat::original_client_static_recvtable_links;
 namespace classArrays=sin_compat::original_client_nested_array_table;
 namespace auxArrays=sin_compat::original_client_aux_dynamic_receivers;
+namespace sourceOffsets=sin_compat::original_client_native_member_offsets;
 
 template<typename F>
 static void expect_exception(F&& func) {
@@ -38,6 +39,9 @@ static void check_original_source_counts() {
     static_assert(schema::kOriginalRecvTableBytes==20u);
     static_assert(schema::kOriginalClientClassPrefixBytes==20u);
     static_assert(schema::kTypePrefixes[211]==1110u);
+    static_assert(sourceOffsets::kCanonicalKnownOffsets==1082u);
+    static_assert(sourceOffsets::kSpecialUnresolvedOffsets==28u);
+    static_assert(sourceOffsets::OnlySpecialRoutesUnknown());
     static_assert(schema::EveryNativeTypeFiveRouteSourceClassified());
     static_assert(schema::SourceCardinality());
     assert(!schema::CanExposeToRetailEngine());
@@ -143,6 +147,12 @@ static void test_exact_native32_image(const char* sourceManifest) {
             const auto type=image.arena.Read32(prop+4u);
             assert(type<6u && type==schema::kTypes[
                 schema::kTypePrefixes[table]+slot]);
+
+            const auto idx=schema::kTypePrefixes[table]+slot;
+            const auto expectedOffset=sourceOffsets::kSourceNativeMemberOffsets[idx];
+            if(expectedOffset!=sourceOffsets::kNotDirectlyRecovered)
+                assert(image.arena.Read32(prop+native::kNativeRecvPropMemberOffset)==
+                       expectedOffset);
             ++originalNativeTypes[type];
             ++counted;
         }
@@ -353,6 +363,28 @@ static void test_source_shape_mutation_refusal(
         image.arena.Write32(t,alternate); // valid owned property array
         expect_exception([&]{(void)image.WalkFromClientClassRoots();});
         image.arena.Write32(t,old);
+    }
+    {
+        // A 2006 source-authenticated member offset may be in bounds
+        // and still wrong. Catch value drift before engine traversal.
+        std::uint32_t propertyToken=0u, knownOffset=0u;
+        for(std::size_t table=0u;table<schema::kStaticClassTables &&
+                                   propertyToken==0u;++table) {
+            for(std::uint32_t slot=0u;slot<schema::kCounts[table];++slot) {
+                const auto index=schema::kTypePrefixes[table]+slot;
+                const auto sourceOffset=sourceOffsets::kSourceNativeMemberOffsets[index];
+                if(sourceOffset==sourceOffsets::kNotDirectlyRecovered ||
+                   sourceOffset==0u)continue;
+                propertyToken=image.staticPropArrayTokens[table]+slot*60u;
+                knownOffset=sourceOffset;
+                break;
+            }
+        }
+        assert(propertyToken!=0u);
+        assert(image.arena.Read32(propertyToken+44u)==knownOffset);
+        image.arena.Write32(propertyToken+44u,knownOffset+4u);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(propertyToken+44u,knownOffset);
     }
     {
         const auto p=image.dynamicPropArrayTokens[0];
