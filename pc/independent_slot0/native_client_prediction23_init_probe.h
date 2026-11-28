@@ -37,6 +37,10 @@ constexpr unsigned kOriginalResetCountBOffset=0x2Cu;
 constexpr unsigned kOriginalGetterSlot15Offset=0x08u;
 constexpr unsigned kOriginalGetterSlot16Offset=0x09u;
 constexpr unsigned kOriginalGetterSlot17Offset=0x0Cu;
+constexpr unsigned kOriginalHostFlagSlot=8u;
+constexpr unsigned kOriginalHostViewSlot=13u;
+constexpr unsigned kOriginalHostFlagOffset=0x1DCu;
+constexpr unsigned kOriginalHostViewOffset=0xF04u;
 constexpr unsigned kOriginalVirtualCount=23u;
 
 // Only invented ConVar storage is accepted. Original ConVar constructor
@@ -56,10 +60,27 @@ static_assert(kOriginalClPredictConVarRva+
               kOriginalClPredictParentSlotRva,
               "original cl_predict pointer RVA and parent offset drift");
 
+// The retail prediction host pointer is a separate original client
+// global at RVA 0x338CF0, not CPrediction.this. For original-free tests,
+// construct a fully owned memory image with the two directly read fields.
+struct ViewBits3 {std::uint32_t x=0u,y=0u,z=0u;};
+static_assert(sizeof(ViewBits3)==12u,"3 original view DWORDs");
+struct HostSnapshot {
+    std::array<std::uint8_t,0x1DCu> reserved_first{};
+    std::uint32_t field1dc=0u;
+    std::array<std::uint8_t,0xF04u-0x1E0u> reserved_between{};
+    ViewBits3 view{};
+};
+static_assert(offsetof(HostSnapshot,field1dc)==kOriginalHostFlagOffset,
+              "native prediction host slot8 field offset drift");
+static_assert(offsetof(HostSnapshot,view)==kOriginalHostViewOffset,
+              "native prediction host slot13 vector offset drift");
+
 struct Events {
     unsigned init_calls=0u;
     unsigned missing_provider_refusals=0u;
     unsigned destructor_calls=0u;
+    unsigned missing_output_refusals=0u;
 };
 inline Events events{};
 
@@ -96,12 +117,26 @@ public:
         cleared_b_=0u;
         highest_=-1;
     }
-    virtual std::uint32_t __thiscall UnknownSlot08() noexcept {return 0xA008u;}
+    // Retail slot8 reads client-global host +0x1DC, or returns zero
+    // when the global host is absent. No arguments, RET0.
+    virtual std::uint32_t __thiscall GetHostField1DC() noexcept {
+        return view_host_?view_host_->field1dc:0u;
+    }
     virtual std::uint32_t __thiscall UnknownSlot09() noexcept {return 0xA009u;}
     virtual std::uint32_t __thiscall UnknownSlot10() noexcept {return 0xA00Au;}
     virtual std::uint32_t __thiscall UnknownSlot11() noexcept {return 0xA00Bu;}
     virtual std::uint32_t __thiscall UnknownSlot12() noexcept {return 0xA00Cu;}
-    virtual std::uint32_t __thiscall UnknownSlot13() noexcept {return 0xA00Du;}
+    // Retail slot13 writes 12 bytes into its single caller-provided
+    // output pointer; when host global is missing, writes all zero.
+    // The independent fixture rejects an absent output pointer instead
+    // of reproducing the retail null-destination crash.
+    virtual void __thiscall CopyHostView(ViewBits3* out) noexcept {
+        if(!out) {
+            ++events.missing_output_refusals;
+            return;
+        }
+        *out=view_host_?view_host_->view:ViewBits3{};
+    }
     virtual std::uint32_t __thiscall UnknownSlot14() noexcept {return 0xA00Eu;}
     // Retail slots15/16 read individual BYTEs at +8/+9 via AL,
     // and slot17 reads a DWORD at +0xC via EAX. All are RET0.
@@ -120,6 +155,9 @@ public:
     }
     void set_cl_predict(const ConVarView* cl_predict) noexcept {
         cl_predict_=cl_predict;
+    }
+    void set_view_host(const HostSnapshot* host) noexcept {
+        view_host_=host;
     }
     void prime_early_fields(std::uint8_t a,std::uint8_t b,
                             std::uint32_t c) noexcept {
@@ -168,6 +206,7 @@ private:
     std::int32_t highest_=-1;
     std::uint32_t cleared_a_=0u;
     std::uint32_t cleared_b_=0u;
+    const HostSnapshot* view_host_=nullptr; // diagnostic host pointer only
 };
 
 static_assert(sizeof(void*)==4u,"original 2006 PE32 pointer width");
@@ -194,6 +233,13 @@ static_assert(std::is_same<decltype(&Prediction23Fixture::GetMember8),
               std::is_same<decltype(&Prediction23Fixture::GetMemberC),
               DwordGetter>::value,
               "native prediction slots15/16/17 byte/word getter signatures");
+using HostFlagGetter=std::uint32_t (__thiscall Prediction23Fixture::*)() noexcept;
+using HostVectorGetter=void (__thiscall Prediction23Fixture::*)(ViewBits3*) noexcept;
+static_assert(std::is_same<decltype(&Prediction23Fixture::GetHostField1DC),
+              HostFlagGetter>::value &&
+              std::is_same<decltype(&Prediction23Fixture::CopyHostView),
+              HostVectorGetter>::value,
+              "original prediction slot8 RET0 / slot13 RET4 x86 contracts");
 
 } // namespace client_prediction23_diagnostic
 } // namespace sin_independent
