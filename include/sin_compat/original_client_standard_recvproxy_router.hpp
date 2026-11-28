@@ -18,6 +18,7 @@
 #include "sin_compat/original_client_custom_handle_proxy.hpp"
 #include "sin_compat/original_client_custom_color_integer_proxies.hpp"
 #include "sin_compat/original_client_custom_movement_fov_proxies.hpp"
+#include "sin_compat/original_client_custom_scale_transition_proxies.hpp"
 
 namespace sin_compat::original_client_standard_recvproxy_router {
 namespace manifest=sin_compat::original_client_native32_recvtable_manifest;
@@ -29,6 +30,7 @@ namespace owned=sin_compat::original_client_standard_recvproxy_host;
 namespace handle=sin_compat::original_client_custom_handle_proxy;
 namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
 namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
+namespace scale=sin_compat::original_client_custom_scale_transition_proxies;
 
 struct DecodedOwnedInput final {
     // The original CRecvProxyData union value begins at byte +4.
@@ -51,7 +53,9 @@ inline constexpr bool CanPublishRetailProxyPointers() noexcept {return false;}
 // Phase1710 now adds four byte-reordering color assignments and five
 // original integer decrement assignments. Phase1711 handles three original direct movement/FOV
 // state changes, bringing host-reconstructed routes to 1046; the remaining
-// 36 custom and all 28 special constructor paths stay blocked.
+// Phase1712 adds two source float-scale transition routines, preserving
+// original x87 ordered comparisons; 34 custom and all 28 special
+// constructor paths stay blocked.
 // This is still a bounded, HOST-OWNED function, not live Source networking.
 inline Status ApplySourceStandardProperty(
     std::size_t sourceTableOrdinal,std::size_t slot,
@@ -68,7 +72,8 @@ inline Status ApplySourceStandardProperty(
        (!source::IsStandardOriginalSourceVA(nativeSourceVA) &&
         !handle::IsOriginalHandleProxy(nativeSourceVA) &&
         !colorInt::IsOriginalCustomColorOrDecrement(nativeSourceVA) &&
-        !moveFov::IsOriginalMovementOrFovProxy(nativeSourceVA)))
+        !moveFov::IsOriginalMovementOrFovProxy(nativeSourceVA) &&
+        !scale::IsSourceScaleProxy(nativeSourceVA)))
         return Status::UnsupportedSourceCallback;
 
     if(nativeType==5u && nativeSourceVA==owned::kOriginalDataTableProxyVA) {
@@ -90,6 +95,23 @@ inline Status ApplySourceStandardProperty(
         if(applied==moveFov::Status::Applied)
             return Status::Applied;
         if(applied==moveFov::Status::RefusedBadOwnedMemory)
+            return Status::RefusedBadOwnedMemory;
+        return Status::UnsupportedSourceCallback;
+    }
+
+    // Phase1712: original x87 m_flScale transition callbacks for
+    // DT_Plasma/DT_FireSmoke. Extra transition fields and ordered
+    // +0/-0 equivalence are required; do not reduce to generic memcpy.
+    // The host refuses NaNs because the old x87 payload/quieting
+    // store semantics have not been independently reconstructed.
+    if(scale::IsSourceScaleProxy(nativeSourceVA)) {
+        if(nativeType!=1u)return Status::UnsupportedSourceCallback;
+        const auto applied=scale::ApplySourceOriginalEffect(
+            sourceTableOrdinal,slot,nativeSourceVA,
+            incoming.originalProxyData,originalObjectBytes);
+        if(applied==scale::Status::Applied)
+            return Status::Applied;
+        if(applied==scale::Status::RefusedBadOwnedMemory)
             return Status::RefusedBadOwnedMemory;
         return Status::UnsupportedSourceCallback;
     }
