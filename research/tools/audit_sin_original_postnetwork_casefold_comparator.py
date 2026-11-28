@@ -72,7 +72,7 @@ def fast_witnesses():
         (0x1E,bytes.fromhex("38c474ee2c413c1a")),
         (0x28,bytes.fromhex("80e12002c1044186e0")),
         (0x31,bytes.fromhex("2c413c1a1ac980e120")),
-        (0x3F,bytes.fromhex("38e074ce1ac01cff")),
+        (0x3E,bytes.fromhex("38e074ce1ac01cff")),
         (0x49,bytes.fromhex("5b5e5fc9c3")),
     )
 def verify_sparse(blob:bytes,length:int,w,name:str)->int:
