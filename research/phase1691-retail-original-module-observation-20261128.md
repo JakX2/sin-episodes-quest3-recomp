@@ -64,3 +64,23 @@ The first standalone dual-census ZIP failed **before any process launch** when W
 The owner saw: `Join-Path : Cannot bind argument to parameter 'Path' because it is an empty string` at line 8. This is a **probe initialization defect** and says nothing about either original retail DLL. The correct fix is to declare `[string]$OutputDirectory=''` in the `param` block, then resolve `Join-Path -Path $PSScriptRoot -ChildPath 'results'` **inside the body** after initial setup, guarding an absent script root before touching the game. A second robustness fix conditions native helper `Add-Type` on the type not already being loaded, making repeated attach runs possible in one PowerShell host. A fresh **V2 standalone ZIP** was generated and passed ZIP integrity and offline static contract checks. It is not a Windows-executed probe and is not included in this repository PR.
 
 Owner's next action is to extract **V2** into a clean folder and rerun the retail-original census. Successful Windows host self-attach regression and retail-original module inventory remain **pending**. A future committed Windows test should invoke the PowerShell probe **without** `-OutputDirectory` to guard the exact first-run failure mode, not merely parse the script or call it with an explicit output directory.
+
+
+## V2 owner run: the original loader works; managed sampler gave a reproducible false negative
+
+User-supplied report \`sin-retail-module-census-20261128-073455-pid6480.txt\` from the November 28 Windows test:
+
+- \`PROBE: RETAIL_ORIGINAL_DUAL_MODULE_CENSUS_V2\`, \`MODE: Launch\`, game PID **6480**, original game root \`D:\SiN-DisposableTest\`, Windows PowerShell **5.1.19041.7844** running **64-bit**.
+- **62** module sample iterations, **62/62 success** reported by the managed enumeration, with **at most 5 modules** seen. Its observed names were the retail EXE, \`ntdll.dll\`, and three WOW64 modules. This is insufficient to identify loaded 32-bit game DLLs.
+- **62/62 success** from the native Toolhelp32 enumeration, **zero errors**, peak **162 module entries**. It directly observed the retail **\`D:\SiN-DisposableTest\SE1\bin\client.dll\`**, **\`D:\SiN-DisposableTest\SE1\bin\server.dll\`**, and **\`D:\SiN-DisposableTest\bin\engine.dll\`**, plus \`tier0.dll\`, \`vstdlib.dll\`, other Source runtime and Steam modules.
+- Window \`SiN Episodes\` observed; tracked game process exit code **0** after sampling. The owner independently reports that the original game launched and ran. The probe did not record map load, player spawn, or gameplay frames; do not silently infer those.
+- Original SHA256 both before and after the test: \`client.dll\` \`6535f13e3c5d8f0205b5d198a3124d3b99971404de30c3fdacaf0f8728e1841d\`; \`server.dll\` \`568a0086fde607345adf31d7cfb2a5bf4e4efe9a86f416faa97076ddf9d97650\`. Both **unchanged**. No DLL replacement or process termination by this diagnostic.
+- Result \`CLIENT_DLL_OBSERVED_BY_MODULE_CENSUS_NO_GAMEPLAY_CLAIM\`.
+
+### Engineering decision
+
+**Eliminate the original negative load diagnosis**. The previously used 64-bit PowerShell \`$child.Modules\` check can falsely miss the original x86 \`client.dll\` and \`server.dll\` even with no exceptions. A successful call is not a complete module census. The retail loader itself succeeded on the verified original installation.
+
+The branch now updates \`pc/independent_slot0/Invoke-OwnerIndependentEngineProbe.ps1\` to union native \`TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32\` evidence with legacy managed samples. Native samples have separate error/success/max-count diagnostics. This is a tooling fix, **not** a new binary interface recovery or demonstration that the independently reconstructed client loads. The companion PowerShell synthetic guard checks the native reader against the test host process. The repository modifications have not yet been executed in Windows CI at the time of writing; their exact-head status must be verified before an owner replacement attempt.
+
+**Next test**: the existing owner-safe reversible replacement client probe, only on the already-disposable copy, should positively observe the independent client DLL's module path and corroborate that path with an in-process session trace / source-defined factory invocation. Do not equate mere observed module load with \`VClient011::Init\` success, player creation, or game boot.
