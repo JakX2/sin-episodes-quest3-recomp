@@ -32,6 +32,8 @@ STRISTR_IAT = 0x24276238
 NAME_INTERN = 0x2413D250
 SEARCH_TOKENS = ((0x242A6BD4, ".wav"), (0x242A6BCC, ".mp3"))
 INTERN_CALLS = (0x241BF934, 0x241BF94A, 0x241BF967)
+# Four independent client object-creation paths call the same initializer.
+INITIALIZER_CALLERS = (0x241C018D, 0x241C02B6, 0x241C03A0, 0x241C047E)
 
 
 def need_bytes(pe: PE32, address: int, expected: bytes, reason: str) -> None:
@@ -87,6 +89,10 @@ def verify(server: bytes, client: bytes) -> dict:
                "second .mp3 lookup")
     need_bytes(pe, 0x241BF910, b"\xFF\xD5", "second Q_stristr invocation")
     short_branch(pe.at, 0x241BF917, 0x241BF949, 0x75)
+
+    # Real native client constructor/setup callers, NOT guessed SDK methods.
+    for site in INITIALIZER_CALLERS:
+        rel_call(pe.at, site, 0x241BF880)
 
     # Only when neither substring is present, the caller routes through
     # two ORIGINAL VSoundEmitter001 virtual methods (+0x78 then +0x1C).
@@ -148,6 +154,7 @@ def verify(server: bytes, client: bytes) -> dict:
         "source_sound_substring_tokens": [x[1] for x in SEARCH_TOKENS],
         "source_sound_emitter_virtual_offsets": ["0x78", "0x1c"],
         "client_string_pool_intern_calls": len(INTERN_CALLS),
+        "original_client_initializer_callers": [hex(x) for x in INITIALIZER_CALLERS],
         "client_interned_pointer_fields": ["this+0x30", "this+0x2c"],
         "limits": "Original static source only; no confirmed C++ type, live sound call, complete Init, Android or gameplay.",
     }
