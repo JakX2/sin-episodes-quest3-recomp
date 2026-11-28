@@ -1929,3 +1929,22 @@ target_compile_features(sin_original_postnetwork_case8_case9_copy_fixup_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_case8_case9_copy_fixup_native
   COMMAND sin_original_postnetwork_case8_case9_copy_fixup_test)
+
+
+# Phase1675: original complete 30B binary and 33B signed-short
+# PostNetwork case diagnostic formatter gates 0x24198360/0x24198380,
+# authentic this+0x34 versus this+0x18 and four-arg RET16.
+# All original-free native Win32 x86 tests use safe synthetic
+# format callbacks, never original engine string routines.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_scalar_formatters_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_scalar_formatters.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_scalar_formatters_test
+  test_original_postnetwork_scalar_formatters.cpp)
+target_compile_features(sin_original_postnetwork_scalar_formatters_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_scalar_formatters_native
+  COMMAND sin_original_postnetwork_scalar_formatters_test)
