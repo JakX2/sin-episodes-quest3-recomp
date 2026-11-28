@@ -112,8 +112,23 @@ private:
     std::vector<std::uint8_t> data_;
 };
 
+struct IndexedRegistrationNode final {
+    // Host token standing in for original native 8-byte record +0.
+    std::uint32_t tableToken=0u;
+    // Original 2006 PE32 0x20086930 stores source prev index at +4
+    // and source next index at +6, with FFFF as the empty sentinel.
+    std::uint16_t previous=0xFFFFu;
+    std::uint16_t next=0xFFFFu;
+};
+static_assert(sizeof(IndexedRegistrationNode)==8u);
 struct WalkReport final {
     std::size_t visitedTables=0u;
+    // Cold-entry SEQUENTIAL HOST model of original engine global indexed
+    // double-linked list at 0x202FDC48. The genuine heap allocator and
+    // original free-list reuse have NOT been reconstructed.
+    std::vector<IndexedRegistrationNode> registrationNodes;
+    std::uint16_t registrationHead=0xFFFFu;
+    std::uint16_t registrationTail=0xFFFFu;
     std::size_t visitedProperties=0u;
     std::size_t traversedNativeType5=0u;
     std::size_t blockedUnimplementedNativeType5=0u;
@@ -346,6 +361,23 @@ private:
             }
             arena.Write8(table+kNativeRecvTableVisitedOffset,1u);
             ++out.visitedTables;
+            // Original 0x20085630 now calls 0x20086930 immediately
+            // AFTER setting the visited byte, BEFORE processing props.
+            // That helper appends this table pointer into an indexed
+            // 8-byte doubly linked list with prev/next 0xFFFF sentinels.
+            // Simulate only its cold sequential append effect, NEVER
+            // call its original 2006 allocator/free-index logic.
+            const auto nextIndex=out.registrationNodes.size();
+            if(nextIndex>=0xFFFFu)
+                throw std::out_of_range("source engine 16-bit list index exhausted");
+            const auto assigned=static_cast<std::uint16_t>(nextIndex);
+            if(out.registrationTail!=0xFFFFu)
+                out.registrationNodes[out.registrationTail].next=assigned;
+            else
+                out.registrationHead=assigned;
+            out.registrationNodes.push_back(
+                {table,out.registrationTail,0xFFFFu});
+            out.registrationTail=assigned;
             const auto props=arena.Read32(table+kNativeRecvTablePropsOffset);
             const auto count=arena.Read32(table+kNativeRecvTablePropCountOffset);
             if(count>256u || (count!=0u&&props==0u))
