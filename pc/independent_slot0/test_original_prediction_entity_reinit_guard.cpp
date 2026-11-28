@@ -294,6 +294,9 @@ int main() {
     t.reset_order();
     e.embedded_state=11u;
     e.latched_c0=0u;
+    // Earlier missing-provider test removed the callback; a fresh
+    // source-authenticated latch must restore this service.
+    e.ops.mode_provider=&get_mode;
     high.latched_c0=1u; // already cached, no global mode check
     high.embedded_state=0u;
     reinit::Ops batch_ops{};
