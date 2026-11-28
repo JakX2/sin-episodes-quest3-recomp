@@ -160,8 +160,8 @@ struct Fixture : guard::Fixture {
         ++init_events.completed;
     }
 };
-static_assert(offsetof(Fixture,init_ops)>=
-              kOriginalPredictableFlagOffset+1u,
+static_assert(sizeof(guard::Fixture)>=
+              guard::kOriginalFinalGateDwordOffset+sizeof(std::uint32_t),
               "host-only callbacks overlap source entity prediction flag");
 
 } // namespace original_prediction_initpredictable
