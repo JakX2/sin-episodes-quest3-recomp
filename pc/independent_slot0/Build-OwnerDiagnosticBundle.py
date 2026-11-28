@@ -28,6 +28,13 @@ FS_SCRIPTS = (
 )
 # Human-facing ONE ZIP. All required independent binaries/scripts already
 # inside, so the owner never has to move DLLs into a game folder manually.
+CLIENT_STARTUP_SCRIPTS = (
+    "Invoke-OwnerIndependentEngineProbe.ps1",
+    "Get-OwnerEngineExitDiagnosis.ps1",
+    "Get-OwnerIndependentStartupVerdict.ps1",
+    "Run-OwnerClientStartupBoundary.ps1",
+    "OWNER_CLIENT_STARTUP_BOUNDARY.md",
+)
 ONE_CLICK_SCRIPTS = FS_SCRIPTS + (
     "RUN_SIN_TEST.bat",
     "RUN_STAGED_STATS_TEST.bat",
@@ -111,6 +118,27 @@ class TestStage(unittest.TestCase):
             for name,expected in manifest["files"].items():
                 self.assertEqual(digest(output/name),expected)
 
+    def test_client_startup_bundle_is_exact_and_original_free(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            binaries, scripts, output = (
+                root/"binaries", root/"scripts", root/"client-startup")
+            binaries.mkdir()
+            scripts.mkdir()
+            for name in BINARIES:
+                (binaries/name).write_bytes(b"synthetic independent PE32 DLL")
+            for name in CLIENT_STARTUP_SCRIPTS:
+                (scripts/name).write_text("synthetic "+name, encoding="utf-8")
+            (scripts/"private-retail-dll.bin").write_bytes(b"never ship")
+            stage(binaries, scripts, output, "d"*40, CLIENT_STARTUP_SCRIPTS)
+            manifest=json.loads((output/"manifest.json").read_text(encoding="utf-8"))
+            expected={"bin/"+name for name in BINARIES} | set(CLIENT_STARTUP_SCRIPTS)
+            self.assertEqual(set(manifest["files"]), expected)
+            self.assertEqual(manifest["commit"], "d"*40)
+            self.assertNotIn("private-retail-dll.bin", manifest["files"])
+            for name,expected_hash in manifest["files"].items():
+                self.assertEqual(digest(output/name), expected_hash)
+
     def test_one_click_bundle_complete_and_distinct(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=pathlib.Path(temporary)
@@ -186,6 +214,8 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--filesystem", action="store_true",
                         help="build dedicated filesystem-presence/read bundle")
+    parser.add_argument("--client-startup", action="store_true",
+                        help="build client-only original-engine startup diagnostic bundle")
     parser.add_argument("--one-click", action="store_true",
                         help="build user-ready standalone Windows one-click ZIP contents")
     args = parser.parse_args()
@@ -194,14 +224,15 @@ def main():
     else:
         if args.bin is None or args.output is None:
             parser.error("--bin and --output required")
-        if args.one_click and args.filesystem:
-            parser.error("--one-click and --filesystem are mutually exclusive")
+        if sum((args.one_click, args.filesystem, args.client_startup)) > 1:
+            parser.error("--one-click, --filesystem and --client-startup are mutually exclusive")
         commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], text=True).strip()
         stage(args.bin, pathlib.Path(__file__).resolve().parent,
               args.output, commit,
-              ONE_CLICK_SCRIPTS if args.one_click else (
-                  FS_SCRIPTS if args.filesystem else SCRIPTS))
+              CLIENT_STARTUP_SCRIPTS if args.client_startup else (
+                  ONE_CLICK_SCRIPTS if args.one_click else (
+                      FS_SCRIPTS if args.filesystem else SCRIPTS)))
 
 if __name__ == "__main__":
     main()

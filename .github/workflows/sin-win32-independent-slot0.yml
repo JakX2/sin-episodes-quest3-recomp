@@ -131,6 +131,23 @@ jobs:
           path: owner-diagnostic-bundle/
           if-no-files-found: error
           retention-days: 7
+      - name: Package reversible original-engine client-only startup boundary
+        shell: pwsh
+        run: |
+          python pc/independent_slot0/Build-OwnerDiagnosticBundle.py --bin build-slot0/bin/Release --output owner-client-startup-boundary --client-startup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens=$null
+          $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) 'owner-client-startup-boundary/Run-OwnerClientStartupBoundary.ps1'),[ref]$tokens,[ref]$errors)
+          if ($errors.Count -ne 0) { throw ($errors | Out-String) }
+          & pc/independent_slot0/Test-OwnerClientStartupBoundary.ps1 -Wrapper owner-client-startup-boundary/Run-OwnerClientStartupBoundary.ps1
+          if (-not $?) { throw 'Client startup boundary bundle synthetic test failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sin-owner-client-startup-boundary-not-playable
+          path: owner-client-startup-boundary/
+          if-no-files-found: error
+          retention-days: 14
       - name: Prepare owner filesystem presence-first diagnostic bundle
         shell: pwsh
         run: |
