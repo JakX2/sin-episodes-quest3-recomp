@@ -2403,3 +2403,46 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_aux_recvtables.py"
       --self-test)
 endif()
+
+
+# Phase1699: original owner-private PE32 auxiliary nested array source
+# constraints. Synthetic executable NEVER calls the original engine
+# and NEVER returns a fake VClient011.slot5 pointer.
+add_executable(sin_original_client_aux_dynamic_receivers_native_test
+  ../../tests/test_original_client_aux_dynamic_receivers.cpp)
+target_include_directories(sin_original_client_aux_dynamic_receivers_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_aux_dynamic_receivers_native_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_aux_dynamic_receivers_native
+  COMMAND sin_original_client_aux_dynamic_receivers_native_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_aux_dynamic_receivers_source_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_aux_dynamic_receivers.py"
+      --self-test)
+endif()
+
+
+# Phase1699: 2 authentic overlay proxy code bodies, source byte offsets,
+# but only owner-hosted arithmetic validation, not function execution.
+add_executable(sin_original_client_overlay_proxy_offset_native_test
+  ../../tests/test_original_client_overlay_proxy_offset.cpp)
+target_include_directories(sin_original_client_overlay_proxy_offset_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_overlay_proxy_offset_native_test PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_overlay_proxy_offset_native
+  COMMAND sin_original_client_overlay_proxy_offset_native_test)
+
+
+# Phase1699: real source-nested topology (211 original static tables and
+# 192 actual source edges) not a synthetic equal-cardinality graph.
+add_executable(sin_original_client_real_static_recvtable_graph_native_test
+  ../../tests/test_original_client_real_static_recvtable_graph.cpp)
+target_include_directories(sin_original_client_real_static_recvtable_graph_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_real_static_recvtable_graph_native_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_real_static_recvtable_graph_native
+  COMMAND sin_original_client_real_static_recvtable_graph_native_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")

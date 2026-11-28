@@ -1,0 +1,41 @@
+name: SiN original three auxiliary nested arrays and overlay source
+
+on:
+  pull_request:
+    paths:
+      - "research/tools/audit_sin_original_client_aux_dynamic_receivers.py"
+      - "include/sin_compat/original_client_aux_dynamic_receivers.hpp"
+      - "include/sin_compat/original_client_overlay_proxy_offset.hpp"
+      - "include/sin_compat/original_client_static_recvtable_links.hpp"
+      - "tests/test_original_client_real_static_recvtable_graph.cpp"
+      - "tests/test_original_client_overlay_proxy_offset.cpp"
+      - "tests/test_original_client_aux_dynamic_receivers.cpp"
+      - ".github/workflows/sin-original-client-aux-dynamic-phase1699.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-witness-and-owned-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Synthetic source audit, refusing fabricated original DLL
+        run: python research/tools/audit_sin_original_client_aux_dynamic_receivers.py --self-test
+      - name: Portable source-parent plus child-local native offset validation
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_aux_dynamic_receivers.cpp -o /tmp/sin-original-client-aux-dynamic
+          /tmp/sin-original-client-aux-dynamic
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_overlay_proxy_offset.cpp -o /tmp/sin-original-client-overlay-proxy
+          /tmp/sin-original-client-overlay-proxy
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_real_static_recvtable_graph.cpp -o /tmp/sin-original-real-static-graph
+          /tmp/sin-original-real-static-graph research/manifests/original_client_class_catalog_phase1696.tsv
+      - name: Run actual C++17 graph with address and undefined behavior sanitizers
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_aux_dynamic_receivers.cpp -o /tmp/sin-original-client-aux-dynamic-san
+          /tmp/sin-original-client-aux-dynamic-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_overlay_proxy_offset.cpp -o /tmp/sin-original-client-overlay-proxy-san
+          /tmp/sin-original-client-overlay-proxy-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_real_static_recvtable_graph.cpp -o /tmp/sin-original-real-static-graph-san
+          /tmp/sin-original-real-static-graph-san research/manifests/original_client_class_catalog_phase1696.tsv
