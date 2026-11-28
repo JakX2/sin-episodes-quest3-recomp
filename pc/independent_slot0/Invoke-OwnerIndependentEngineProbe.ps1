@@ -26,6 +26,7 @@ param(
     [switch]$EnableClientPredictionCvarRegisterProbe,
     [switch]$EnableClientEntityListFactoryProbe,
     [switch]$EnableClientCenterprintFactoryProbe,
+    [switch]$EnableClientLeafFactoryProbe,
     [switch]$EnableClientSoundConnectContinueProbe,
     [switch]$EnableClientMaterialProbe,
     [switch]$EnableClientScreenProbe,
@@ -310,6 +311,10 @@ if ($EnableClientSoundConnectContinueProbe -and
     -not $EnableClientPredictionFactoryProbe) {
     throw 'EnableClientSoundConnectContinueProbe requires EnableClientPredictionFactoryProbe'
 }
+if ($EnableClientLeafFactoryProbe -and
+    -not $EnableClientCenterprintFactoryProbe) {
+    throw 'EnableClientLeafFactoryProbe requires EnableClientCenterprintFactoryProbe'
+}
 if ($EnableClientCenterprintFactoryProbe -and
     -not $EnableClientEntityListFactoryProbe) {
     throw 'EnableClientCenterprintFactoryProbe requires EnableClientEntityListFactoryProbe'
@@ -469,6 +474,7 @@ try {
     $previousClientPredictionCvarProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE','Process')
     $previousClientEntityListFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENTITYLIST_FACTORY_PROBE','Process')
     $previousClientCenterprintFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_CENTERPRINT_FACTORY_PROBE','Process')
+    $previousClientLeafFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_LEAF_FACTORY_PROBE','Process')
     $previousClientSoundConnectContinueProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_CONNECT_CONTINUE_PROBE','Process')
     $previousClientMaterialProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE','Process')
     $previousClientScreenProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SCREEN_PROBE','Process')
@@ -534,6 +540,9 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_CENTERPRINT_FACTORY_PROBE',
             $(if ($EnableClientCenterprintFactoryProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_CENTERPRINT_FACTORY_PROBE: {0}" -f $(if ($EnableClientCenterprintFactoryProbe) { 'ENABLED_SOURCE_COLD_CENTERPRINT_DIAGNOSTIC' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_LEAF_FACTORY_PROBE',
+            $(if ($EnableClientLeafFactoryProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_CLIENT_LEAF_FACTORY_PROBE: {0}" -f $(if ($EnableClientLeafFactoryProbe) { 'ENABLED_SOURCE_COLD_22_SLOT_NO_RENDERER' } else { 'DISABLED' }))
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_CONNECT_CONTINUE_PROBE',
             $(if ($EnableClientSoundConnectContinueProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_SOUND_CONNECT_CONTINUE_PROBE: {0}" -f $(if ($EnableClientSoundConnectContinueProbe) { 'ENABLED_SOURCE_TRUE_FALSE_CONNECT' } else { 'DISABLED' }))
@@ -724,6 +733,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE',$previousClientPredictionCvarProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENTITYLIST_FACTORY_PROBE',$previousClientEntityListFactoryProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_CENTERPRINT_FACTORY_PROBE',$previousClientCenterprintFactoryProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_LEAF_FACTORY_PROBE',$previousClientLeafFactoryProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_CONNECT_CONTINUE_PROBE',$previousClientSoundConnectContinueProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE',$previousClientMaterialProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SCREEN_PROBE',$previousClientScreenProbe,'Process')
