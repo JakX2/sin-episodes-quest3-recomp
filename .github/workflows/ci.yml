@@ -81,6 +81,7 @@ jobs:
             build-android-arm64/sin_original_client_aux_dynamic_receivers_tests
             build-android-arm64/sin_original_client_overlay_proxy_offset_tests
             build-android-arm64/sin_original_client_real_static_recvtable_graph_tests
+            build-android-arm64/sin_original_client_native32_recvtable_image_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -317,6 +318,12 @@ jobs:
             adb push build-android-emulator-x86_64/sin_original_client_real_static_recvtable_graph_tests /data/local/tmp/sin_client_class_catalog/sin_original_client_real_static_recvtable_graph_tests
             adb shell 'cd /data/local/tmp/sin_client_class_catalog && chmod 700 sin_original_client_real_static_recvtable_graph_tests && ./sin_original_client_real_static_recvtable_graph_tests original_client_class_catalog_phase1696.tsv' | tr -d '\r' | tee build-android-emulator-x86_64/client-real-static-graph-bionic-output.txt
             grep -Fxq 'PASS Phase1699 REAL original 211-table/192-static-type5-edge graph: source ordinals, native VAs, acyclic depth9, 14 dynamic plus one overlay classification, mutations refused; retail ABI gated' build-android-emulator-x86_64/client-real-static-graph-bionic-output.txt
+            # Phase1700: execute owned 32-bit token schema of authentic
+            # 211 static tables, 1801 total properties, one blocked overlay.
+            # The 191-source-class TSV was pushed by Phase1696 test above.
+            adb push build-android-emulator-x86_64/sin_original_client_native32_recvtable_image_tests /data/local/tmp/sin_client_class_catalog/sin_original_client_native32_recvtable_image_tests
+            adb shell 'cd /data/local/tmp/sin_client_class_catalog && chmod 700 sin_original_client_native32_recvtable_image_tests && ./sin_original_client_native32_recvtable_image_tests original_client_class_catalog_phase1696.tsv' | tr -d '\r' | tee build-android-emulator-x86_64/client-native32-image-bionic-output.txt
+            grep -Fxq 'PASS Phase1700 2006 PE32 owned-token ABI image: 191 real class nodes, 211 static tables, 1110 original static RecvProps, 14 generated tables / 691 child props, 207 type5 edges with one blocked overlay; NO retail client slot5 exposure' build-android-emulator-x86_64/client-native32-image-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -360,6 +367,7 @@ jobs:
           grep -Fxq 'PASS Phase1699 three source auxiliary nested arrays: 112 child-local original offsets with names 000..047, distinct type4 viewmodel and 15+1 overlay facts; retail ABI gated' build-android-emulator-x86_64/client-aux-dynamic-bionic-output.txt
           grep -Fxq 'PASS Phase1699 original two overlay proxy arithmetic paths: type5 index x 32 + parent field, distinct callback slots +0/+4, bounds and overflow fail closed; no native callback invocation' build-android-emulator-x86_64/client-overlay-proxy-bionic-output.txt
           grep -Fxq 'PASS Phase1699 REAL original 211-table/192-static-type5-edge graph: source ordinals, native VAs, acyclic depth9, 14 dynamic plus one overlay classification, mutations refused; retail ABI gated' build-android-emulator-x86_64/client-real-static-graph-bionic-output.txt
+          grep -Fxq 'PASS Phase1700 2006 PE32 owned-token ABI image: 191 real class nodes, 211 static tables, 1110 original static RecvProps, 14 generated tables / 691 child props, 207 type5 edges with one blocked overlay; NO retail client slot5 exposure' build-android-emulator-x86_64/client-native32-image-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -398,5 +406,6 @@ jobs:
             build-android-emulator-x86_64/client-aux-dynamic-bionic-output.txt
             build-android-emulator-x86_64/client-overlay-proxy-bionic-output.txt
             build-android-emulator-x86_64/client-real-static-graph-bionic-output.txt
+            build-android-emulator-x86_64/client-native32-image-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
