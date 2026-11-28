@@ -92,6 +92,31 @@ try {
         throw 'Same-process original client secondary entitylist factory was not classified without game-boot claim'
     }
 
+    # Phase1690: after the original engine's VClientEntityList003
+    # request, it asks for VCENTERPRINT002. A cold interface only
+    # proves native ABI negotiation; the source slot6 allocates an
+    # unavailable 0xF8-byte GUI service, so even a successful
+    # factory request and subsequent fatal Init is NOT a game boot.
+    [IO.File]::WriteAllLines($client,[string[]]@(
+        '[SiN independent] role=client phase=factory-accepted version=VClient011',
+        '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=prediction-bound version=cl_predict-parent-value',
+        '[SiN independent] role=client phase=client-entitylist-empty-bound version=secondary-plus-0x10014:9-slots',
+        '[SiN independent] role=client phase=client-centerprint-cold-bound version=nullable-service:8-slots',
+        '[SiN independent] role=client phase=factory-accepted version=VClientPrediction001',
+        '[SiN independent] role=client phase=factory-accepted version=VClientEntityList003',
+        '[SiN independent] role=client phase=factory-accepted version=VCENTERPRINT002',
+        '[SiN independent] role=client phase=unsupported-callback version=VCENTERPRINT002.slot6-backing-service-unimplemented'
+    ))
+    $centerOut=Verify 'UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF'
+    $expectedCenter=('OWNER_CLIENT_CENTERPRINT_COLD_FACTORY_BOUNDARY: '+
+        'sin-independent-'+$session+'-202.log:client:client-centerprint-cold-bound:nullable-service:8-slots')
+    if (-not ($centerOut -ccontains $expectedCenter) -or
+        -not ($centerOut -ccontains
+            'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011,client:factory-accepted:VClientPrediction001,client:factory-accepted:VClientEntityList003,client:factory-accepted:VCENTERPRINT002')) {
+        throw 'Same-process original centerprint cold source factory incorrectly classified as retail boot or omitted'
+    }
+
     # The existing retail replay below removes $client after it
     # creates the next synthetic trace. Keep that cleanup order.
 
