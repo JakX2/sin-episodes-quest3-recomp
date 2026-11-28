@@ -1783,3 +1783,20 @@ target_compile_features(sin_original_prediction_disabled_shutdown_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_prediction_disabled_shutdown_native
   COMMAND sin_original_prediction_disabled_shutdown_test)
+
+
+# Phase1667: exact original C_BaseEntity 0x240CA9F0 predictable
+# cleanup, handle+0xB4, flag+0x2E8 and 18-slot virtual callback +0x44.
+# Connect a host-owned instance to Phase1666 reverse entity fallback.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_predictable_entity_teardown_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_predictable_entity_teardown.py"
+      --self-test)
+endif()
+add_executable(sin_original_predictable_entity_teardown_test
+  test_original_predictable_entity_teardown.cpp)
+target_compile_features(sin_original_predictable_entity_teardown_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_predictable_entity_teardown_native
+  COMMAND sin_original_predictable_entity_teardown_test)
