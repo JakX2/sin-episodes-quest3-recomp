@@ -24,6 +24,9 @@ on:
       - "include/sin_compat/original_client_source_allocator_dispatch.hpp"
       - "include/sin_compat/original_client_seven_creator_exceptions.hpp"
       - "include/sin_compat/original_client_canonical_creator_bodies.hpp"
+      - "include/sin_compat/original_client_inline_factory_vtable_init.hpp"
+      - "research/tools/audit_sin_original_client_inline_factory_vtable_init.py"
+      - "tests/test_original_client_inline_factory_vtable_init.cpp"
       - "research/tools/audit_sin_original_client_canonical_creator_bodies.py"
       - "tests/test_original_client_canonical_creator_bodies.cpp"
       - "research/manifests/original_client_seven_creator_exceptions_phase1721.csv"
@@ -106,6 +109,7 @@ jobs:
           python research/tools/audit_sin_original_client_allocator_dispatch.py --self-test
           python research/tools/audit_sin_original_client_seven_creator_exceptions.py --self-test
           python research/tools/audit_sin_original_client_canonical_creator_bodies.py --self-test
+          python research/tools/audit_sin_original_client_inline_factory_vtable_init.py --self-test
       - name: Strict C++17 compile and run real 2006 source schema in owned token arena
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
@@ -144,6 +148,8 @@ jobs:
           /tmp/sin-seven-creator-exceptions research/manifests/original_client_class_catalog_phase1696.tsv
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_canonical_creator_bodies.cpp -o /tmp/sin-118-canonical-creators
           /tmp/sin-118-canonical-creators research/manifests/original_client_class_catalog_phase1696.tsv
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_inline_factory_vtable_init.cpp -o /tmp/sin-inline-virtual-init
+          /tmp/sin-inline-virtual-init research/manifests/original_client_class_catalog_phase1696.tsv
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
@@ -182,3 +188,5 @@ jobs:
           /tmp/sin-seven-creator-exceptions-san research/manifests/original_client_class_catalog_phase1696.tsv
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_canonical_creator_bodies.cpp -o /tmp/sin-118-canonical-creators-san
           /tmp/sin-118-canonical-creators-san research/manifests/original_client_class_catalog_phase1696.tsv
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_inline_factory_vtable_init.cpp -o /tmp/sin-inline-virtual-init-san
+          /tmp/sin-inline-virtual-init-san research/manifests/original_client_class_catalog_phase1696.tsv
