@@ -45,6 +45,11 @@ int main(int argc,char** argv) {
     assert(world::kNativeWorldRequestBytes==1200u);
     assert(world::kNativeWorldPrimaryVirtual94VA==0x240FCB10u);
     assert(world::kNativeWorldPrimaryVirtual94VA!=0x240C8FE0u);
+    assert(world::kNativeWorldNetworkVirtualWrapperBytes==44u);
+    assert(world::kNativeWorldInitClearsFieldOffset==0x480u);
+    assert(world::kNativeWorldPreSharedInitHelperOneVA==0x24085750u);
+    assert(world::kNativeWorldPreSharedInitHelperTwoVA==0x24129480u);
+    assert(world::kNativeSharedNetworkInitializerVA==0x240C8FE0u);
     assert(world::kNativeWorldSecondaryVirtual0VA==0x24054EC0u);
 
     // In the real 2006 PE32 original the CWorld creator dereferences
