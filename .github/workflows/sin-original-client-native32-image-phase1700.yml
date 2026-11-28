@@ -11,6 +11,9 @@ on:
       - "include/sin_compat/original_client_source_string_sizes.hpp"
       - "include/sin_compat/original_client_standard_recvproxy_router.hpp"
       - "include/sin_compat/original_client_custom_handle_proxy.hpp"
+      - "include/sin_compat/original_client_custom_color_integer_proxies.hpp"
+      - "tests/test_original_client_custom_color_integer_proxies.cpp"
+      - "research/tools/audit_sin_original_client_custom_color_integer_proxies.py"
       - "tests/test_original_client_custom_handle_proxy.cpp"
       - "research/tools/audit_sin_original_client_custom_handle_proxy.py"
       - "tests/test_original_client_standard_recvproxy_router.cpp"
@@ -50,6 +53,7 @@ jobs:
           python research/tools/audit_sin_original_client_standard_string_datatable_proxies.py --self-test
           python research/tools/audit_sin_original_client_string_sizes.py --self-test
           python research/tools/audit_sin_original_client_custom_handle_proxy.py --self-test
+          python research/tools/audit_sin_original_client_custom_color_integer_proxies.py --self-test
       - name: Strict C++17 compile and run real 2006 source schema in owned token arena
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
@@ -62,6 +66,8 @@ jobs:
           /tmp/sin-standard-recvproxy-router
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_custom_handle_proxy.cpp -o /tmp/sin-custom-handle-recvproxy
           /tmp/sin-custom-handle-recvproxy
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_custom_color_integer_proxies.cpp -o /tmp/sin-custom-color-integer-proxy
+          /tmp/sin-custom-color-integer-proxy
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
@@ -74,3 +80,5 @@ jobs:
           /tmp/sin-standard-recvproxy-router-san
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_custom_handle_proxy.cpp -o /tmp/sin-custom-handle-recvproxy-san
           /tmp/sin-custom-handle-recvproxy-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_custom_color_integer_proxies.cpp -o /tmp/sin-custom-color-integer-proxy-san
+          /tmp/sin-custom-color-integer-proxy-san
