@@ -6760,3 +6760,24 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
   endif()
 endif()
+
+
+# Phase1718: recover only FIRST 11 original PE32 bytes of 142
+# entity factory routines: PUSH ESI; PUSH original object size;
+# CALL original allocator. Source metadata and safe host tests ONLY.
+# Original constructors/vtables/allocator lifetime not implemented.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_entity_allocation_prologues_tests
+    tests/test_original_client_entity_allocation_prologues.cpp)
+  target_include_directories(sin_original_client_entity_allocation_prologues_tests PRIVATE include)
+  target_compile_features(sin_original_client_entity_allocation_prologues_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_entity_allocation_prologues_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_entity_allocation_prologues_tests
+      COMMAND sin_original_client_entity_allocation_prologues_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv"
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_142_entity_allocator_prologues_phase1718.csv")
+  endif()
+endif()
