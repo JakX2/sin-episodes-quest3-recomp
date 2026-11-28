@@ -1715,3 +1715,20 @@ target_compile_features(sin_original_client_player_orientation_61_chain_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_player_orientation_61_chain_native
   COMMAND sin_original_client_player_orientation_61_chain_test)
+
+
+# Phase1663: original CPrediction vtable slot14 guarded current-player
+# view writer and previous slot13 OUT getter share player+0xF04
+# through original-free owned memory. No original DLL/engine is loaded.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_view_setter_slot14_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_view_setter_slot14.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_view_setter_slot14_test
+  test_original_client_prediction_view_setter_slot14.cpp)
+target_compile_features(sin_original_prediction_view_setter_slot14_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_prediction_view_setter_slot14_native
+  COMMAND sin_original_prediction_view_setter_slot14_test)
