@@ -342,6 +342,87 @@ private:
     // The original helper 0x20086930 records each table in an engine
     // global linked list, but its allocator/free-list and callbacks
     // remain out of scope; NO 2006 engine helper or proxy is invoked.
+    // Phase1701: verify each visited table against the authenticated
+    // immutable SOURCE mapping before accepting an otherwise in-bounds
+    // pointer. A wrong-but-valid native type, count, child table token or
+    // generated child offset must fail, not pass a mere memory-safety scan.
+    // Called only for reached tables: the genuine 191-root startup must
+    // continue to ignore the one unreachable DT_Animationlayer table.
+    void AuditVisitedSourceTable(std::uint32_t table) const {
+        for(std::size_t i=0u;i<src::kStaticTables;++i) {
+            if(table!=staticTableTokens[i])continue;
+            const auto count=src::kCounts[i];
+            const auto props=staticPropArrayTokens[i];
+            if(arena.Read32(table+kNativeRecvTablePropsOffset)!=props ||
+               arena.Read32(table+kNativeRecvTablePropCountOffset)!=count)
+                throw std::logic_error("static RecvTable source header drift");
+            for(std::uint32_t j=0u;j<count;++j) {
+                const auto p=props+j*src::kOriginalRecvPropStride;
+                const auto originalType=src::kTypes[src::kTypePrefixes[i]+j];
+                if(arena.Read32(p+kNativeRecvPropTypeOffset)!=originalType)
+                    throw std::logic_error("source RecvProp native type drift");
+                if(originalType!=5u)continue;
+                std::uint32_t expectedChild=0u;
+                unsigned routes=0u;
+                for(const auto& edge:links::kOriginalSourceEdges)
+                    if(edge.parentTableOrdinal==i &&
+                       edge.parentPropertySlot==j) {
+                        expectedChild=staticTableTokens[edge.childTableOrdinal];
+                        ++routes;
+                    }
+                for(std::size_t k=0u;k<src::kGeneratedGenericSubtables;++k) {
+                    const auto& outer=src::kGeneratedOuters[k];
+                    if(outer.parentTableOrdinal==i && outer.parentSlot==j) {
+                        expectedChild=dynamicTableTokens[k];
+                        ++routes;
+                    }
+                }
+                // The specialized animation-overlay child is a KNOWN
+                // unresolved path, not permission to insert a fake table.
+                if(i==197u && j==0u)++routes;
+                if(routes!=1u ||
+                   arena.Read32(p+kNativeRecvPropNestedTableOffset)!=
+                       expectedChild)
+                    throw std::logic_error("original nested source edge drift");
+            }
+            return;
+        }
+        for(std::size_t k=0u;k<src::kGeneratedGenericSubtables;++k) {
+            if(table!=dynamicTableTokens[k])continue;
+            const bool classSource=k<classArrays::kSourceArrayShapeCount;
+            const auto count=classSource?
+                classArrays::kOriginalShapes[k].elements:
+                auxArrays::kSourceShapes[
+                    k-classArrays::kSourceArrayShapeCount].elements;
+            const auto stride=classSource?
+                classArrays::kOriginalShapes[k].byteStride:
+                auxArrays::kSourceShapes[
+                    k-classArrays::kSourceArrayShapeCount].byteStride;
+            const auto nativeType=classSource?
+                classArrays::kOriginalShapes[k].elementNativeType:
+                auxArrays::kSourceShapes[
+                    k-classArrays::kSourceArrayShapeCount].originalElementType;
+            const auto props=dynamicPropArrayTokens[k];
+            if(arena.Read32(table+kNativeRecvTablePropsOffset)!=props ||
+               arena.Read32(table+kNativeRecvTablePropCountOffset)!=count)
+                throw std::logic_error("generated RecvTable source header drift");
+            for(std::uint32_t j=0u;j<count;++j) {
+                const auto p=props+j*src::kOriginalRecvPropStride;
+                const std::string sourceIndexName={
+                    static_cast<char>('0'+j/100u),
+                    static_cast<char>('0'+(j/10u)%10u),
+                    static_cast<char>('0'+j%10u)
+                };
+                if(arena.Read32(p+kNativeRecvPropTypeOffset)!=nativeType ||
+                   arena.Read32(p+kNativeRecvPropMemberOffset)!=j*stride ||
+                   arena.ReadString(arena.Read32(p))!=sourceIndexName)
+                    throw std::logic_error("source generated child descriptor drift");
+            }
+            return;
+        }
+        throw std::out_of_range("table token has no authenticated source identity");
+    }
+
     WalkReport WalkRoots(const std::vector<std::uint32_t>& roots) {
         if(roots.empty() || roots.size()>=1024u)
             throw std::out_of_range("original 2006 client root bounds");
@@ -356,6 +437,7 @@ private:
         std::function<void(std::uint32_t)> visit=[&](std::uint32_t table) {
             if(!allowed.count(table))
                 throw std::out_of_range("native 32-bit table token not owned");
+            AuditVisitedSourceTable(table);
             if(arena.Read8(table+kNativeRecvTableVisitedOffset)!=0u) {
                 ++out.duplicateSubtableReferences;return;
             }
