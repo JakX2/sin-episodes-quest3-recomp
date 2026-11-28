@@ -136,7 +136,7 @@ def self_test()->None:
         reject(lambda data=bytes(broken):verify_prediction_setter(
             data,fake_global,fake_pred,fake_player),
             "slot14 byte "+str(i))
-    view=0x134u  # invented memory layout, not original literal address
+    view=0x134  # invented memory layout, not original literal address
     fake=bytearray(b"\xCC"*PLAYER_SET_VIEW_SIZE)
     chunks=(
         (0,bytes.fromhex("8b442404")),
