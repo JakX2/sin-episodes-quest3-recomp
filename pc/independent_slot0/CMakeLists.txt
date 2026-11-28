@@ -2088,3 +2088,22 @@ target_compile_features(sin_original_prediction_reinit_predictables_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_prediction_reinit_predictables_native
   COMMAND sin_original_prediction_reinit_predictables_test)
+
+
+# Phase1684: complete original client.dll 126B entity reinit guard
+# __thiscall single-pointer RET4, plus complete 7B/8B embedded
+# state helpers. Tests the source-cl_predict/global-mode/two
+# virtual gates, field+0xC0 latch and +0x454, and native
+# CPrediction slot6 RET4 -> batch RET0 -> entity RET4 chain.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_entity_reinit_guard_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_entity_reinit_guard.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_entity_reinit_guard_test
+  test_original_prediction_entity_reinit_guard.cpp)
+target_compile_features(sin_original_prediction_entity_reinit_guard_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_prediction_entity_reinit_guard_native
+  COMMAND sin_original_prediction_entity_reinit_guard_test)
