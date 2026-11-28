@@ -1891,3 +1891,22 @@ target_compile_features(sin_original_postnetwork_type_switch_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_type_switch_native
   COMMAND sin_original_postnetwork_type_switch_test)
+
+
+# Phase1673: original 56-byte native PostNetwork byte comparison
+# 0x24197A90, authentic source REPZ CMPSB this+0x14 and
+# record+0x13 gate, two case8/case9 direct callsites, real
+# MSVC x86 RET12 native helper. Test nested native finalizer
+# RET8 -> typed dispatcher RET16 -> source compare RET12.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_case8_case9_bytecmp_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_case8_case9_bytecmp.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_case8_case9_bytecmp_test
+  test_original_postnetwork_case8_case9_bytecmp.cpp)
+target_compile_features(sin_original_postnetwork_case8_case9_bytecmp_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_case8_case9_bytecmp_native
+  COMMAND sin_original_postnetwork_case8_case9_bytecmp_test)
