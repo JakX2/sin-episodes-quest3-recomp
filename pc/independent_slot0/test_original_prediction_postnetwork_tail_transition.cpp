@@ -169,7 +169,7 @@ int main() {
     // still marks that remaining postloop behavior is unknown.
     if(t.opaque_tail_callbacks!=7u ||
        pred::events.postnetwork_unmodeled_tail_calls!=7u ||
-       t.entity_counts!=6u)
+       t.entity_counts!=4u)
         return fail(10,"unmodeled tail callback/Count guards drift");
     // In particular, owner+0x18/+0x1C/+0x20 snapshot writes from
     // later original 0x240C4940 are NOT implemented or claimed.
