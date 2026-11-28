@@ -6537,3 +6537,23 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
   endif()
 endif()
+
+
+# Phase1704: 1110 ORIGINAL source RecvProp names, exact CSV ordinal and
+# static field validation in owned PE32-like native memory, without
+# executable source callbacks or retail engine VClient011.slot5.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_static_recvprop_names_tests
+    tests/test_original_client_static_recvprop_names.cpp)
+  target_include_directories(sin_original_client_static_recvprop_names_tests PRIVATE include)
+  target_compile_features(sin_original_client_static_recvprop_names_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_static_recvprop_names_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_static_recvprop_names_tests
+      COMMAND sin_original_client_static_recvprop_names_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv"
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_static_recvprops_phase1704.csv")
+  endif()
+endif()

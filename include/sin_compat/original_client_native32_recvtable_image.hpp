@@ -16,9 +16,11 @@
 // RecvTable [props +0,count +4, aux +8,name +12, visited +17], 20B;
 // RecvProp (60B) [name +0,type +4,nested pointer +40,member offset +44].
 #include <array>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <istream>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -154,6 +156,11 @@ struct Image final {
     std::array<std::uint32_t,src::kStaticClassTables> classNodeTokens{};
     std::uint32_t classHeadToken=0u;
     std::uint32_t unresolvedOverlayDescriptorToken=0u;
+    // Optional source-attested static names. This is metadata owned by the
+    // image, never borrowed original PE32 string pointers.
+    std::array<std::string,src::kStaticPropertySlots> originalStaticNames{};
+    bool staticNamesLoaded=false;
+
 
     // This branch is ALWAYS closed until all native Win32 creator/proxy
     // callbacks, 2006 RecvTables and lifecycle rules are implemented.
@@ -337,6 +344,93 @@ struct Image final {
         return image;
     }
 
+    // Phase1704: commit-only ORIGINAL SOURCE names from an ordered CSV.
+    // Parse and authenticate the full list before mutating ANY arena
+    // storage. The FNV64 gate is a convenient original-free native check;
+    // the accompanying Python audit pins the SHA256 of all ordered names.
+    // Metadata remains non-executable even after successful attachment.
+    static constexpr std::uint64_t kOriginalNameListFNV64=
+        0xb37b011a57f1d08bull;
+
+    bool StaticSourceNamesAttached() const noexcept {
+        return staticNamesLoaded;
+    }
+
+    void AttachStaticSourceNames(std::istream& input) {
+        if(staticNamesLoaded)
+            throw std::logic_error("original source names already attached");
+        std::string line;
+        constexpr const char* kHeader=
+            "table_ordinal,table,property_slot,name,native_type,"
+            "plus44_value,plus44_semantics,source_callsite";
+        if(!std::getline(input,line))
+            throw std::invalid_argument("original static-name CSV missing");
+        if(!line.empty() && line.back()=='\r')line.pop_back();
+        if(line!=kHeader)
+            throw std::invalid_argument("original static-name CSV schema changed");
+        std::array<std::string,src::kStaticPropertySlots> names{};
+        std::unordered_set<std::string> distinct;
+        std::uint64_t fingerprint=14695981039346656037ull;
+        std::size_t processed=0u;
+        while(std::getline(input,line)) {
+            if(!line.empty() && line.back()=='\r')line.pop_back();
+            if(processed>=names.size() || line.empty())
+                throw std::invalid_argument("invalid source property row count");
+            const auto fields=CsvEightColumns(line);
+            const auto table=SourceUnsigned(fields[0]);
+            const auto slot=SourceUnsigned(fields[2]);
+            const auto type=SourceUnsigned(fields[4]);
+            if(table>=src::kStaticTables || slot>=src::kCounts[table] ||
+               src::kTypePrefixes[table]+slot!=processed ||
+               type!=src::kTypes[processed] ||
+               fields[1].empty() || fields[3].empty() ||
+               fields[3].size()>127u)
+                throw std::invalid_argument("source name row identity drift");
+            for(const auto ch:fields[3])
+                if(static_cast<unsigned char>(ch)<32u ||
+                   static_cast<unsigned char>(ch)>126u)
+                    throw std::invalid_argument("invalid native source name ASCII");
+            const auto prop=staticPropArrayTokens[table]+
+                static_cast<std::uint32_t>(slot*src::kOriginalRecvPropStride);
+            if(!fields[5].empty()) {
+                const auto sourceOffset=SourceUnsigned(fields[5]);
+                if(arena.Read32(prop+kNativeRecvPropMemberOffset)!=sourceOffset)
+                    throw std::invalid_argument("source CSV member offset drift");
+            } else if(!(table==197u && slot==0u &&
+                        fields[6]=="special_overlay_unresolved")) {
+                throw std::invalid_argument("unrecognized blank source offset");
+            }
+            // Names are hashed in source table/slot order with no terminal
+            // newline, matching the independently original-attested SHA.
+            if(processed!=0u)
+                FnvAppend(fingerprint,"\n");
+            FnvAppend(fingerprint,fields[1]);
+            FnvAppend(fingerprint,"|");
+            FnvAppend(fingerprint,fields[2]);
+            FnvAppend(fingerprint,"|");
+            FnvAppend(fingerprint,fields[3]);
+            distinct.insert(fields[3]);
+            names[processed++]=fields[3];
+        }
+        if(input.bad() || processed!=names.size() ||
+           distinct.size()!=665u || fingerprint!=kOriginalNameListFNV64)
+            throw std::invalid_argument("original static RecvProp name fingerprint mismatch");
+
+        // Transactional commit: a failure in string allocation cannot
+        // leave half-filled property name pointers in the live test image.
+        Arena replacement=arena;
+        for(std::size_t table=0u;table<src::kStaticTables;++table)
+            for(std::size_t slot=0u;slot<src::kCounts[table];++slot) {
+                const auto index=src::kTypePrefixes[table]+slot;
+                const auto prop=staticPropArrayTokens[table]+
+                    static_cast<std::uint32_t>(slot*src::kOriginalRecvPropStride);
+                replacement.Write32(prop,replacement.StoreString(names[index]));
+            }
+        arena=std::move(replacement);
+        originalStaticNames=std::move(names);
+        staticNamesLoaded=true;
+    }
+
     // Real original engine start (0x20023BB0): obtain VClient011.slot5,
     // enumerate actual head-to-tail ClientClass::next +16 and extract
     // table from ClientClass +12. Do not treat all 211 source static
@@ -375,6 +469,59 @@ private:
     // The original helper 0x20086930 records each table in an engine
     // global linked list, but its allocator/free-list and callbacks
     // remain out of scope; NO 2006 engine helper or proxy is invoked.
+    static void FnvAppend(std::uint64_t& hash,const std::string& value) noexcept {
+        for(const unsigned char c:value) {
+            hash^=c;
+            hash*=1099511628211ull;
+        }
+    }
+
+    static std::uint32_t SourceUnsigned(const std::string& s) {
+        if(s.empty() || s.size()>10u)
+            throw std::invalid_argument("invalid original CSV decimal");
+        std::uint32_t result=0;
+        const auto parsed=std::from_chars(
+            s.data(),s.data()+s.size(),result,10);
+        if(parsed.ec!=std::errc{} ||
+           parsed.ptr!=s.data()+s.size())
+            throw std::invalid_argument("malformed original CSV integer");
+        return result;
+    }
+
+    static std::array<std::string,8> CsvEightColumns(const std::string& line) {
+        std::array<std::string,8> out{};
+        std::size_t column=0u;
+        bool inQuotes=false;
+        bool closedQuote=false;
+        for(std::size_t i=0u;i<line.size();++i) {
+            const auto ch=line[i];
+            if(inQuotes) {
+                if(ch=='"') {
+                    if(i+1u<line.size() && line[i+1u]=='"') {
+                        out[column].push_back('"');++i;
+                    }else {
+                        inQuotes=false;closedQuote=true;
+                    }
+                }else {
+                    out[column].push_back(ch);
+                }
+            }else if(ch==',') {
+                if(++column>=out.size())
+                    throw std::invalid_argument("source CSV has extra fields");
+                closedQuote=false;
+            }else if(ch=='"' && out[column].empty() && !closedQuote) {
+                inQuotes=true;
+            }else {
+                if(ch=='"' || closedQuote)
+                    throw std::invalid_argument("malformed source CSV quoting");
+                out[column].push_back(ch);
+            }
+        }
+        if(inQuotes || column!=7u)
+            throw std::invalid_argument("incomplete original source CSV row");
+        return out;
+    }
+
     // Phase1701: verify each visited table against the authenticated
     // immutable SOURCE mapping before accepting an otherwise in-bounds
     // pointer. A wrong-but-valid native type, count, child table token or
@@ -394,6 +541,10 @@ private:
                 const auto originalType=src::kTypes[src::kTypePrefixes[i]+j];
                 if(arena.Read32(p+kNativeRecvPropTypeOffset)!=originalType)
                     throw std::logic_error("source RecvProp native type drift");
+                if(staticNamesLoaded &&
+                   arena.ReadString(arena.Read32(p))!=
+                       originalStaticNames[src::kTypePrefixes[i]+j])
+                    throw std::logic_error("original static RecvProp name drift");
                 const auto knownOffset=sourceOffsets::kSourceNativeMemberOffsets[
                     src::kTypePrefixes[i]+j];
                 if(knownOffset!=sourceOffsets::kNotDirectlyRecovered &&
