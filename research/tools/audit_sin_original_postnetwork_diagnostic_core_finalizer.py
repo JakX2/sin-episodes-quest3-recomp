@@ -93,7 +93,7 @@ def final_witnesses(base:int,apply:int):
       (0x18,rel_call(base+0x18,apply)),
       (0x1D,bytes.fromhex("8b760c85f67417")),
       (0x24,bytes.fromhex("8b56048b06")),
-      (0x2A,bytes.fromhex("525056538bcf")),
+      (0x29,bytes.fromhex("525056538bcf")),
       (0x2F,rel_call(base+0x2F,apply)),
       (0x34,bytes.fromhex("8b760c85f675e9")),
       (0x3B,bytes.fromhex("5f5e5bc20800")),
