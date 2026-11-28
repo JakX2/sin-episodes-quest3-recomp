@@ -1,0 +1,23 @@
+name: SiN owner cross-bitness module-census regression
+
+on:
+  pull_request:
+    paths:
+      - "pc/independent_slot0/Invoke-OwnerIndependentEngineProbe.ps1"
+      - "pc/independent_slot0/Test-OwnerNativeModuleReader.ps1"
+      - ".github/workflows/sin-owner-module-census.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  toolhelp-x64-to-x86:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check native Toolhelp32 reader against synthetic 32-bit process
+        shell: powershell
+        run: |
+          & .\pc\independent_slot0\Test-OwnerNativeModuleReader.ps1 -Launcher .\pc\independent_slot0\Invoke-OwnerIndependentEngineProbe.ps1
