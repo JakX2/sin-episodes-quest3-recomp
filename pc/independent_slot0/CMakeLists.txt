@@ -1872,3 +1872,22 @@ target_compile_features(sin_original_postnetwork_diagnostic_core_finalizer_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_diagnostic_core_finalizer_native
   COMMAND sin_original_postnetwork_diagnostic_core_finalizer_test)
+
+
+# Phase1672: original 1036-byte typed PostNetwork per-node dispatch,
+# source whole-native SHA, 13-entry HIGHLOW jump table, 27-byte
+# type aliases, four-native-DWORD __thiscall RET16/0x34 record stride.
+# Every specialized comparison case is injected OPAQUE, and all
+# public CI tests use invented original-free native Win32 x86 objects.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_type_switch_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_type_dispatch_13case.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_type_switch_test
+  test_original_postnetwork_type_switch.cpp)
+target_compile_features(sin_original_postnetwork_type_switch_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_type_switch_native
+  COMMAND sin_original_postnetwork_type_switch_test)
