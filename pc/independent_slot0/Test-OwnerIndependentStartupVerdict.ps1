@@ -53,6 +53,7 @@ try {
     [IO.File]::WriteAllLines($client,[string[]]@(
         '[SiN independent] role=client phase=factory-accepted version=VClient011',
         '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=prediction-convar-registered version=cl_predict',
         '[SiN independent] role=client phase=prediction-bound version=cl_predict-parent-value',
         '[SiN independent] role=client phase=factory-accepted version=VClientPrediction001',
         '[SiN independent] role=client phase=unsupported-callback version=VClientPrediction001.slot3-unsupported'
@@ -60,10 +61,13 @@ try {
     $predictionOut=Verify 'UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF'
     $expectedPrediction=('OWNER_CLIENT_PREDICTION_FACTORY_BOUNDARY: '+
         'sin-independent-'+$session+'-202.log:client:prediction-bound:cl_predict-parent-value')
+    $registeredPrediction=('OWNER_CLIENT_PREDICTION_CONVAR_REGISTRATION: '+
+        'sin-independent-'+$session+'-202.log:client:prediction-convar-registered:cl_predict')
     if (-not ($predictionOut -ccontains $expectedPrediction) -or
+        -not ($predictionOut -ccontains $registeredPrediction) -or
         -not ($predictionOut -ccontains
             'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011,client:factory-accepted:VClientPrediction001')) {
-        throw 'Owner prediction factory source-bound evidence not retained from same-session native trace'
+        throw 'Owner prediction factory/ConVar registration evidence not retained from same-session native trace'
     }
     # The existing retail replay below removes $client after it
     # creates the next synthetic trace. Keep that cleanup order.

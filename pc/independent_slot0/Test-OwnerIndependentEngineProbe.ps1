@@ -136,6 +136,47 @@ try {
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
 
+    # Phase1688 native ConVar registration is a separate
+    # engine-mutation opt-in that must refuse without the
+    # already explicit prediction factory probe. Validate before
+    # moving any original commercial DLL or launching an exe.
+    foreach ($role in @('Both','Server','Client')) {
+        $inputs=@{
+            GameBin=$bin
+            GameExecutable=$exe
+            IndependentBin=$IndependentBin
+            ProbeRole=$role
+            EnableClientPredictionCvarRegisterProbe=$true
+            DisposableTestCopyConfirmed=$true
+        }
+        $rejected=$false
+        try { & $Launcher @inputs | Out-Null }
+        catch {
+            if ($_.Exception.Message -notlike
+                '*EnableClientPredictionCvarRegisterProbe requires EnableClientPredictionFactoryProbe*') {
+                throw ('Unexpected original ConVar registration role denial: '+$_.Exception.Message)
+            }
+            $rejected=$true
+        }
+        if(-not $rejected) {
+            throw 'Unowned prediction ConVar registration was not denied without its factory gate'
+        }
+        if((Sha256 $server) -cne $beforeServer -or
+           (Sha256 $client) -cne $beforeClient) {
+            throw 'Original client/server bytes changed during rejected ConVar probe'
+        }
+    }
+    foreach ($required in @(
+        '$previousClientPredictionCvarProbe',
+        "'SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE'",
+        'OWNER_CLIENT_PREDICTION_CVAR_REGISTER_PROBE:',
+        'ENABLED_OWNER_CONVAR_REGISTRATION'
+    )) {
+        if (-not $launcherText.Contains($required)) {
+            throw "Prediction ConVar registration environment lifetime not guarded: $required"
+        }
+    }
+
     # Phase1687: launching a real engine beyond the client Init
     # prefix is a separate, explicit Client-only diagnostic.
     # These invalid role/sound combinations must fail BEFORE

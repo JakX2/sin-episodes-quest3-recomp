@@ -44,7 +44,10 @@ class MockCvar final {
 public:
     // The original VEngineCvar002 first five native slots.
     // NO virtual destructor before register slot0.
-    virtual void __thiscall Register(void*) noexcept {}
+    virtual void __thiscall Register(void* candidate) noexcept {
+        ++registerCalls;
+        registered=candidate;
+    }
     virtual const char* __thiscall CommandLine(
         const char*) noexcept {return nullptr;}
     virtual void* __thiscall FindMutable(
@@ -53,11 +56,13 @@ public:
         const char* name) const noexcept {
         ++queries;
         return name && std::strcmp(name,"cl_predict")==0?
-            returned:nullptr;
+            (returned?returned:registered):nullptr;
     }
     virtual void* __thiscall GetCommands() noexcept {return nullptr;}
     mutable unsigned queries=0u;
+    unsigned registerCalls=0u;
     const void* returned=nullptr;
+    const void* registered=nullptr;
 };
 MockCvar g_cvar{};
 ca::Variable g_predict{};
@@ -279,6 +284,7 @@ int main(int argc,char** argv) {
     // All default tests must preserve production refusal even when
     // an owner environment from a previous test remains set.
     if(!setenv("SIN_INDEPENDENT_CLIENT_PREDICTION_FACTORY_PROBE","0") ||
+       !setenv("SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE","0") ||
        !setenv("SIN_INDEPENDENT_TRACE_FILE","0") ||
        !setenv("SIN_INDEPENDENT_TRACE_SESSION",nullptr) ||
        !setenv("SIN_INDEPENDENT_CLIENT_SOUND_PROBE","0"))
@@ -410,14 +416,61 @@ int main(int argc,char** argv) {
     if(!check_guard_in_child(argv[1]))
         return fail(27,"unimplemented native prediction method did not fail-closed");
 
-    // Opt-out must not accidentally expose retained singleton.
+    // Phase1688: original client registers its own cl_predict
+    // ConVar during static initialization. Our new host-owned
+    // adapter registers it ONLY under a separate owner opt-in
+    // when the engine does not already provide the name.
+    g_cvar.returned=nullptr;
+    g_cvar.registered=nullptr;
+    if(!setenv("SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE","1"))
+        return fail(28,"enable owned ConVar registration test");
+    g_factoryCalls=g_factoryErrors=g_physicsQueries=0u;
+    if(!invoke_init(client,table[0],1) ||
+       g_factoryErrors || g_factoryCalls!=kExpectedQueries ||
+       g_cvar.registerCalls!=1u ||
+       g_cvar.registered==nullptr ||
+       create(pf::kInterfaceName,nullptr)!=prediction)
+        return fail(29,"owner native VEngineCvar002 RegisterConCommandBase");
+    const auto* registered=
+        static_cast<const std::uint8_t*>(g_cvar.registered);
+    void* registeredParent=nullptr;
+    std::memcpy(&registeredParent,registered+
+        pf::kOriginalConVarParentOffset,sizeof(registeredParent));
+    if(registeredParent!=g_cvar.registered ||
+       read32(const_cast<void*>(g_cvar.registered),0x14u)!=0x208u ||
+       read32(const_cast<void*>(g_cvar.registered),
+              pf::kOriginalConVarNumericOffset)!=1u ||
+       !invoke_void(prediction,predVtable[1]) ||
+       *reinterpret_cast<std::uint8_t*>(
+           static_cast<std::uint8_t*>(prediction)+
+           pf::kOriginalEnabledOffset)!=1u)
+        return fail(30,"registered original source ConVar defaults and prediction slot1");
+    // Engine finds our persistent variable on subsequent Init.
+    // The DLL must NOT register another instance or duplicate
+    // an engine-owned command name.
+    g_factoryCalls=g_factoryErrors=0u;
+    if(!invoke_init(client,table[0],1) ||
+       g_factoryErrors || g_factoryCalls!=kExpectedQueries ||
+       g_cvar.registerCalls!=1u ||
+       create(pf::kInterfaceName,nullptr)!=prediction ||
+       !invoke_void(client,table[1]))
+        return fail(31,"owned registry stable on restart and shutdown");
+    // Diagnostic opt-out denies the factory, even when the
+    // engine retains the ConVar object for its own lifetime.
     if(!setenv("SIN_INDEPENDENT_CLIENT_PREDICTION_FACTORY_PROBE","0") ||
+       !setenv("SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE","0") ||
        create(pf::kInterfaceName,nullptr))
-        return fail(28,"default factory refusal after diagnostic test");
+        return fail(32,"default factory refusal after opt-in registration");
     // The test-created linked ConVars are destroyed only after
     // production DLL runtime is unloaded. The real game never
     // receives their addresses outside the mock's lifetime.
-    FreeLibrary(module);
+    // Native engine ICvar now owns our registered ConVar pointer.
+    // The independently compiled client DLL must remain loaded
+    // even after its original LoadLibrary reference is released.
+    const auto* originalLoadedModule=module;
+    if(!FreeLibrary(module) ||
+       GetModuleHandleA("client.dll")!=originalLoadedModule)
+        return fail(33,"source CVar vptr module not pinned for engine lifetime");
     std::puts("PASS Phase1686 actual production PE32 client.dll: "
               "21 original VClient011 factory dependencies, guarded "
               "VEngineCvar002 FindConstVar cl_predict parent+0x18/"
