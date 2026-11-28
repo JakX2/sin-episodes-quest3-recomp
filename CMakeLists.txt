@@ -6464,3 +6464,21 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_aux_recvtable_metadata_tests)
   endif()
 endif()
+
+
+# Phase1699: three genuine source auxiliary nested receive arrays,
+# 112 generated child elements. Special native type4 viewmodel and
+# original 621-byte overlay callback semantics stay unimplemented.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_aux_dynamic_receivers_tests
+    tests/test_original_client_aux_dynamic_receivers.cpp)
+  target_include_directories(sin_original_client_aux_dynamic_receivers_tests PRIVATE include)
+  target_compile_features(sin_original_client_aux_dynamic_receivers_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_aux_dynamic_receivers_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_aux_dynamic_receivers_tests
+      COMMAND sin_original_client_aux_dynamic_receivers_tests)
+  endif()
+endif()
