@@ -77,6 +77,7 @@ on:
       - 'research/tools/audit_sin_original_prediction_postnetwork_slot6.py'
       - 'research/tools/audit_sin_original_postnetwork_entity_compare.py'
       - 'research/tools/audit_sin_original_postnetwork_compare_helpers.py'
+      - 'research/tools/audit_sin_original_postnetwork_diagnostic_core_finalizer.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -289,3 +290,6 @@ jobs:
 
       - name: Authenticate original PostNetwork compare 10-arg initializer and 3-arg result wrapper (synthetic only)
         run: python research/tools/audit_sin_original_postnetwork_compare_helpers.py --self-test
+
+      - name: Authenticate original PostNetwork diagnostic gate and linked-list finalizer (synthetic only)
+        run: python research/tools/audit_sin_original_postnetwork_diagnostic_core_finalizer.py --self-test
