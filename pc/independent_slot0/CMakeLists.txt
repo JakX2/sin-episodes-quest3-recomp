@@ -2107,3 +2107,23 @@ target_compile_features(sin_original_prediction_entity_reinit_guard_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_prediction_entity_reinit_guard_native
   COMMAND sin_original_prediction_entity_reinit_guard_test)
+
+
+# Phase1685: whole original 90B InitPredictable __thiscall noarg
+# RET0, exact field+0x2E8 flag +0xB4 handle, five engine call
+# boundaries and fixed 90-entry InitPredictable loop. Native
+# x86 test composes prediction slot6 RET4 -> batch RET0 ->
+# entity guard RET4 -> InitPredictable RET0 with original-free
+# synthetic objects and source-gated whole-retail SHA audit.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_initpredictable_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_initpredictable.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_initpredictable_test
+  test_original_prediction_initpredictable.cpp)
+target_compile_features(sin_original_prediction_initpredictable_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_prediction_initpredictable_native
+  COMMAND sin_original_prediction_initpredictable_test)
