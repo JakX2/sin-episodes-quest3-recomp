@@ -30,9 +30,43 @@ and separate synthetic native behavioral tests.
 | 13 | `0x24195F10` | 59 bytes | `702860c2c345ff06d4534b1a1f2d820f0d098d994f2662be466b027813c0f40f` |
 
 Both use the same original client-data global pointer at
-`0x24338CF0` (a host object, **not** the `cl_predict` ConVar
-from Phase1658). Both native instruction streams have HIGHLOW
-relocations on their load of this global.
+`0x24338CF0`, **now authenticated as the current `C_BasePlayer`
+client-side object**, not the `cl_predict` ConVar from Phase1658.
+Both native instruction streams have HIGHLOW relocations on their
+load of this global.
+
+### Newly proven C_BasePlayer ownership and lifecycle
+
+A further read-only original SHA-matched `client.dll` check traces
+the global's **actual writer** and **conditional destructor clear**:
+
+- Original 16-byte local-player writer window at `0x240D5643`,
+  SHA256 `fe3bf68710202428d5d1e532b8587b6ad369904304687eee3ffe8688f130eb30`.
+  It compares a player-local identity, computes `ESI=EDI-8`,
+  and on its matching path stores **ESI** to the global
+  `0x24338CF0` at instruction `0x240D564D`.
+- Original 18-byte object-destructor clear window at
+  `0x240D5D15`, SHA256
+  `dfed227d1d7cfafdca77fe728effea9ff1a7b7b74fa7a80aff07d5b314beec10`.
+  It first compares the dying **ESI** object against the global,
+  and only clears that global when it still references the object.
+- The same destructor installs original primary vptr
+  `0x2428AAE4`, evidenced in its 20-byte window
+  `0x240D5CC0`, SHA256
+  `81107a35df10f0877456e77ae794c464731489a81dad7265c628c257af8a53b7`.
+- That vtable's actual MSVC RTTI cell at `0x2428AAE0` points
+  to a Complete Object Locator at `0x242E2C7C`,
+  primary object offset zero, TypeDescriptor
+  `0x242F93C8`, whose exact original name is
+  `.?AVC_BasePlayer@@`. The COL hierarchy pointer is
+  `0x242E2C6C`. The original writer, destructor, vptr
+  and RTTI-pointer operand sites all have PE32 HIGHLOW relocations.
+
+This is direct native original evidence that **the prediction view
+readers use the live client `C_BasePlayer`**. The C_BasePlayer
+lifetime and entity registration are *not* independently
+implemented by this diagnostic phase, and no original object
+is dereferenced by its synthetic tests.
 
 ### Slot 8: scalar DWORD getter
 
@@ -91,9 +125,13 @@ fixture lifetime.
 authenticates both original whole-function hashes and sparse
 opcode/operand structure, confirms native relocation sites and
 non-method padding, and reuses the full original dual-DLL
-Phase1658 SHA gates. Public `--self-test` constructs invented
-x86 byte windows and mutates every byte; it never includes original
-commercial method bodies or needs the retail game files.
+Phase1658 SHA gates. It also checks original C_BasePlayer writer,
+conditional destructor clear, installed primary vtable and exact
+MSVC RTTI class identity with seven more relocation checks. Public
+`--self-test` constructs invented x86 byte windows and mutates
+each method byte, plus the synthetic player owner/clear/RTTI windows;
+it never includes original commercial method bodies or needs the
+retail game files.
 
 Two new CTests are registered, raising the stacked native target
 from **265** to **267** tests. The original decomp synthetic
@@ -103,8 +141,9 @@ workflow also runs the self-test on the expected paths.
 
 This adds **two previously unreviewed full original method extents
 (76 bytes)**, distinct from Phase1658's original prediction methods.
-Other large prediction slots and engine host construction/lifetime
-remain unresolved. This separate host snapshot does not constitute
+Other large prediction slots and actual C_BasePlayer construction/lifetime
+remain unresolved, although its original class identity and
+conditional current-local-player global assignment/clear are now proven. This separate host snapshot does not constitute
 a real Source engine C++ service implementation.
 
 There is no production `VClientPrediction001` CreateInterface
