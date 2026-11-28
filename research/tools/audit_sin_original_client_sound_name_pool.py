@@ -26,7 +26,9 @@ METHODS = (
      "sound_emitter_two_virtual_calls"),
     (0x241BF5F0, 195, "ee6abaccb339549ba4ef800f200a39c408d80adc8ad9b1ef54a882a8fed80b1a",
      "caller_parameter_record_flags_and_list_copy"),
-    # Three independently identified original source object-creation methods.
+    # Four independently identified original source object-creation methods.
+    (0x241C00C0, 217, "9b6de2cd6391cd721ca2546a40273eb2389c3d93299d405b943b6a53f8760dad",
+     "sound_record_creator_with_source_handle"),
     (0x241C01A0, 290, "61215820358176a1c53e6fbb1b28fff51f7039308ac3b3f750bde8f56b2265ed",
      "sound_record_creator_with_numeric_conversion"),
     (0x241C02D0, 220, "3c1135ed68e80e85178fd951f93652ce847c625d44878b211b006f693e720bad",
@@ -101,11 +103,12 @@ def verify(server: bytes, client: bytes) -> dict:
     for site in INITIALIZER_CALLERS:
         rel_call(pe.at, site, 0x241BF880)
 
-    # Three entire native creator methods (the fourth direct callsite is
-    # proven above, but its enclosing full function is NOT claimed here).
+    # Four entire native creator methods, source-verified against original
+    # whole-method hashes and complete padded function boundaries.
     # All request 0x64 object bytes from the same native allocator and
     # initialize named-parameter object storage before common Init.
     for begin, alloc_site, vtptr_site, counter_site in (
+        (0x241C00C2, 0x241C00C9, 0x241C00F2, 0x241C010B),
         (0x241C01A2, 0x241C01A9, 0x241C01D2, 0x241C01EB),
         (0x241C02D2, 0x241C02D9, 0x241C0302, 0x241C031B),
         (0x241C03B3, 0x241C03BA, 0x241C03E2, 0x241C03FB),
@@ -118,10 +121,11 @@ def verify(server: bytes, client: bytes) -> dict:
         need_bytes(pe, counter_site,
                    b"\x83\x05" + struct.pack("<I", 0x243757F8) + b"\x01",
                    "original allocated-record count increment")
-    # Two creator variants return with 5 stack arguments; the third,
-    # after two float/parameter updates, returns with 3. Do NOT infer
+    # Two creator variants return with 5 stack arguments; the first and
+    # fourth return with 3. Do NOT infer
     # full higher-level signatures or pretend null allocator safety.
     for address, tail in (
+        (0x241C0196, b"\xC2\x0C\x00"),
         (0x241C02BF, b"\xC2\x14\x00"),
         (0x241C03A9, b"\xC2\x14\x00"),
         (0x241C04CE, b"\xC2\x0C\x00"),
