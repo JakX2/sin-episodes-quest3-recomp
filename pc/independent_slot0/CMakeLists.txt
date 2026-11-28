@@ -2311,3 +2311,13 @@ if(Python3_Interpreter_FOUND)
       --self-test --catalog
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")
 endif()
+
+# Phase1696: all 191 source-authenticated class->RecvTable constructor
+# matches (939 declared 60-byte RecvProp slots) with DTKeypad exception.
+# This CTest is synthetic only; owner original is NEVER a CI dependency.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_class_recvtables_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_class_recvtable_links.py"
+      --self-test)
+endif()
