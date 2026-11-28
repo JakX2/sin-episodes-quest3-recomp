@@ -163,6 +163,8 @@ jobs:
           /tmp/sin-all-191-creator-bodies research/manifests/original_client_class_catalog_phase1696.tsv
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_singleton_lifecycle.cpp -o /tmp/sin-world-singleton-lifecycle
           /tmp/sin-world-singleton-lifecycle research/manifests/original_client_class_catalog_phase1696.tsv
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_constructor_descriptor_vector.cpp -o /tmp/sin-constructor-descriptor-vector
+          /tmp/sin-constructor-descriptor-vector
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
@@ -207,3 +209,5 @@ jobs:
           /tmp/sin-all-191-creator-bodies-san research/manifests/original_client_class_catalog_phase1696.tsv
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_world_singleton_lifecycle.cpp -o /tmp/sin-world-singleton-lifecycle-san
           /tmp/sin-world-singleton-lifecycle-san research/manifests/original_client_class_catalog_phase1696.tsv
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_constructor_descriptor_vector.cpp -o /tmp/sin-constructor-descriptor-vector-san
+          /tmp/sin-constructor-descriptor-vector-san
