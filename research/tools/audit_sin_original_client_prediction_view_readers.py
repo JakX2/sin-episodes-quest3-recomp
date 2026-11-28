@@ -102,6 +102,36 @@ def verify_slot13(blob: bytes, host: int) -> None:
           "slot13 does not copy precisely three host +0xF04 DWORDs "
           "to caller's OUT pointer and return RET4")
 
+def verify_player_assignment_window(blob: bytes, host: int) -> None:
+    check(len(blob)==PLAYER_ASSIGN_LENGTH and
+          blob[:10]==bytes.fromhex("3947488d77f8752bb001") and
+          blob[10:12]==bytes.fromhex("8935") and dword(blob,12)==host,
+          "local C_BasePlayer assignment not guarded EDI-8 -> global pointer")
+
+
+def verify_player_clear_window(blob: bytes, host: int) -> None:
+    check(len(blob)==PLAYER_CLEAR_LENGTH and
+          blob[:2]==bytes.fromhex("3b35") and
+          dword(blob,2)==host and
+          blob[6:10]==bytes.fromhex("750ac705") and
+          dword(blob,10)==host and blob[14:18]==b"\0"*4,
+          "local player destructor does not compare then clear host singleton")
+
+
+def verify_player_dtor_vptr(blob: bytes, vtable: int) -> None:
+    check(len(blob)==PLAYER_DTOR_VPTR_STORE_LENGTH and
+          blob[:5]==bytes.fromhex("568bf1c706") and
+          dword(blob,5)==vtable,
+          "C_BasePlayer destructor did not reinstall correct primary vptr")
+
+
+def verify_player_rtti_col(blob: bytes, type_descriptor: int,
+                           hierarchy: int) -> None:
+    check(len(blob)==20 and struct.unpack("<IIIII",blob) ==
+          (0,0,0,type_descriptor,hierarchy),
+          "owner object not C_BasePlayer primary RTTI zero-offset hierarchy")
+
+
 def verify_original_player_global_owner(pe: PEImage,
                                        relocated: set[int]) -> None:
     """Identify the host global as original C_BasePlayer, not a guess.
@@ -114,26 +144,16 @@ def verify_original_player_global_owner(pe: PEImage,
     assign=section_read(pe,PLAYER_ASSIGN_VA,PLAYER_ASSIGN_LENGTH,".text")
     check(hashlib.sha256(assign).hexdigest()==PLAYER_ASSIGN_SHA,
           "local player conditional writer whole x86 window SHA differs")
-    check(assign[:10]==bytes.fromhex("3947488d77f8752bb001") and
-          assign[10:12]==bytes.fromhex("8935") and
-          dword(assign,12)==HOST_GLOBAL_VA,
-          "local player writer not EDI-8 -> global pointer")
+    verify_player_assignment_window(assign,HOST_GLOBAL_VA)
     clear=section_read(pe,PLAYER_CLEAR_VA,PLAYER_CLEAR_LENGTH,".text")
     check(hashlib.sha256(clear).hexdigest()==PLAYER_CLEAR_SHA,
           "local player destructor clear window whole SHA differs")
-    check(clear[:2]==bytes.fromhex("3b35") and
-          dword(clear,2)==HOST_GLOBAL_VA and
-          clear[6:10]==bytes.fromhex("750ac705") and
-          dword(clear,10)==HOST_GLOBAL_VA and
-          clear[14:18]==b"\0"*4,
-          "local player destruction must compare then conditionally clear global")
+    verify_player_clear_window(clear,HOST_GLOBAL_VA)
     dtor=section_read(pe,PLAYER_DTOR_VPTR_STORE_VA,
                       PLAYER_DTOR_VPTR_STORE_LENGTH,".text")
     check(hashlib.sha256(dtor).hexdigest()==PLAYER_DTOR_VPTR_STORE_SHA,
           "original C_BasePlayer deleting/destructor vptr window SHA differs")
-    check(dtor[:5]==bytes.fromhex("568bf1c706") and
-          dword(dtor,5)==PLAYER_PRIMARY_VTABLE_VA,
-          "local player destructor does not install primary player vptr")
+    verify_player_dtor_vptr(dtor,PLAYER_PRIMARY_VTABLE_VA)
     check(pe.section_of(PLAYER_PRIMARY_VTABLE_VA)==".rdata"
           and pe.section_of(PLAYER_RTTI_TYPE_VA)==".data",
           "original C_BasePlayer vtable/RTTI wrong data sections")
@@ -141,9 +161,7 @@ def verify_original_player_global_owner(pe: PEImage,
           pack(PLAYER_RTTI_COL_VA),
           "primary C_BasePlayer vftable[-1] RTTI COL pointer differs")
     col=section_read(pe,PLAYER_RTTI_COL_VA,20,".rdata")
-    check(struct.unpack("<IIIII",col)==
-          (0,0,0,PLAYER_RTTI_TYPE_VA,PLAYER_RTTI_CHD_VA),
-          "C_BasePlayer primary COL type/offset/hierarchy differs")
+    verify_player_rtti_col(col,PLAYER_RTTI_TYPE_VA,PLAYER_RTTI_CHD_VA)
     check(section_read(pe,PLAYER_RTTI_TYPE_VA+8,
                        len(PLAYER_RTTI_TYPE_NAME),".data")==
           PLAYER_RTTI_TYPE_NAME,
@@ -251,12 +269,52 @@ def self_test() -> None:
                "truncated original method accepted")
         reject(lambda f=fn,b=data:f(b+b"\xCC",fake_host),
                "original method plus padding accepted")
+    # Owner-global assignment and destruction evidence also gets
+    # actual byte-mutation tests using INVENTED C_BasePlayer pointer
+    # values. These are NOT retail code bytes from the original DLL.
+    fake_player_global=0x4561C000
+    fake_player_vtable=0x4524D000
+    fake_player_type=0x4542C000
+    fake_player_chd=0x4542D000
+    fake_assign=(bytes.fromhex("3947488d77f8752bb0018935")+
+                 pack(fake_player_global))
+    verify_player_assignment_window(fake_assign,fake_player_global)
+    for i in range(len(fake_assign)):
+        broken=bytearray(fake_assign);broken[i]^=1
+        reject(lambda data=bytes(broken):verify_player_assignment_window(
+            data,fake_player_global),
+            "synthetic player local-global assignment byte "+str(i))
+    fake_clear=(bytes.fromhex("3b35")+pack(fake_player_global)+
+                bytes.fromhex("750ac705")+pack(fake_player_global)+pack(0))
+    verify_player_clear_window(fake_clear,fake_player_global)
+    for i in range(len(fake_clear)):
+        broken=bytearray(fake_clear);broken[i]^=1
+        reject(lambda data=bytes(broken):verify_player_clear_window(
+            data,fake_player_global),
+            "synthetic player conditional clear byte "+str(i))
+    fake_dtor=(bytes.fromhex("568bf1c706")+pack(fake_player_vtable)+
+               b"\x90"*11)
+    verify_player_dtor_vptr(fake_dtor,fake_player_vtable)
+    for i in range(9):
+        broken=bytearray(fake_dtor);broken[i]^=1
+        reject(lambda data=bytes(broken):verify_player_dtor_vptr(
+            data,fake_player_vtable),
+            "synthetic player destructor vfptr store byte "+str(i))
+    fake_col=pack(0)*3+pack(fake_player_type)+pack(fake_player_chd)
+    verify_player_rtti_col(fake_col,fake_player_type,fake_player_chd)
+    for i in range(len(fake_col)):
+        broken=bytearray(fake_col);broken[i]^=1
+        reject(lambda data=bytes(broken):verify_player_rtti_col(
+            data,fake_player_type,fake_player_chd),
+            "synthetic C_BasePlayer primary RTTI COL byte "+str(i))
+
     reject(lambda:audit(b"fake client",b"fake engine"),
            "retail original SHA bypass")
     print("PASS Phase1659 original-free synthetic: SHA-pinned parent "
           "prediction23, slot8 host+0x1DC optional DWORD RET0, "
           "slot13 host+0xF04 triple-DWORD OUT RET4, null-host "
-          "zero vector, byte-level corruption/extent/false SHA refusal")
+          "zero vector, C_BasePlayer writer/destructor/RTTI identity, "
+          "byte-level corruption/extent/false SHA refusal")
 
 def main() -> int:
     p=argparse.ArgumentParser(description=__doc__)
