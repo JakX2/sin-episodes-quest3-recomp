@@ -168,8 +168,7 @@ int main() {
        !same(input_b,{0x91u,0x80000092u,0x93u}) ||
        !same(player.mirrored_b,input_b) ||
        !player.correct_mirror_before_notify ||
-       !sequence(player,"ABamn bMN",8u)) {
-        // Spaces in human-readable text are not callback events.
+       !sequence(player,"ABamnbMN",8u)) {
         return fail(6,"setter virtual->mirror->notifier native sequence");
     }
     // Both native methods are one DWORD thiscall, clean stack by RET4.
