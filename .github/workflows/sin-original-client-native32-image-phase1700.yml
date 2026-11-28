@@ -13,6 +13,9 @@ on:
       - "include/sin_compat/original_client_custom_handle_proxy.hpp"
       - "include/sin_compat/original_client_custom_color_integer_proxies.hpp"
       - "include/sin_compat/original_client_custom_movement_fov_proxies.hpp"
+      - "include/sin_compat/original_client_custom_scale_transition_proxies.hpp"
+      - "tests/test_original_client_custom_scale_transition_proxies.cpp"
+      - "research/tools/audit_sin_original_client_custom_scale_transition_proxies.py"
       - "tests/test_original_client_custom_movement_fov_proxies.cpp"
       - "research/tools/audit_sin_original_client_custom_movement_fov_proxies.py"
       - "tests/test_original_client_custom_color_integer_proxies.cpp"
@@ -58,6 +61,7 @@ jobs:
           python research/tools/audit_sin_original_client_custom_handle_proxy.py --self-test
           python research/tools/audit_sin_original_client_custom_color_integer_proxies.py --self-test
           python research/tools/audit_sin_original_client_custom_movement_fov_proxies.py --self-test
+          python research/tools/audit_sin_original_client_custom_scale_transition_proxies.py --self-test
       - name: Strict C++17 compile and run real 2006 source schema in owned token arena
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
@@ -74,6 +78,8 @@ jobs:
           /tmp/sin-custom-color-integer-proxy
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_custom_movement_fov_proxies.cpp -o /tmp/sin-custom-movement-fov-proxy
           /tmp/sin-custom-movement-fov-proxy
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_custom_scale_transition_proxies.cpp -o /tmp/sin-custom-scale-transition-proxy
+          /tmp/sin-custom-scale-transition-proxy
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
@@ -90,3 +96,5 @@ jobs:
           /tmp/sin-custom-color-integer-proxy-san
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_custom_movement_fov_proxies.cpp -o /tmp/sin-custom-movement-fov-proxy-san
           /tmp/sin-custom-movement-fov-proxy-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_custom_scale_transition_proxies.cpp -o /tmp/sin-custom-scale-transition-proxy-san
+          /tmp/sin-custom-scale-transition-proxy-san
