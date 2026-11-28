@@ -30,6 +30,13 @@ add_test(NAME independent_owner_probe_guardrails
     -Launcher "${CMAKE_CURRENT_SOURCE_DIR}/Invoke-OwnerIndependentEngineProbe.ps1"
     -IndependentBin "$<TARGET_FILE_DIR:sin_slot0_client>")
 
+# Client-only owner interface-boundary handoff: verify exact
+# sound/prediction/entity-list/centerprint flags with synthetic DLL bytes.
+add_test(NAME independent_owner_client_startup_boundary_synthetic
+  COMMAND powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/Test-OwnerClientStartupBoundary.ps1"
+    -Wrapper "${CMAKE_CURRENT_SOURCE_DIR}/Run-OwnerClientStartupBoundary.ps1")
+
 # No original binary or retail process: exercise exact phase selection and
 # refusal of forged, stale, incomplete or cross-session owner evidence.
 add_test(NAME independent_owner_filesystem_gate_synthetic
