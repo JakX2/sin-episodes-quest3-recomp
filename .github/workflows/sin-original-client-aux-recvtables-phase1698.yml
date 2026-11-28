@@ -1,0 +1,29 @@
+name: SiN original 20 auxiliary receive tables and 171 property types
+
+on:
+  pull_request:
+    paths:
+      - "research/tools/audit_sin_original_client_aux_recvtables.py"
+      - "include/sin_compat/original_client_aux_recvtable_metadata.hpp"
+      - "tests/test_original_client_aux_recvtable_metadata.cpp"
+      - ".github/workflows/sin-original-client-aux-recvtables-phase1698.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-witness-and-owned-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source-only synthetic 20/171 audit and wrong SHA refusals
+        run: python research/tools/audit_sin_original_client_aux_recvtables.py --self-test
+      - name: Strict C++17 portable 20-table 171-property metadata validation
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_aux_recvtable_metadata.cpp -o /tmp/sin-original-client-aux-tables
+          /tmp/sin-original-client-aux-tables
+      - name: ASan/UBSan on independent auxiliary table metadata
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_aux_recvtable_metadata.cpp -o /tmp/sin-original-client-aux-tables-san
+          /tmp/sin-original-client-aux-tables-san

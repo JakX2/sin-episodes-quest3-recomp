@@ -6446,3 +6446,21 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_nested_array_table_tests)
   endif()
 endif()
+
+
+# Phase1698: real 2006 PE32 20 auxiliary receive tables and 171
+# original additional RecvProp slots (211 static tables /1110 static
+# slots total). Metadata only; client network ABI is NOT enabled.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_aux_recvtable_metadata_tests
+    tests/test_original_client_aux_recvtable_metadata.cpp)
+  target_include_directories(sin_original_client_aux_recvtable_metadata_tests PRIVATE include)
+  target_compile_features(sin_original_client_aux_recvtable_metadata_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_aux_recvtable_metadata_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_aux_recvtable_metadata_tests
+      COMMAND sin_original_client_aux_recvtable_metadata_tests)
+  endif()
+endif()
