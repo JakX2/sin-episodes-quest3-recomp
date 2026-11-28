@@ -16,6 +16,9 @@ on:
       - "include/sin_compat/original_client_custom_scale_transition_proxies.hpp"
       - "include/sin_compat/original_client_custom_team_array_element_proxy.hpp"
       - "include/sin_compat/original_client_custom_gamerules_datatable_proxy.hpp"
+      - "include/sin_compat/original_client_custom_beam_speed_proxy.hpp"
+      - "tests/test_original_client_custom_beam_speed_proxy.cpp"
+      - "research/tools/audit_sin_original_client_custom_beam_speed_proxy.py"
       - "tests/test_original_client_custom_gamerules_datatable_proxy.cpp"
       - "research/tools/audit_sin_original_client_custom_gamerules_datatable_proxy.py"
       - "tests/test_original_client_custom_team_array_element_proxy.cpp"
@@ -70,6 +73,7 @@ jobs:
           python research/tools/audit_sin_original_client_custom_scale_transition_proxies.py --self-test
           python research/tools/audit_sin_original_client_custom_team_array_element_proxy.py --self-test
           python research/tools/audit_sin_original_client_custom_gamerules_datatable_proxy.py --self-test
+          python research/tools/audit_sin_original_client_custom_beam_speed_proxy.py --self-test
       - name: Strict C++17 compile and run real 2006 source schema in owned token arena
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
@@ -92,6 +96,8 @@ jobs:
           /tmp/sin-custom-team-array-proxy
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_custom_gamerules_datatable_proxy.cpp -o /tmp/sin-custom-gamerules-proxy
           /tmp/sin-custom-gamerules-proxy
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_custom_beam_speed_proxy.cpp -o /tmp/sin-custom-beam-speed-proxy
+          /tmp/sin-custom-beam-speed-proxy
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
@@ -114,3 +120,5 @@ jobs:
           /tmp/sin-custom-team-array-proxy-san
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_custom_gamerules_datatable_proxy.cpp -o /tmp/sin-custom-gamerules-proxy-san
           /tmp/sin-custom-gamerules-proxy-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_custom_beam_speed_proxy.cpp -o /tmp/sin-custom-beam-speed-proxy-san
+          /tmp/sin-custom-beam-speed-proxy-san
