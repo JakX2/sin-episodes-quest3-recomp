@@ -88,6 +88,7 @@ on:
       - 'research/tools/audit_sin_original_postnetwork_casefold_comparator.py'
       - 'research/tools/audit_sin_original_prediction_postnetwork_tail_transition.py'
       - 'research/tools/audit_sin_original_prediction_reinit_predictables.py'
+      - 'research/tools/audit_sin_original_prediction_entity_reinit_guard.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -333,3 +334,6 @@ jobs:
 
       - name: Authenticate original 110B CPrediction ReinitPredictables helper (synthetic only)
         run: python research/tools/audit_sin_original_prediction_reinit_predictables.py --self-test
+
+      - name: Authenticate original 126B entity reinit guard and embedded 7B/8B state helpers (synthetic only)
+        run: python research/tools/audit_sin_original_prediction_entity_reinit_guard.py --self-test
