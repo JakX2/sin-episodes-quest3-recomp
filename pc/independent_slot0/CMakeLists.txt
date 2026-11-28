@@ -1836,3 +1836,21 @@ target_compile_features(sin_original_postnetwork_entity_compare_chain_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_entity_compare_chain_native
   COMMAND sin_original_postnetwork_entity_compare_chain_test)
+
+
+# Phase1670: exact original 104B PostNetwork ten-arg comparison
+# context initializer and 71B 3-arg result/counter wrapper.
+# Public source-only SHA audit and actual Win32 x86 original-free
+# RET40/RET12 ABI and opaque child-call ordering regressions.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_compare_helpers_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_compare_helpers.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_compare_helpers_test
+  test_original_postnetwork_compare_helpers.cpp)
+target_compile_features(sin_original_postnetwork_compare_helpers_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_compare_helpers_native
+  COMMAND sin_original_postnetwork_compare_helpers_test)
