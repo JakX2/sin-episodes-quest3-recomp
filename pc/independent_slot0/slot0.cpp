@@ -311,6 +311,18 @@ static bool registerMissingPredictionConVar(void* engineCvar) noexcept {
     std::memcpy(&reg,table+0u,sizeof(reg));
     std::memcpy(&find,table+3u,sizeof(find));
     if(!reg || !find)return false;
+    // Once VEngineCvar002 has received a native C++ ConVar
+    // vptr, it may retain that pointer beyond a client shutdown.
+    // Pin this independent client.dll for the remainder of the
+    // explicitly requested diagnostic process, so a later
+    // FreeLibrary cannot invalidate engine-visible virtual code.
+    HMODULE retainedModule=nullptr;
+    if(!GetModuleHandleExA(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|
+        GET_MODULE_HANDLE_EX_FLAG_PIN,
+        reinterpret_cast<LPCSTR>(&registerMissingPredictionConVar),
+        &retainedModule) || !retainedModule)
+        return false;
     if(!g_predictionConVarOwner)
         g_predictionConVarOwner=new(std::nothrow)
             owned_predict::Owner();
