@@ -464,7 +464,13 @@ int main(int argc,char** argv) {
     // The test-created linked ConVars are destroyed only after
     // production DLL runtime is unloaded. The real game never
     // receives their addresses outside the mock's lifetime.
-    FreeLibrary(module);
+    // Native engine ICvar now owns our registered ConVar pointer.
+    // The independently compiled client DLL must remain loaded
+    // even after its original LoadLibrary reference is released.
+    const auto* originalLoadedModule=module;
+    if(!FreeLibrary(module) ||
+       GetModuleHandleA("client.dll")!=originalLoadedModule)
+        return fail(33,"source CVar vptr module not pinned for engine lifetime");
     std::puts("PASS Phase1686 actual production PE32 client.dll: "
               "21 original VClient011 factory dependencies, guarded "
               "VEngineCvar002 FindConstVar cl_predict parent+0x18/"
