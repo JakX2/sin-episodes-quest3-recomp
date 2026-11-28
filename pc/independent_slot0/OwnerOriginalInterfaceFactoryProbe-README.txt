@@ -27,6 +27,14 @@ Windows 32-bit original factory interface readback:
   - Reads original cl_predict ConVar's m_pParent at +0x18 and its numeric
     m_nValue at +0x2C only when m_pParent==&cl_predict; never follows
     an external alias, and never invokes ConVar or prediction functions
+  - Observes client global 0x24338CF0 (original current C_BasePlayer)
+    with a bounded 32-bit read. Normal owner DllMain-only load has NO
+    local player and reports "no_local_player" without failing.
+    For an existing exact-base player only, validates original primary
+    vptr at RVA 0x28AAE4 before reading the known +0x1DC scalar and
+    +0xF04/+0xF08/+0xF0C view DWORDs; repeats vptr and owner pointer
+    checks to detect turnover, rejects derived/unknown vptrs and
+    unreadable/unaligned/overflow pointers without virtual calls.
   - Verifies original server ServerGameClients003 15-slot loaded vtable
   - Does NOT launch SinEpisodes.exe, load a map, or test independent game DLLs
 
@@ -49,6 +57,7 @@ Expected output includes JSON events:
   original_client_entitylist_startup_state
   original_client_prediction23_vtable
   original_cl_predict_convar_startup
+  original_local_cbaseplayer_prediction_view_snapshot
   original_servergameclients_vtable
 
 The entity-list JSON event reports the 65556-byte secondary interface
@@ -61,6 +70,14 @@ The Phase1657 startup-state event additionally shows four bounded original
 entity-list integer counters, without printing original process pointers.
 It does NOT print raw original machine-code bytes, process pointers, or
 original game object contents.
+
+Phase1660 local-player observation is a **read-only, best-effort**
+metadata snapshot, NOT actual Source engine ownership synchronization.
+Only an original exact C_BasePlayer primary vptr is recognized; genuine
+derived classes can differ and are never probed past their vptr. Original
+engine game initialization has not occurred in this owner factory tool,
+so the expected normal startup is "no_local_player". No raw player
+addresses, vector coordinates, or original bytes are logged.
 
 The Phase1658 prediction event requires all 23 pointers in the original
 prediction object's virtual table to match the SHA-pinned retail image.
