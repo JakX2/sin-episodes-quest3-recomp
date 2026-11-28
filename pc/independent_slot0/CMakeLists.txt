@@ -1854,3 +1854,21 @@ target_compile_features(sin_original_postnetwork_compare_helpers_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_compare_helpers_native
   COMMAND sin_original_postnetwork_compare_helpers_test)
+
+
+# Phase1671: original 139B nonvirtual diagnostic gate
+# __thiscall three DWORD RET12 and 65B linked-list finalizer
+# two DWORD RET8. Public CI uses only original-free invented
+# callback functions and SHA-gated sparse Python audit.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_diagnostic_core_finalizer_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_diagnostic_core_finalizer.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_diagnostic_core_finalizer_test
+  test_original_postnetwork_diagnostic_core_finalizer.cpp)
+target_compile_features(sin_original_postnetwork_diagnostic_core_finalizer_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_diagnostic_core_finalizer_native
+  COMMAND sin_original_postnetwork_diagnostic_core_finalizer_test)
