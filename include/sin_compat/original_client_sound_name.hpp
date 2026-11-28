@@ -9,6 +9,7 @@
 // intentionally outside this implementation.
 #include "original_client_game_string_pool.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 #include <utility>
 
@@ -56,6 +57,18 @@ inline bool HasLiteralFileToken(std::string_view name) noexcept {
 
 inline bool SafeCName(std::string_view name) noexcept {
     return !name.empty() && name.find('\0')==std::string_view::npos;
+}
+
+// Original parameter helper 0x241BF5F0 starts flags at 1, then invokes
+// provider vtable byte +4 followed by +8. It ORs 2 and 4 for true results.
+// This reconstructs only the two Boolean-flag transitions, not the
+// native provider object or the following variable-sized record array.
+template<class QuerySlot4,class QuerySlot8>
+std::uint32_t SourceParameterFlags(QuerySlot4&& first,QuerySlot8&& second) {
+    std::uint32_t flags=1u;
+    if(static_cast<bool>(std::forward<QuerySlot4>(first)()))flags|=2u;
+    if(static_cast<bool>(std::forward<QuerySlot8>(second)()))flags|=4u;
+    return flags;
 }
 
 struct Binding {
