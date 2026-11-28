@@ -8,6 +8,10 @@ on:
       - "include/sin_compat/original_client_native_type4_array_fields.hpp"
       - "include/sin_compat/original_client_source_proxy_catalog.hpp"
       - "include/sin_compat/original_client_standard_recvproxy_host.hpp"
+      - "include/sin_compat/original_client_source_string_sizes.hpp"
+      - "include/sin_compat/original_client_standard_recvproxy_router.hpp"
+      - "tests/test_original_client_standard_recvproxy_router.cpp"
+      - "research/tools/audit_sin_original_client_string_sizes.py"
       - "tests/test_original_client_standard_recvproxy_host.cpp"
       - "research/tools/audit_sin_original_client_standard_string_datatable_proxies.py"
       - "research/tools/audit_sin_original_client_source_proxy_catalog.py"
@@ -41,6 +45,7 @@ jobs:
           python research/tools/audit_sin_original_client_overlay_zero_field.py --self-test
           python research/tools/audit_sin_original_client_source_proxy_catalog.py --self-test
           python research/tools/audit_sin_original_client_standard_string_datatable_proxies.py --self-test
+          python research/tools/audit_sin_original_client_string_sizes.py --self-test
       - name: Strict C++17 compile and run real 2006 source schema in owned token arena
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
@@ -49,6 +54,8 @@ jobs:
           /tmp/sin-original-client-names research/manifests/original_client_class_catalog_phase1696.tsv research/manifests/original_client_static_recvprops_phase1704.csv
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_standard_recvproxy_host.cpp -o /tmp/sin-standard-recvproxy-host
           /tmp/sin-standard-recvproxy-host
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_standard_recvproxy_router.cpp -o /tmp/sin-standard-recvproxy-router
+          /tmp/sin-standard-recvproxy-router
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
@@ -57,3 +64,5 @@ jobs:
           /tmp/sin-original-client-names-san research/manifests/original_client_class_catalog_phase1696.tsv research/manifests/original_client_static_recvprops_phase1704.csv
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_standard_recvproxy_host.cpp -o /tmp/sin-standard-recvproxy-host-san
           /tmp/sin-standard-recvproxy-host-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_standard_recvproxy_router.cpp -o /tmp/sin-standard-recvproxy-router-san
+          /tmp/sin-standard-recvproxy-router-san
