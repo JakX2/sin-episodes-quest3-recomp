@@ -605,6 +605,8 @@ try {
         # an early exit or access-denied enumeration is NOT evidence that
         # the engine did not load either DLL.
         $observedModules = @{}
+        $observedManagedModules = @{}
+        $observedNativeModules = @{}
         $moduleInspectionSucceeded = $false
         $moduleInspectionFailures = 0
         $moduleInspectionSamples = 0
@@ -625,7 +627,9 @@ try {
                     foreach ($step in $plan) {
                         if ([string]::Equals($module.FileName,$step.Live,
                                 [System.StringComparison]::OrdinalIgnoreCase)) {
-                            $observedModules[[System.IO.Path]::GetFileName($step.Live)] = $true
+                            $name = [System.IO.Path]::GetFileName($step.Live)
+                            $observedModules[$name] = $true
+                            $observedManagedModules[$name] = $true
                         }
                     }
                 }
@@ -653,7 +657,9 @@ try {
                         foreach ($step in $plan) {
                             if ([string]::Equals($module.FullPath,$step.Live,
                                     [System.StringComparison]::OrdinalIgnoreCase)) {
-                                $observedModules[[System.IO.Path]::GetFileName($step.Live)] = $true
+                                $name = [System.IO.Path]::GetFileName($step.Live)
+                                $observedModules[$name] = $true
+                                $observedNativeModules[$name] = $true
                             }
                         }
                     }
@@ -685,6 +691,11 @@ try {
             } else {
                 Write-Output ("OWNER_ENGINE_MODULE_NOT_OBSERVED: {0}" -f $name)
             }
+            # The retail-original V2 census proved that a successful managed
+            # call can still contain only 5 WOW64 scaffolding modules.
+            Write-Output ("OWNER_ENGINE_MODULE_SOURCE: {0} managed={1} native={2}" -f
+                $name,$observedManagedModules.ContainsKey($name),
+                $observedNativeModules.ContainsKey($name))
         }
         Write-Output ("OWNER_ENGINE_MODULE_INSPECTION: success={0} failures={1} samples={2} first_error={3}" -f
             $moduleInspectionSucceeded,$moduleInspectionFailures,$moduleInspectionSamples,
@@ -851,6 +862,6 @@ try {
     $verdictScript = Join-Path $PSScriptRoot 'Get-OwnerIndependentStartupVerdict.ps1'
     & $verdictScript -Session $session -LogDirectory ([System.IO.Path]::GetTempPath())
     if ($logs.Count -eq 0) {
-        Write-Warning "No independent startup trace observed. The retail executable may not have loaded the game DLLs."
+        Write-Warning "No in-process independent startup trace observed. DLL module samples alone cannot prove CreateInterface or VClient011.Init execution. Check module evidence and restoration status."
     }
 }
