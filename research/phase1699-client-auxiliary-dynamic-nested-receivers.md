@@ -39,6 +39,24 @@ The whole original DLL SHA is checked **before** accepting them. The original so
 
 **Important:** Those two overlay callbacks are identified, not executable in the independent DLL. A 16-descriptor allocation does **not** establish sixteen independent final network fields or correct overlay proxy semantics. We deliberately do not fold the 16 into the authenticated 691 generic child-descriptor count.
 
+
+## Two original overlay receive-proxy calculation paths now reconstructed
+
+The original 44-byte callback `0x24127150` (SHA256 `d242eefc3be987bc2737d990d2570fcb1b8baee658423c52d5e9cb50d19863f5`) and 46-byte callback `0x24127180` (SHA256 `10b210d9c6cec8dbd257b131df49f1c0631a9fbf50af8e4f439f536d8fbb948e`) are individually complete-function source-authenticated. Both compute the same **native 32-bit overlay element addressing formula**, with original member offsets:
+
+- The original `RecvProp +0x14` points to a source 28-byte auxiliary callback record.
+- Original `RecvProp +0x30` contains the overlay's element index.
+- Original auxiliary callback record `+0x10` is the 32-byte stride, multiplied by the element index by **`imul`**.
+- Original auxiliary record `+0x14` is a parent-container field offset; the callback reads a DWORD from **`pStruct + auxiliaryFieldOffset`**, adding that dynamic base to index × stride.
+- Callback `0x24127150` then invokes original callback pointer at auxiliary record **+4**, whereas callback `0x24127180` invokes the function pointer at record **+0**. Both indirect `call` instructions are explicitly authenticated.
+
+The original opcode witnesses include `0x2412715C` and `0x24127198` (**index × stride**), `0x24127169` and `0x2412719C` (**add dynamic base**), and `0x24127173` / `0x241271A6` (**dispatch callbacks +4 / +0**).
+
+A new portable `include/sin_compat/original_client_overlay_proxy_offset.hpp` models **only that computed DWORD offset** with host-owned input structure bytes. It retains callback-slot identity, bounds-checks the parent field, rejects invalid overlay index/stride, and fails closed on offset overflow. The native original does not perform those extra safety checks, but they prevent invalid input from propagating into a portable decoder. `tests/test_original_client_overlay_proxy_offset.cpp` tests all 15 elements across both callback variants, invalid indices, fields, stride, callback kind, and arithmetic overflow; it is compiled and executed on Windows/native and Android emulator.
+
+**No game-owned callback is executed by this reference.** We have not reconstructed actual proxy side effects, original heap ownership, packet decoding or valid retail engine `RecvProp` pointer lifetime. The independent game DLL must not simply call arbitrary source integer VA labels as functions.
+
+
 ## Implementation and tests
 
 `research/tools/audit_sin_original_client_aux_dynamic_receivers.py` is an original read-only binary source auditor. It first authenticates all Phase1698 auxiliary table/property metadata, then checks the exact whole original native helper bodies, the three conventional array callsites, original count/stride/outer-base operand encodings, the specialized viewmodel and overlay callers, original overlay count+1 allocation arithmetic and the two source callback pointer stores. It supports owner-private `--full-json` metadata exports without original executable bytes.
@@ -53,6 +71,8 @@ Public, original-free checks:
 python research/tools/audit_sin_original_client_aux_dynamic_receivers.py --self-test
 g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_aux_dynamic_receivers.cpp -o /tmp/sin-aux-dynamic
 /tmp/sin-aux-dynamic
+g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_overlay_proxy_offset.cpp -o /tmp/sin-original-overlay-proxy
+/tmp/sin-original-overlay-proxy
 ```
 
 Original owner-private read-only source audit:
