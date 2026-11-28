@@ -78,6 +78,7 @@ jobs:
             build-android-arm64/sin_original_client_recvtable_preflight_tests
             build-android-arm64/sin_original_client_nested_array_table_tests
             build-android-arm64/sin_original_client_aux_recvtable_metadata_tests
+            build-android-arm64/sin_original_client_aux_dynamic_receivers_tests
           if-no-files-found: error
           retention-days: 7
 
@@ -297,6 +298,11 @@ jobs:
             adb push build-android-emulator-x86_64/sin_original_client_aux_recvtable_metadata_tests /data/local/tmp/sin_client_class_catalog/sin_original_client_aux_recvtable_metadata_tests
             adb shell 'cd /data/local/tmp/sin_client_class_catalog && chmod 700 sin_original_client_aux_recvtable_metadata_tests && ./sin_original_client_aux_recvtable_metadata_tests' | tr -d '\r' | tee build-android-emulator-x86_64/client-aux-recvtables-bionic-output.txt
             grep -Fxq 'PASS Phase1698 original 20 auxiliary RecvTables: 171 native property slots, all 211 static tables / 1110 slots accounted, unique ordered source VA labels, and retail ABI gated' build-android-emulator-x86_64/client-aux-recvtables-bionic-output.txt
+            # Phase1699: genuine 3+112 nested auxiliary source-shaped RecvProp
+            # metadata under Android Bionic; this is not a game boot.
+            adb push build-android-emulator-x86_64/sin_original_client_aux_dynamic_receivers_tests /data/local/tmp/sin_client_class_catalog/sin_original_client_aux_dynamic_receivers_tests
+            adb shell 'cd /data/local/tmp/sin_client_class_catalog && chmod 700 sin_original_client_aux_dynamic_receivers_tests && ./sin_original_client_aux_dynamic_receivers_tests' | tr -d '\r' | tee build-android-emulator-x86_64/client-aux-dynamic-bionic-output.txt
+            grep -Fxq 'PASS Phase1699 three source auxiliary nested arrays: 112 child-local original offsets with names 000..047, distinct type4 viewmodel and 15+1 overlay facts; retail ABI gated' build-android-emulator-x86_64/client-aux-dynamic-bionic-output.txt
       - name: Require actual Android pass evidence
         shell: bash
         run: |
@@ -337,6 +343,7 @@ jobs:
           grep -Fxq 'PASS Phase1697 191-source-class metadata + 939 synthetic type-safe property graph: nested type5, 60-byte stride contract, +17 visited cycles, 1024 root refusal, unknown types fail closed; no executable retail RecvTable pointers' build-android-emulator-x86_64/client-recvtable-preflight-bionic-output.txt
           grep -Fxq 'PASS Phase1697 original 11 dynamic nested array source shapes: 579 generated elements, type5 outer, 0/1 element templates, child-relative native offsets and parent base kept distinct; no retail RecvTable pointers' build-android-emulator-x86_64/client-nested-array-bionic-output.txt
           grep -Fxq 'PASS Phase1698 original 20 auxiliary RecvTables: 171 native property slots, all 211 static tables / 1110 slots accounted, unique ordered source VA labels, and retail ABI gated' build-android-emulator-x86_64/client-aux-recvtables-bionic-output.txt
+          grep -Fxq 'PASS Phase1699 three source auxiliary nested arrays: 112 child-local original offsets with names 000..047, distinct type4 viewmodel and 15+1 overlay facts; retail ABI gated' build-android-emulator-x86_64/client-aux-dynamic-bionic-output.txt
       - name: Upload Android x86_64 emulator evidence (NOT Quest device)
         uses: actions/upload-artifact@v4
         with:
@@ -372,5 +379,6 @@ jobs:
             build-android-emulator-x86_64/client-recvtable-preflight-bionic-output.txt
             build-android-emulator-x86_64/client-nested-array-bionic-output.txt
             build-android-emulator-x86_64/client-aux-recvtables-bionic-output.txt
+            build-android-emulator-x86_64/client-aux-dynamic-bionic-output.txt
           if-no-files-found: error
           retention-days: 7
