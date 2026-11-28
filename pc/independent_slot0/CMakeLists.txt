@@ -1910,3 +1910,22 @@ target_compile_features(sin_original_postnetwork_case8_case9_bytecmp_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_case8_case9_bytecmp_native
   COMMAND sin_original_postnetwork_case8_case9_bytecmp_test)
+
+
+# Phase1674: authentic ORIGINAL case8/case9 inline conditional copy
+# regions in 1036B PostNetwork typed dispatcher, this+0x2C
+# correction gate and (EAX!=1) REP MOVSD/REP MOVSB RIGHT->LEFT.
+# Two original SHA-bounded regions, NOT two new retail functions;
+# all x86 native and Python audits are original-free synthetic.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_case8_case9_copy_fixup_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_case8_case9_copy_fixup.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_case8_case9_copy_fixup_test
+  test_original_postnetwork_case8_case9_copy_fixup.cpp)
+target_compile_features(sin_original_postnetwork_case8_case9_copy_fixup_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_case8_case9_copy_fixup_native
+  COMMAND sin_original_postnetwork_case8_case9_copy_fixup_test)
