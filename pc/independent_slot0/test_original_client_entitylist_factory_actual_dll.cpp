@@ -337,6 +337,25 @@ int main(int argc,char** argv) {
        read32(secondary,0x14u+8u*4095u)!=0u ||
        read32(reinterpret_cast<void*>(base),4u)!=0u)
         return fail(23,"original entitylist secondary offsets / empty state");
+    // Retail base constructor 0x24127E80 initializes the
+    // raw+8 and raw+12 intrusive links to each own raw record.
+    // The host serial remains safely deterministic (0), not
+    // a fabricated original vstdlib RandomInt sample.
+    const std::uintptr_t firstRaw=base+api::kOriginalRawOffset;
+    const std::uintptr_t lastRaw=firstRaw+
+        (api::kRawCount-1u)*api::kOriginalRawStride;
+    if(read32(reinterpret_cast<void*>(base),
+              api::kOriginalRawOffset+8u)!=firstRaw ||
+       read32(reinterpret_cast<void*>(base),
+              api::kOriginalRawOffset+12u)!=firstRaw ||
+       read32(reinterpret_cast<void*>(base),
+              api::kOriginalRawOffset+
+              (api::kRawCount-1u)*api::kOriginalRawStride+8u)!=lastRaw ||
+       read32(reinterpret_cast<void*>(base),
+              api::kOriginalRawOffset+
+              (api::kRawCount-1u)*api::kOriginalRawStride+12u)!=lastRaw)
+        return fail(36,"original 4096 raw records must begin self-linked");
+
     // Verify ALL 9 real MSVC vcall slot return and cleanup ABIs.
     if(!invoke_one(secondary,slots[0],0u,0u) ||
        !invoke_one(secondary,slots[0],4095u,0u) ||
