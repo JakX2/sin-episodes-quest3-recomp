@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 
 #if !defined(_MSC_VER) || !defined(_M_IX86)
@@ -223,6 +225,38 @@ bool ready(Factory create,void* client,void** cvt,
     return create("VClientPrediction001",nullptr) &&
            create("VClientEntityList003",nullptr);
 }
+// Read ONLY our own process-scoped diagnostic file, never the
+// retail game's logs. This distinguishes actual native slot
+// invocation from an accepted factory pointer. First-use-only
+// per-session traces must not amplify frequent UI callbacks.
+bool check_source_engine_call_events() {
+    char temp[MAX_PATH]{};
+    const DWORD n=GetTempPathA(MAX_PATH,temp);
+    if(!n || n>=MAX_PATH)return false;
+    char filename[MAX_PATH]{};
+    const int written=std::snprintf(
+        filename,sizeof(filename),
+        "%ssin-independent-%s-%lu.log",
+        temp,"0123456789abcdef0123456789abcdef",
+        static_cast<unsigned long>(GetCurrentProcessId()));
+    if(written<=0 || static_cast<std::size_t>(written)>=sizeof(filename))
+        return false;
+    std::ifstream file(filename,std::ios::binary);
+    if(!file)return false;
+    const std::string text((std::istreambuf_iterator<char>(file)),
+                            std::istreambuf_iterator<char>());
+    const auto count=[&](const std::string& needle)->unsigned {
+        unsigned found=0u;
+        std::size_t pos=0u;
+        while((pos=text.find(needle,pos))!=std::string::npos) {
+            ++found;
+            pos+=needle.size();
+        }
+        return found;
+    };
+    return count("[SiN independent] role=client phase=client-centerprint-slot4-cold version=five-arg-no-backing")==1u &&
+           count("[SiN independent] role=client phase=client-centerprint-slot5-cold version=noarg-no-backing")==1u;
+}
 bool fatal_child(const char* path) {
     if(!prepare() || !set_session(true))return false;
     HMODULE m=nullptr;
@@ -329,6 +363,8 @@ int main(int argc,char** argv) {
        !call_noarg(cold,slots[7]) ||
        backing(cold)!=0u)
         return fail(20,"cold slots0–5,7 exact native ABI/empty backing");
+    if(!check_source_engine_call_events())
+        return fail(25,"actual centerprint source slot4/5 must emit one owner trace each, not just factory acceptance");
     if(!test_child_fatal(argv[1]))
         return fail(21,"source backing service Init slot6 did not terminate");
     if(!env("SIN_INDEPENDENT_CLIENT_CENTERPRINT_FACTORY_PROBE","0") ||
