@@ -46,8 +46,8 @@ using RefuseCallback=void (*)(const char*) noexcept;
 // The source slot0 is a scalar deleting destructor with RET4.
 // An engine delete attempt must terminate rather than free our
 // process-lifetime factory singleton or impersonate original
-// ownership. This class is placement-constructed and never
-// destroyed during module detach.
+// ownership. This class is constructed on the heap exactly once, retained
+// for the process lifetime, and never deleted during module detach.
 class Boundary {
 public:
     explicit Boundary(RefuseCallback refuse) noexcept:
@@ -148,7 +148,7 @@ private:
     std::uint32_t counter_a_=0u;
     std::uint32_t counter_b_=0u;
     std::uint32_t any_reconciled_=0u;
-    // Host-only fields start AFTER the source-observable 0x34B.
+    // Host-only fields start AFTER the source-observable 0x34 bytes.
     std::int32_t snapshot_=0;
     bool bound_=false;
     RefuseCallback refuse_=nullptr;
