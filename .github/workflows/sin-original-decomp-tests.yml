@@ -79,6 +79,7 @@ on:
       - 'research/tools/audit_sin_original_postnetwork_compare_helpers.py'
       - 'research/tools/audit_sin_original_postnetwork_diagnostic_core_finalizer.py'
       - 'research/tools/audit_sin_original_postnetwork_type_dispatch_13case.py'
+      - 'research/tools/audit_sin_original_postnetwork_case8_case9_bytecmp.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -297,3 +298,6 @@ jobs:
 
       - name: Authenticate original PostNetwork 1036-byte typed dispatcher 13 jump cases and 27 type aliases (synthetic only)
         run: python research/tools/audit_sin_original_postnetwork_type_dispatch_13case.py --self-test
+
+      - name: Authenticate original case8/case9 PostNetwork 56-byte gated CMPSB helper (synthetic only)
+        run: python research/tools/audit_sin_original_postnetwork_case8_case9_bytecmp.py --self-test
