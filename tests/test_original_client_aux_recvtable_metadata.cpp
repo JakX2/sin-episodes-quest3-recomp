@@ -39,6 +39,13 @@ int main() {
     assert(local && local->declaredPropertyCount==27);
     assert(weapon && weapon->declaredPropertyCount==5);
     assert(rules && rules->declaredPropertyCount==0);
+    assert(aux::kOriginalTotalOrdinaryNestedLinks==192u);
+    assert(aux::kOriginalClassOrdinaryNestedLinks==191u);
+    assert(aux::kOriginalAuxOrdinaryNestedLinks==1u);
+    assert(local->originalTableVA==aux::kOriginalLocalPlayerTableVA);
+    assert(aux::Find("DT_Local")->originalTableVA==
+           aux::kOriginalLocalChildTableVA);
+    assert(aux::kOriginalLocalNativeMemberOffset==0x0d68u);
     assert(hit && hit->declaredPropertyCount==15);
     assert(aux::kOriginalTypedIntegerAux==75 &&
            aux::kOriginalTypedFloatAux==62 &&
