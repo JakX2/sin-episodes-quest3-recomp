@@ -1,0 +1,40 @@
+name: SiN original 2006 RecvProp types and bounded graph
+
+on:
+  pull_request:
+    paths:
+      - "research/tools/audit_sin_original_client_recvprop_type_inventory.py"
+      - "research/tools/audit_sin_original_client_nested_recvtable_targets.py"
+      - "include/sin_compat/original_client_recvtable_preflight.hpp"
+      - "include/sin_compat/original_client_nested_array_table.hpp"
+      - "tests/test_original_client_nested_array_table.cpp"
+      - "tests/test_original_client_recvtable_preflight.cpp"
+      - ".github/workflows/sin-original-client-recvtables-phase1697.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-free-source-and-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify native 0..5 type tags and eleven unresolved copy paths without game bytes
+        run: |
+          python research/tools/audit_sin_original_client_recvprop_type_inventory.py --self-test
+          python research/tools/audit_sin_original_client_nested_recvtable_targets.py --self-test
+      - name: Strict standalone C++17 RecvTable preflight and cycle-safe nested metadata test
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_recvtable_preflight.cpp -o /tmp/sin-recvtable-preflight
+          /tmp/sin-recvtable-preflight research/manifests/original_client_class_catalog_phase1696.tsv
+      - name: Verify original eleven nested arrays and 579 generated element shapes
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_nested_array_table.cpp -o /tmp/sin-nested-array
+          /tmp/sin-nested-array
+      - name: Address and undefined behavior sanitizers on actual linked catalog preflight
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_recvtable_preflight.cpp -o /tmp/sin-recvtable-preflight-sanitized
+          /tmp/sin-recvtable-preflight-sanitized research/manifests/original_client_class_catalog_phase1696.tsv
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_nested_array_table.cpp -o /tmp/sin-nested-array-sanitized
+          /tmp/sin-nested-array-sanitized
