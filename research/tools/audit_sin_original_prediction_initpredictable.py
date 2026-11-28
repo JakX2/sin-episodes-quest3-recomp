@@ -176,7 +176,7 @@ def self_test()->None:
     check(verify_sparse(bytes(invented),METHOD_BYTES,w,"invented")==
           len(covered),"invented original-free witness coverage")
     for pos in sorted(covered):
-        changed=bytearray(invented);changed[pos]^1
+        changed=bytearray(invented);changed[pos]^=1
         reject(lambda data=bytes(changed):verify_sparse(
             data,METHOD_BYTES,w,"mutated"),str(pos))
     reject(lambda:verify_sparse(bytes(invented[:-1]),
