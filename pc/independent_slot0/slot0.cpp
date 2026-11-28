@@ -389,6 +389,31 @@ static bool readablePredictionSource(const void* pointer,
            (at-base)<=info.RegionSize &&
            length<=info.RegionSize-(at-base);
 }
+// Phase1691: reject bogus app-system factory pointers BEFORE invoking
+// source VSoundEmitter001 virtual slot0 in an owner diagnostic run.
+// Readable/executable page boundaries alone cannot authenticate that an
+// engine pointer is genuinely an ISoundEmitterSystemBase; this is a
+// conservative missing/forged pointer check, not a C++ RTTI proof.
+// The real source code may dereference a bad object and crash; the
+// independent DLL deliberately returns Init failure instead.
+static bool validOwnerSoundConnectSource(void* sound) noexcept {
+    if(!readablePredictionSource(sound,sizeof(void*)))return false;
+    const void* const* table=nullptr;
+    std::memcpy(&table,sound,sizeof(table));
+    if(!readablePredictionSource(table,sizeof(void*)))return false;
+    const void* entry=nullptr;
+    std::memcpy(&entry,table,sizeof(entry));
+    if(!entry)return false;
+    MEMORY_BASIC_INFORMATION info{};
+    if(VirtualQuery(entry,&info,sizeof(info))!=sizeof(info) ||
+       info.State!=MEM_COMMIT ||
+       (info.Protect&(PAGE_NOACCESS|PAGE_GUARD)))return false;
+    const DWORD access=info.Protect&0xffu;
+    return access==PAGE_EXECUTE ||
+           access==PAGE_EXECUTE_READ ||
+           access==PAGE_EXECUTE_READWRITE ||
+           access==PAGE_EXECUTE_WRITECOPY;
+}
 // Query only the already-acquired real VEngineCvar002 virtual slot3,
 // source-authenticated via the existing console_abi ABI. Do not write
 // or register any ConVar. The original slot1 checks cl_predict's
@@ -1385,6 +1410,11 @@ public:
         // Do not assume a returned VSoundEmitter001 pointer alone
         // means a successfully connected sound app system.
         if(clientSoundConnectContinueProbeEnabled()) {
+            if(!validOwnerSoundConnectSource(sound)) {
+                diagnostic("client-sound-connect-continue-refused",
+                           "invalid-sound-vtable");
+                return 0;
+            }
             if(!connectSound(sound,appSystemFactory)) {
                 diagnostic("client-sound-connect-continue-refused",
                            "VSoundEmitter001");
