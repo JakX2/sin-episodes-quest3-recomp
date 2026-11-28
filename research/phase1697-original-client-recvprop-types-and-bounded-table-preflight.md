@@ -22,24 +22,23 @@ Original 2006 `client.dll` SHA256:
 | 2 | Three-component vector | **136** |
 | 3 | String | **12** |
 | 4 | Array descriptor | **12** |
-| 5 | Nested RecvTable | **191** |
-| Unresolved | Source descriptor copied through `0x24126E90` | **11** |
-| **Total** | **928 authenticated; 11 unresolved** | **939** |
+| 5 | Nested RecvTable, including 11 generated array subtables | **202** |
+| **Total** | **All native type tags authenticated** | **939** |
 
-The 12 type-four descriptors come through original `0x24126BD0` array helper. The 11 unresolved descriptors enter via **`0x24126E90`** (a variable-sized preconstructed descriptor-copy path). That call alone does **not** prove the copied descriptor's native type DWORD. The audit explicitly refuses to guess.
+The 12 native type-four descriptors come through original `0x24126BD0` array helper. The remaining 11 array-copy routes enter the **351-byte original `0x24126E90`** method. Deeper whole-function disassembly verified that it allocates a variable-sized 60-byte descriptor array, constructs a separate 20-byte RecvTable, writes the **native type DWORD 5** into its outer temporary property descriptor and copies exactly 60 bytes into the destination. Therefore all eleven are **nested-table type 5**, not unknowns. Their nested table contents, element wiring, proxy callbacks and allocation-failure behavior still require further source recovery.
 
 The unresolved class properties are `CPlayerResource`'s seven `m_iPing`, `m_iScore`, `m_iDeaths`, `m_bConnected`, `m_iTeam`, `m_bAlive`, `m_iHealth`; `CBreakableSurface.m_RawPanelBitVec`; `CBaseFlex.m_flexWeight`; `CBaseAnimating.m_flPoseParameter` and `CBaseAnimating.m_flEncodedController`.
 
 Full source ordered `class|table|slot|name|numeric-tag|constructor|constructor-route` SHA256:
-`43b5a4634ed0566c1065794dcdb051aca7bd663ec187fe4295432ede5515106c`.
+`149122c6e319169fe9763990d14049887da11e513f119599958776392309ecc8`.
 
 These numeric native types are not a guarantee of matching modern Source SDK enum assignments, quantization rules, proxy semantics or platform field sizes.
 
 ### Proven original factory method anchors
 
-The original four type-2/3/4/5 factories at VAs `0x24126A60` (109 bytes), `0x24126AD0` (117 bytes), `0x24126BD0` (102 bytes) and `0x24126B50` (113 bytes) have individually SHA-verified complete original function bodies, original INT3 boundaries and exact native type-DWORD assignments. Earlier Phase251 already recovered type-zero integer factory `0x24126DF0` (146 bytes) and type-one float factory `0x24126D80` (106 bytes). Original wrappers at `0x241A8C60`, `0x241A8C90`, `0x241A8CC0`, `0x241A8D30` call the authenticated native integer or float constructors. Their complete function hashes and direct CALL edges are also checked by this phase.
+The original type-2/3/4/5 factories at VAs `0x24126A60` (109 bytes), `0x24126AD0` (117 bytes), `0x24126BD0` (102 bytes), `0x24126B50` (113 bytes), **and the special `0x24126E90` (351-byte dynamic nested-table array constructor)** have individually SHA-verified complete original function bodies, original INT3 boundaries and exact native type-DWORD assignments. Earlier Phase251 already recovered type-zero integer factory `0x24126DF0` (146 bytes) and type-one float factory `0x24126D80` (106 bytes). Original wrappers at `0x241A8C60`, `0x241A8C90`, `0x241A8CC0`, `0x241A8D30` call the authenticated native integer or float constructors. Their complete function hashes and direct CALL edges are also checked by this phase.
 
-Previously authenticated bytes are **not counted twice**. The four newly audited source factory functions total 441 original bytes; this metadata milestone does not claim a unique cumulative byte total without checking historical duplication.
+Previously authenticated bytes are **not counted twice**. The five complete type-2/3/4/5/array-to-nested-table factory methods total **792 original bytes** (109+117+102+113+351), separately from the already authenticated Phase251 type-zero and type-one methods. This metadata milestone does not assert these bytes are novel across all older historical research without exhaustive duplicate checks.
 
 ## Portable bounded RecvTable graph preflight
 
@@ -71,10 +70,10 @@ Private, user-owned original file only:
 python research/tools/audit_sin_original_client_recvprop_type_inventory.py --client /private/client.dll --full-json /private/sin-recvprop-types-metadata.json
 ```
 
-The `--full-json` report lists source class names, all original property names, original x86 offsets where verified, native numeric type tags where authenticated and null for the remaining eleven. It contains no executable original game code and must not be used as a live engine network decoder.
+The `--full-json` report lists source class names, all original property names, original x86 offsets where verified, native numeric type tags where authenticated and null for the remaining eleven. It contains no executable original game code and must not be used as a live engine network decoder. **All 939 native type tags are now classified; none should be silently mapped to newer Source SDK enum numbers.**
 
 ## Critical remaining work
 
-Resolve the **eleven copied RecvProp descriptors**, per-field native proxy functions, flags, nested subtable target pointers, class creation call signatures, class IDs and actual engine networking initialization. Pass those independently compiled native ABI tests before allowing original engine `VClient011.slot5` to return a real ClientClass pointer.
+The **eleven copied property native type tags are now resolved as type 5**. Remaining work includes those dynamically constructed nested table **contents and element linkage**, per-field proxy functions, flags, other nested subtable target pointers, class creation call signatures, class IDs and actual engine networking initialization. Pass those independently compiled native ABI tests before allowing original engine `VClient011.slot5` to return a real ClientClass pointer.
 
 The 2006 source's model/prop/rendering, surface property and HL2-equivalent physics systems remain explicitly deferred by the owner. None of the metadata graph work changes those systems or proves a new retail game boot, map, menu, Android APK or Quest3 runtime.
