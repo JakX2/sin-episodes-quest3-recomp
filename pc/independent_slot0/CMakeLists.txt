@@ -1963,3 +1963,18 @@ target_include_directories(sin_original_postnetwork_type7_integrated_test
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
 add_test(NAME independent_original_postnetwork_type7_integrated_native
   COMMAND sin_original_postnetwork_type7_integrated_test)
+
+
+# Phase1677: original-free native type8 (integer N-byte) and type9
+# (binary 4*N-byte) full source-ordered reconciliation integration:
+# native MSVC x86 RET12 compare, inline correction, prior Phase217
+# portable diagnostic model and native RET16 selected preview.
+# No original retail engine code executed by tests.
+add_executable(sin_original_postnetwork_case8_case9_integrated_test
+  test_original_postnetwork_case8_case9_integrated.cpp)
+target_compile_features(sin_original_postnetwork_case8_case9_integrated_test
+  PRIVATE cxx_std_17)
+target_include_directories(sin_original_postnetwork_case8_case9_integrated_test
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+add_test(NAME independent_original_postnetwork_case8_case9_integrated_native
+  COMMAND sin_original_postnetwork_case8_case9_integrated_test)
