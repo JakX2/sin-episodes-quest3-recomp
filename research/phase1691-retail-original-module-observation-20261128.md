@@ -51,3 +51,16 @@ This work concerns Windows process instrumentation and game-module loading. It n
 ## Verification boundary
 
 The text report is owner execution evidence only. A new two-enumerator PowerShell test kit has been prepared separately for owner validation, but no Windows run of that new script is claimed here. The original source-engine runtime, the proposed module sampler, and the reconstructed independent client are distinct test subjects. 
+
+
+## Follow-up owner test-kit packaging defect and fix (2026-11-28)
+
+The first standalone dual-census ZIP failed **before any process launch** when Windows PowerShell evaluated the optional parameter initializer:
+
+```powershell
+[string]$OutputDirectory=(Join-Path $PSScriptRoot 'results')
+```
+
+The owner saw: `Join-Path : Cannot bind argument to parameter 'Path' because it is an empty string` at line 8. This is a **probe initialization defect** and says nothing about either original retail DLL. The correct fix is to declare `[string]$OutputDirectory=''` in the `param` block, then resolve `Join-Path -Path $PSScriptRoot -ChildPath 'results'` **inside the body** after initial setup, guarding an absent script root before touching the game. A second robustness fix conditions native helper `Add-Type` on the type not already being loaded, making repeated attach runs possible in one PowerShell host. A fresh **V2 standalone ZIP** was generated and passed ZIP integrity and offline static contract checks. It is not a Windows-executed probe and is not included in this repository PR.
+
+Owner's next action is to extract **V2** into a clean folder and rerun the retail-original census. Successful Windows host self-attach regression and retail-original module inventory remain **pending**. A future committed Windows test should invoke the PowerShell probe **without** `-OutputDirectory` to guard the exact first-run failure mode, not merely parse the script or call it with an explicit output directory.
