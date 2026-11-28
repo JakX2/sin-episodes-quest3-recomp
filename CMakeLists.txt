@@ -6819,3 +6819,22 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
   endif()
 endif()
+
+
+# Phase1721: all 149 original source entity creator strategies:
+# 142 standard allocation, 6 exceptional allocations, CWorld
+# original global singleton. Original source VAs not callable.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_seven_creator_exceptions_tests
+    tests/test_original_client_seven_creator_exceptions.cpp)
+  target_include_directories(sin_original_client_seven_creator_exceptions_tests PRIVATE include)
+  target_compile_features(sin_original_client_seven_creator_exceptions_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_seven_creator_exceptions_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_seven_creator_exceptions_tests
+      COMMAND sin_original_client_seven_creator_exceptions_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
+  endif()
+endif()
