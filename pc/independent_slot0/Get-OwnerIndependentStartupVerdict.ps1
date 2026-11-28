@@ -21,6 +21,7 @@ $predictionFactoryEvents = New-Object System.Collections.Generic.List[string]
 $predictionConVarEvents = New-Object System.Collections.Generic.List[string]
 $entityListFactoryEvents = New-Object System.Collections.Generic.List[string]
 $centerprintColdEvents = New-Object System.Collections.Generic.List[string]
+$centerprintColdUses = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
@@ -214,6 +215,14 @@ foreach ($log in $logs) {
             $phase -in @('client-centerprint-cold-bound',
                           'client-centerprint-cold-refused')) {
             $centerprintColdEvents.Add(("{0}:client:{1}:{2}" -f
+                $log.Name,$phase,$version))
+        }
+        if ($role -eq 'client' -and
+            (($phase -eq 'client-centerprint-slot4-cold' -and
+              $version -eq 'five-arg-no-backing') -or
+             ($phase -eq 'client-centerprint-slot5-cold' -and
+              $version -eq 'noarg-no-backing'))) {
+            $centerprintColdUses.Add(("{0}:client:{1}:{2}" -f
                 $log.Name,$phase,$version))
         }
         if ($role -eq 'client' -and $version -eq 'VSoundEmitter001') {
@@ -1156,6 +1165,13 @@ if ($centerprintColdEvents.Count -gt 0) {
     # UI initialization nor any retail game boot is demonstrated.
     Write-Output ("OWNER_CLIENT_CENTERPRINT_COLD_FACTORY_BOUNDARY: {0}" -f
         ($centerprintColdEvents -join ','))
+}
+if ($centerprintColdUses.Count -gt 0) {
+    # Unlike a factory query, this evidence is a real native virtual
+    # method entry in the independent DLL. A cold/null backend still
+    # makes it a no-op, not an actual screen-rendering claim.
+    Write-Output ("OWNER_CLIENT_CENTERPRINT_COLD_METHOD_ENTRY: {0}" -f
+        ($centerprintColdUses -join ','))
 }
 if ($unsupportedCallbacks.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_UNSUPPORTED_CALLBACKS: {0}" -f ($unsupportedCallbacks -join ','))
