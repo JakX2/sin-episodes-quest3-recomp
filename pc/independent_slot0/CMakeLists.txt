@@ -1800,3 +1800,21 @@ target_compile_features(sin_original_predictable_entity_teardown_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_predictable_entity_teardown_native
   COMMAND sin_original_predictable_entity_teardown_test)
+
+
+# Phase1668: original client SHA pinned 1039-byte CPrediction
+# PostNetworkDataReceived slot6. A separate original-free native MSVC
+# x86 test exercises ONLY the entry/predictable reconciliation prefix;
+# later retail debug/correction branches are intentionally OPAQUE.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_postnetwork_slot6_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_postnetwork_slot6.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_postnetwork_slot6_test
+  test_original_client_prediction_postnetwork_slot6.cpp)
+target_compile_features(sin_original_prediction_postnetwork_slot6_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_prediction_postnetwork_slot6_native
+  COMMAND sin_original_prediction_postnetwork_slot6_test)

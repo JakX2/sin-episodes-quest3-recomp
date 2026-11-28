@@ -57,6 +57,12 @@ constexpr unsigned kOriginalVirtualCount=23u;
 constexpr unsigned kOriginalUpdateVirtualSlot=3u;
 constexpr unsigned kOriginalPrePacketVirtualSlot=4u;
 constexpr unsigned kOriginalPostPacketVirtualSlot=5u;
+constexpr unsigned kOriginalPostNetworkVirtualSlot=6u;
+constexpr std::uintptr_t kOriginalPostNetworkMethodVa=0x241960E0u;
+constexpr unsigned kOriginalPostNetworkMethodBytes=1039u;
+constexpr unsigned kOriginalPostNetworkStackPopBytes=4u;
+constexpr unsigned kOriginalPostNetworkInputMemberOffset=0x2Cu;
+constexpr unsigned kOriginalPostNetworkAnyReconciledMemberOffset=0x30u;
 constexpr unsigned kOriginalEntityPredictableFlagOffset=0x2E8u;
 constexpr unsigned kOriginalPacketLastArg2MemberOffset=0x0Cu;
 constexpr unsigned kSyntheticPacketMaxEntities=4096u;
@@ -159,6 +165,29 @@ struct PacketEntityOps {
     void (*scope_enter)(void*,unsigned) noexcept=nullptr;
     void (*scope_exit)(void*,unsigned) noexcept=nullptr;
 };
+// Phase1668 PARTIAL entry/reconciliation contract for the enormous
+// original 1,039-byte CPrediction::PostNetworkDataReceived vtable slot6.
+// Source analysis verifies the entry bookkeeping, player/cl_predict
+// guards, one client entity-list Count, ascending Get(index), first
+// IsPredictable and 0x240C6900(frame) per eligible entity. All later
+// diagnostic/correction and OnPredictionChanged branches are OPAQUE.
+// This host-only callback table does NOT implement those branches,
+// native game prediction or any actual Source engine entity object.
+struct PostNetworkOps {
+    void* user=nullptr;
+    bool local_player_present=false;
+    std::int32_t cl_predict=1;
+    std::int32_t cl_pred_optimize=0;
+    std::int32_t (*get_count)(void*) noexcept=nullptr;
+    void* (*get_entity)(void*,std::int32_t) noexcept=nullptr;
+    bool (*is_predictable)(void*,void*) noexcept=nullptr;
+    std::uint8_t (*reconcile_entity)(void*,void*,std::uint32_t) noexcept=nullptr;
+    void (*on_opaque_entry)(void*) noexcept=nullptr;
+    void (*on_opaque_remaining_branches)(void*) noexcept=nullptr;
+    void (*scope_enter)(void*,unsigned) noexcept=nullptr;
+    void (*scope_exit)(void*,unsigned) noexcept=nullptr;
+};
+
 struct Events {
     unsigned init_calls=0u;
     unsigned missing_provider_refusals=0u;
@@ -173,6 +202,11 @@ struct Events {
     unsigned missing_packet_context=0u;
     unsigned refused_packet_entity_backend=0u;
     unsigned refused_packet_entity_count=0u;
+    unsigned missing_postnetwork_context=0u;
+    unsigned refused_postnetwork_backend=0u;
+    unsigned refused_postnetwork_entity_count=0u;
+    unsigned postnetwork_reconcile_calls=0u;
+    unsigned postnetwork_unmodeled_tail_calls=0u;
 };
 inline Events events{};
 
@@ -301,7 +335,57 @@ public:
         }
         if(ctx->scope_exit)ctx->scope_exit(ctx->user,5u);
     }
-    virtual std::uint32_t __thiscall UnknownSlot06() noexcept {return 0xA006u;}
+    // Retail CPrediction::PostNetworkDataReceived slot6 takes ONE
+    // stack DWORD, returns RET4, and is 1039 original bytes long.
+    // This diagnostic implements ONLY the source-authenticated entry
+    // and entity-reconciliation prefix. The actual retail function
+    // continues into much more complex diagnostics and correction
+    // logic which is not reconstructed or executed here.
+    virtual void __thiscall PostNetworkDataReceived(
+            std::uint32_t input_frame) noexcept {
+        if(!postnetwork_context_) {
+            ++events.missing_postnetwork_context;
+            return; // safe-only refusal, not original native behavior
+        }
+        auto* const ctx=postnetwork_context_;
+        if(ctx->scope_enter)ctx->scope_enter(ctx->user,6u);
+        if(ctx->on_opaque_entry)
+            ctx->on_opaque_entry(ctx->user);
+        // Original this+0x2C and this+0x30 always written before
+        // checking the local C_BasePlayer and cl_predict.
+        cleared_b_=input_frame;
+        post_network_any_reconciled_=0u;
+        if(ctx->local_player_present && ctx->cl_predict!=0) {
+            if(!ctx->get_count || !ctx->get_entity ||
+               !ctx->is_predictable || !ctx->reconcile_entity) {
+                ++events.refused_postnetwork_backend;
+            } else {
+                const auto n=ctx->get_count(ctx->user);
+                if(n<0 || n>static_cast<std::int32_t>(
+                        kSyntheticPacketMaxEntities)) {
+                    // Original Count() result is unguarded. A fake
+                    // backend reporting an unsafe count is refused.
+                    ++events.refused_postnetwork_entity_count;
+                } else for(std::int32_t i=0;i<n;++i) {
+                    void* const entity=ctx->get_entity(ctx->user,i);
+                    if(!entity || !ctx->is_predictable(ctx->user,entity))
+                        continue;
+                    ++events.postnetwork_reconcile_calls;
+                    if(ctx->reconcile_entity(
+                           ctx->user,entity,input_frame)!=0u)
+                        post_network_any_reconciled_=1u;
+                }
+            }
+        }
+        // Crucially, the original function does NOT end here:
+        // per-entity debug/error text, several optional correction
+        // paths and prediction enable/disable reset still follow.
+        // Mark this unknown boundary rather than inventing effects.
+        ++events.postnetwork_unmodeled_tail_calls;
+        if(ctx->on_opaque_remaining_branches)
+            ctx->on_opaque_remaining_branches(ctx->user);
+        if(ctx->scope_exit)ctx->scope_exit(ctx->user,6u);
+    }
     // Retail slot7 is 16 bytes, zeroing [+0x28] and [+0x2C] and
     // setting [+0x24] to -1. No arguments, RET 0.
     virtual void __thiscall ResetBookkeeping() noexcept {
@@ -434,6 +518,16 @@ public:
         // pointer when an owner chooses the original Phase1659 API.
         writable_view_host_=nullptr;
     }
+    void set_postnetwork_ops(PostNetworkOps* ctx) noexcept {
+        postnetwork_context_=ctx;
+    }
+    std::uint32_t postnetwork_any_reconciled() const noexcept {
+        return post_network_any_reconciled_;
+    }
+    std::uintptr_t postnetwork_any_reconciled_address() const noexcept {
+        return reinterpret_cast<std::uintptr_t>(
+            &post_network_any_reconciled_);
+    }
     void set_packet_entity_ops(PacketEntityOps* ctx) noexcept {
         packet_context_=ctx;
     }
@@ -496,12 +590,17 @@ private:
     std::int32_t highest_=-1;
     std::uint32_t cleared_a_=0u;
     std::uint32_t cleared_b_=0u;
+    // Original PostNetwork slot6 writes this+0x30. Prior synthetic
+    // fixture put view_host_ here, which would be overwritten by
+    // authentic post-network bookkeeping. Preserve native layout.
+    std::uint32_t post_network_any_reconciled_=0u;
     const HostSnapshot* view_host_=nullptr; // diagnostic host pointer only
     HostSnapshot* writable_view_host_=nullptr; // synthetic owned write only
     OrientationOps orientation_{}; // synthetic callback contract only
     UpdateFrameContext* update_context_=nullptr; // invented owner only
     bool last_update_gate_flag_=true;
     PacketEntityOps* packet_context_=nullptr; // invented owner only
+    PostNetworkOps* postnetwork_context_=nullptr; // invented owner only
 };
 
 static_assert(sizeof(void*)==4u,"original 2006 PE32 pointer width");
@@ -568,6 +667,12 @@ static_assert(std::is_same<
     decltype(&Prediction23Fixture::PostEntityPacketReceived),
     NoArgVoid>::value,
     "original PostEntityPacketReceived slot5 is no-arg RET0");
+using PostNetworkOneArg=void (__thiscall Prediction23Fixture::*)(
+    std::uint32_t) noexcept;
+static_assert(std::is_same<
+    decltype(&Prediction23Fixture::PostNetworkDataReceived),
+    PostNetworkOneArg>::value,
+    "original PostNetworkDataReceived slot6 is one-argument RET4");
 
 } // namespace client_prediction23_diagnostic
 } // namespace sin_independent
