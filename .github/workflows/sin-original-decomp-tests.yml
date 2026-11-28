@@ -85,6 +85,7 @@ on:
       - 'research/tools/audit_sin_original_postnetwork_cdecl_msg_formatter.py'
       - 'research/tools/audit_sin_original_postnetwork_record_name_lookup.py'
       - 'research/tools/audit_sin_original_postnetwork_preflight_alias.py'
+      - 'research/tools/audit_sin_original_postnetwork_casefold_comparator.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -321,3 +322,6 @@ jobs:
 
       - name: Authenticate original 121B CDECL node preflight and alias lookup (synthetic only)
         run: python research/tools/audit_sin_original_postnetwork_preflight_alias.py --self-test
+
+      - name: Authenticate original locale-gated/ASCII-fast name comparators (synthetic only)
+        run: python research/tools/audit_sin_original_postnetwork_casefold_comparator.py --self-test
