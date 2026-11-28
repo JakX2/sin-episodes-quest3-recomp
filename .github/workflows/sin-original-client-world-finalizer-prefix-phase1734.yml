@@ -1,0 +1,40 @@
+name: SiN Phase1734 CWorld finalizer guarded prefix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sin-original-client-world-finalizer-prefix-phase1734.yml'
+      - 'include/sin_compat/original_client_world_finalizer_prefix_phase1734.hpp'
+      - 'tests/test_original_client_world_finalizer_prefix_phase1734.cpp'
+      - 'research/tools/audit_sin_original_client_world_finalizer_prefix_phase1734.py'
+  workflow_dispatch:
+
+jobs:
+  strict-original-free-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source-only native finalizer identity and mutation refusal
+        run: python3 research/tools/audit_sin_original_client_world_finalizer_prefix_phase1734.py --self-test
+      - name: Strict GCC + Clang portable C++17 357B guarded finalizer path
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_finalizer_prefix_phase1734.cpp -o /tmp/sin-phase1734-gcc
+          /tmp/sin-phase1734-gcc
+          clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_finalizer_prefix_phase1734.cpp -o /tmp/sin-phase1734-clang
+          /tmp/sin-phase1734-clang
+      - name: AddressSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_world_finalizer_prefix_phase1734.cpp -o /tmp/sin-phase1734-san
+          /tmp/sin-phase1734-san
+  native32-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Run Win32 C++17 guarded original finalizer snapshot
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /W4 /WX /EHsc /Iinclude tests\test_original_client_world_finalizer_prefix_phase1734.cpp /Fe:sin-phase1734.exe
+          sin-phase1734.exe
