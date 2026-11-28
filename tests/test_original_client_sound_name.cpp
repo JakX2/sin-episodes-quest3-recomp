@@ -67,6 +67,16 @@ int main() {
     const auto renewed=Bind(pool,"audio/blast.wav","",resolver);
     assert(renewed.route==Route::LiteralFileToken &&
            std::strcmp(renewed.internedName,"audio/blast.wav")==0);
+
+    // The 195-byte source parameter helper queries virtual slots +4 then
+    // +8, retains base bit 1 and ORs the two optional flags independently.
+    for(int mask=0;mask<4;++mask) {
+        int order=0;
+        const auto flags=SourceParameterFlags(
+            [&](){ assert(order++==0);return (mask&1)!=0; },
+            [&](){ assert(order++==1);return (mask&2)!=0; });
+        assert(order==2 && flags==static_cast<unsigned>(1|(mask&1?2:0)|(mask&2?4:0)));
+    }
     std::puts("PASS source sound-name route: ASCII Q_stristr tokens, "
               "emitter fallback, first-spelling pool ownership and clear");
 }
