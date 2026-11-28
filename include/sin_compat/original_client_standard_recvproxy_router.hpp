@@ -20,6 +20,7 @@
 #include "sin_compat/original_client_custom_movement_fov_proxies.hpp"
 #include "sin_compat/original_client_custom_scale_transition_proxies.hpp"
 #include "sin_compat/original_client_custom_team_array_element_proxy.hpp"
+#include "sin_compat/original_client_custom_gamerules_datatable_proxy.hpp"
 
 namespace sin_compat::original_client_standard_recvproxy_router {
 namespace manifest=sin_compat::original_client_native32_recvtable_manifest;
@@ -33,6 +34,7 @@ namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
 namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
 namespace scale=sin_compat::original_client_custom_scale_transition_proxies;
 namespace team=sin_compat::original_client_custom_team_array_element_proxy;
+namespace gamerules=sin_compat::original_client_custom_gamerules_datatable_proxy;
 
 struct DecodedOwnedInput final {
     // The original CRecvProxyData union value begins at byte +4.
@@ -42,6 +44,12 @@ struct DecodedOwnedInput final {
     // element index. Keep this explicit decoded scalar separate from the
     // existing 16-byte primitive record, NOT a forged 24-byte ABI.
     std::uint32_t originalSourceElementIndex=0u;
+    // The retail GameRules callback reads a process-global pointer,
+    // NOT a CRecvProxyData value. This host model requires an explicit
+    // authoritative singleton token binding. No game pointer or
+    // original global address is ever dereferenced.
+    bool hasAuthenticatedGameRulesSingleton=false;
+    std::uint32_t ownedGameRulesSingletonToken=0u;
     // Explicit, memory-safe decoded string slice INCLUDING any NUL byte.
     std::string_view decodedStringBytes{};
     // Bounded 32-bit native datatable object TOKEN, not a process pointer.
@@ -56,7 +64,9 @@ inline constexpr bool CanPublishRetailProxyPointers() noexcept {return false;}
 // Source-dispatched HOST-OWNED reference callbacks, cumulatively:
 // 999 standard, 35 handle/moveparent, 4 color, 5 decrement,
 // 3 movement/FOV, 2 original x87 scale and 1 Team array element.
-// The remaining 33 custom callbacks and 28 special constructors
+// The GameRules custom datatable callback now also returns an explicit
+// host-owned singleton token only when independently bound. The remaining
+// 32 custom callbacks and 28 special constructors
 // are deliberately unsupported; original x86 function pointers never run.
 // This is still a bounded, HOST-OWNED function, not live Source networking.
 inline Status ApplySourceStandardProperty(
@@ -76,7 +86,8 @@ inline Status ApplySourceStandardProperty(
         !colorInt::IsOriginalCustomColorOrDecrement(nativeSourceVA) &&
         !moveFov::IsOriginalMovementOrFovProxy(nativeSourceVA) &&
         !scale::IsSourceScaleProxy(nativeSourceVA) &&
-        !team::IsOriginalTeamElementProxy(nativeSourceVA)))
+        !team::IsOriginalTeamElementProxy(nativeSourceVA) &&
+        !gamerules::IsOriginalGameRulesProxy(nativeSourceVA)))
         return Status::UnsupportedSourceCallback;
 
     if(nativeType==5u && nativeSourceVA==owned::kOriginalDataTableProxyVA) {
@@ -136,6 +147,24 @@ inline Status ApplySourceStandardProperty(
         if(applied==team::Status::RefusedBadOwnedMemory)
             return Status::RefusedBadOwnedMemory;
         return Status::UnsupportedSourceCallback;
+    }
+
+    // Phase1714: original custom se1_gamerules_data reads its
+    // singleton pointer from original global 0x2433F3F8 and writes
+    // it to the RecvProxy output. We cannot use the original x86
+    // global in the independent DLL. Return only an authenticated
+    // host-owned synthetic object token, never a retail PE32 pointer.
+    if(gamerules::IsOriginalGameRulesProxy(nativeSourceVA)) {
+        if(nativeType!=5u)return Status::UnsupportedSourceCallback;
+        const auto applied=gamerules::ApplySourceOriginalEffect(
+            sourceTableOrdinal,slot,nativeSourceVA,
+            incoming.hasAuthenticatedGameRulesSingleton,
+            incoming.ownedGameRulesSingletonToken,dataTableOutputToken);
+        if(applied==gamerules::Status::Applied)
+            return Status::Applied;
+        if(applied==gamerules::Status::RefusedUnboundHostSingleton)
+            return Status::UnsupportedSourceCallback;
+        return Status::RefusedBadOwnedMemory;
     }
 
     const auto offset=members::kSourceNativeMemberOffsets[index];
