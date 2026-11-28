@@ -106,12 +106,18 @@ try {
         '[SiN independent] role=client phase=factory-accepted version=VClientPrediction001',
         '[SiN independent] role=client phase=factory-accepted version=VClientEntityList003',
         '[SiN independent] role=client phase=factory-accepted version=VCENTERPRINT002',
+        '[SiN independent] role=client phase=client-centerprint-slot4-cold version=five-arg-no-backing',
+        '[SiN independent] role=client phase=client-centerprint-slot5-cold version=noarg-no-backing',
         '[SiN independent] role=client phase=unsupported-callback version=VCENTERPRINT002.slot6-backing-service-unimplemented'
     ))
     $centerOut=Verify 'UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF'
     $expectedCenter=('OWNER_CLIENT_CENTERPRINT_COLD_FACTORY_BOUNDARY: '+
         'sin-independent-'+$session+'-202.log:client:client-centerprint-cold-bound:nullable-service:8-slots')
+    $expectedCalls=('OWNER_CLIENT_CENTERPRINT_COLD_METHOD_ENTRY: '+
+        'sin-independent-'+$session+'-202.log:client:client-centerprint-slot4-cold:five-arg-no-backing,'+
+        'sin-independent-'+$session+'-202.log:client:client-centerprint-slot5-cold:noarg-no-backing')
     if (-not ($centerOut -ccontains $expectedCenter) -or
+        -not ($centerOut -ccontains $expectedCalls) -or
         -not ($centerOut -ccontains
             'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011,client:factory-accepted:VClientPrediction001,client:factory-accepted:VClientEntityList003,client:factory-accepted:VCENTERPRINT002')) {
         throw 'Same-process original centerprint cold source factory incorrectly classified as retail boot or omitted'
