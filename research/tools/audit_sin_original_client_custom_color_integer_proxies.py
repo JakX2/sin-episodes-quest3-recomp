@@ -51,7 +51,7 @@ def verify_original(path:Path):
         require(0<=start<=len(code)-count,
                 "original custom callback outside PE32 .text")
         return code[start:start+count]
-    for va,length,digest,expected_calls in SOURCE_METHODS:
+    for va,length,digest,expected_calls,nextVA in SOURCE_METHODS:
         body=at(va,length)
         require(hashlib.sha256(body).hexdigest()==digest,
                 f"source 2006 complete method SHA changed {va:#x}")
