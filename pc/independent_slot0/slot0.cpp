@@ -333,7 +333,7 @@ static bool bindColdClientCenterprint() noexcept {
             &retainedModule) || !retainedModule)return false;
     if(!g_centerprintOwner)
         g_centerprintOwner=new(std::nothrow)
-            native_centerprint::ColdWrapper(&stopUnsupported);
+            native_centerprint::ColdWrapper(&stopUnsupported,&diagnostic);
     if(!g_centerprintOwner)return false;
     g_centerprintOwner->BindCold();
     g_centerprintReady=true;
