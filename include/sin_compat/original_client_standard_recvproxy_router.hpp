@@ -16,6 +16,7 @@
 #include "sin_compat/original_client_source_string_sizes.hpp"
 #include "sin_compat/original_client_standard_recvproxy_host.hpp"
 #include "sin_compat/original_client_custom_handle_proxy.hpp"
+#include "sin_compat/original_client_custom_color_integer_proxies.hpp"
 
 namespace sin_compat::original_client_standard_recvproxy_router {
 namespace manifest=sin_compat::original_client_native32_recvtable_manifest;
@@ -25,6 +26,7 @@ namespace strings=sin_compat::original_client_source_string_sizes;
 namespace copies=sin_compat::original_client_recvprop_proxies_factories;
 namespace owned=sin_compat::original_client_standard_recvproxy_host;
 namespace handle=sin_compat::original_client_custom_handle_proxy;
+namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
 
 struct DecodedOwnedInput final {
     // The original CRecvProxyData union value begins at byte +4.
@@ -44,7 +46,9 @@ inline constexpr bool CanPublishRetailProxyPointers() noexcept {return false;}
 // Phase1709: the 999 original standard identities dispatch through seven
 // source-backed families; 35 source-proven original custom handle/moveparent
 // assignments use their exact reconstructed 49-byte method behavior.
-// The remaining 48 custom and all 28 specialized routes stay blocked.
+// Phase1710 now adds four byte-reordering color assignments and five
+// original integer decrement assignments. The remaining 39 custom and
+// all 28 specialized routes stay blocked.
 // This is still a bounded, HOST-OWNED function, not live Source networking.
 inline Status ApplySourceStandardProperty(
     std::size_t sourceTableOrdinal,std::size_t slot,
@@ -59,7 +63,8 @@ inline Status ApplySourceStandardProperty(
     const auto nativeSourceVA=source::SourceVAForSlot(sourceTableOrdinal,slot);
     if(nativeSourceVA==0u ||
        (!source::IsStandardOriginalSourceVA(nativeSourceVA) &&
-        !handle::IsOriginalHandleProxy(nativeSourceVA)))
+        !handle::IsOriginalHandleProxy(nativeSourceVA) &&
+        !colorInt::IsOriginalCustomColorOrDecrement(nativeSourceVA)))
         return Status::UnsupportedSourceCallback;
 
     if(nativeType==5u && nativeSourceVA==owned::kOriginalDataTableProxyVA) {
@@ -73,6 +78,32 @@ inline Status ApplySourceStandardProperty(
     const auto start=static_cast<std::size_t>(offset);
     if(start>originalObjectBytes.size())
         return Status::RefusedBadOwnedMemory;
+
+    if(colorInt::IsOriginalCustomColorOrDecrement(nativeSourceVA)) {
+        // Original routines are 2006 PE32 38/17-byte methods:
+        // both read one DWORD from original CRecvProxyData+4.
+        // Color writes four separate BYTEs in high-to-low order,
+        // decrement writes one native DWORD of raw-1 (wraparound).
+        if(nativeType!=0u)return Status::UnsupportedSourceCallback;
+        constexpr std::size_t kWidth=4u;
+        if(kWidth>originalObjectBytes.size()-start)
+            return Status::RefusedBadOwnedMemory;
+        std::uint32_t raw=0u;
+        for(std::size_t i=0u;i<kWidth;++i)
+            raw|=std::uint32_t(incoming.originalProxyData[
+                colorInt::kOriginalDecodedProxyValueOffset+i])<<(i*8u);
+        if(nativeSourceVA==colorInt::kNativeColorByteReverseVA) {
+            const auto mapped=colorInt::SourceColorBytes(raw);
+            for(std::size_t i=0u;i<kWidth;++i)
+                originalObjectBytes[start+i]=mapped[i];
+        } else {
+            const auto mapped=colorInt::SourceDecrementDword(raw);
+            for(std::size_t i=0u;i<kWidth;++i)
+                originalObjectBytes[start+i]=
+                    static_cast<std::uint8_t>(mapped>>(i*8u));
+        }
+        return Status::Applied;
+    }
 
     if(handle::IsOriginalHandleProxy(nativeSourceVA)) {
         // Original handle and moveparent callbacks take 32-bit decoded

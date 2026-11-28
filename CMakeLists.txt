@@ -6612,3 +6612,21 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_custom_handle_proxy_tests)
   endif()
 endif()
+
+
+# Phase1710: source-SHA recovered native 38B color byte-order and 17B
+# integer decrement custom receive callbacks, 4+5 original assignments.
+# Standalone host-only transformations; no original VClient011.slot5.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_custom_color_integer_proxy_tests
+    tests/test_original_client_custom_color_integer_proxies.cpp)
+  target_include_directories(sin_original_client_custom_color_integer_proxy_tests PRIVATE include)
+  target_compile_features(sin_original_client_custom_color_integer_proxy_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_custom_color_integer_proxy_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_custom_color_integer_proxy_tests
+      COMMAND sin_original_client_custom_color_integer_proxy_tests)
+  endif()
+endif()
