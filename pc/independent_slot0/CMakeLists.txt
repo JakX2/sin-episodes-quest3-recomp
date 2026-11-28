@@ -1818,3 +1818,21 @@ target_compile_features(sin_original_prediction_postnetwork_slot6_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_prediction_postnetwork_slot6_native
   COMMAND sin_original_prediction_postnetwork_slot6_test)
+
+
+# Phase1669: original 192B C_BaseEntity PostNetworkDataReceived
+# callee 0x240C6900, 90-slot history ring and primary vcall +0x40
+# with opaque native comparison count. All public tests are
+# original-free synthetic; real MSVC x86 nested vtable calls only.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_entity_compare_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_entity_compare.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_entity_compare_chain_test
+  test_original_postnetwork_entity_compare_chain.cpp)
+target_compile_features(sin_original_postnetwork_entity_compare_chain_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_entity_compare_chain_native
+  COMMAND sin_original_postnetwork_entity_compare_chain_test)
