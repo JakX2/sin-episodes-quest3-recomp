@@ -188,6 +188,28 @@ def verify_special(pe:PEImage,aux:dict)->dict:
          and pe.at(0x2412739D,7)==
          b"\xC7\x40\x0C"+struct.pack("<I",0x24127150),
          "source original overlay specialized proxy callback pointers changed")
+    # Both original source overlay DataTableRecvVarProxy paths have a
+    # fully authenticated, common index*stride + parent DWORD formula.
+    # A pointer to their allocated 28-byte helper sits at property+0x14;
+    # the property array index is at +0x30; helper stride is +0x10,
+    # and helper container-field offset is +0x14. These methods differ
+    # in which original callback function pointer they invoke.
+    for site,code,why in (
+        (0x24127156,b"\x8B\x41\x14","proxy+4 metadata at RecvProp+20"),
+        (0x24127159,b"\x8B\x49\x30","proxy+4 property index +48"),
+        (0x2412715C,b"\x0F\xAF\x48\x10","proxy+4 index times stride"),
+        (0x24127161,b"\x8B\x70\x14","proxy+4 dynamic base field"),
+        (0x24127169,b"\x03\x0C\x3E","proxy+4 add parent dynamic base"),
+        (0x24127173,b"\xFF\x50\x04","proxy+4 native callback dispatch"),
+        (0x24127188,b"\x8B\x41\x14","proxy+0 metadata at RecvProp+20"),
+        (0x2412718C,b"\x8B\x70\x14","proxy+0 dynamic base field"),
+        (0x24127195,b"\x8B\x51\x30","proxy+0 property index +48"),
+        (0x24127198,b"\x0F\xAF\x50\x10","proxy+0 index times stride"),
+        (0x2412719C,b"\x03\x14\x3E","proxy+0 add parent dynamic base"),
+        (0x241271A6,b"\xFF\x10","proxy+0 native callback dispatch"),
+    ):
+        need(pe.at(site,len(code))==code,
+             "original overlay "+why+" opcode changed")
     return {
         "original_type4_array_descriptor":{
             "source_table":x["source_aux_table"],
@@ -210,6 +232,10 @@ def verify_special(pe:PEImage,aux:dict)->dict:
             "original_overlay_constructor_va":hex(OVERLAY_BUILDER),
             "unimplemented_native_proxy_callbacks":[
                 hex(0x24127150),hex(0x24127180)],
+            "source_proxy_arithmetic":
+                "computed = *(pStruct + helper+0x14) + "
+                "RecvProp[+0x30] * helper[+0x10]",
+            "original_native_callback_pointer_offsets":["helper+0","helper+4"],
             "limitations":"Special animation overlay data and proxy semantics "
                           "are not equivalent to the generic 0x24126E90 arrays.",
         }
