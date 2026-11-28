@@ -31,6 +31,7 @@
 #include "sin_compat/original_client_nested_array_table.hpp"
 #include "sin_compat/original_client_aux_dynamic_receivers.hpp"
 #include "sin_compat/original_client_native_member_offsets.hpp"
+#include "sin_compat/original_client_native_type4_array_fields.hpp"
 
 namespace sin_compat::original_client_native32_recvtable_image {
 namespace src=sin_compat::original_client_native32_recvtable_manifest;
@@ -40,6 +41,7 @@ namespace classArrays=sin_compat::original_client_nested_array_table;
 namespace auxArrays=sin_compat::original_client_aux_dynamic_receivers;
 namespace links=sin_compat::original_client_static_recvtable_links;
 namespace sourceOffsets=sin_compat::original_client_native_member_offsets;
+namespace nativeArrays=sin_compat::original_client_native_type4_array_fields;
 
 inline constexpr std::uint32_t kArenaBaseVA=0x10000000u;
 inline constexpr std::uint32_t kNativeRecvPropTypeOffset=4u;
@@ -190,6 +192,27 @@ struct Image final {
                     image.arena.Write32(prop+kNativeRecvPropMemberOffset,
                                         sourceOffset);
             }
+        }
+        // Source helper 0x24126BD0 writes native type4 descriptors:
+        // byte +44 ZERO (NOT the element count), +48 element stride,
+        // +52 element count. Preserve exact original network names.
+        // One original Team callback at +28 is intentionally NOT
+        // installed: its 2006 PE32 code cannot run inside this host.
+        for(const auto& array:nativeArrays::kSourceArrays) {
+            const auto parent=std::size_t(array.tableOrdinal);
+            const auto slot=std::size_t(array.propertySlot);
+            if(src::kTypes[src::kTypePrefixes[parent]+slot]!=4u)
+                throw std::logic_error("original type4 array source index drift");
+            const auto prop=image.staticPropArrayTokens[parent]+
+                static_cast<std::uint32_t>(slot*src::kOriginalRecvPropStride);
+            image.arena.Write32(prop,
+                image.arena.StoreString(std::string(array.originalPropertyName)));
+            image.arena.Write32(prop+kNativeRecvPropMemberOffset,0u);
+            image.arena.Write32(prop+nativeArrays::kNativeArrayElementStrideOffset,
+                                array.elementStride);
+            image.arena.Write32(prop+nativeArrays::kNativeArrayElementCountOffset,
+                                array.elementCount);
+            // +28 remains NULL even where the original holds a callback.
         }
         std::array<std::uint8_t,src::kStaticPropertySlots> assigned{};
         // Link the ACTUAL 192 original static type5 table pointers,
@@ -376,6 +399,25 @@ private:
                 if(knownOffset!=sourceOffsets::kNotDirectlyRecovered &&
                    arena.Read32(p+kNativeRecvPropMemberOffset)!=knownOffset)
                     throw std::logic_error("original PE32 member offset drift");
+                if(originalType==4u) {
+                    unsigned matches=0u;
+                    for(const auto& array:nativeArrays::kSourceArrays) {
+                        if(array.tableOrdinal!=i || array.propertySlot!=j)
+                            continue;
+                        ++matches;
+                        if(arena.Read32(p+kNativeRecvPropMemberOffset)!=0u ||
+                           arena.Read32(p+nativeArrays::kNativeArrayElementStrideOffset)
+                               !=array.elementStride ||
+                           arena.Read32(p+nativeArrays::kNativeArrayElementCountOffset)
+                               !=array.elementCount ||
+                           arena.ReadString(arena.Read32(p))!=
+                               array.originalPropertyName ||
+                           arena.Read32(p+nativeArrays::kNativeArrayCallbackOffset)!=0u)
+                            throw std::logic_error("original type4 array shape drift");
+                    }
+                    if(matches!=1u)
+                        throw std::logic_error("unclassified native type4 array");
+                }
                 if(originalType!=5u)continue;
                 std::uint32_t expectedChild=0u;
                 unsigned routes=0u;
