@@ -50,9 +50,28 @@ The image now has **two deliberately distinct traversal entrypoints**, both repr
 
 Both traversals observe the same **207 original native type-5 outer properties**, report exactly **one intentionally blocked special overlay**, and can never return an engine-compatible pointer. The test deliberately mutates an otherwise unreachable `DT_Animationlayer` descriptor: the class-root path remains 224/1796, while the exhaustive path refuses the corrupt descriptor. This establishes that the two traversals genuinely differ, rather than reporting two arbitrary hardcoded totals.
 
-Neither path invokes the original engine's additional `0x20086930` table-registration helper, actual 2006 native RecvProxy callbacks, game entity/temp-event creators, allocator cleanup or true Windows runtime calls. A successful scan is insufficient to expose a live `VClient011.slot5` pointer.
+The two paths safely replay the *observed table-pointer append ordering* of original `0x20086930`, but neither invokes its executable 2006 method, original linked-list allocator/free-list, actual RecvProxy callbacks, game creators, cleanup or true Windows runtime calls. A successful scan is insufficient to expose a live `VClient011.slot5` pointer.
 
 **Permanent runtime safety guard for this stage:** `CanExposeToRetailEngine()` ALWAYS returns `false`. A successful host graph traversal is only an ABI-layout *preflight*, not a playable SiN client.
+
+
+## Original engine registration-ledger side effect recovered
+
+The real engine's recursive `0x20085630` visitor not only marks a `RecvTable` at native byte **+0x11**, it immediately passes **the address of that table pointer** to a global indexed linked-list append helper at `0x20086930`, with original `EAX=0x202FDC48`. The user-original PE32 engine initializes this 28-byte list-global object with empty 16-bit list indices `0xFFFF` at head (+0x0C), tail (+0x0E) and free-list head (+0x10), and zero active count at +0x12.
+
+Four source engine methods were independently **whole-function SHA256 authenticated** against the unchanged original `engine.dll` SHA256 `f3add5b41300e6d709fd0b492bfcdd37b9b3d20d9744f874c0b860bf021cec81`: the original visitor `0x20085630` (102 bytes, SHA `09a4446ebba475508d1b87121e2df0c63752e1d60850150fe0e453b7f9f3a347`), list append `0x20086930` (102 bytes, SHA `8e87f3939f7b13cc218bc3ae6d0f8ab43689519fcb58276e359794221a05645e`), index allocator `0x20087290` (157 bytes, SHA `b64128c363fc001d8a747e26301009f6a0987fc27db1a2ebf7f25fea849b5bc8`) and linked-list unlink helper `0x200874D0` (122 bytes, SHA `052b900155581e9284e4a987bdf02557417fd65ea9a62c6de170f60a0152968d`). Original call edges, padding and sparse x86 opcode witnesses are rechecked by `research/tools/audit_sin_original_engine_recvtable_registration_ledger.py` without copying original proprietary binary bytes into the repository.
+
+The original append helper uses **8-byte indexed nodes**: table pointer DWORD at **+0**, previous index WORD at **+4**, next index WORD at **+6**; the empty value is `0xFFFF`. Source method instructions set the new node's next to empty, link its previous field to the existing global tail, update the head if empty, update the tail otherwise, fix the previous tail's next index, and increment global active count. The caller first sets visited `RecvTable+0x11` before invoking the helper, so the ledger receives each table in **depth-first pre-order**.
+
+The portable `WalkReport` now models only that **cold, host-owned sequential list-append effect**: it retains one 8-byte safe token/index node per visited table and verifies previous/next indices and original 0xFFFF sentinels. Source-root mode has **224** ledger nodes; exhaustive research mode has **225**. The C++ test checks all nodes, unique table tokens and the fact that `DT_Animationlayer` cannot appear on the true 191-class-root list. The original source may reuse free slots or contain earlier entries; no exact original allocator/resizing/free-list ownership is claimed, and no engine process memory is modified.
+
+```sh
+python research/tools/audit_sin_original_engine_recvtable_registration_ledger.py --self-test
+python research/tools/audit_sin_original_engine_recvtable_registration_ledger.py --engine /private/engine.dll
+```
+
+The first command uses fabricated source-free data; the second reads the unchanged user-owned original engine DLL privately.
+
 
 ## Tests and reproduction
 
