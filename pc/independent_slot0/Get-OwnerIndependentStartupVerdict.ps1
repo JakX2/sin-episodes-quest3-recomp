@@ -22,6 +22,7 @@ $predictionConVarEvents = New-Object System.Collections.Generic.List[string]
 $entityListFactoryEvents = New-Object System.Collections.Generic.List[string]
 $centerprintColdEvents = New-Object System.Collections.Generic.List[string]
 $centerprintColdUses = New-Object System.Collections.Generic.List[string]
+$clientSoundContinueEvents = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
@@ -215,6 +216,13 @@ foreach ($log in $logs) {
             $phase -in @('client-centerprint-cold-bound',
                           'client-centerprint-cold-refused')) {
             $centerprintColdEvents.Add(("{0}:client:{1}:{2}" -f
+                $log.Name,$phase,$version))
+        }
+        if ($role -eq 'client' -and
+            $phase -in @('client-sound-connect-continued',
+                          'client-sound-connect-continue-refused') -and
+            $version -eq 'VSoundEmitter001') {
+            $clientSoundContinueEvents.Add(("{0}:client:{1}:{2}" -f
                 $log.Name,$phase,$version))
         }
         if ($role -eq 'client' -and
@@ -1172,6 +1180,13 @@ if ($centerprintColdUses.Count -gt 0) {
     # makes it a no-op, not an actual screen-rendering claim.
     Write-Output ("OWNER_CLIENT_CENTERPRINT_COLD_METHOD_ENTRY: {0}" -f
         ($centerprintColdUses -join ','))
+}
+if ($clientSoundContinueEvents.Count -gt 0) {
+    # A true/false native VSoundEmitter001::Connect result means the
+    # original 21-name VClient011.Init has reached the next source
+    # callback gate, not that any later HUD/game subsystem works.
+    Write-Output ("OWNER_CLIENT_SOUND_CONNECT_CONTINUATION: {0}" -f
+        ($clientSoundContinueEvents -join ','))
 }
 if ($unsupportedCallbacks.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_UNSUPPORTED_CALLBACKS: {0}" -f ($unsupportedCallbacks -join ','))
