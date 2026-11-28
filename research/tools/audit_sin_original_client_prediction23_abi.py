@@ -663,7 +663,7 @@ def self_test() -> None:
                                   "894830c3"))
     verify_prediction_ctor(fake_ctor_code,fake_vtable)
     for i in range(len(fake_ctor_code)):
-        corrupt=bytearray(fake_ctor_code);corrupt[i]^1
+        corrupt=bytearray(fake_ctor_code);corrupt[i] ^= 1
         reject(lambda data=bytes(corrupt):verify_prediction_ctor(
             data,fake_vtable),"constructor byte "+str(i))
     fake_dtor_va=0x45150000
@@ -675,7 +675,7 @@ def self_test() -> None:
                bytes.fromhex("83c4048bc65ec20400"))
     verify_prediction_dtor(fake_dtor,fake_parent_vptr,fake_dtor_va,fake_free)
     for i in range(len(fake_dtor)):
-        corrupt=bytearray(fake_dtor);corrupt[i]^1
+        corrupt=bytearray(fake_dtor);corrupt[i] ^= 1
         reject(lambda data=bytes(corrupt):verify_prediction_dtor(
             data,fake_parent_vptr,fake_dtor_va,fake_free),
             "deleting dtor byte "+str(i))
@@ -767,7 +767,7 @@ def self_test() -> None:
         "83782c000f95c2885110c3")
     verify_prediction_init(fake_init,fake_engine_global)
     for i in range(len(fake_init)):
-        corrupt=bytearray(fake_init);corrupt[i]^1
+        corrupt=bytearray(fake_init);corrupt[i] ^= 1
         reject(lambda data=bytes(corrupt):verify_prediction_init(
             data,fake_engine_global),"slot1 init byte "+str(i))
     # Artificial engine call: exact dispatch shape, invented addresses.
@@ -788,7 +788,7 @@ def self_test() -> None:
                                     fake_eng_name,fake_eng_factory,
                                     fake_stored,fake_error,fake_handler)
     for i in range(len(fake_eng)):
-        corrupt=bytearray(fake_eng);corrupt[i]^1
+        corrupt=bytearray(fake_eng);corrupt[i] ^= 1
         reject(lambda data=bytes(corrupt):verify_engine_prediction_window(
             data,fake_engine_site,fake_eng_name,fake_eng_factory,
             fake_stored,fake_error,fake_handler),
@@ -796,7 +796,7 @@ def self_test() -> None:
     fake_entitylist_call=b"\x6A\x00\x68"+pack(0x46240000)+b"\xFF\x15"+pack(fake_eng_factory)
     verify_engine_next_interface(fake_entitylist_call,0x46240000,fake_eng_factory)
     for i in range(len(fake_entitylist_call)):
-        corrupt=bytearray(fake_entitylist_call);corrupt[i]^1
+        corrupt=bytearray(fake_entitylist_call);corrupt[i] ^= 1
         reject(lambda data=bytes(corrupt):verify_engine_next_interface(
             data,0x46240000,fake_eng_factory),
             "next original client interface request byte "+str(i))
@@ -808,14 +808,14 @@ def self_test() -> None:
         ("RTTI COL",lambda d:verify_rtti_col(d,0x47310000,0x47320000),fake_col),
         ("RTTI hierarchy",lambda d:verify_rtti_hierarchy(d,0x47330000),fake_hierarchy)):
         for i in range(len(blob)):
-            corrupt=bytearray(blob);corrupt[i]^1
+            corrupt=bytearray(blob);corrupt[i] ^= 1
             reject(lambda data=bytes(corrupt),fn=check_fn:fn(data),
                    label+" byte "+str(i))
     for contained in (0,1):
         base=struct.pack("<IIiiiI",0x47340000,contained,0,-1,0,0)
         verify_rtti_base(base,0x47340000,contained)
         for i in range(len(base)):
-            corrupt=bytearray(base);corrupt[i]^1
+            corrupt=bytearray(base);corrupt[i] ^= 1
             reject(lambda data=bytes(corrupt),n=contained:verify_rtti_base(
                 data,0x47340000,n),"RTTI base "+str(contained)+" byte "+str(i))
     reject(lambda:verify_original(b"fabricated client",b"fabricated engine"),
