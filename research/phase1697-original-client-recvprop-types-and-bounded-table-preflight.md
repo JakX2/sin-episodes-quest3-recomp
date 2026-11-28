@@ -62,6 +62,12 @@ The original 11 caller-side count/stride/first-offset operands, independently ch
 | `CBaseAnimating.m_flEncodedController` | 4 | 4 | 1644 | 1 |
 | **Total** | **579** | | | |
 
+### All 579 generated element names source-authenticated
+
+Original function `0x24126F80` loads each generated element name pointer from the real, position-indexed 256-entry pointer table at original PE32 `0x242FB110`, using `[table + elementIndex*4]`, then writes the resolved pointer to the 60-byte generated descriptor's name field at `0x24126F8B`. The entire **1,024-byte original table SHA256** is `7f419caa89c32a637e4f7b7b81f247e232fcc55d1673721e6a3c9dd46d040506`. Every one of its original entries dereferences to a verified NUL-terminated ASCII `000` through `255` in original `.rdata` (newline-delimited name SHA256 `e139eda07b5876a36e7be3471540c112ecbc58b7cfdd1e33f54c4c4fc958c4`). This is **actual original data**, not a naming assumption borrowed from a Source SDK.
+
+Because each of the eleven arrays starts its element index at 0, the generated property names repeat `000` through `(count-1)` **within each distinct child table**. For example, `CPlayerResource.m_iPing` uses names `000` through `032`, while `CBreakableSurface.m_RawPanelBitVec` uses `000` through `255`. The private Python source audit verifies the entire table's SHA256, all 256 name pointers, and original indexed load/store opcode witnesses. The portable C++ builder retains the actual three-digit labels as inline owned character arrays and tests every one of the 579 names and NUL terminators on native platforms and Android.
+
 These **579 generated inner elements** are additional to the 939 class-attached outer descriptors. This is source-backed structure and sizing, not a reconstruction of actual packet bit widths, proxy callback bodies, runtime allocation ownership or child-table network layout across systems.
 
 `include/sin_compat/original_client_nested_array_table.hpp` implements a C++17 **host metadata** version of these exact shapes, with source name/count/width/offset/type identity checks, native offset-overflow checks and generated element-offset calculations. It cannot produce game-owned RecvProp pointers. Native and Android regression tests independently verify all 11 shapes, all 579 element offsets, mutation refusal and a graph walk of all 11 parent/child table pairs. The C++ tests never execute original proprietary code and do not claim a running Android/Quest game.
