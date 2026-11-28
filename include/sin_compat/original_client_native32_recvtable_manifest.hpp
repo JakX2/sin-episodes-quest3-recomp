@@ -139,7 +139,11 @@ constexpr bool EveryNativeTypeFiveRouteSourceClassified() noexcept {
         if(kTypes[idx]!=5u || allocated[idx]++)return false;
         ++marked;
     }
-    for(const auto& edge:kGeneratedOuters) {
+    for(std::size_t generated=0u;generated<kGeneratedOuters.size();++generated) {
+        const auto& edge=kGeneratedOuters[generated];
+        // Source array shapes and parent ordinals must remain paired:
+        // the builder uses this exact 0..13 original constructor order.
+        if(edge.sourceShapeIndex!=generated)return false;
         if(edge.parentTableOrdinal>=kStaticTables ||
            edge.parentSlot>=kCounts[edge.parentTableOrdinal] ||
            edge.sourceShapeIndex>=kGeneratedGenericSubtables)
