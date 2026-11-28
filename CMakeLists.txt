@@ -6702,3 +6702,21 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_custom_gamerules_datatable_proxy_tests)
   endif()
 endif()
+
+
+# Phase1715: original PE32 44-byte Beam.m_fSpeed RecvProxy, x87
+# binary32 * ORIGINAL binary64 0.1 with portable integer-exact
+# rounding. Host OWNED only, not retail engine callback or slot5.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_custom_beam_speed_proxy_tests
+    tests/test_original_client_custom_beam_speed_proxy.cpp)
+  target_include_directories(sin_original_client_custom_beam_speed_proxy_tests PRIVATE include)
+  target_compile_features(sin_original_client_custom_beam_speed_proxy_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_custom_beam_speed_proxy_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_custom_beam_speed_proxy_tests
+      COMMAND sin_original_client_custom_beam_speed_proxy_tests)
+  endif()
+endif()
