@@ -108,6 +108,16 @@ int main() {
        !one_arg_thiscall(receiver,table[13],&out.payload) ||
        !same(out.payload,in.payload))
         return fail(8,"replaced owned player should not mutate prior host");
+    // Downgrading an attachment to read-only must REVOKE prior
+    // write authority while retaining an observable getter target.
+    const auto readonly_view=other->view;
+    prediction->set_view_host(other.get());
+    in.payload={0xDEADBEEFu,0xC0FFEE00u,0x7FC0A11Au};
+    if(!one_arg_thiscall(receiver,table[14],&in.payload) ||
+       !same(other->view,readonly_view) ||
+       !one_arg_thiscall(receiver,table[13],&out.payload) ||
+       !same(out.payload,readonly_view))
+        return fail(9,"read-only attachment downgrade retained mutable access");
     prediction->set_writable_host_view(nullptr);
     owner.reset();
     other.reset();
@@ -117,10 +127,10 @@ int main() {
        !one_arg_thiscall(receiver,table[14],&in.payload) ||
        pred::events.missing_orientation_callbacks!=0u ||
        pred::events.init_calls!=0u)
-        return fail(9,"retired host was still accessed by prediction");
+        return fail(10,"retired host was still accessed by prediction");
     prediction.reset();
     if(pred::events.destructor_calls!=1u)
-        return fail(10,"synthetic prediction instance destroyed incorrectly");
+        return fail(11,"synthetic prediction instance destroyed incorrectly");
     std::puts("PASS Phase1663 original-free MSVC x86: 23-slot "
               "CPrediction slot13 getter/slot14 setter both RET4, "
               "C_BasePlayer raw-bit 3-word +0xF04 view read/write "
