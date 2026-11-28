@@ -21,6 +21,7 @@
 #include "sin_compat/original_client_custom_scale_transition_proxies.hpp"
 #include "sin_compat/original_client_custom_team_array_element_proxy.hpp"
 #include "sin_compat/original_client_custom_gamerules_datatable_proxy.hpp"
+#include "sin_compat/original_client_custom_beam_speed_proxy.hpp"
 
 namespace sin_compat::original_client_standard_recvproxy_router {
 namespace manifest=sin_compat::original_client_native32_recvtable_manifest;
@@ -35,6 +36,7 @@ namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
 namespace scale=sin_compat::original_client_custom_scale_transition_proxies;
 namespace team=sin_compat::original_client_custom_team_array_element_proxy;
 namespace gamerules=sin_compat::original_client_custom_gamerules_datatable_proxy;
+namespace beamSpeed=sin_compat::original_client_custom_beam_speed_proxy;
 
 struct DecodedOwnedInput final {
     // The original CRecvProxyData union value begins at byte +4.
@@ -59,6 +61,15 @@ enum class Status : std::uint8_t {
     Applied, UnsupportedSourceCallback, RefusedBadOwnedMemory
 };
 
+static_assert(source::SourceVAForSlot(
+    beamSpeed::kSourceTableOrdinal,beamSpeed::kSourcePropertySlot)
+    ==beamSpeed::kNativeSourceVA);
+static_assert(manifest::kTypes[
+    manifest::kTypePrefixes[beamSpeed::kSourceTableOrdinal]+
+    beamSpeed::kSourcePropertySlot]==1u);
+static_assert(members::kSourceNativeMemberOffsets[
+    manifest::kTypePrefixes[beamSpeed::kSourceTableOrdinal]+
+    beamSpeed::kSourcePropertySlot]==beamSpeed::kNativeOwnerSpeedOffset);
 inline constexpr bool CanPublishRetailProxyPointers() noexcept {return false;}
 
 // Source-dispatched HOST-OWNED reference callbacks, cumulatively:
@@ -66,7 +77,7 @@ inline constexpr bool CanPublishRetailProxyPointers() noexcept {return false;}
 // 3 movement/FOV, 2 original x87 scale and 1 Team array element.
 // The GameRules custom datatable callback now also returns an explicit
 // host-owned singleton token only when independently bound. The remaining
-// 32 custom callbacks and 28 special constructors
+// 31 custom callbacks and 28 special constructors
 // are deliberately unsupported; original x86 function pointers never run.
 // This is still a bounded, HOST-OWNED function, not live Source networking.
 inline Status ApplySourceStandardProperty(
@@ -87,7 +98,8 @@ inline Status ApplySourceStandardProperty(
         !moveFov::IsOriginalMovementOrFovProxy(nativeSourceVA) &&
         !scale::IsSourceScaleProxy(nativeSourceVA) &&
         !team::IsOriginalTeamElementProxy(nativeSourceVA) &&
-        !gamerules::IsOriginalGameRulesProxy(nativeSourceVA)))
+        !gamerules::IsOriginalGameRulesProxy(nativeSourceVA) &&
+        nativeSourceVA!=beamSpeed::kNativeSourceVA))
         return Status::UnsupportedSourceCallback;
 
     if(nativeType==5u && nativeSourceVA==owned::kOriginalDataTableProxyVA) {
@@ -165,6 +177,29 @@ inline Status ApplySourceStandardProperty(
         if(applied==gamerules::Status::RefusedUnboundHostSingleton)
             return Status::UnsupportedSourceCallback;
         return Status::RefusedBadOwnedMemory;
+    }
+
+    // Phase1715: original Beam.m_fSpeed decodes float32+4, multiplies
+    // by the original binary64 0.1 in x87 (64-bit significand), then
+    // conditionally FSTPs to owner+0x508. Portable unsigned arithmetic
+    // reproduces its default round-to-nearest/even pipeline exactly,
+    // including signed zero and subnormal rounding. Non-default
+    // x87 control-word modes and NaN exceptions remain unsupported.
+    if(nativeSourceVA==beamSpeed::kNativeSourceVA) {
+        if(nativeType!=1u ||
+           !beamSpeed::IsOriginalSourceAssignment(
+               sourceTableOrdinal,slot,nativeSourceVA) ||
+           members::kSourceNativeMemberOffsets[index]!=
+               beamSpeed::kNativeOwnerSpeedOffset)
+            return Status::UnsupportedSourceCallback;
+        const auto applied=beamSpeed::ApplySourceEffect(
+            sourceTableOrdinal,slot,nativeSourceVA,
+            incoming.originalProxyData,originalObjectBytes);
+        if(applied==beamSpeed::Status::Applied)
+            return Status::Applied;
+        if(applied==beamSpeed::Status::RefusedBadOwnedMemory)
+            return Status::RefusedBadOwnedMemory;
+        return Status::UnsupportedSourceCallback;
     }
 
     const auto offset=members::kSourceNativeMemberOffsets[index];
