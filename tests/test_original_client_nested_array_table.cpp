@@ -20,6 +20,8 @@ static void check_original_native_source_values() {
     static_assert(arrays::kOriginalTotalGeneratedElements==579);
     static_assert(arrays::kOriginalOuterNativeType==5);
     static_assert(arrays::kSourceElementOffsetField==44);
+    static_assert(arrays::kOriginalElementNamePointerTableVA==0x242fb110u);
+    static_assert(arrays::kOriginalElementNamePointerCount==256u);
     static_assert(graph::kNativeNestedTableType==5);
 }
 
@@ -42,9 +44,18 @@ static void verify_exact_shaped_elements_and_boundaries() {
             assert(ready.elements[i].nativeType==source.elementNativeType);
             assert(ready.elements[i].originalX86MemberOffset==
                    source.firstX86Offset+i*source.byteStride);
+            const auto& originalName=ready.elements[i].originalElementName;
+            assert(originalName[0]==static_cast<char>('0'+(i/100u)));
+            assert(originalName[1]==static_cast<char>('0'+((i/10u)%10u)));
+            assert(originalName[2]==static_cast<char>('0'+(i%10u)));
+            assert(originalName[3]=='\0');
+            assert(std::string(originalName.data()).size()==3u);
         }
+        assert(std::string(ready.elements.front().originalElementName.data())=="000");
         assert(ready.elements.front().originalX86MemberOffset==
                source.firstX86Offset);
+        if(source.elements==256u)
+            assert(std::string(ready.elements.back().originalElementName.data())=="255");
         assert(ready.elements.back().originalX86MemberOffset==
                source.firstX86Offset+
                (source.elements-1u)*source.byteStride);
@@ -56,7 +67,7 @@ static void verify_exact_shaped_elements_and_boundaries() {
         assert(schemas.LinkNested(wrapper,0,nested));
         for(const auto& element:ready.elements)
             assert(schemas.AddProperty(nested,
-                "generated_element_"+std::to_string(element.elementIndex),
+                std::string(element.originalElementName.data()),
                 static_cast<int>(element.nativeType)));
         // Mutations of authenticated COUNT/STRIDE/BASE/element type must
         // fail, not create plausible but nonoriginal x86 offsets.
