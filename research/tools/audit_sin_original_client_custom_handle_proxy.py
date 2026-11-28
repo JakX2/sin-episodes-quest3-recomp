@@ -77,10 +77,10 @@ def verify_original(path: Path) -> None:
         # 0xFFFFFFFF only on that exact source sentinel value.
         need(body[:11]==bytes.fromhex("8b442404817804ffff1f00"),
              f"source original incoming value/sentinel compare changed {va:#x}")
-        need(body[11:27]==bytes.fromhex(
-            "750b8b44240cc700ffffffffc38b40"),
+        need(body[11:24]==bytes.fromhex(
+            "750b8b44240cc700ffffffffc3"),
              f"source invalid-handle output return sequence drift {va:#x}")
-        need(body[26:]==bytes.fromhex(
+        need(body[24:]==bytes.fromhex(
             "8b40048b54240c8bc8c1f90bc1e10c25ff0700000bc8890ac3"),
              f"source handle sign-shift/index remap changed {va:#x}")
     print("PASS Phase1709 owner original: both 49B handle proxy bodies SHA-pin, "
