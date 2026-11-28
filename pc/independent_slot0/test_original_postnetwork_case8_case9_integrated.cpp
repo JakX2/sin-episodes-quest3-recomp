@@ -148,6 +148,14 @@ void on_case(void* user,std::uint8_t case_index,std::uint32_t type,
     const auto signed_n=source_word_count(record->read16(0x10u));
     const auto byte_count=static_cast<std::uint32_t>(
         signed_n*(case_index==9u?4:1));
+    // The existing byte comparator's synthetic max is 4096,
+    // while these invented arrays own only 40 bytes. Reject an
+    // in-range-for-comparator but out-of-range-for-buffer count.
+    // Counts above 4096 are safe-refused by native CompareBytes.
+    if(byte_count>t->predicted[index].size() &&
+       byte_count<=bc::kSafeCompareMaxBytes) {
+        ++t->bad;return;
+    }
     auto& owner=*t->owner;
     owner.authorize_current_record(record);
     owner.authorize_copy_buffers(
