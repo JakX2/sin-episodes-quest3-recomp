@@ -19,6 +19,7 @@
 #include "sin_compat/original_client_custom_color_integer_proxies.hpp"
 #include "sin_compat/original_client_custom_movement_fov_proxies.hpp"
 #include "sin_compat/original_client_custom_scale_transition_proxies.hpp"
+#include "sin_compat/original_client_custom_team_array_element_proxy.hpp"
 
 namespace sin_compat::original_client_standard_recvproxy_router {
 namespace manifest=sin_compat::original_client_native32_recvtable_manifest;
@@ -31,11 +32,16 @@ namespace handle=sin_compat::original_client_custom_handle_proxy;
 namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
 namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
 namespace scale=sin_compat::original_client_custom_scale_transition_proxies;
+namespace team=sin_compat::original_client_custom_team_array_element_proxy;
 
 struct DecodedOwnedInput final {
     // The original CRecvProxyData union value begins at byte +4.
     // Remaining four source bytes are never executable pointers.
     std::array<std::uint8_t,16> originalProxyData{};
+    // Original Team array RecvProxy reads CRecvProxyData+0x14 for
+    // element index. Keep this explicit decoded scalar separate from the
+    // existing 16-byte primitive record, NOT a forged 24-byte ABI.
+    std::uint32_t originalSourceElementIndex=0u;
     // Explicit, memory-safe decoded string slice INCLUDING any NUL byte.
     std::string_view decodedStringBytes{};
     // Bounded 32-bit native datatable object TOKEN, not a process pointer.
@@ -47,15 +53,11 @@ enum class Status : std::uint8_t {
 
 inline constexpr bool CanPublishRetailProxyPointers() noexcept {return false;}
 
-// Phase1709: the 999 original standard identities dispatch through seven
-// source-backed families; 35 source-proven original custom handle/moveparent
-// assignments use their exact reconstructed 49-byte method behavior.
-// Phase1710 now adds four byte-reordering color assignments and five
-// original integer decrement assignments. Phase1711 handles three original direct movement/FOV
-// state changes, bringing host-reconstructed routes to 1046; the remaining
-// Phase1712 adds two source float-scale transition routines, preserving
-// original x87 ordered comparisons; 34 custom and all 28 special
-// constructor paths stay blocked.
+// Source-dispatched HOST-OWNED reference callbacks, cumulatively:
+// 999 standard, 35 handle/moveparent, 4 color, 5 decrement,
+// 3 movement/FOV, 2 original x87 scale and 1 Team array element.
+// The remaining 33 custom callbacks and 28 special constructors
+// are deliberately unsupported; original x86 function pointers never run.
 // This is still a bounded, HOST-OWNED function, not live Source networking.
 inline Status ApplySourceStandardProperty(
     std::size_t sourceTableOrdinal,std::size_t slot,
@@ -73,7 +75,8 @@ inline Status ApplySourceStandardProperty(
         !handle::IsOriginalHandleProxy(nativeSourceVA) &&
         !colorInt::IsOriginalCustomColorOrDecrement(nativeSourceVA) &&
         !moveFov::IsOriginalMovementOrFovProxy(nativeSourceVA) &&
-        !scale::IsSourceScaleProxy(nativeSourceVA)))
+        !scale::IsSourceScaleProxy(nativeSourceVA) &&
+        !team::IsOriginalTeamElementProxy(nativeSourceVA)))
         return Status::UnsupportedSourceCallback;
 
     if(nativeType==5u && nativeSourceVA==owned::kOriginalDataTableProxyVA) {
@@ -112,6 +115,25 @@ inline Status ApplySourceStandardProperty(
         if(applied==scale::Status::Applied)
             return Status::Applied;
         if(applied==scale::Status::RefusedBadOwnedMemory)
+            return Status::RefusedBadOwnedMemory;
+        return Status::UnsupportedSourceCallback;
+    }
+
+    // Phase1713: the original 24-byte Team player_array_element
+    // callback stores into a 32-DWORD array reached through Team+0x480
+    // and uses native CRecvProxyData+0x14 as its index. Model the
+    // pointer as a validated SYNTHETIC token within one owned buffer,
+    // never a host or old PE32 address. The special type4 outer
+    // player_array property is still explicitly unsupported.
+    if(team::IsOriginalTeamElementProxy(nativeSourceVA)) {
+        if(nativeType!=0u)return Status::UnsupportedSourceCallback;
+        const auto applied=team::ApplySourceOriginalEffect(
+            sourceTableOrdinal,slot,nativeSourceVA,
+            incoming.originalProxyData,incoming.originalSourceElementIndex,
+            originalObjectBytes);
+        if(applied==team::Status::Applied)
+            return Status::Applied;
+        if(applied==team::Status::RefusedBadOwnedMemory)
             return Status::RefusedBadOwnedMemory;
         return Status::UnsupportedSourceCallback;
     }
