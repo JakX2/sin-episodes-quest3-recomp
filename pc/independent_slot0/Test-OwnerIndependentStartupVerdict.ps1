@@ -65,7 +65,8 @@ try {
             'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011,client:factory-accepted:VClientPrediction001')) {
         throw 'Owner prediction factory source-bound evidence not retained from same-session native trace'
     }
-    Remove-Item -LiteralPath $client -Force
+    # The existing retail replay below removes $client after it
+    # creates the next synthetic trace. Keep that cleanup order.
 
     # Synthetic replay of the owner's first real retail-engine trace.
     # These lines come from our independent diagnostic, not game binaries.
