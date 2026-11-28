@@ -1732,3 +1732,20 @@ target_compile_features(sin_original_prediction_view_setter_slot14_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_prediction_view_setter_slot14_native
   COMMAND sin_original_prediction_view_setter_slot14_test)
+
+
+# Phase1664: original SHA-authenticated CPrediction::Update
+# slot3 four-arg RET16, 11 DWORD pointer-backed scoped work buffer,
+# virtual slot22 boundary and restore after opaque callback.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_update_slot3_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_update_slot3_scratch.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_update_slot3_scratch_test
+  test_original_client_prediction_update_slot3_scratch.cpp)
+target_compile_features(sin_original_prediction_update_slot3_scratch_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_prediction_update_slot3_scratch_native
+  COMMAND sin_original_prediction_update_slot3_scratch_test)
