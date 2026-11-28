@@ -10,6 +10,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 namespace native=sin_compat::original_client_native32_recvtable_image;
 namespace schema=sin_compat::original_client_native32_recvtable_manifest;
@@ -40,6 +41,32 @@ static void check_original_source_counts() {
     static_assert(schema::EveryNativeTypeFiveRouteSourceClassified());
     static_assert(schema::SourceCardinality());
     assert(!schema::CanExposeToRetailEngine());
+}
+
+static void verify_original_cold_source_ledger(
+    const native::WalkReport& r,
+    std::size_t expected,
+    std::uint32_t expectedFirst) {
+    // Source 0x20086930 stores a RecvTable* DWORD at +0, prev-index
+    // WORD at +4, next-index WORD at +6. This is a safe OWNED cold
+    // sequential list shape, NOT native game memory or the original
+    // engine heap allocator/free-list implementation.
+    assert(r.registrationNodes.size()==expected);
+    assert(r.visitedTables==expected);
+    assert(expected>0u && expected<0xFFFFu);
+    assert(r.registrationHead==0u);
+    assert(r.registrationTail==expected-1u);
+    assert(r.registrationNodes.front().tableToken==expectedFirst);
+    std::unordered_set<std::uint32_t> uniqueTokens;
+    for(std::size_t i=0u;i<r.registrationNodes.size();++i) {
+        const auto& node=r.registrationNodes[i];
+        assert(node.tableToken>=native::kArenaBaseVA &&
+               node.tableToken<native::kArenaBaseVA+200000u);
+        assert(uniqueTokens.insert(node.tableToken).second);
+        assert(node.previous==(i==0u?0xFFFFu:i-1u));
+        assert(node.next==(i+1u==expected?0xFFFFu:i+1u));
+    }
+    assert(uniqueTokens.size()==expected);
 }
 
 static void test_owned_arena_refusal() {
@@ -188,6 +215,7 @@ static void test_exact_native32_image(const char* sourceManifest) {
     assert(walk.traversedNativeType5==207u);   // 192 +14 +1 specialized
     assert(walk.blockedUnimplementedNativeType5==1u);
     assert(walk.duplicateSubtableReferences>0u);
+    verify_original_cold_source_ledger(walk,225u,image.staticTableTokens[0u]);
     assert(!walk.CompleteRetailRecursion());
     assert(!image.CanExposeToRetailEngine());
 
@@ -203,6 +231,13 @@ static void test_exact_native32_image(const char* sourceManifest) {
     assert(sourceStartup.traversedNativeType5==207u);
     assert(sourceStartup.blockedUnimplementedNativeType5==1u);
     assert(sourceStartup.duplicateSubtableReferences>0u);
+    verify_original_cold_source_ledger(sourceStartup,224u,
+                                       image.staticTableTokens[0u]);
+    // The true original 191-class root traversal never reaches
+    // ordinal196 DT_Animationlayer as a standalone table. Its native
+    // pointer must not appear in the registration ledger.
+    for(const auto& item:sourceStartup.registrationNodes)
+        assert(item.tableToken!=image.staticTableTokens[196u]);
     assert(!sourceStartup.CompleteRetailRecursion());
 
     // Prove the source one-table discrepancy rather than merely
@@ -270,6 +305,8 @@ static void test_exact_native32_image(const char* sourceManifest) {
     assert(repairedStartup.visitedTables==224u &&
            repairedStartup.visitedProperties==1796u &&
            repairedStartup.blockedUnimplementedNativeType5==1u);
+    verify_original_cold_source_ledger(repairedStartup,224u,
+                                       image.staticTableTokens[0u]);
 }
 int main(int argc,char** argv) {
     assert(argc==2);
