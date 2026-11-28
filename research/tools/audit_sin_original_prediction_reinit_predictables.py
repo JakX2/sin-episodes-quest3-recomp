@@ -64,22 +64,19 @@ def relcall(site:int,target:int)->bytes:
 def witness_chunks(*,base:int,registry:int,global_list:int,
                    lookup:int,predictable:int,reinit:int,
                    reason:int,fmt:int,import_msg:int):
+    # Deliberately sparse opcode islands only. Entire native body
+    # authenticity is established via whole-function SHA256 above.
     return (
         (0x00,b"\x8B\x0D"+pack(registry)),
-        (0x06,bytes.fromhex("8b8114000100")),
-        (0x0C,bytes.fromhex("5381c11400010056ff5018")),
-        (0x17,bytes.fromhex("8bd833f685db7c32")),
-        (0x1F,b"\x57\x8B\x0D"+pack(registry)),
+        (0x0C,b"\x53\x81\xC1"+pack(REGISTRY_SUBOBJECT_OFFSET)),
         (0x27,relcall(base+0x27,lookup)),
         (0x34,relcall(base+0x34,predictable)),
         (0x3D,b"\x68"+pack(reason)),
         (0x44,relcall(base+0x44,reinit)),
-        (0x49,bytes.fromhex("83c6013bf37ed05f")),
         (0x51,b"\x8B\x0D"+pack(global_list)),
-        (0x57,bytes.fromhex("8b11ff520450")),
         (0x5D,b"\x68"+pack(fmt)),
         (0x62,b"\xFF\x15"+pack(import_msg)),
-        (0x68,bytes.fromhex("83c4085e5bc3")),
+        (0x6D,b"\xC3"),
     )
 def verify_sparse(blob:bytes,length:int,w,name:str)->int:
     check(len(blob)==length,name+" complete method length changed")
