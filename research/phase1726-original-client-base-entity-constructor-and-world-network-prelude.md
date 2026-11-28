@@ -1,0 +1,11 @@
+# Phase 1726: shared C_BaseEntity constructor and world network prelude
+
+The owner-provided 2006 PE32 client.dll matches the established whole-file SHA. The startup call previously described as the world constructor actually enters the shared C_BaseEntity constructor, 0x240CCE30, with a 573-byte complete body and three INT3 padding bytes. Its four final constructor vtables have MSVC RTTI type C_BaseEntity at offsets 0, 4, 8, 12; the caller subsequently installs C_World vtables at the same offsets.
+
+The 12 direct canonical factory callers are CPlayerHand, CInfoLadderDismount, CWaterLODControl, CShadowControl, CPhysBox, CFuncTrackTrain, CFuncOccluder, CFuncMonitor, CFuncAreaPortalWindow, CEnvScreenOverlay, CBoneFollower and CEnvQuadraticBeam (ordinals 56,72,76,85,97,100,102,103,109,112,124,186). CWorld startup is a thirteenth independently confirmed caller, not an exhaustive cross-reference count. The constructor directly calls six distinct helper targets at seven instruction sites. These helper effects and full constructor semantics are not implemented here.
+
+The original 44-byte C_World network initializer first clears a DWORD at owner+0x480. Its first 11-byte helper clears original client global 0x2432B254; its second 11-byte helper clears original client global 0x2436115C. It then forwards the two original argument bit patterns to the shared initializer and returns its Boolean result. The shared source routine itself returns AL=1. The logical host-owned prelude implements these three reset effects and forwards both arguments to an injected test callback; it does not bind any native object, original addresses or real engine initializer. The meaning of the two globals is not yet established.
+
+Private original-byte audit: python research/tools/audit_sin_original_client_base_entity_constructor.py --client /private/client.dll
+
+Public C++ test: tests/test_original_client_world_network_prelude.cpp. Strict GCC C++17 and Clang ASan/UBSan ran locally against the isolated host model, and the private original-byte audit passed. No original DLL or extracted executable body is included. Native factory callbacks and VClient011.slot5 remain guarded. No actual retail startup, gameplay, or Android execution claim.

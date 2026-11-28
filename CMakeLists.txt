@@ -6915,3 +6915,18 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
   endif()
 endif()
+
+# Phase1726: isolated source-derived world network prelude.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_world_network_prelude_tests
+    tests/test_original_client_world_network_prelude.cpp)
+  target_include_directories(sin_original_client_world_network_prelude_tests PRIVATE include)
+  target_compile_features(sin_original_client_world_network_prelude_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_world_network_prelude_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_world_network_prelude_tests
+      COMMAND sin_original_client_world_network_prelude_tests)
+  endif()
+endif()
