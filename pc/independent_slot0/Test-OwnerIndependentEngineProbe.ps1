@@ -135,6 +135,58 @@ try {
     Reject 'marker content mismatch' $true
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
+
+    # Phase1687: launching a real engine beyond the client Init
+    # prefix is a separate, explicit Client-only diagnostic.
+    # These invalid role/sound combinations must fail BEFORE
+    # any SHA, replacement-file move or real game process launch.
+    foreach ($case in @(
+        @{Role='Both'; Sound=$false},
+        @{Role='Server'; Sound=$false},
+        @{Role='Client'; Sound=$true}
+    )) {
+        $inputs=@{
+            GameBin=$bin
+            GameExecutable=$exe
+            IndependentBin=$IndependentBin
+            ProbeRole=$case.Role
+            EnableClientPredictionFactoryProbe=$true
+            DisposableTestCopyConfirmed=$true
+        }
+        if ($case.Sound) { $inputs.EnableClientSoundProbe=$true }
+        $rejected=$false
+        try {
+            & $Launcher @inputs | Out-Null
+        } catch {
+            if ($_.Exception.Message -notlike
+                '*EnableClientPredictionFactoryProbe requires explicit Client-only mode without EnableClientSoundProbe*') {
+                throw ('Unexpected prediction factory guard result: '+$_.Exception.Message)
+            }
+            $rejected=$true
+        }
+        if (-not $rejected) {
+            throw 'Prediction owner factory diagnostic accepted unsafe role or simultaneous terminal sound probe'
+        }
+        if ((Sha256 $server) -cne $beforeServer -or
+            (Sha256 $client) -cne $beforeClient) {
+            throw 'Prediction factory role validation modified fake original DLLs'
+        }
+    }
+    # Even when an opt-in is absent, the launcher must overwrite
+    # inherited values with an explicit false and restore them
+    # during the finally block. The test probes source text because
+    # the fixture will not launch the owner's real game executable.
+    foreach ($required in @(
+        '$previousClientPredictionFactoryProbe',
+        "'SIN_INDEPENDENT_CLIENT_PREDICTION_FACTORY_PROBE'",
+        'OWNER_CLIENT_PREDICTION_FACTORY_PROBE:',
+        'ENABLED_OWNER_DIAGNOSTIC_NEXT_INTERFACE'
+    )) {
+        if (-not $launcherText.Contains($required)) {
+            throw "Prediction owner probe environment isolation missing: $required"
+        }
+    }
+
     # Phase 517: only an explicitly selected Server-only diagnostic may
     # touch the second factory's 2006 physics names.
     foreach ($case in @(
