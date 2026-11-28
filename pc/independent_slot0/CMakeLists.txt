@@ -2446,3 +2446,17 @@ target_compile_features(sin_original_client_real_static_recvtable_graph_native_t
 add_test(NAME independent_original_client_real_static_recvtable_graph_native
   COMMAND sin_original_client_real_static_recvtable_graph_native_test
     "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")
+
+
+# Phase1700: 191 original source names / 211 actual static tables /
+# 1110 original RecvProps / 14 dynamically generated type5 tables.
+# Entire virtual-client networking ABI remains permanently gated here.
+add_executable(sin_original_client_native32_recvtable_image_native_test
+  ../../tests/test_original_client_native32_recvtable_image.cpp)
+target_include_directories(sin_original_client_native32_recvtable_image_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_native32_recvtable_image_native_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_native32_recvtable_image_native
+  COMMAND sin_original_client_native32_recvtable_image_native_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")
