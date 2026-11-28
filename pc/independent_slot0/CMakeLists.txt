@@ -2174,3 +2174,18 @@ add_test(NAME independent_client_entitylist_factory_actual_dll_native
 set_tests_properties(
   independent_client_entitylist_factory_actual_dll_native
   PROPERTIES TIMEOUT 90)
+
+
+# Phase1689 original-source gate is separate from the loaded
+# replacement DLL regression: public CI uses ONLY invented
+# sparse opcode windows and mutation tests. The owner-only
+# --archive/--engine mode pins whole retail engine/client SHAs,
+# exact 100-byte post-prediction interface request window,
+# original relocated 9+3 vtables, native secondary factory and
+# original RTTI parent displacement +0x10014.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_engine_entitylist_factory_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_engine_entitylist_factory_boundary.py"
+      --self-test)
+endif()
