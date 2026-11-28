@@ -69,6 +69,29 @@ try {
             'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011,client:factory-accepted:VClientPrediction001')) {
         throw 'Owner prediction factory/ConVar registration evidence not retained from same-session native trace'
     }
+    # Phase1689: the real original engine's next request is the
+    # embedded VClientEntityList003 secondary interface. Original
+    # source has a full 9-slot vtable but live parent registration
+    # is intentionally fatal. Accept only the new diagnostic
+    # marker as a next-interface boundary, never game boot.
+    [IO.File]::WriteAllLines($client,[string[]]@(
+        '[SiN independent] role=client phase=factory-accepted version=VClient011',
+        '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=prediction-bound version=cl_predict-parent-value',
+        '[SiN independent] role=client phase=client-entitylist-empty-bound version=secondary-plus-0x10014:9-slots',
+        '[SiN independent] role=client phase=factory-accepted version=VClientPrediction001',
+        '[SiN independent] role=client phase=factory-accepted version=VClientEntityList003',
+        '[SiN independent] role=client phase=unsupported-callback version=CClientEntityList.primary-register-unsupported'
+    ))
+    $entityOut=Verify 'UNSUPPORTED_CALLBACK_DIAGNOSTIC_STOP_NO_BOOT_PROOF'
+    $entityBoundary=('OWNER_CLIENT_ENTITYLIST_EMPTY_FACTORY_BOUNDARY: '+
+        'sin-independent-'+$session+'-202.log:client:client-entitylist-empty-bound:secondary-plus-0x10014:9-slots')
+    if (-not ($entityOut -ccontains $entityBoundary) -or
+        -not ($entityOut -ccontains
+            'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011,client:factory-accepted:VClientPrediction001,client:factory-accepted:VClientEntityList003')) {
+        throw 'Same-process original client secondary entitylist factory was not classified without game-boot claim'
+    }
+
     # The existing retail replay below removes $client after it
     # creates the next synthetic trace. Keep that cleanup order.
 

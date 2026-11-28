@@ -2150,3 +2150,42 @@ set_tests_properties(
   independent_client_prediction_factory_actual_dll_native
   PROPERTIES TIMEOUT 90)
 
+
+
+# Phase1689: independent production PE32 client.dll entity-list
+# integration, not the standalone original-free Phase1657 fixture.
+# Real LoadLibrary / real CreateInterface / real 21-dependency
+# VClient011.Init / native VClientPrediction001 and
+# original 9-slot VClientEntityList003 secondary C++ layout at
+# +0x10014 with separate 3-slot parent. All actual native
+# method calls check MSVC __thiscall ESP callee cleanup and
+# source-backed empty array/counter fields. Child-process
+# attempts to register entities via PRIMARY virtual slot0
+# must terminate rather than conjure original entity ownership.
+add_executable(sin_original_client_entitylist_factory_actual_dll_test
+  test_original_client_entitylist_factory_actual_dll.cpp)
+target_compile_features(sin_original_client_entitylist_factory_actual_dll_test
+  PRIVATE cxx_std_17)
+add_dependencies(sin_original_client_entitylist_factory_actual_dll_test
+  sin_slot0_client)
+add_test(NAME independent_client_entitylist_factory_actual_dll_native
+  COMMAND sin_original_client_entitylist_factory_actual_dll_test
+    "$<TARGET_FILE:sin_slot0_client>")
+set_tests_properties(
+  independent_client_entitylist_factory_actual_dll_native
+  PROPERTIES TIMEOUT 90)
+
+
+# Phase1689 original-source gate is separate from the loaded
+# replacement DLL regression: public CI uses ONLY invented
+# sparse opcode windows and mutation tests. The owner-only
+# --archive/--engine mode pins whole retail engine/client SHAs,
+# exact 100-byte post-prediction interface request window,
+# original relocated 9+3 vtables, native secondary factory and
+# original RTTI parent displacement +0x10014.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_engine_entitylist_factory_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_engine_entitylist_factory_boundary.py"
+      --self-test)
+endif()

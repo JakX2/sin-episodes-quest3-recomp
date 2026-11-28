@@ -19,6 +19,7 @@
 #include "client_material_startup_core.h"
 #include "native_client_prediction_factory_boundary.h"
 #include "native_client_prediction_convar_registration.h"
+#include "native_original_client_entitylist_empty_factory.h"
 #include "client_screen_random_core.h"
 #include "client_cvar_probe.h"
 #include "client_owned_startup_probe.h"
@@ -254,6 +255,53 @@ static bool g_predictionOwnerReady=false;
 namespace owned_predict=
     sin_independent::native_client_prediction_convar_registration;
 static owned_predict::Owner* g_predictionConVarOwner=nullptr;
+// Phase1689: source-verified embedded entity-list factory is a
+// separate explicit diagnostic gate layered AFTER prediction.
+// Original engine.dll requests VClientEntityList003 at
+// 0x20023D24 immediately after Prediction slot1 at 0x20023D21.
+// This provides an authentically placed 3+9 native virtual
+// interface on a genuinely empty owner, NOT live entities.
+namespace native_entitylist=
+    sin_independent::native_original_client_entitylist_factory;
+static native_entitylist::Owner* g_entityListOwner=nullptr;
+static bool g_entityListReady=false;
+static bool clientEntityListFactoryProbeEnabled() noexcept {
+    char flag[2]={};
+    return clientPredictionFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_ENTITYLIST_FACTORY_PROBE",
+            flag,sizeof(flag))==1 && flag[0]=='1';
+}
+static bool bindEmptyNativeEntityList() noexcept {
+    if(!clientEntityListFactoryProbeEnabled())return false;
+    HMODULE retainedModule=nullptr;
+    // The engine may retain the embedded interface pointer after
+    // its original factory request; never unmap its virtual methods.
+    if(!GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|
+            GET_MODULE_HANDLE_EX_FLAG_PIN,
+            reinterpret_cast<LPCSTR>(&bindEmptyNativeEntityList),
+            &retainedModule) || !retainedModule)return false;
+    if(!g_entityListOwner)
+        g_entityListOwner=new(std::nothrow)
+            native_entitylist::Owner(&stopUnsupported);
+    if(!g_entityListOwner)return false;
+    auto* const selected=g_entityListOwner->BindEmpty();
+    const auto parent=reinterpret_cast<std::uintptr_t>(g_entityListOwner);
+    const auto child=reinterpret_cast<std::uintptr_t>(selected);
+    const auto raw=reinterpret_cast<std::uintptr_t>(
+        g_entityListOwner->RawAddress());
+    if(child-parent!=native_entitylist::kOriginalSecondaryOffset ||
+       raw-parent!=native_entitylist::kOriginalRawOffset ||
+       !selected->Active()) {
+        g_entityListOwner->Revoke();
+        return false;
+    }
+    g_entityListReady=true;
+    diagnostic("client-entitylist-empty-bound",
+               "secondary-plus-0x10014:9-slots");
+    return true;
+}
 static bool clientPredictionCvarRegistrationEnabled() noexcept {
     char flag[2]={};
     return clientPredictionFactoryProbeEnabled() &&
@@ -1246,6 +1294,8 @@ public:
         g_clientPhysicsFactory=physicsFactory;
         g_predictionOwnerReady=false;
         if(g_predictionOwner)g_predictionOwner->Revoke();
+        g_entityListReady=false;
+        if(g_entityListOwner)g_entityListOwner->Revoke();
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
@@ -1289,6 +1339,14 @@ public:
             if(owner && gotNumeric) {
                 owner->BindSourceNumeric(numeric);
                 g_predictionOwnerReady=true;
+                if(clientEntityListFactoryProbeEnabled() &&
+                   !bindEmptyNativeEntityList()) {
+                    g_predictionOwnerReady=false;
+                    owner->Revoke();
+                    diagnostic("client-entitylist-empty-refused",
+                               "owner-layout-or-lifetime");
+                    return 0;
+                }
                 seen_=true;
                 diagnostic("prediction-bound","cl_predict-parent-value");
                 return 1; // Explicit opt-in; remaining callbacks guard.
@@ -1306,6 +1364,8 @@ public:
         g_clientPhysicsFactory=nullptr;
         g_predictionOwnerReady=false;
         if(g_predictionOwner)g_predictionOwner->Revoke();
+        g_entityListReady=false;
+        if(g_entityListOwner)g_entityListOwner->Revoke();
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
         g_slot33Ready=false;
         g_slot33Reader={};
@@ -2041,6 +2101,12 @@ extern "C" __declspec(dllexport) void* __cdecl CreateInterface(
        g_predictionOwnerReady && g_predictionOwner &&
        g_predictionOwner->Bound())
         result=static_cast<void*>(g_predictionOwner);
+    if(!result && name &&
+       std::strcmp(name,native_entitylist::kInterfaceName)==0 &&
+       clientEntityListFactoryProbeEnabled() &&
+       g_entityListReady && g_entityListOwner &&
+       g_entityListOwner->Active())
+        result=static_cast<void*>(g_entityListOwner->Interface());
 #endif
 #if defined(SIN_ROLE_server)
     if (!result && name && extraFactoriesEnabled()) {
