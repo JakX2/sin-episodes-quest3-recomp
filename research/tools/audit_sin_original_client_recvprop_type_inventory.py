@@ -163,9 +163,11 @@ def verify_native_factories(pe: PEImage) -> None:
     need(pe.at(0x24126EE7, 8) ==
          b"\xC7\x44\x24\x18\x05\x00\x00\x00",
          "original 351-byte copied-array constructor did not set native type 5")
-    need(pe.at(0x24126F7D, 3) == b"\x89\x6A\x2C" and
+    need(pe.at(0x24126F6B, 2) == b"\x33\xED" and
+         pe.at(0x24126F7D, 3) == b"\x89\x6A\x2C" and
          pe.at(0x24126F87, 4) == b"\x03\x6C\x24\x5C",
-         "original nested array element member-offset/byte-stride update changed")
+         "original nested array child-local +44 offset must start at zero "
+         "and advance by caller byte stride")
     need(pe.at(0x24126FAB, 2) == b"\x6A\x14",
          "original dynamically allocated 20-byte child RecvTable request changed")
     need(pe.at(0x24126F70, 13).startswith(
@@ -252,7 +254,8 @@ def recover_dynamic_array_shape(pe: PEImage, client_class: str,
          candidates[-1][1] == (0x24126DF0 if template_type==TYPE_INTEGER
                               else 0x24126D80),
          "dynamic table source element template type changed")
-    need(count > 0 and 1 <= width <= 4 and offset <= 65536,
+    need(count > 0 and 1 <= width <= 4 and offset <= 65536 and
+         offset + (count - 1) * width <= 0xffffffff,
          "unsafe inferred original nested array shape")
     return {
         "client_class": client_class,
@@ -261,7 +264,15 @@ def recover_dynamic_array_shape(pe: PEImage, client_class: str,
         "element_native_type": template_type,
         "source_element_count": count,
         "source_element_width_bytes": width,
-        "original_x86_first_element_offset": offset,
+        # Parent's original x86 object member offset belongs on the
+        # OUTER property. The original loop sets EBP=0 at 0x24126F6B
+        # and writes EBP to each child descriptor +44 before adding stride.
+        # It does NOT write parent+index*stride into child descriptor +44.
+        "original_x86_outer_property_base_offset": offset,
+        "original_child_recvprop_relative_offsets":
+            [i * width for i in range(count)],
+        "derived_original_parent_object_offsets":
+            [offset + i * width for i in range(count)],
         "source_array_builder_va": hex(COPIED_DESCRIPTOR_HELPER),
         "source_initializer_callsite_va": hex(site+7),
         "source_element_template_callsite_va": hex(candidates[-1][0]),
