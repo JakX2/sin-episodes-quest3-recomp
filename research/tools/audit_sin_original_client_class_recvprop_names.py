@@ -86,7 +86,7 @@ def source_special_name(pe: PEImage, code: bytes, code_base: int,
     return hits[0]
 
 
-def verify(client: bytes) -> dict:
+def verify(client: bytes, *, include_all: bool = False) -> dict:
     need(hashlib.sha256(client).hexdigest() == ORIGINALS["client"]["sha256"],
          "whole original client checksum differs before 939-prop audit")
     pe = PEImage(client)
@@ -169,7 +169,7 @@ def verify(client: bytes) -> dict:
              "source_constructor_va": hex(record["constructor_va"])}
             for class_name, _, index, record in rows if class_name == name
         ]
-    return {
+    report = {
         "status": "ORIGINAL_CLIENT_ALL_939_RECVPROP_NAMES_AUTHENTICATED",
         "original_client_sha256": ORIGINALS["client"]["sha256"],
         "source_registered_classes": 191,
@@ -185,6 +185,36 @@ def verify(client: bytes) -> dict:
                         "class creation and runnable client network ABI "
                         "are NOT reconstructed. No retail boot."),
     }
+    if include_all:
+        # Owner-controlled private export: SOURCE METADATA ONLY.
+        # Original x86 addresses are printed as diagnostic labels, never
+        # executable host pointers; classes/proxies remain nonfunctional.
+        report["class_property_metadata"] = [
+            {
+                "client_class_name": table["class_name"],
+                "source_table_name": table["table_name"],
+                "source_recvtable_va": hex(table["recvtable_va"]),
+                "source_property_array_va": hex(table["property_array_va"]),
+                "source_creator_kind": table["original_creator_kind"],
+                "declared_properties": table["property_count"],
+                "properties": [
+                    {
+                        "slot": index,
+                        "source_property_name": found[(table["class_name"], index)]["name"],
+                        "native_constructor_route": found[(table["class_name"], index)]["route"],
+                        "original_x86_field_offset": found[(table["class_name"], index)]["x86_member_offset"],
+                        "source_constructor_va": hex(found[(table["class_name"], index)]["constructor_va"]),
+                        "source_callsite_va": hex(found[(table["class_name"], index)]["code_va"]),
+                    }
+                    for index in range(table["property_count"])
+                ],
+            }
+            for table in tables
+        ]
+        need(len(report["class_property_metadata"]) == 191 and
+             sum(len(x["properties"]) for x in report["class_property_metadata"]) == 939,
+             "exported class/property inventory unexpectedly incomplete")
+    return report
 
 
 def self_test() -> None:
@@ -205,14 +235,24 @@ def main():
     parser.add_argument("--client", type=Path,
                         help="owner-private original 2006 PE32 client.dll")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--full-json", type=Path,
+                        help="owner-private SOURCE METADATA export of all 939 properties")
     args = parser.parse_args()
+    if args.full_json is not None and args.client is None:
+        parser.error("--full-json requires --client with the owner's unchanged original image")
     if args.client is None and not args.self_test:
         parser.error("supply --self-test and/or --client")
     if args.self_test:
         self_test()
     if args.client is not None:
-        print(json.dumps(verify(args.client.read_bytes()),
-                         indent=2, sort_keys=True))
+        report = verify(args.client.read_bytes(), include_all=args.full_json is not None)
+        if args.full_json is not None:
+            args.full_json.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
+                                      encoding="utf-8")
+            print("PASS original-client metadata export: 191 classes, 939 names; "
+                  "no original PE32 bytes, no engine-compatible RecvTable pointers")
+        else:
+            print(json.dumps(report, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
