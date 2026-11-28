@@ -40,11 +40,13 @@ inline constexpr char kInterfaceName[]="VCENTERPRINT002";
 inline constexpr unsigned kOriginalSlots=8u;
 inline constexpr unsigned kOriginalBackingOffset=0x04u;
 using RefuseCallback=void (*)(const char*) noexcept;
+using TraceCallback=void (*)(const char*,const char*) noexcept;
 
 class ColdWrapper final {
 public:
-    explicit ColdWrapper(RefuseCallback refuse) noexcept:
-        refuse_(refuse) {}
+    explicit ColdWrapper(RefuseCallback refuse,
+                         TraceCallback trace=nullptr) noexcept:
+        refuse_(refuse),trace_(trace) {}
 
     // Source original 0x241EC430, tail forwards four arguments to
     // service vtable+0x2B8; absent service is native RET16.
@@ -73,11 +75,26 @@ public:
         std::uint32_t,std::uint32_t,std::uint32_t,
         std::uint32_t,std::uint32_t) noexcept {
         MustBeCold();
+        // Original engine.dll calls this exact five-arg virtual
+        // at 0x200AA600. First-use-only diagnostics distinguish
+        // actual entry from a mere CreateInterface factory query.
+        if(trace_ && !slot4_observed_) {
+            slot4_observed_=true;
+            trace_("client-centerprint-slot4-cold",
+                   "five-arg-no-backing");
+        }
     }
     // Engine.dll source 0x200AA539, 0x200AA630 and
     // 0x20150D56 invoke slot5 without arguments.
     virtual void __thiscall Slot5Noarg() noexcept {
         MustBeCold();
+        // Engine.dll callers 0x200AA539, 0x200AA630 and
+        // 0x20150D56. Do not copy/print game text or leak pointers.
+        if(trace_ && !slot5_observed_) {
+            slot5_observed_=true;
+            trace_("client-centerprint-slot5-cold",
+                   "noarg-no-backing");
+        }
     }
     // Source original slot6 0x241EC760 allocates 0xF8 bytes
     // and calls the still-unimplemented service constructor
@@ -95,6 +112,8 @@ public:
 
     void BindCold() noexcept {
         backing_=nullptr;
+        slot4_observed_=false;
+        slot5_observed_=false;
         active_=true;
     }
     void Revoke() noexcept {
@@ -119,7 +138,10 @@ private:
     // Host-only metadata at +8 onwards is never used by source
     // engine interfaces (which only interact through eight slots).
     bool active_=false;
+    bool slot4_observed_=false;
+    bool slot5_observed_=false;
     RefuseCallback refuse_=nullptr;
+    TraceCallback trace_=nullptr;
 };
 static_assert(sizeof(void*)==4u,"original 2006 PE32 pointer width");
 } // namespace sin_independent::native_original_client_centerprint
