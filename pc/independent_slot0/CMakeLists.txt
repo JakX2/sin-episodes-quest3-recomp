@@ -1749,3 +1749,20 @@ target_compile_features(sin_original_prediction_update_slot3_scratch_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_prediction_update_slot3_scratch_native
   COMMAND sin_original_prediction_update_slot3_scratch_test)
+
+
+# Phase1665: authentic original 2006 CPrediction slots4/5 packet
+# entity lifecycle; original-free SHA audit and actual Win32 x86
+# two-argument PRE RET8 / zero-argument POST RET0 ABI regressions.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_packet_entity_pair_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_packet_entity_pair.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_packet_entity_pair_test
+  test_original_client_prediction_packet_entity_pair.cpp)
+target_compile_features(sin_original_prediction_packet_entity_pair_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_prediction_packet_pair_native
+  COMMAND sin_original_prediction_packet_entity_pair_test)
