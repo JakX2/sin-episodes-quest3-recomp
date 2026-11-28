@@ -341,6 +341,20 @@ static bool bindColdClientCenterprint() noexcept {
                "nullable-service:8-slots");
     return true;
 }
+// Phase1691: unlike name-only VSoundEmitter001 factory acquisition,
+// the source original VClient011.Init at 0x240FE31B actually invokes
+// the emitter's first virtual Connect(appSystemFactory) and tests the
+// native bool at 0x240FE322..0x240FE324. A false result branches to
+// original Init failure at 0x240FE59E. Reuse the already authenticated
+// native sound-emitter adapter, but ONLY in a new explicit owner
+// continuation gate. Existing standalone sound probe remains terminal.
+static bool clientSoundConnectContinueProbeEnabled() noexcept {
+    char flag[2]={};
+    return clientPredictionFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_SOUND_CONNECT_CONTINUE_PROBE",
+            flag,sizeof(flag))==1 && flag[0]=='1';
+}
 static bool clientPredictionCvarRegistrationEnabled() noexcept {
     char flag[2]={};
     return clientPredictionFactoryProbeEnabled() &&
@@ -374,6 +388,31 @@ static bool readablePredictionSource(const void* pointer,
     return at>=base &&
            (at-base)<=info.RegionSize &&
            length<=info.RegionSize-(at-base);
+}
+// Phase1691: reject bogus app-system factory pointers BEFORE invoking
+// source VSoundEmitter001 virtual slot0 in an owner diagnostic run.
+// Readable/executable page boundaries alone cannot authenticate that an
+// engine pointer is genuinely an ISoundEmitterSystemBase; this is a
+// conservative missing/forged pointer check, not a C++ RTTI proof.
+// The real source code may dereference a bad object and crash; the
+// independent DLL deliberately returns Init failure instead.
+static bool validOwnerSoundConnectSource(void* sound) noexcept {
+    if(!readablePredictionSource(sound,sizeof(void*)))return false;
+    const void* const* table=nullptr;
+    std::memcpy(&table,sound,sizeof(table));
+    if(!readablePredictionSource(table,sizeof(void*)))return false;
+    const void* entry=nullptr;
+    std::memcpy(&entry,table,sizeof(entry));
+    if(!entry)return false;
+    MEMORY_BASIC_INFORMATION info{};
+    if(VirtualQuery(entry,&info,sizeof(info))!=sizeof(info) ||
+       info.State!=MEM_COMMIT ||
+       (info.Protect&(PAGE_NOACCESS|PAGE_GUARD)))return false;
+    const DWORD access=info.Protect&0xffu;
+    return access==PAGE_EXECUTE ||
+           access==PAGE_EXECUTE_READ ||
+           access==PAGE_EXECUTE_READWRITE ||
+           access==PAGE_EXECUTE_WRITECOPY;
 }
 // Query only the already-acquired real VEngineCvar002 virtual slot3,
 // source-authenticated via the existing console_abi ABI. Do not write
@@ -1363,6 +1402,26 @@ public:
             if(connected && clientMaterialProbeEnabled())
                 stopAfterClientMaterialProbe(appSystemFactory,materials,engine,uniform,cvar);
             stopAfterClientSoundProbe(connected);
+        }
+        // Original 2006 PE32 Init source invokes the sound emitter
+        // Connect callback immediately after the twenty-first
+        // required factory acquisition, and can fail before any
+        // prediction or entity-list interfaces are requested.
+        // Do not assume a returned VSoundEmitter001 pointer alone
+        // means a successfully connected sound app system.
+        if(clientSoundConnectContinueProbeEnabled()) {
+            if(!validOwnerSoundConnectSource(sound)) {
+                diagnostic("client-sound-connect-continue-refused",
+                           "invalid-sound-vtable");
+                return 0;
+            }
+            if(!connectSound(sound,appSystemFactory)) {
+                diagnostic("client-sound-connect-continue-refused",
+                           "VSoundEmitter001");
+                return 0;
+            }
+            diagnostic("client-sound-connect-continued",
+                       "VSoundEmitter001");
         }
 #endif
         // Explicit owner diagnostic only. This advances the same

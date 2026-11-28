@@ -92,6 +92,23 @@ try {
         throw 'Same-process original client secondary entitylist factory was not classified without game-boot claim'
     }
 
+    # Phase1691: reject/fail the original post-21-factory
+    # VSoundEmitter001 Connect without mistaking it for the old
+    # independently terminal "sound-only" probe or game boot.
+    [IO.File]::WriteAllLines($client,[string[]]@(
+        '[SiN independent] role=client phase=factory-accepted version=VClient011',
+        '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=sound-connect-entered version=VSoundEmitter001',
+        '[SiN independent] role=client phase=sound-connect-rejected version=VSoundEmitter001',
+        '[SiN independent] role=client phase=client-sound-connect-continue-refused version=VSoundEmitter001'
+    ))
+    $soundRejected=Verify 'DIAGNOSTIC_ONLY_NO_RETAIL_BOOT_PROOF'
+    $expectedRejected=('OWNER_CLIENT_SOUND_CONNECT_CONTINUATION: '+
+        'sin-independent-'+$session+'-202.log:client:client-sound-connect-continue-refused:VSoundEmitter001')
+    if(-not ($soundRejected -ccontains $expectedRejected)) {
+        throw 'Original client post-factory sound Connect=false was not classified separately'
+    }
+
     # Phase1690: after the original engine's VClientEntityList003
     # request, it asks for VCENTERPRINT002. A cold interface only
     # proves native ABI negotiation; the source slot6 allocates an
@@ -100,6 +117,9 @@ try {
     [IO.File]::WriteAllLines($client,[string[]]@(
         '[SiN independent] role=client phase=factory-accepted version=VClient011',
         '[SiN independent] role=client phase=init-entered version=<none>',
+        '[SiN independent] role=client phase=sound-connect-entered version=VSoundEmitter001',
+        '[SiN independent] role=client phase=sound-connect-succeeded version=VSoundEmitter001',
+        '[SiN independent] role=client phase=client-sound-connect-continued version=VSoundEmitter001',
         '[SiN independent] role=client phase=prediction-bound version=cl_predict-parent-value',
         '[SiN independent] role=client phase=client-entitylist-empty-bound version=secondary-plus-0x10014:9-slots',
         '[SiN independent] role=client phase=client-centerprint-cold-bound version=nullable-service:8-slots',
@@ -116,8 +136,11 @@ try {
     $expectedCalls=('OWNER_CLIENT_CENTERPRINT_COLD_METHOD_ENTRY: '+
         'sin-independent-'+$session+'-202.log:client:client-centerprint-slot4-cold:five-arg-no-backing,'+
         'sin-independent-'+$session+'-202.log:client:client-centerprint-slot5-cold:noarg-no-backing')
+    $expectedSoundContinue=('OWNER_CLIENT_SOUND_CONNECT_CONTINUATION: '+
+        'sin-independent-'+$session+'-202.log:client:client-sound-connect-continued:VSoundEmitter001')
     if (-not ($centerOut -ccontains $expectedCenter) -or
         -not ($centerOut -ccontains $expectedCalls) -or
+        -not ($centerOut -ccontains $expectedSoundContinue) -or
         -not ($centerOut -ccontains
             'OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: client:factory-accepted:VClient011,client:factory-accepted:VClientPrediction001,client:factory-accepted:VClientEntityList003,client:factory-accepted:VCENTERPRINT002')) {
         throw 'Same-process original centerprint cold source factory incorrectly classified as retail boot or omitted'

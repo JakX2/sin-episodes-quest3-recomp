@@ -137,6 +137,47 @@ try {
     Reject 'SHA256 mismatch' $true
 
 
+    # Phase1691: nonterminal source VSoundEmitter001 Connect is
+    # a NEW owner continuation, not the existing terminal sound
+    # diagnostic. It must require the explicit prediction owner
+    # session gate and refuse before any original DLL move.
+    foreach ($role in @('Both','Server','Client')) {
+        $inputs=@{
+            GameBin=$bin
+            GameExecutable=$exe
+            IndependentBin=$IndependentBin
+            ProbeRole=$role
+            EnableClientSoundConnectContinueProbe=$true
+            DisposableTestCopyConfirmed=$true
+        }
+        $rejected=$false
+        try { & $Launcher @inputs | Out-Null }
+        catch {
+            if ($_.Exception.Message -notlike
+                '*EnableClientSoundConnectContinueProbe requires EnableClientPredictionFactoryProbe*') {
+                throw ('Unexpected nonterminal sound owner refusal: '+$_.Exception.Message)
+            }
+            $rejected=$true
+        }
+        if(-not $rejected) {
+            throw 'Nonterminal original sound Connect accepted without explicit prediction owner gate'
+        }
+        if((Sha256 $server) -cne $beforeServer -or
+           (Sha256 $client) -cne $beforeClient) {
+            throw 'Original DLL hashes changed during refused nonterminal sound Connect'
+        }
+    }
+    foreach ($required in @(
+        '$previousClientSoundConnectContinueProbe',
+        "'SIN_INDEPENDENT_CLIENT_SOUND_CONNECT_CONTINUE_PROBE'",
+        'OWNER_CLIENT_SOUND_CONNECT_CONTINUE_PROBE:',
+        'ENABLED_SOURCE_TRUE_FALSE_CONNECT'
+    )) {
+        if (-not $launcherText.Contains($required)) {
+            throw "Sound Connect owner continuation environment scope missing: $required"
+        }
+    }
+
     # Phase1690: GUI centerprint cold-state is only a source-backed
     # fallback AFTER both independently compiled prediction and
     # embedded entity-list factory boundaries. Owner entry must
