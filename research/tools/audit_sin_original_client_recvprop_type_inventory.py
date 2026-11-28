@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase1697: recover source-backed numeric RecvProp types of SiN 2006.
+"""Phase1697: recover ALL 939 source-backed numeric RecvProp types of SiN 2006.
 
 Requires a SHA-pinned owner-private original client.dll to authenticate
 actual native factory bodies/call edges and all 939 class property callsites.
@@ -44,8 +44,10 @@ WRAPPER_HELPERS = {
     0x241A8CC0: (0x24126DF0, TYPE_INTEGER),
     0x241A8D30: (0x24126D80, TYPE_FLOAT),
 }
-# Original 0x24126E90 copies PRECONSTRUCTED variable-size arrays; the
-# destination slot's exact type is NOT proven by that helper alone.
+# Original 0x24126E90 builds a fresh variable-sized property array,
+# allocates an original 20-byte RecvTable, and writes type DWORD 5 into
+# the OUTER descriptor at native stack+4 before copying 60 bytes.
+# This is a genuine nested-table constructor, NOT an unknown type.
 COPIED_DESCRIPTOR_HELPER = 0x24126E90
 EXPECTED_TAG_COUNTS = {
     TYPE_INTEGER: 339,
@@ -53,10 +55,9 @@ EXPECTED_TAG_COUNTS = {
     TYPE_VECTOR3: 136,
     TYPE_STRING: 12,
     TYPE_ARRAY: 12,
-    TYPE_NESTED_TABLE: 191,
-    None: 11,
+    TYPE_NESTED_TABLE: 202,
 }
-ALL_939_NAME_AND_TYPE_SHA = "43b5a4634ed0566c1065794dcdb051aca7bd663ec187fe4295432ede5515106c"
+ALL_939_NAME_AND_TYPE_SHA = "149122c6e319169fe9763990d14049887da11e513f119599958776392309ecc8"
 
 # Four independently complete original PE32 factory methods. The two
 # 0/1 base constructors were already audited in Phase251; don't count
@@ -68,6 +69,8 @@ SOURCE_FACTORY_BODIES = (
     (0x24126BD0, 102, "dbfd5065ab7af1f331c11bd90a892adac57943b63a8af72b06e29da18400d8cd"),
     (0x24126D80, 106, "bd1fa7c7ccdc0a278ee0ad889437803cc195d10aa2bd53040b5b66f5f8b97257"),
     (0x24126DF0, 146, "c292491b77e181d88ab5c65d6c49667f99cbd9fcf82a6be39d62f1af23e7c4b5"),
+    # 351B array-to-nested-table factory, separately source authenticated.
+    (0x24126E90, 351, "c6c8d8af7d77994a6ff4292d9a432172bad6e9a3d72d29b6ec8284c3a3eac0db"),
 )
 SOURCE_WRAPPER_BODIES = (
     (0x241A8C60, 40, "0e7378a12008f5826614e8917e624559fafab23913663f9755a5ebc2b93cfa91"),
@@ -97,8 +100,8 @@ KNOWN_TYPE_LABELS = {
 def classify(constructor_va: int, route: str) -> int | None:
     if route == "array-copy":
         need(constructor_va == COPIED_DESCRIPTOR_HELPER,
-             "copied descriptor uses unknown original constructor")
-        return None
+             "native nested array table helper VA changed")
+        return TYPE_NESTED_TABLE
     if route == "array-helper":
         need(constructor_va == 0x24126BD0,
              "array-helper does not call original type-four constructor")
@@ -130,6 +133,18 @@ def verify_native_factories(pe: PEImage) -> None:
     need(pe.at(0x24126DA5, 5) == b"\xB9\x01\x00\x00\x00" and
          pe.at(0x24126DB6, 4) == b"\x89\x4C\x24\x08",
          "original float property +4 one assignment changed")
+    # The array-to-table constructor writes native type DWORD 5 at
+    # temporary descriptor +4 (after its saved-register pushes and
+    # scratch-stack layout). At the end it copies exactly 15 DWORDs
+    # into the caller output, so this is the returned descriptor type.
+    need(pe.at(0x24126EE7, 8) ==
+         b"\xC7\x44\x24\x18\x05\x00\x00\x00",
+         "original 351-byte copied-array constructor did not set native type 5")
+    need(pe.at(0x24126F70, 13).startswith(
+         b"\x8B\xFA\xB9\x0F\x00\x00\x00\x8D\x74\x24\x64\xF3\xA5"),
+         "original nested-array 60-byte element descriptor copy altered")
+    need(pe.at(0x24126FE0, 7)[-2:] == b"\xF3\xA5",
+         "original array-to-nested-table final 60-byte output copy missing")
     for site, target in SOURCE_WRAPPER_CALLS:
         raw = pe.at(site, 5)
         need(raw[0] == 0xE8 and
@@ -147,7 +162,7 @@ def verify(original_client: bytes, *, full_inventory: bool = False) -> dict:
     metadata = parent["class_property_metadata"]
     rows = []
     counts: Counter[int | None] = Counter()
-    unresolved = []
+    nested_array_wrappers = 0
     for cls in metadata:
         for prop in cls["properties"]:
             source_va = int(prop["source_constructor_va"], 16)
@@ -171,35 +186,37 @@ def verify(original_client: bytes, *, full_inventory: bool = False) -> dict:
                 f'{prop["slot"]}|{name}|'
                 f'{"?" if native_type is None else native_type}|'
                 f'{prop["source_constructor_va"]}|{route}\n')
-            if native_type is None:
-                unresolved.append((cls["client_class_name"], name))
+            if route == "array-copy":
+                nested_array_wrappers += 1
             prop["original_native_property_type"] = native_type
             prop["source_property_type_label"] = field["source_property_type_label"]
     need(dict(counts) == EXPECTED_TAG_COUNTS,
          "source property type distribution unexpectedly changed")
-    need(len(rows) == 939 and len(unresolved) == 11,
-         "typed source metadata lost a property")
+    need(len(rows) == 939 and nested_array_wrappers == 11,
+         "typed source metadata lost one of eleven nested-array wrappers")
     sha = hashlib.sha256("".join(rows).encode("ascii")).hexdigest()
     need(sha == ALL_939_NAME_AND_TYPE_SHA,
          "ordered original 939 property type and constructor digest changed")
     report = {
-        "status": "ORIGINAL_CLIENT_928_OF_939_RECVPROP_TYPES_AUTHENTICATED",
+        "status": "ORIGINAL_CLIENT_ALL_939_RECVPROP_TYPES_AUTHENTICATED",
         "original_client_sha256": ORIGINALS["client"]["sha256"],
         "original_declared_recprops": len(rows),
-        "source_backed_type_count": len(rows) - len(unresolved),
-        "unresolved_copied_array_types": len(unresolved),
+        "source_backed_type_count": len(rows),
+        "nested_array_wrapper_type5_count": nested_array_wrappers,
+        "unresolved_copied_array_types": 0,
         "native_type_code_counts": {
             str(k) if k is not None else "unresolved":
                 EXPECTED_TAG_COUNTS[k]
-            for k in (0, 1, 2, 3, 4, 5, None)
+            for k in (0, 1, 2, 3, 4, 5)
         },
         "type_fingerprint_sha256": sha,
-        "unresolved_slots": unresolved,
-        "limits": ("Types originate in original constructor code; "
-                   "not all per-property proxy functions, quantization, "
-                   "flags or nested RecvTable pointers are known. "
-                   "Never advertise this metadata as a live ClientClass* "
-                   "or assume the 11 copied properties have types."),
+        "unresolved_slots": [],
+        "limits": ("All 939 type DWORDs originate in original constructor code. "
+                   "The eleven array-copy paths are actually nested-table type 5; "
+                   "their dynamic subtable contents and proxy functions remain "
+                   "unrecovered. Individual wire flags, exact child pointers "
+                   "and class factories are NOT established. "
+                   "Never advertise this metadata as a live ClientClass*."),
     }
     if full_inventory:
         report["source_class_and_prop_inventory"] = metadata
@@ -218,7 +235,7 @@ def self_test() -> None:
         (0x241A8C90, "standard", TYPE_INTEGER),
         (0x241A8CC0, "standard", TYPE_INTEGER),
         (0x241A8D30, "standard", TYPE_FLOAT),
-        (COPIED_DESCRIPTOR_HELPER, "array-copy", None),
+        (COPIED_DESCRIPTOR_HELPER, "array-copy", TYPE_NESTED_TABLE),
     ]
     for constructor, route, expected in checks:
         need(classify(constructor, route) == expected,
@@ -238,8 +255,7 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("fabricated game client accepted as original")
-    print("PASS Phase1697 source type0..5 constructors, four wrapper calls, "
-          "copied-array unknown refusal and wrong whole-image SHA")
+    print("PASS Phase1697 all 939 source type0..5 descriptors: 11 copied arrays proven nested table type5, wrong factory routes and whole-image SHA refused")
 
 
 def main():
@@ -263,8 +279,7 @@ def main():
             args.full_json.write_text(
                 json.dumps(report, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8")
-            print("PASS 928 proven original type tags; 11 unresolved "
-                  "copied-array types; owner-private metadata exported")
+            print("PASS all 939 proven native property type tags; 11 copied arrays are original nested tables; owner-private metadata exported")
         else:
             print(json.dumps(report, indent=2, sort_keys=True))
 
