@@ -309,6 +309,13 @@ struct Image final {
             throw std::logic_error("unrecognized original overlay slot");
         image.unresolvedOverlayDescriptorToken=
             image.staticPropArrayTokens[overlayTable];
+        // Phase1705: the ORIGINAL 621-byte overlay constructor explicitly
+        // XORs EBX to zero then writes EBX to its local RecvProp +44.
+        // That 60-byte descriptor is copied verbatim to this static slot.
+        // +44==0 is now source PROVEN; the +40 child and native callbacks
+        // nevertheless remain unsafe, null, and unexposed.
+        image.arena.Write32(image.unresolvedOverlayDescriptorToken+
+                                kNativeRecvPropMemberOffset,0u);
         if(image.arena.Read32(image.unresolvedOverlayDescriptorToken+
                               kNativeRecvPropNestedTableOffset)!=0u)
             throw std::logic_error("unimplemented overlay must remain null");
@@ -392,14 +399,15 @@ struct Image final {
                     throw std::invalid_argument("invalid native source name ASCII");
             const auto prop=staticPropArrayTokens[table]+
                 static_cast<std::uint32_t>(slot*src::kOriginalRecvPropStride);
-            if(!fields[5].empty()) {
-                const auto sourceOffset=SourceUnsigned(fields[5]);
-                if(arena.Read32(prop+kNativeRecvPropMemberOffset)!=sourceOffset)
-                    throw std::invalid_argument("source CSV member offset drift");
-            } else if(!(table==197u && slot==0u &&
-                        fields[6]=="special_overlay_unresolved")) {
-                throw std::invalid_argument("unrecognized blank source offset");
-            }
+            if(fields[5].empty())
+                throw std::invalid_argument("source native member offset absent");
+            const auto sourceOffset=SourceUnsigned(fields[5]);
+            if(arena.Read32(prop+kNativeRecvPropMemberOffset)!=sourceOffset)
+                throw std::invalid_argument("source CSV member offset drift");
+            if(table==197u && slot==0u &&
+               (sourceOffset!=0u ||
+                fields[6]!="special_overlay_zero_initialized"))
+                throw std::invalid_argument("native overlay +44 zero/source route drift");
             // Names are hashed in source table/slot order with no terminal
             // newline, matching the independently original-attested SHA.
             if(processed!=0u)
@@ -587,7 +595,11 @@ private:
                 }
                 // The specialized animation-overlay child is a KNOWN
                 // unresolved path, not permission to insert a fake table.
-                if(i==197u && j==0u)++routes;
+                if(i==197u && j==0u) {
+                    if(arena.Read32(p+kNativeRecvPropMemberOffset)!=0u)
+                        throw std::logic_error("original overlay +44 must be zero");
+                    ++routes;
+                }
                 if(routes!=1u ||
                    arena.Read32(p+kNativeRecvPropNestedTableOffset)!=
                        expectedChild)
