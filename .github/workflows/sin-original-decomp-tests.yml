@@ -65,6 +65,7 @@ on:
       - 'research/tools/audit_sin_original_gameclientexports_abi.py'
       - 'research/tools/audit_sin_original_server_gameclients_playerlimits.py'
       - 'research/tools/audit_sin_original_client_entitylist_secondary_abi.py'
+      - 'research/tools/audit_sin_original_client_prediction23_abi.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -241,3 +242,6 @@ jobs:
 
       - name: Cross-authenticate original VClientEntityList003 nine-slot embedded ABI (synthetic only)
         run: python research/tools/audit_sin_original_client_entitylist_secondary_abi.py --self-test
+
+      - name: Authenticate original 23-slot VClientPrediction001 and engine init-before-entitylist callsite (synthetic only)
+        run: python research/tools/audit_sin_original_client_prediction23_abi.py --self-test
