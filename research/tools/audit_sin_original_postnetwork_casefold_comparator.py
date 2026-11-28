@@ -60,7 +60,7 @@ def slow_witnesses(*,base:int,locale_va:int,
         (0x1D,rel(base+0x1D,map_va,b"\xE8")),
         (0x24,bytes.fromhex("0fb6075046")),
         (0x29,rel(base+0x29,map_va,b"\xE8")),
-        (0x32,bytes.fromhex("85db598bc874043bd974de")),
+        (0x30,bytes.fromhex("85db598bc874043bd974de")),
         (0x3B,bytes.fromhex("5f8bc35e2bc15bc3")),
     )
 def fast_witnesses():
@@ -72,8 +72,8 @@ def fast_witnesses():
         (0x1E,bytes.fromhex("38c474ee2c413c1a")),
         (0x28,bytes.fromhex("80e12002c1044186e0")),
         (0x31,bytes.fromhex("2c413c1a1ac980e120")),
-        (0x3D,bytes.fromhex("38e074ce1ac01cff")),
-        (0x47,bytes.fromhex("5b5e5fc9c3")),
+        (0x3F,bytes.fromhex("38e074ce1ac01cff")),
+        (0x49,bytes.fromhex("5b5e5fc9c3")),
     )
 def verify_sparse(blob:bytes,length:int,w,name:str)->int:
     check(len(blob)==length,name+" complete method length mismatch")
