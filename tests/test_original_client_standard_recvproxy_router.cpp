@@ -18,6 +18,7 @@ namespace schema=sin_compat::original_client_native32_recvtable_manifest;
 namespace handle=sin_compat::original_client_custom_handle_proxy;
 namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
 namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
+namespace scale=sin_compat::original_client_custom_scale_transition_proxies;
 
 int main() {
     static_assert(source::FullyClassifiedCanonicalRoutes());
@@ -247,14 +248,21 @@ int main() {
     }
     // Prove the whole REAL source 211-table/1110-property classification
     // rather than exercising only hand-picked primitive proxy examples.
+    static_assert(scale::SourceRoutesMatch());
+    static_assert(scale::kSourceCustomAssignments==2u);
+    static_assert(!scale::CanPublishRetailProxyPointers());
+    // Use a clean, entirely zero-initialized owned object to ensure
+    // original x87 comparisons do not receive unverified NaN payloads
+    // from unrelated synthetic property writes in earlier examples.
+    std::vector<std::uint8_t> censusObject(6000u,0u);
     std::size_t applied=0u,custom=0u,special=0u,
                 standard=0u,handleAssignments=0u,moveparentAssignments=0u,
                 colorAssignments=0u,decrementAssignments=0u,
-                movementFovAssignments=0u;
+                movementFovAssignments=0u,scaleAssignments=0u;
     for(std::size_t t=0u;t<schema::kStaticTables;++t)
         for(std::size_t p=0u;p<schema::kCounts[t];++p) {
             const auto outcome=router::ApplySourceStandardProperty(
-                t,p,incoming,object,tableToken);
+                t,p,incoming,censusObject,tableToken);
             const auto va=source::SourceVAForSlot(t,p);
             if(va==0u) {
                 ++special;
@@ -275,6 +283,10 @@ int main() {
                 ++applied;
                 ++movementFovAssignments;
                 assert(outcome==router::Status::Applied);
+            }else if(scale::IsSourceScaleProxy(va)) {
+                ++applied;
+                ++scaleAssignments;
+                assert(outcome==router::Status::Applied);
             }else if(!source::IsStandardOriginalSourceVA(va)) {
                 ++custom;
                 assert(outcome==router::Status::UnsupportedSourceCallback);
@@ -287,8 +299,8 @@ int main() {
     assert(standard==999u && handleAssignments==35u &&
            moveparentAssignments==5u);
     assert(colorAssignments==4u && decrementAssignments==5u);
-    assert(movementFovAssignments==3u);
-    assert(applied==1046u && custom==36u && special==28u);
+    assert(movementFovAssignments==3u && scaleAssignments==2u);
+    assert(applied==1048u && custom==34u && special==28u);
 
     // Small buffers must never allow an otherwise valid source +44
     // member offset to write beyond the owned host object.
@@ -302,9 +314,8 @@ int main() {
         assert(tiny==old && tableToken==token);
     }
     assert(!router::CanPublishRetailProxyPointers());
-    std::puts("PASS Phase1711 999 source-standard + 35 handles + "
-              "4 color + 5 decrement + 3 movement/FOV source receiver "
-              "routes on bounded host objects; 36 custom / 28 special "
-              "blocked, NO slot5");
+    std::puts("PASS Phase1712 999 standard + 35 handles + 4 color + 5 "
+              "decrement + 3 movement/FOV + 2 x87 scale receiver routes; "
+              "34 custom / 28 special blocked, NO retail slot5");
     return 0;
 }
