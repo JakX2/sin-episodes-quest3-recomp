@@ -75,14 +75,18 @@ def verify_original(path: Path) -> None:
              f"source original handle method end/padding mismatch {va:#x}")
         # EAX=proxydata+4. Compare to 0x001FFFFF, returning
         # 0xFFFFFFFF only on that exact source sentinel value.
-        need(body[:11]==bytes.fromhex("8b442404817804ffff1f00"),
-             f"source original incoming value/sentinel compare changed {va:#x}")
-        need(body[11:24]==bytes.fromhex(
-            "750b8b44240cc700ffffffffc3"),
-             f"source invalid-handle output return sequence drift {va:#x}")
-        need(body[24:]==bytes.fromhex(
-            "8b40048b54240c8bc8c1f90bc1e10c25ff0700000bc8890ac3"),
-             f"source handle sign-shift/index remap changed {va:#x}")
+        # Sparse original opcode witnesses ONLY: whole-function SHA256
+        # validates the remaining source bytes without embedding the
+        # complete executable instruction sequence into public code.
+        sparse=((4,"817804ffff1f00"),   # CMP [EAX+4],0x001FFFFF
+                (17,"c700ffffffff"),    # invalid output DWORD
+                (33,"c1f90b"),          # SAR ECX,0x0B
+                (36,"c1e10c"),          # SHL ECX,0x0C
+                (39,"25ff070000"))      # AND EAX,0x7FF
+        for offset,hex_witness in sparse:
+            witness=bytes.fromhex(hex_witness)
+            need(body[offset:offset+len(witness)]==witness,
+                 f"source handle x86 sparse opcode drift {va:#x}+{offset}")
     print("PASS Phase1709 owner original: both 49B handle proxy bodies SHA-pin, "
           "invalid sentinel and exact SAR/SHL packed bit remap")
 
