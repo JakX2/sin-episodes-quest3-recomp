@@ -188,17 +188,19 @@ struct Image final {
         for(std::size_t i=0u;i<src::kGeneratedGenericSubtables;++i) {
             const auto& edge=src::kGeneratedOuters[i];
             const bool classSource=i<classArrays::kSourceArrayShapeCount;
-            std::uint32_t count=0u,stride=0u,elementType=0u;
+            std::uint32_t count=0u,stride=0u,elementType=0u,outerBase=0u;
             if(classSource) {
                 const auto& spec=classArrays::kOriginalShapes[i];
                 count=spec.elements;
                 stride=spec.byteStride;
                 elementType=spec.elementNativeType;
+                outerBase=spec.firstX86Offset;
             } else {
                 const auto& spec=auxArrays::kSourceShapes[i-classArrays::kSourceArrayShapeCount];
                 count=spec.elements;
                 stride=spec.byteStride;
                 elementType=spec.originalElementType;
+                outerBase=spec.originalOuterParentX86Offset;
             }
             if(count==0u || count>256u || (stride!=1u&&stride!=4u) ||
                elementType>1u)
@@ -232,6 +234,12 @@ struct Image final {
                 throw std::logic_error("native dynamic source index conflict");
             const auto parentProp=image.staticPropArrayTokens[parent]+
                 static_cast<std::uint32_t>(slot*src::kOriginalRecvPropStride);
+            // The OUTER source native +44 contains the original parent
+            // object base; the generated child descriptor +44 starts at
+            // ZERO and increments by the element byte stride. The two
+            // offsets must never be conflated.
+            image.arena.Write32(parentProp+kNativeRecvPropMemberOffset,
+                                outerBase);
             image.arena.Write32(parentProp+kNativeRecvPropNestedTableOffset,table);
         }
         // The 621-byte original specialized OVERLAY builder has unknown
