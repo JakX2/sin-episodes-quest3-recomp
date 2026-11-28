@@ -9,6 +9,7 @@
 #include <cstring>
 #include "client_auto_gamesystem_init_core.h"
 #include "client_vgui_vtable_probe.h"
+#include "../../include/sin_compat/original_client_game_string_pool.hpp"
 
 namespace sin_independent::constructed_gamesystem {
 enum class TrivialSystem { GameStringPool, ClientLeafSecondary, ClientEffectPrecache };
@@ -58,8 +59,18 @@ inline bool InitDetailObject(void* own, const void* worldDetail,
 // Each is a real reconstructed method outcome, not a runtime pointer to
 // the original client's BSS memory. The secondary leaf interface must
 // be registered at +4 on PE32, not as the primary leaf object.
+// Phase1692: original first direct registered system is no longer
+// just an Init result. It owns the recovered string intern/find/clear
+// behavior. This adapter is for the independent registry, NOT the
+// full original PE32 CGameStringPool object layout/vtable.
 struct StringPoolSystem: auto_gamesystem::System {
     bool Init() noexcept override {return InitTrivial(TrivialSystem::GameStringPool);}
+    const char* Intern(const char* value) noexcept {return pool_.Intern(value);}
+    const char* Find(const char* value) const noexcept {return pool_.Find(value);}
+    void ClearOnOriginalSlot5() noexcept {pool_.Clear();}
+    std::size_t Size() const noexcept {return pool_.Size();}
+private:
+    sin_compat::original_client_game_string_pool::Pool pool_;
 };
 struct ClientLeafSecondarySystem: auto_gamesystem::System {
     bool Init() noexcept override {return InitTrivial(TrivialSystem::ClientLeafSecondary);}
