@@ -2014,3 +2014,21 @@ target_compile_features(sin_original_postnetwork_record_name_lookup_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_record_name_lookup_native
   COMMAND sin_original_postnetwork_record_name_lookup_test)
+
+
+# Phase1680: whole-SHA original 121B CDECL preflight at 0x24197F50,
+# source original node+0x10 visit flag, record+0x12 flag0x80,
+# recursive type10 and conditional record+0x28 alias resolution
+# through Phase1679; native original-free typed dispatch readback.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_preflight_alias_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_preflight_alias.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_preflight_alias_test
+  test_original_postnetwork_preflight_alias.cpp)
+target_compile_features(sin_original_postnetwork_preflight_alias_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_preflight_alias_native
+  COMMAND sin_original_postnetwork_preflight_alias_test)
