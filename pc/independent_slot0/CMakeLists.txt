@@ -2069,3 +2069,22 @@ target_compile_features(sin_original_prediction_postnetwork_tail_transition_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_prediction_postnetwork_tail_transition_native
   COMMAND sin_original_prediction_postnetwork_tail_transition_test)
+
+
+# Phase1683: original 110B CPrediction ReinitPredictables helper
+# __thiscall no-args RET0, invoked during Phase1682 native slot6
+# disabled->enabled tail before prediction-state reset. Entire
+# owner-original SHA and callsites pinned, game engine callbacks
+# replaced with owned synthetic indexed registry and Count/Msg.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_reinit_predictables_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_reinit_predictables.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_reinit_predictables_test
+  test_original_prediction_reinit_predictables.cpp)
+target_compile_features(sin_original_prediction_reinit_predictables_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_prediction_reinit_predictables_native
+  COMMAND sin_original_prediction_reinit_predictables_test)
