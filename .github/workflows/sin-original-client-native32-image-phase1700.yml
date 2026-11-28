@@ -17,6 +17,10 @@ on:
       - "include/sin_compat/original_client_custom_team_array_element_proxy.hpp"
       - "include/sin_compat/original_client_custom_gamerules_datatable_proxy.hpp"
       - "include/sin_compat/original_client_custom_beam_speed_proxy.hpp"
+      - "include/sin_compat/original_client_creator_source_map.hpp"
+      - "research/manifests/original_client_creator_source_map_phase1716.csv"
+      - "research/tools/audit_sin_original_client_creator_source_map.py"
+      - "tests/test_original_client_creator_source_map.cpp"
       - "tests/test_original_client_custom_beam_speed_proxy.cpp"
       - "research/tools/audit_sin_original_client_custom_beam_speed_proxy.py"
       - "tests/test_original_client_custom_gamerules_datatable_proxy.cpp"
@@ -74,6 +78,7 @@ jobs:
           python research/tools/audit_sin_original_client_custom_team_array_element_proxy.py --self-test
           python research/tools/audit_sin_original_client_custom_gamerules_datatable_proxy.py --self-test
           python research/tools/audit_sin_original_client_custom_beam_speed_proxy.py --self-test
+          python research/tools/audit_sin_original_client_creator_source_map.py --self-test
       - name: Strict C++17 compile and run real 2006 source schema in owned token arena
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
@@ -98,6 +103,8 @@ jobs:
           /tmp/sin-custom-gamerules-proxy
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_custom_beam_speed_proxy.cpp -o /tmp/sin-custom-beam-speed-proxy
           /tmp/sin-custom-beam-speed-proxy
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_creator_source_map.cpp -o /tmp/sin-original-creator-source-map
+          /tmp/sin-original-creator-source-map research/manifests/original_client_class_catalog_phase1696.tsv research/manifests/original_client_creator_source_map_phase1716.csv
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
@@ -122,3 +129,5 @@ jobs:
           /tmp/sin-custom-gamerules-proxy-san
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_custom_beam_speed_proxy.cpp -o /tmp/sin-custom-beam-speed-proxy-san
           /tmp/sin-custom-beam-speed-proxy-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_creator_source_map.cpp -o /tmp/sin-original-creator-source-map-san
+          /tmp/sin-original-creator-source-map-san research/manifests/original_client_class_catalog_phase1696.tsv research/manifests/original_client_creator_source_map_phase1716.csv
