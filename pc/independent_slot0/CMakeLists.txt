@@ -2051,3 +2051,21 @@ target_compile_features(sin_original_postnetwork_casefold_comparator_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_casefold_comparator_native
   COMMAND sin_original_postnetwork_casefold_comparator_test)
+
+
+# Phase1682: SHA-authenticated original CPrediction slot6 1039B
+# tail 0x2419646B..0x241964A4 transition. Test-only opt-in,
+# actual native MSVC x86 vtable slot6 RET4 state transitions,
+# original-free opaque reenable callback; no retail game execution.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_prediction_postnetwork_tail_transition_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_prediction_postnetwork_tail_transition.py"
+      --self-test)
+endif()
+add_executable(sin_original_prediction_postnetwork_tail_transition_test
+  test_original_prediction_postnetwork_tail_transition.cpp)
+target_compile_features(sin_original_prediction_postnetwork_tail_transition_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_prediction_postnetwork_tail_transition_native
+  COMMAND sin_original_prediction_postnetwork_tail_transition_test)

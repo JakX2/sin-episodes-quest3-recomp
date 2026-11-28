@@ -186,6 +186,12 @@ struct PostNetworkOps {
     void (*on_opaque_remaining_branches)(void*) noexcept=nullptr;
     void (*scope_enter)(void*,unsigned) noexcept=nullptr;
     void (*scope_exit)(void*,unsigned) noexcept=nullptr;
+    // Phase1682 opt-in ORIGINAL-FREE reconstruction of source
+    // slot6 tail 0x2419646B..0x241964A4. This is NOT enabled for
+    // older Phase1668 prefix tests or for production engine boot.
+    bool model_original_tail_transition=false;
+    // Opaque retail 0x24195C20 call on disabled->enabled only.
+    void (*on_disabled_to_enabled)(void*) noexcept=nullptr;
 };
 
 struct Events {
@@ -207,6 +213,10 @@ struct Events {
     unsigned refused_postnetwork_entity_count=0u;
     unsigned postnetwork_reconcile_calls=0u;
     unsigned postnetwork_unmodeled_tail_calls=0u;
+    unsigned postnetwork_source_tail_transition_checks=0u;
+    unsigned postnetwork_source_tail_resets=0u;
+    unsigned postnetwork_source_tail_reenable_opaque_calls=0u;
+    unsigned postnetwork_source_tail_missing_opaque=0u;
 };
 inline Events events{};
 
@@ -377,10 +387,43 @@ public:
                 }
             }
         }
-        // Crucially, the original function does NOT end here:
-        // per-entity debug/error text, several optional correction
-        // paths and prediction enable/disable reset still follow.
-        // Mark this unknown boundary rather than inventing effects.
+        // The original method's post-reconciliation diagnostics,
+        // entity corrections and three-word state refresh remain
+        // opaque. Only the directly SHA-attested final cl_predict
+        // transition gate at VA 0x2419646B..0x241964A4 is modeled
+        // under a separate test-only opt-in flag.
+        //
+        // Source: local player absent jumps to the final epilogue;
+        // otherwise BYTE this+0x10 is compared with BOOL(*cl_predict).
+        // On change, old disabled invokes opaque 0x24195C20 FIRST,
+        // then +0x28/+0x2C=0 and +0x24=-1; finally +0x10=new flag.
+        // No change must NOT reset this+0x2C's newly supplied frame.
+        if(ctx->model_original_tail_transition &&
+           ctx->local_player_present) {
+            ++events.postnetwork_source_tail_transition_checks;
+            const auto next_enabled=
+                static_cast<std::uint8_t>(ctx->cl_predict!=0 ? 1u:0u);
+            const bool changed=enabled_!=next_enabled;
+            const bool needed_opaque=changed && enabled_==0u;
+            if(needed_opaque && !ctx->on_disabled_to_enabled) {
+                // Host-only refusal: original would call opaque
+                // native helper. Do not silently fake its effects.
+                ++events.postnetwork_source_tail_missing_opaque;
+            } else {
+                if(needed_opaque) {
+                    ++events.postnetwork_source_tail_reenable_opaque_calls;
+                    ctx->on_disabled_to_enabled(ctx->user);
+                }
+                if(changed) {
+                    ++events.postnetwork_source_tail_resets;
+                    cleared_a_=0u;       // original this+0x28
+                    cleared_b_=0u;       // original this+0x2C
+                    highest_=-1;        // original this+0x24
+                }
+                enabled_=next_enabled;   // original this+0x10
+            }
+        }
+        // Every other late code path remains explicitly opaque.
         ++events.postnetwork_unmodeled_tail_calls;
         if(ctx->on_opaque_remaining_branches)
             ctx->on_opaque_remaining_branches(ctx->user);
