@@ -54,6 +54,12 @@ constexpr unsigned kOriginalPlayerMirrorB=0x2D4u;
 constexpr unsigned kOriginalPlayerNotifierA=0x22Cu;
 constexpr unsigned kOriginalPlayerNotifierB=0x268u;
 constexpr unsigned kOriginalVirtualCount=23u;
+constexpr unsigned kOriginalUpdateVirtualSlot=3u;
+constexpr unsigned kOriginalInnerVirtualSlot=22u;
+constexpr unsigned kOriginalUpdateLastIndexOffset=0x24u;
+constexpr unsigned kOriginalUpdateScratchDwords=11u;
+constexpr unsigned kOriginalUpdateNativeStackPopBytes=16u;
+constexpr unsigned kOriginalUpdateInnerVirtualOffset=0x58u;
 
 // Only invented ConVar storage is accepted. Original ConVar constructor
 // sets this+0x18 (m_pParent) to self; the integer m_nValue is +0x2C.
@@ -109,6 +115,25 @@ struct OrientationOps {
     Notify notify_b=nullptr;
 };
 
+// Phase1664: original CPrediction::Update(vtable[3]) saves and later
+// restores exactly 11 DWORDs from the memory pointed to by the original
+// global at RVA 0x2FA458. This is a SYNTHETIC ownership-safe stand-in.
+// Importantly, the original code reloads the global pointer AFTER
+// calling vtable[22]. The callback is allowed to switch `scratch`
+// between two host-owned arrays, which we exercise in native tests.
+struct UpdateFrameContext {
+    std::array<std::uint32_t,11>* scratch=nullptr;
+    std::int32_t update_gate_convar=1; // original ConVar +0x24374780 value
+    std::int32_t cl_predict_convar=1;  // original ConVar +0x24374540 value
+    void* user=nullptr;
+    void (*on_scope_enter)(void*) noexcept=nullptr;
+    void (*on_scope_exit)(void*) noexcept=nullptr;
+    void (*on_inner_slot22)(void*,std::uint32_t,std::uint32_t,
+                            std::uint32_t,std::uint32_t) noexcept=nullptr;
+};
+static_assert(sizeof(std::array<std::uint32_t,11>)==44u,
+              "native prediction Update REP MOVSD copies eleven DWORDs");
+
 struct Events {
     unsigned init_calls=0u;
     unsigned missing_provider_refusals=0u;
@@ -117,6 +142,9 @@ struct Events {
     unsigned missing_orientation_callbacks=0u;
     unsigned missing_orientation_inputs=0u;
     unsigned missing_view_setter_inputs=0u;
+    unsigned missing_update_scratch=0u;
+    unsigned missing_update_restore_target=0u;
+    unsigned opaque_update_inner_calls=0u;
 };
 inline Events events{};
 
@@ -142,7 +170,40 @@ public:
     // Retail slot2 is a literal RET with no side effects; engine invokes
     // it during client shutdown through [vptr+8].
     virtual void __thiscall ShutdownNoop() noexcept {}
-    virtual std::uint32_t __thiscall UnknownSlot03() noexcept {return 0xA003u;}
+    // Retail CPrediction::Update vtable[3], 164 native bytes,
+    // __thiscall RET16: four stack DWORD arguments. Enter profile,
+    // compare frame ID at this+0x24, assign new frame, copy 11 DWORDs
+    // from *global scratch, dispatch vtable[22] with original arg
+    // ordering, reload scratch global, restore 11 DWORDs and exit
+    // profile scope. The original does not guard a null scratch ptr.
+    virtual void __thiscall UpdateFrame(std::uint32_t frame,
+                                        std::uint32_t arg2,
+                                        std::uint32_t arg3,
+                                        std::uint32_t arg4) noexcept {
+        if(!update_context_ || !update_context_->scratch) {
+            ++events.missing_update_scratch;
+            return; // synthetic-only safety refusal
+        }
+        auto* const ctx=update_context_;
+        if(ctx->on_scope_enter)ctx->on_scope_enter(ctx->user);
+        last_update_gate_flag_=
+            static_cast<std::uint32_t>(highest_)!=frame ||
+            ctx->update_gate_convar==0 ||
+            ctx->cl_predict_convar==0;
+        highest_=static_cast<std::int32_t>(frame);
+        const auto copied_scratch=*ctx->scratch;
+        // The first forwarded value is the first SAVED work DWORD,
+        // not the frame argument. The remaining args are arg2..arg4.
+        this->RunCoreFrameOpaque(copied_scratch[0],arg2,arg3,arg4);
+        if(ctx->scratch) {
+            *ctx->scratch=copied_scratch;
+        } else {
+            // The original re-read would crash on null; fail closed
+            // rather than writing to any stale/unknown original ptr.
+            ++events.missing_update_restore_target;
+        }
+        if(ctx->on_scope_exit)ctx->on_scope_exit(ctx->user);
+    }
     virtual std::uint32_t __thiscall UnknownSlot04() noexcept {return 0xA004u;}
     virtual std::uint32_t __thiscall UnknownSlot05() noexcept {return 0xA005u;}
     virtual std::uint32_t __thiscall UnknownSlot06() noexcept {return 0xA006u;}
@@ -249,7 +310,17 @@ public:
     virtual std::uint32_t __thiscall UnknownSlot19() noexcept {return 0xA013u;}
     virtual std::uint32_t __thiscall UnknownSlot20() noexcept {return 0xA014u;}
     virtual std::uint32_t __thiscall UnknownSlot21() noexcept {return 0xA015u;}
-    virtual std::uint32_t __thiscall UnknownSlot22() noexcept {return 0xA016u;}
+    // The full retail 0x241977B0 slot22 body is still unknown.
+    // Only the four caller stack words used by the source-attested
+    // Update slot3 callsite are implemented in synthetic C++.
+    virtual void __thiscall RunCoreFrameOpaque(
+            std::uint32_t saved_work_word0,std::uint32_t arg2,
+            std::uint32_t arg3,std::uint32_t arg4) noexcept {
+        ++events.opaque_update_inner_calls;
+        if(update_context_ && update_context_->on_inner_slot22)
+            update_context_->on_inner_slot22(update_context_->user,
+                saved_work_word0,arg2,arg3,arg4);
+    }
 
     std::uint8_t enabled() const noexcept {return enabled_;}
     std::uintptr_t enabled_address() const noexcept {
@@ -267,6 +338,12 @@ public:
         // synthetic write authority. Never retain a dangling mutable
         // pointer when an owner chooses the original Phase1659 API.
         writable_view_host_=nullptr;
+    }
+    void set_update_frame_context(UpdateFrameContext* ctx) noexcept {
+        update_context_=ctx;
+    }
+    bool last_update_gate_flag_for_test_only() const noexcept {
+        return last_update_gate_flag_;
     }
     void set_writable_host_view(HostSnapshot* host) noexcept {
         // Explicit read/write ownership is separate from the Phase1659
@@ -324,6 +401,8 @@ private:
     const HostSnapshot* view_host_=nullptr; // diagnostic host pointer only
     HostSnapshot* writable_view_host_=nullptr; // synthetic owned write only
     OrientationOps orientation_{}; // synthetic callback contract only
+    UpdateFrameContext* update_context_=nullptr; // invented owner only
+    bool last_update_gate_flag_=true;
 };
 
 static_assert(sizeof(void*)==4u,"original 2006 PE32 pointer width");
@@ -370,6 +449,16 @@ static_assert(std::is_same<decltype(&Prediction23Fixture::CopyOrientationA),
 static_assert(std::is_same<decltype(&Prediction23Fixture::SetHostView),
               OrientationRef>::value,
               "native CPrediction slot14 takes one Vec3 pointer, RET4");
+using UpdateFourArgs=void (__thiscall Prediction23Fixture::*)(
+    std::uint32_t,std::uint32_t,std::uint32_t,std::uint32_t) noexcept;
+static_assert(std::is_same<decltype(&Prediction23Fixture::UpdateFrame),
+              UpdateFourArgs>::value &&
+              std::is_same<decltype(&Prediction23Fixture::RunCoreFrameOpaque),
+              UpdateFourArgs>::value,
+              "original CPrediction Update slot3 / inner slot22 are four-arg RET16");
+static_assert(kOriginalUpdateScratchDwords*4u==44u &&
+              kOriginalInnerVirtualSlot*4u==kOriginalUpdateInnerVirtualOffset,
+              "original x86 REP MOVSD/slot22 source-authenticated counts");
 
 } // namespace client_prediction23_diagnostic
 } // namespace sin_independent
