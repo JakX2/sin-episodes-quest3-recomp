@@ -149,6 +149,10 @@ struct alignas(4) Fixture {
     // Reserve +0x30 and +0x34 BEFORE host-owned callbacks.
     std::uint32_t original_unknown30=0u; // this+0x30
     std::uint32_t diagnostic_record=0u;   // this+0x34
+    // Phase1678: the retail formatter 0x24197FE0 reads
+    // DWORD [this+0x38] as its per-diagnostic label pointer.
+    // This is a genuine original source field, not a host callback.
+    std::uint32_t diagnostic_label_word=0u; // this+0x38
 
     DispatchOps ops{};
     DispatchEvents events{};
@@ -259,7 +263,8 @@ static_assert(offsetof(Fixture,option)==kOriginalThisOptionOffset &&
               offsetof(Fixture,copied_option)==kOriginalThisOptionCopyOffset &&
               offsetof(Fixture,active)==kOriginalThisActiveOffset &&
               offsetof(Fixture,correction_byte)==0x2Cu &&
-              offsetof(Fixture,diagnostic_record)==0x34u,
+              offsetof(Fixture,diagnostic_record)==0x34u &&
+              offsetof(Fixture,diagnostic_label_word)==0x38u,
               "original 2006 PE32 dispatcher entry/dispatch member offsets differ");
 
 } // namespace original_postnetwork_type_switch
