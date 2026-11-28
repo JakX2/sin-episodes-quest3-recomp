@@ -70,12 +70,15 @@ struct EntityCreatorSourcePlan final {
 };
 constexpr EntityCreatorSourcePlan SourcePlanForEntity(
     std::size_t originalClassOrdinal,std::uint32_t originalCreatorVA) noexcept {
-    const auto* standard=common::SourceAllocationForClass(
-        originalClassOrdinal,originalCreatorVA);
-    if(standard!=nullptr)
-        return {CreatorPath::SharedCommonZeroingHelper,
-                standard->sourceObjectByteCount,originalCreatorVA,
-                kSharedZeroingHelperVA,0u,0u}; // body/return NOT audited yet
+    // C++17 constexpr must not depend on comparing a pointer
+    // to the inside of a global std::array against nullptr.
+    // Use value-based source identity comparison throughout.
+    for(const auto& standard:common::kOriginalAllocationPrologues)
+        if(standard.originalClassOrdinal==originalClassOrdinal &&
+           standard.originalCreatorVA==originalCreatorVA)
+            return {CreatorPath::SharedCommonZeroingHelper,
+                    standard.sourceObjectByteCount,originalCreatorVA,
+                    kSharedZeroingHelperVA,0u,0u}; // body NOT audited yet
     for(const auto& special:kSevenNativeSourceExceptions)
         if(special.originalClassOrdinal==originalClassOrdinal &&
            special.originalCreatorVA==originalCreatorVA)
@@ -92,9 +95,14 @@ constexpr bool SourceEntityCreatorFamilyComplete() noexcept {
         const auto ord=std::size_t(special.originalClassOrdinal);
         if(ord>=creators::kOriginalClasses ||
            creators::SourceCreatorIsTemp(ord) ||
-           creators::SourceCreatorVAForOrdinal(ord)!=special.originalCreatorVA ||
-           common::SourceAllocationForClass(ord,special.originalCreatorVA)!=nullptr)
+           creators::SourceCreatorVAForOrdinal(ord)!=special.originalCreatorVA)
             return false;
+        // A seven-way exception must not appear in the 142
+        // source common-allocator class/creator inventory.
+        for(const auto& regular:common::kOriginalAllocationPrologues)
+            if(regular.originalClassOrdinal==ord ||
+               regular.originalCreatorVA==special.originalCreatorVA)
+                return false;
         if(special.path==CreatorPath::ExistingGlobalSingleton) {
             if(special.nativeRequestedBytes!=0u ||
                special.originalAllocatorOrGlobalVA!=kOriginalWorldSingletonGlobalVA)
