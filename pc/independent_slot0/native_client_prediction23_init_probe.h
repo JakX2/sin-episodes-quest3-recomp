@@ -55,6 +55,11 @@ constexpr unsigned kOriginalPlayerNotifierA=0x22Cu;
 constexpr unsigned kOriginalPlayerNotifierB=0x268u;
 constexpr unsigned kOriginalVirtualCount=23u;
 constexpr unsigned kOriginalUpdateVirtualSlot=3u;
+constexpr unsigned kOriginalPrePacketVirtualSlot=4u;
+constexpr unsigned kOriginalPostPacketVirtualSlot=5u;
+constexpr unsigned kOriginalEntityPredictableFlagOffset=0x2E8u;
+constexpr unsigned kOriginalPacketLastArg2MemberOffset=0x0Cu;
+constexpr unsigned kSyntheticPacketMaxEntities=4096u;
 constexpr unsigned kOriginalInnerVirtualSlot=22u;
 constexpr unsigned kOriginalUpdateLastIndexOffset=0x24u;
 constexpr unsigned kOriginalUpdateScratchDwords=11u;
@@ -134,6 +139,26 @@ struct UpdateFrameContext {
 static_assert(sizeof(std::array<std::uint32_t,11>)==44u,
               "native prediction Update REP MOVSD copies eleven DWORDs");
 
+// Phase1665: original CPrediction::PreEntityPacketReceived (slot4,
+// RET8) and PostEntityPacketReceived (slot5, RET0) iterate the same
+// client-wide entity list. This host-owned facade stands in for
+// CClientEntityList virtual [0]=Get(index) and [1]=Count(), and
+// C_BaseEntity::IsPredictable (native this+0x2E8 byte). Entity
+// storage never refers to original DLL game memory in public CI.
+struct PacketEntityOps {
+    void* user=nullptr;
+    std::int32_t cl_predict=1;
+    bool local_player_present=false;
+    std::int32_t (*get_count)(void*) noexcept=nullptr;
+    void* (*get_entity)(void*,std::int32_t) noexcept=nullptr;
+    bool (*is_predictable)(void*,void*) noexcept=nullptr;
+    void (*pre_entity)(void*,void*,std::uint32_t) noexcept=nullptr;
+    void (*post_entity)(void*,void*) noexcept=nullptr;
+    // Exact original 0x24195720 fallback is NOT reconstructed.
+    void (*pre_disabled_fallback)(void*) noexcept=nullptr;
+    void (*scope_enter)(void*,unsigned) noexcept=nullptr;
+    void (*scope_exit)(void*,unsigned) noexcept=nullptr;
+};
 struct Events {
     unsigned init_calls=0u;
     unsigned missing_provider_refusals=0u;
@@ -145,6 +170,9 @@ struct Events {
     unsigned missing_update_scratch=0u;
     unsigned missing_update_restore_target=0u;
     unsigned opaque_update_inner_calls=0u;
+    unsigned missing_packet_context=0u;
+    unsigned refused_packet_entity_backend=0u;
+    unsigned refused_packet_entity_count=0u;
 };
 inline Events events{};
 
@@ -204,8 +232,75 @@ public:
         }
         if(ctx->on_scope_exit)ctx->on_scope_exit(ctx->user);
     }
-    virtual std::uint32_t __thiscall UnknownSlot04() noexcept {return 0xA004u;}
-    virtual std::uint32_t __thiscall UnknownSlot05() noexcept {return 0xA005u;}
+    // Retail CPrediction::PreEntityPacketReceived slot4 RET8.
+    // The original stores arg2 in this+0xC before testing cl_predict.
+    // If disabled it calls an opaque original native fallback
+    // 0x24195720. Otherwise, when local player exists, it snapshots
+    // entity count and calls +0x240C5510(arg1) for every nonnull
+    // predictable entity (C_BaseEntity +0x2E8 byte != 0).
+    virtual void __thiscall PreEntityPacketReceived(
+            std::uint32_t arg1,std::uint32_t arg2) noexcept {
+        if(!packet_context_) {
+            ++events.missing_packet_context;
+            return; // safe synthetic refusal; original derefs globals
+        }
+        auto* const ctx=packet_context_;
+        if(ctx->scope_enter)ctx->scope_enter(ctx->user,4u);
+        memberC_=arg2;
+        if(ctx->cl_predict==0) {
+            if(ctx->pre_disabled_fallback)
+                ctx->pre_disabled_fallback(ctx->user);
+        } else if(ctx->local_player_present) {
+            const bool backend=
+                ctx->get_count && ctx->get_entity &&
+                ctx->is_predictable && ctx->pre_entity;
+            if(!backend) {
+                ++events.refused_packet_entity_backend;
+            } else {
+                const auto n=ctx->get_count(ctx->user);
+                if(n<0 || n>static_cast<std::int32_t>(
+                        kSyntheticPacketMaxEntities)) {
+                    ++events.refused_packet_entity_count;
+                } else for(std::int32_t i=0;i<n;++i) {
+                    void* const entity=ctx->get_entity(ctx->user,i);
+                    if(entity && ctx->is_predictable(ctx->user,entity))
+                        ctx->pre_entity(ctx->user,entity,arg1);
+                }
+            }
+        }
+        if(ctx->scope_exit)ctx->scope_exit(ctx->user,4u);
+    }
+    // Retail PostEntityPacketReceived slot5 has no explicit args
+    // and tail-JUMPs to CVProfile::ExitScope, cleaning no args.
+    // When cl_predict is disabled or local player absent, it does
+    // not iterate. Otherwise callback +0x240C68C0 for each eligible.
+    virtual void __thiscall PostEntityPacketReceived() noexcept {
+        if(!packet_context_) {
+            ++events.missing_packet_context;
+            return;
+        }
+        auto* const ctx=packet_context_;
+        if(ctx->scope_enter)ctx->scope_enter(ctx->user,5u);
+        if(ctx->cl_predict!=0 && ctx->local_player_present) {
+            const bool backend=
+                ctx->get_count && ctx->get_entity &&
+                ctx->is_predictable && ctx->post_entity;
+            if(!backend) {
+                ++events.refused_packet_entity_backend;
+            } else {
+                const auto n=ctx->get_count(ctx->user);
+                if(n<0 || n>static_cast<std::int32_t>(
+                        kSyntheticPacketMaxEntities)) {
+                    ++events.refused_packet_entity_count;
+                } else for(std::int32_t i=0;i<n;++i) {
+                    void* const entity=ctx->get_entity(ctx->user,i);
+                    if(entity && ctx->is_predictable(ctx->user,entity))
+                        ctx->post_entity(ctx->user,entity);
+                }
+            }
+        }
+        if(ctx->scope_exit)ctx->scope_exit(ctx->user,5u);
+    }
     virtual std::uint32_t __thiscall UnknownSlot06() noexcept {return 0xA006u;}
     // Retail slot7 is 16 bytes, zeroing [+0x28] and [+0x2C] and
     // setting [+0x24] to -1. No arguments, RET 0.
@@ -339,6 +434,9 @@ public:
         // pointer when an owner chooses the original Phase1659 API.
         writable_view_host_=nullptr;
     }
+    void set_packet_entity_ops(PacketEntityOps* ctx) noexcept {
+        packet_context_=ctx;
+    }
     void set_update_frame_context(UpdateFrameContext* ctx) noexcept {
         update_context_=ctx;
     }
@@ -403,6 +501,7 @@ private:
     OrientationOps orientation_{}; // synthetic callback contract only
     UpdateFrameContext* update_context_=nullptr; // invented owner only
     bool last_update_gate_flag_=true;
+    PacketEntityOps* packet_context_=nullptr; // invented owner only
 };
 
 static_assert(sizeof(void*)==4u,"original 2006 PE32 pointer width");
@@ -459,6 +558,16 @@ static_assert(std::is_same<decltype(&Prediction23Fixture::UpdateFrame),
 static_assert(kOriginalUpdateScratchDwords*4u==44u &&
               kOriginalInnerVirtualSlot*4u==kOriginalUpdateInnerVirtualOffset,
               "original x86 REP MOVSD/slot22 source-authenticated counts");
+using PacketTwoArgs=void (__thiscall Prediction23Fixture::*)(
+    std::uint32_t,std::uint32_t) noexcept;
+static_assert(std::is_same<
+    decltype(&Prediction23Fixture::PreEntityPacketReceived),
+    PacketTwoArgs>::value,
+    "original PreEntityPacketReceived slot4 is two-arg RET8");
+static_assert(std::is_same<
+    decltype(&Prediction23Fixture::PostEntityPacketReceived),
+    NoArgVoid>::value,
+    "original PostEntityPacketReceived slot5 is no-arg RET0");
 
 } // namespace client_prediction23_diagnostic
 } // namespace sin_independent
