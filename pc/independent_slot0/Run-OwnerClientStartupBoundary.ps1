@@ -10,6 +10,17 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+function Get-Sha256([string]$Path) {
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return [System.BitConverter]::ToString(
+            $hasher.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $hasher.Dispose()
+    }
+}
 if (-not $DisposableTestCopyConfirmed) {
     throw 'Use an existing disposable test copy only; explicit confirmation required.'
 }
@@ -40,7 +51,7 @@ foreach ($name in $required) {
     if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
         throw "Invalid bundle file type: $name"
     }
-    $hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash=Get-Sha256 $path
     if ($hash -cne $entry.Value) { throw "Bundle integrity mismatch: $name" }
 }
 Write-Output ("OWNER_CLIENT_STARTUP_BUNDLE_COMMIT: {0}" -f $manifest.commit)
