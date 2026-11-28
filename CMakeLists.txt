@@ -6354,3 +6354,21 @@ if(BUILD_TESTING)
     add_test(NAME sin_response_retail_corpus_tests COMMAND sin_response_retail_corpus_tests "${SIN_PRIVATE_SCRIPTS_DIR}")
   endif()
 endif()
+
+
+# Phase1692: original CGameStringPool owned semantic implementation.
+# No Source renderer or engine ABI: native pointer stability and
+# case-insensitive lookup, source uint16 index limit, and level clear.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_game_string_pool_tests
+    tests/test_original_client_game_string_pool.cpp)
+  target_include_directories(sin_original_client_game_string_pool_tests PRIVATE include)
+  target_compile_features(sin_original_client_game_string_pool_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_game_string_pool_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_game_string_pool_tests
+      COMMAND sin_original_client_game_string_pool_tests)
+  endif()
+endif()
