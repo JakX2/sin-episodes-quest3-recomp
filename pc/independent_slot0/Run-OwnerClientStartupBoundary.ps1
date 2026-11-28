@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory=$true)][string]$GameRoot,
     [string]$GameArguments='-console -game SE1',
     [ValidateRange(10,300)][int]$TimeoutSeconds=75,
-    [switch]$DisposableTestCopyConfirmed
+    [switch]$DisposableTestCopyConfirmed,
+    [switch]$EnableClientLeafFactoryProbe
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -55,7 +56,11 @@ foreach ($name in $required) {
     if ($hash -cne $entry.Value) { throw "Bundle integrity mismatch: $name" }
 }
 Write-Output ("OWNER_CLIENT_STARTUP_BUNDLE_COMMIT: {0}" -f $manifest.commit)
-Write-Output 'OWNER_CLIENT_STARTUP_MODE: CLIENT_ONLY_SOUND_CONNECT_PREDICTION_ENTITYLIST_CENTERPRINT_DIAGNOSTIC'
+Write-Output $(if ($EnableClientLeafFactoryProbe) {
+    'OWNER_CLIENT_STARTUP_MODE: CLIENT_ONLY_SOUND_CONNECT_PREDICTION_ENTITYLIST_CENTERPRINT_LEAF_COLD_DIAGNOSTIC'
+} else {
+    'OWNER_CLIENT_STARTUP_MODE: CLIENT_ONLY_SOUND_CONNECT_PREDICTION_ENTITYLIST_CENTERPRINT_DIAGNOSTIC'
+})
 Write-Output 'OWNER_CLIENT_STARTUP_BOOT_CLAIM: NONE'
 # Original server.dll stays in place. The independent client is swapped
 # only by the SHA-pinned lower-level launcher, which restores on exit.
@@ -70,6 +75,7 @@ $argsToOwner=@{
     EnableClientPredictionCvarRegisterProbe=$true
     EnableClientEntityListFactoryProbe=$true
     EnableClientCenterprintFactoryProbe=$true
+    EnableClientLeafFactoryProbe=$EnableClientLeafFactoryProbe.IsPresent
     EnableClientSoundConnectContinueProbe=$true
     DisposableTestCopyConfirmed=$true
 }

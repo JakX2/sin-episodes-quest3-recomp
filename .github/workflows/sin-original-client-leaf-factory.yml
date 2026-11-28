@@ -1,0 +1,33 @@
+name: SiN original ClientLeafSystem001 cold factory audit
+
+on:
+  pull_request:
+    paths:
+      - "research/tools/audit_sin_original_client_leaf_factory_boundary.py"
+      - "pc/independent_slot0/native_original_client_leaf_cold_factory.h"
+      - "pc/independent_slot0/test_original_client_leaf_factory_actual_dll.cpp"
+      - "pc/independent_slot0/Run-OwnerClientStartupBoundary.ps1"
+      - "pc/independent_slot0/Test-OwnerClientStartupBoundary.ps1"
+      - ".github/workflows/sin-original-client-leaf-factory.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-witness-synthetic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source virtual ABI and wrong-original SHA refusal
+        run: python research/tools/audit_sin_original_client_leaf_factory_boundary.py --self-test
+  owner-manifest-and-handoff:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate owner package allowlist without retail files
+        run: python pc/independent_slot0/Build-OwnerDiagnosticBundle.py --self-test
+      - name: Validate default refusal and explicit leaf opt-in
+        shell: powershell
+        run: |
+          & .\pc\independent_slot0\Test-OwnerClientStartupBoundary.ps1 -Wrapper .\pc\independent_slot0\Run-OwnerClientStartupBoundary.ps1

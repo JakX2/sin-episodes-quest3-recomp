@@ -21,6 +21,7 @@ $predictionFactoryEvents = New-Object System.Collections.Generic.List[string]
 $predictionConVarEvents = New-Object System.Collections.Generic.List[string]
 $entityListFactoryEvents = New-Object System.Collections.Generic.List[string]
 $centerprintColdEvents = New-Object System.Collections.Generic.List[string]
+$leafColdEvents = New-Object System.Collections.Generic.List[string]
 $centerprintColdUses = New-Object System.Collections.Generic.List[string]
 $clientSoundContinueEvents = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
@@ -216,6 +217,11 @@ foreach ($log in $logs) {
             $phase -in @('client-centerprint-cold-bound',
                           'client-centerprint-cold-refused')) {
             $centerprintColdEvents.Add(("{0}:client:{1}:{2}" -f
+                $log.Name,$phase,$version))
+        }
+        if ($role -eq 'client' -and
+            $phase -in @('client-leaf-cold-bound','client-leaf-cold-refused')) {
+            $leafColdEvents.Add(("{0}:client:{1}:{2}" -f
                 $log.Name,$phase,$version))
         }
         if ($role -eq 'client' -and
@@ -1165,6 +1171,12 @@ if ($entityListFactoryEvents.Count -gt 0) {
     # fatal, so this is never proof of live gameplay entities.
     Write-Output ("OWNER_CLIENT_ENTITYLIST_EMPTY_FACTORY_BOUNDARY: {0}" -f
         ($entityListFactoryEvents -join ','))
+}
+if ($leafColdEvents.Count -gt 0) {
+    # Negotiation and original-order vtable layout only: all rendering
+    # and leaf-method calls remain fatal, not implemented gameplay.
+    Write-Output ("OWNER_CLIENT_LEAF_COLD_FACTORY_BOUNDARY: {0}" -f
+        ($leafColdEvents -join ','))
 }
 if ($centerprintColdEvents.Count -gt 0) {
     # Original centerprint wrapper method6 creates a 0xF8-byte GUI

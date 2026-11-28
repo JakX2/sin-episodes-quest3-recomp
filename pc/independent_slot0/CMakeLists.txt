@@ -2266,3 +2266,28 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_sound_name_pool.py"
       --self-test)
 endif()
+
+# Phase1695 owner-observed retail ClientLeafSystem001 after prediction,
+# entity list and cold centerprint. Assert exact 22/12/1 native x86
+# source vtable counts on REAL independent client.dll; every virtual
+# method is terminal, no rendering or leaf-manager implementation.
+add_executable(sin_original_client_leaf_factory_actual_dll_test
+  test_original_client_leaf_factory_actual_dll.cpp)
+target_compile_features(sin_original_client_leaf_factory_actual_dll_test
+  PRIVATE cxx_std_17)
+add_dependencies(sin_original_client_leaf_factory_actual_dll_test
+  sin_slot0_client)
+add_test(NAME independent_client_leaf_factory_actual_dll_native
+  COMMAND sin_original_client_leaf_factory_actual_dll_test
+    "$<TARGET_FILE:sin_slot0_client>")
+set_tests_properties(independent_client_leaf_factory_actual_dll_native
+  PROPERTIES TIMEOUT 90)
+
+# Only private --bin-zip/--engine authenticates commercial game code.
+# Public CI checks invented vtable pointers and refusal on mutations.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_leaf_factory_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_leaf_factory_boundary.py"
+      --self-test)
+endif()

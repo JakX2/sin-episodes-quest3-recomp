@@ -24,6 +24,39 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Run-OwnerClientStartupBoun
 
 The original client/server hash pins are from the owner-provided 2006 PE32 files; the GitHub artifact contains **only independently authored DLLs and scripts**. No proprietary game code, assets or whole binaries are uploaded. Module detection, `CreateInterface`, Init callback execution and playable gameplay are separate milestones.
 
+
+## Optional next runtime probe: cold `ClientLeafSystem001` (Phase 1695)
+
+The owner's genuine Windows game report confirms the original engine
+loaded the independently compiled client DLL, obtained all 21 source
+interfaces, invoked `VSoundEmitter001::Connect` successfully, and accepted
+`VClientPrediction001`, `VClientEntityList003` and `VCENTERPRINT002`.
+The next source engine request `ClientLeafSystem001` was rejected because
+the previous bundle intentionally omitted it. The game process exited
+with code zero: **not** a normal gameplay/boot success. The original
+client/server DLLs were verified unchanged after restoration.
+
+Only a **newly verified Windows CI bundle** from the Phase1695 PR can run
+the optional next test. Never add flags to or modify the older manifest
+bundle. The existing default remains the Phase1693 baseline. For the new
+package only, use:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Run-OwnerClientStartupBoundary.ps1 -GameRoot "D:\SiN-DisposableTest" -DisposableTestCopyConfirmed -EnableClientLeafFactoryProbe
+```
+
+This opt-in exposes only the source original factory singleton primary
+interface with 22 fatal methods and +4/+8 secondary/auxiliary guards.
+All 35 source virtual positions are **terminal unsupported callbacks**,
+not guessed return values. This deliberately does **not** implement
+CClientLeafSystem's real rendering, visibility, model or prop behavior.
+A new `factory-accepted:ClientLeafSystem001` event would prove only that
+the engine accepted this interface *pointer*. A subsequent
+`unsupported-callback:ClientLeafSystem001.*` event would identify the
+first original method the engine attempts. Do not equate either with
+a rendered frame. The script still preserves the retail server and
+restores the original client with SHA256 verification.
+
 ## Test limitations
 
 The early client factories may be reached while further original post-sound lifecycle calls remain unsupported. Any intentional `Init` refusal, fatal unsupported callback, exit code zero or unsupported GUI constructor is diagnostic, not game boot. This experiment does not reopen user-deferred HL2-equivalent physics, models or prop rendering work.
