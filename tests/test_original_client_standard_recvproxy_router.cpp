@@ -19,6 +19,7 @@ namespace handle=sin_compat::original_client_custom_handle_proxy;
 namespace colorInt=sin_compat::original_client_custom_color_integer_proxies;
 namespace moveFov=sin_compat::original_client_custom_movement_fov_proxies;
 namespace scale=sin_compat::original_client_custom_scale_transition_proxies;
+namespace team=sin_compat::original_client_custom_team_array_element_proxy;
 
 int main() {
     static_assert(source::FullyClassifiedCanonicalRoutes());
@@ -255,12 +256,25 @@ int main() {
     // original x87 comparisons do not receive unverified NaN payloads
     // from unrelated synthetic property writes in earlier examples.
     std::vector<std::uint8_t> censusObject(6000u,0u);
+    static_assert(team::SourceRoutesMatch());
+    static_assert(team::kSourceCustomAssignments==1u);
+    static_assert(!team::CanPublishRetailProxyPointers());
     std::size_t applied=0u,custom=0u,special=0u,
                 standard=0u,handleAssignments=0u,moveparentAssignments=0u,
                 colorAssignments=0u,decrementAssignments=0u,
-                movementFovAssignments=0u,scaleAssignments=0u;
+                movementFovAssignments=0u,scaleAssignments=0u,
+                teamArrayAssignments=0u;
     for(std::size_t t=0u;t<schema::kStaticTables;++t)
         for(std::size_t p=0u;p<schema::kCounts[t];++p) {
+            if(t==team::kSourceTableOrdinal && p==team::kSourceSlot) {
+                // Source Team+0x480 must hold a bounded synthetic
+                // array token, not another original PE32 pointer or
+                // an accidental copied integer from an earlier prop.
+                team::WriteDword(censusObject,team::kOwnerArrayPointerOffset,
+                    team::kSyntheticVirtualArenaBase+
+                    team::kMinSyntheticArrayOffset);
+                incoming.originalSourceElementIndex=7u;
+            }
             const auto outcome=router::ApplySourceStandardProperty(
                 t,p,incoming,censusObject,tableToken);
             const auto va=source::SourceVAForSlot(t,p);
@@ -287,6 +301,10 @@ int main() {
                 ++applied;
                 ++scaleAssignments;
                 assert(outcome==router::Status::Applied);
+            }else if(team::IsOriginalTeamElementProxy(va)) {
+                ++applied;
+                ++teamArrayAssignments;
+                assert(outcome==router::Status::Applied);
             }else if(!source::IsStandardOriginalSourceVA(va)) {
                 ++custom;
                 assert(outcome==router::Status::UnsupportedSourceCallback);
@@ -300,7 +318,8 @@ int main() {
            moveparentAssignments==5u);
     assert(colorAssignments==4u && decrementAssignments==5u);
     assert(movementFovAssignments==3u && scaleAssignments==2u);
-    assert(applied==1048u && custom==34u && special==28u);
+    assert(teamArrayAssignments==1u);
+    assert(applied==1049u && custom==33u && special==28u);
 
     // Small buffers must never allow an otherwise valid source +44
     // member offset to write beyond the owned host object.
@@ -314,8 +333,8 @@ int main() {
         assert(tiny==old && tableToken==token);
     }
     assert(!router::CanPublishRetailProxyPointers());
-    std::puts("PASS Phase1712 999 standard + 35 handles + 4 color + 5 "
-              "decrement + 3 movement/FOV + 2 x87 scale receiver routes; "
-              "34 custom / 28 special blocked, NO retail slot5");
+    std::puts("PASS Phase1713 999 standard + 35 handles + 4 color + 5 "
+              "decrement + 3 movement/FOV + 2 x87 scale + 1 Team element "
+              "receiver routes; 33 custom / 28 special blocked, NO slot5");
     return 0;
 }
