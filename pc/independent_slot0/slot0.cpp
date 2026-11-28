@@ -11,11 +11,13 @@
 #include <cstring>
 #include <type_traits>
 #include <intrin.h>
+#include <new>
 #if defined(SIN_ROLE_client) || defined(SIN_ROLE_server)
 #include "sound_emitter_connect_core.h"
 #endif
 #if defined(SIN_ROLE_client)
 #include "client_material_startup_core.h"
+#include "native_client_prediction_factory_boundary.h"
 #include "client_screen_random_core.h"
 #include "client_cvar_probe.h"
 #include "client_owned_startup_probe.h"
@@ -228,6 +230,92 @@ static bool validTraceSession() noexcept {
              (session[i]>='a' && session[i]<='f')))return false;
     return true;
 }
+
+#if defined(SIN_ROLE_client)
+// Phase1686: this is an opt-in PRODUCTION client.dll factory boundary,
+// not the original game implementation. The actual engine first asks
+// client CreateInterface("VClientPrediction001"), then calls vtable[1].
+// The original full-SHA engine.dll evidence is Phase1658.
+//
+// The owner diagnostic gate is per-process AND per-launch scoped;
+// ordinary VClient011 Init still returns failure and does not publish
+// partially reconstructed IPrediction methods.
+static bool clientPredictionFactoryProbeEnabled() noexcept {
+    char flag[2]={};
+    return validTraceSession() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_PREDICTION_FACTORY_PROBE",
+            flag,sizeof(flag))==1 && flag[0]=='1';
+}
+namespace pred_factory=sin_independent::native_client_prediction_factory;
+static pred_factory::Boundary* g_predictionOwner=nullptr;
+static bool g_predictionOwnerReady=false;
+static pred_factory::Boundary* ensurePredictionOwner() noexcept {
+    if(!g_predictionOwner)
+        g_predictionOwner=new(std::nothrow)
+            pred_factory::Boundary(&stopUnsupported);
+    return g_predictionOwner;
+}
+// Host-only bounded read: do not infer safety from a nonnull pointer.
+// The actual 2006 engine ConVar is expected to remain mapped; this
+// helper proves only accessible Win32 pages, not original ownership.
+static bool readablePredictionSource(const void* pointer,
+                                    std::size_t length) noexcept {
+    if(!pointer || !length)return false;
+    MEMORY_BASIC_INFORMATION info{};
+    if(VirtualQuery(pointer,&info,sizeof(info))!=sizeof(info) ||
+       info.State!=MEM_COMMIT ||
+       (info.Protect&(PAGE_NOACCESS|PAGE_GUARD)))return false;
+    const DWORD access=info.Protect&0xffu;
+    if(access!=PAGE_READONLY && access!=PAGE_READWRITE &&
+       access!=PAGE_WRITECOPY && access!=PAGE_EXECUTE_READ &&
+       access!=PAGE_EXECUTE_READWRITE &&
+       access!=PAGE_EXECUTE_WRITECOPY)return false;
+    const auto at=reinterpret_cast<std::uintptr_t>(pointer);
+    const auto base=reinterpret_cast<std::uintptr_t>(info.BaseAddress);
+    return at>=base &&
+           (at-base)<=info.RegionSize &&
+           length<=info.RegionSize-(at-base);
+}
+// Query only the already-acquired real VEngineCvar002 virtual slot3,
+// source-authenticated via the existing console_abi ABI. Do not write
+// or register any ConVar. The original slot1 checks cl_predict's
+// m_pParent->m_nValue; our native owner SNAPSHOTS that number rather
+// than retaining an untrusted game-engine ConVar pointer.
+static bool readPredictionNumeric(void* engineCvar,
+                                  std::int32_t& result) noexcept {
+    result=0;
+    if(!readablePredictionSource(engineCvar,sizeof(void*)))
+        return false;
+    const void* const* vptr=nullptr;
+    std::memcpy(&vptr,engineCvar,sizeof(vptr));
+    if(!readablePredictionSource(vptr,4u*sizeof(void*)))
+        return false;
+    void* fn=nullptr;
+    std::memcpy(&fn,vptr+3u,sizeof(fn));
+    if(!fn)return false;
+    using FindConstVar=const void* (__thiscall *)(
+        const void*,const char*) noexcept;
+    const auto selected=
+        reinterpret_cast<FindConstVar>(fn)(engineCvar,"cl_predict");
+    if(!readablePredictionSource(selected,
+         pred_factory::kOriginalConVarParentOffset+sizeof(void*)))
+        return false;
+    const auto* source=static_cast<const std::uint8_t*>(selected);
+    const void* parent=nullptr;
+    std::memcpy(&parent,source+
+       pred_factory::kOriginalConVarParentOffset,sizeof(parent));
+    if(!parent)return false;
+    const auto* parentBytes=static_cast<const std::uint8_t*>(parent);
+    if(!readablePredictionSource(parentBytes,
+       pred_factory::kOriginalConVarNumericOffset+
+       sizeof(std::int32_t)))return false;
+    std::memcpy(&result,parentBytes+
+        pred_factory::kOriginalConVarNumericOffset,sizeof(result));
+    return true;
+}
+#endif
+
 #if defined(SIN_ROLE_server)
 static bool extraFactoriesEnabled() noexcept {
     char value[2] = {};
@@ -1101,6 +1189,8 @@ public:
         g_clientFileSystem=nullptr;
         g_clientCvar=nullptr;
         g_clientPhysicsFactory=physicsFactory;
+        g_predictionOwnerReady=false;
+        if(g_predictionOwner)g_predictionOwner->Revoke();
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
@@ -1129,13 +1219,34 @@ public:
             stopAfterClientSoundProbe(connected);
         }
 #endif
+        // Explicit owner diagnostic only. This advances the same
+        // independently compiled VClient011 factory through its
+        // actual slot0 so the 2006 engine can request the actual
+        // VClientPrediction001 factory after all known dependencies.
+        // No other gameplay callbacks are silently implemented.
+        if(clientPredictionFactoryProbeEnabled()) {
+            std::int32_t numeric=0;
+            auto* owner=ensurePredictionOwner();
+            if(owner && readPredictionNumeric(cvar,numeric)) {
+                owner->BindSourceNumeric(numeric);
+                g_predictionOwnerReady=true;
+                seen_=true;
+                diagnostic("prediction-bound","cl_predict-parent-value");
+                return 1; // Explicit opt-in; remaining callbacks guard.
+            }
+            diagnostic("prediction-bound-refused",
+                       "cl_predict-unavailable-or-unsafe");
+            return 0;
+        }
         diagnostic("sdk2004-preflight-only", nullptr);
         seen_ = true;
-        return 0; // Never advertise successful independent startup.
+        return 0; // Default still never advertises startup.
     }
     virtual void __thiscall Shutdown() noexcept {
         seen_ = false;
         g_clientPhysicsFactory=nullptr;
+        g_predictionOwnerReady=false;
+        if(g_predictionOwner)g_predictionOwner->Revoke();
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
         g_slot33Ready=false;
         g_slot33Reader={};
@@ -1864,6 +1975,14 @@ extern "C" __declspec(dllexport) void* __cdecl CreateInterface(
     const char* name, int* status) noexcept {
     void* result = name && std::strcmp(name, kName) == 0
         ? static_cast<void*>(&instance) : nullptr;
+#if defined(SIN_ROLE_client)
+    if(!result && name &&
+       std::strcmp(name,pred_factory::kInterfaceName)==0 &&
+       clientPredictionFactoryProbeEnabled() &&
+       g_predictionOwnerReady && g_predictionOwner &&
+       g_predictionOwner->Bound())
+        result=static_cast<void*>(g_predictionOwner);
+#endif
 #if defined(SIN_ROLE_server)
     if (!result && name && extraFactoriesEnabled()) {
         if (std::strcmp(name,"ServerGameEnts001")==0) result=entityFactoryProbe();

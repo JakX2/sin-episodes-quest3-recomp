@@ -2127,3 +2127,26 @@ target_compile_features(sin_original_prediction_initpredictable_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_prediction_initpredictable_native
   COMMAND sin_original_prediction_initpredictable_test)
+
+# Phase1686: this is NOT another fixture-only prediction helper.
+# Load the actual independent shipping client.dll as native PE32,
+# call its real CreateInterface("VClient011"), run 21 source-
+# authenticated engine factory requests, then opt in to the
+# VEngineCvar002-backed VClientPrediction001 factory. Check the
+# genuine 23 native vtable entries, original known slot1/2/7/
+# 15/16/17 ABI, parent ConVar numeric, session isolation,
+# bounded missing/forged pointers and child-process fatal guard.
+# Default distribution remains fail-closed and game boot unproven.
+add_executable(sin_client_prediction_factory_boundary_test
+  test_client_prediction_factory_boundary.cpp)
+target_compile_features(sin_client_prediction_factory_boundary_test
+  PRIVATE cxx_std_17)
+add_dependencies(sin_client_prediction_factory_boundary_test
+  sin_slot0_client)
+add_test(NAME independent_client_prediction_factory_actual_dll_native
+  COMMAND sin_client_prediction_factory_boundary_test
+    "$<TARGET_FILE:sin_slot0_client>")
+set_tests_properties(
+  independent_client_prediction_factory_actual_dll_native
+  PROPERTIES TIMEOUT 90)
+
