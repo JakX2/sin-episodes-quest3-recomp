@@ -1,0 +1,40 @@
+name: SiN Phase1730 World pre-vector native initializer
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sin-original-client-world-pre-vector-phase1730.yml'
+      - 'include/sin_compat/original_client_world_pre_vector_stage_phase1730.hpp'
+      - 'tests/test_original_client_world_pre_vector_stage_phase1730.cpp'
+      - 'research/tools/audit_sin_original_client_world_pre_vector_stage_phase1730.py'
+  workflow_dispatch:
+
+jobs:
+  strict-original-free-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source-only native boundary and mutation refusal
+        run: python3 research/tools/audit_sin_original_client_world_pre_vector_stage_phase1730.py --self-test
+      - name: Strict GCC + Clang portable C++17 398-byte pre-vector World
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_pre_vector_stage_phase1730.cpp -o /tmp/sin-phase1730-gcc
+          /tmp/sin-phase1730-gcc
+          clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_pre_vector_stage_phase1730.cpp -o /tmp/sin-phase1730-clang
+          /tmp/sin-phase1730-clang
+      - name: AddressSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_world_pre_vector_stage_phase1730.cpp -o /tmp/sin-phase1730-san
+          /tmp/sin-phase1730-san
+  native32-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Run Win32 C++17 safe original pre-vector witness
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /W4 /WX /EHsc /Iinclude tests\test_original_client_world_pre_vector_stage_phase1730.cpp /Fe:sin-phase1730.exe
+          sin-phase1730.exe
