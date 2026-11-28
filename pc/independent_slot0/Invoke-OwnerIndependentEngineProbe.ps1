@@ -24,6 +24,7 @@ param(
     [switch]$EnableClientSoundProbe,
     [switch]$EnableClientPredictionFactoryProbe,
     [switch]$EnableClientPredictionCvarRegisterProbe,
+    [switch]$EnableClientEntityListFactoryProbe,
     [switch]$EnableClientMaterialProbe,
     [switch]$EnableClientScreenProbe,
     [switch]$EnableClientGaussianProbe,
@@ -220,6 +221,10 @@ if ($EnableClientMaterialProbe -and -not $EnableClientSoundProbe) {
 # Phase1687: advancement beyond VClient011's safe factory prefix is
 # a distinct test path, not compatible with sound/material/physics
 # terminal diagnostics and never permitted in Both/Server mode.
+if ($EnableClientEntityListFactoryProbe -and
+    -not $EnableClientPredictionFactoryProbe) {
+    throw 'EnableClientEntityListFactoryProbe requires EnableClientPredictionFactoryProbe'
+}
 if ($EnableClientPredictionCvarRegisterProbe -and
     -not $EnableClientPredictionFactoryProbe) {
     throw 'EnableClientPredictionCvarRegisterProbe requires EnableClientPredictionFactoryProbe'
@@ -369,6 +374,7 @@ try {
     $previousClientSoundProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_PROBE','Process')
     $previousClientPredictionFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PREDICTION_FACTORY_PROBE','Process')
     $previousClientPredictionCvarProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE','Process')
+    $previousClientEntityListFactoryProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENTITYLIST_FACTORY_PROBE','Process')
     $previousClientMaterialProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE','Process')
     $previousClientScreenProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SCREEN_PROBE','Process')
     $previousClientGaussianProbe = [Environment]::GetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE','Process')
@@ -427,6 +433,9 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE',
             $(if ($EnableClientPredictionCvarRegisterProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_PREDICTION_CVAR_REGISTER_PROBE: {0}" -f $(if ($EnableClientPredictionCvarRegisterProbe) { 'ENABLED_OWNER_CONVAR_REGISTRATION' } else { 'DISABLED' }))
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENTITYLIST_FACTORY_PROBE',
+            $(if ($EnableClientEntityListFactoryProbe) { '1' } else { '0' }),'Process')
+        Write-Output ("OWNER_CLIENT_ENTITYLIST_FACTORY_PROBE: {0}" -f $(if ($EnableClientEntityListFactoryProbe) { 'ENABLED_SOURCE_EMPTY_ENTITY_DIAGNOSTIC' } else { 'DISABLED' }))
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE',
             $(if ($EnableClientMaterialProbe) { '1' } else { '0' }),'Process')
         Write-Output ("OWNER_CLIENT_MATERIAL_PROBE: {0}" -f $(if ($EnableClientMaterialProbe) { 'ENABLED_TERMINAL_DIAGNOSTIC' } else { 'DISABLED' }))
@@ -566,6 +575,7 @@ try {
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SOUND_PROBE',$previousClientSoundProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PREDICTION_FACTORY_PROBE',$previousClientPredictionFactoryProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE',$previousClientPredictionCvarProbe,'Process')
+        [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_ENTITYLIST_FACTORY_PROBE',$previousClientEntityListFactoryProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_MATERIAL_PROBE',$previousClientMaterialProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_SCREEN_PROBE',$previousClientScreenProbe,'Process')
         [Environment]::SetEnvironmentVariable('SIN_INDEPENDENT_CLIENT_GAUSSIAN_PROBE',$previousClientGaussianProbe,'Process')
