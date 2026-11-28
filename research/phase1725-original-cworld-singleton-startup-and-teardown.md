@@ -47,7 +47,16 @@ The CWorld bootstrap installs original RTTI vtables at:
 `0x2429632C`, `0x242962C4`, `0x2429628C`, `0x24296274`.
 
 Its primary virtual at byte+0x94 resolves to **0x240FCB10**.
-This is NOT the shared 75-byte method `0x240C8FE0` used
+The target is a **complete 44-byte original function**, SHA256
+`305044e8173fc81a50952318532ec1a5638e4c956dc056285e048ef92448b35d`,
+followed by four INT3 bytes. It first clears owner field
+`+0x480`, calls source original helpers `0x24085750`
+and `0x24129480`, then calls the shared 75-byte network
+initializer `0x240C8FE0` and returns with `RET 8`.
+This establishes a world-specific initialization preamble
+followed by the common network initialization sequence.
+
+This is NOT a direct reference to the shared 75-byte method `0x240C8FE0` used
 by the 50 generic inline-vtable entity creators in Phase1723.
 The world primary byte+0x44 points to `0x24054E80`.
 Its SECONDARY byte+0 virtual points to the same original
