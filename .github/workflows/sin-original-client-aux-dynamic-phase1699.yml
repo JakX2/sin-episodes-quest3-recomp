@@ -5,6 +5,8 @@ on:
     paths:
       - "research/tools/audit_sin_original_client_aux_dynamic_receivers.py"
       - "include/sin_compat/original_client_aux_dynamic_receivers.hpp"
+      - "include/sin_compat/original_client_overlay_proxy_offset.hpp"
+      - "tests/test_original_client_overlay_proxy_offset.cpp"
       - "tests/test_original_client_aux_dynamic_receivers.cpp"
       - ".github/workflows/sin-original-client-aux-dynamic-phase1699.yml"
   workflow_dispatch:
@@ -23,7 +25,11 @@ jobs:
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_aux_dynamic_receivers.cpp -o /tmp/sin-original-client-aux-dynamic
           /tmp/sin-original-client-aux-dynamic
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_overlay_proxy_offset.cpp -o /tmp/sin-original-client-overlay-proxy
+          /tmp/sin-original-client-overlay-proxy
       - name: Run actual C++17 graph with address and undefined behavior sanitizers
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_aux_dynamic_receivers.cpp -o /tmp/sin-original-client-aux-dynamic-san
           /tmp/sin-original-client-aux-dynamic-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_overlay_proxy_offset.cpp -o /tmp/sin-original-client-overlay-proxy-san
+          /tmp/sin-original-client-overlay-proxy-san
