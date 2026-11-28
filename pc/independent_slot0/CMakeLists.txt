@@ -2321,3 +2321,13 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_class_recvtable_links.py"
       --self-test)
 endif()
+
+# Phase1696: all 939 class-attached original RecvProp NAMES are
+# SHA-authenticated (916 native ctor names and 23 array helpers).
+# Types, proxies and live wire ABI remain UNSUPPORTED.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_all_recvprop_names_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_class_recvprop_names.py"
+      --self-test)
+endif()
