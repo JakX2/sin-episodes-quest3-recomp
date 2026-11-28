@@ -1698,3 +1698,20 @@ target_compile_features(sin_original_client_prediction_player_orientation_slots_
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_prediction_player_orientation_slots_native
   COMMAND sin_original_client_prediction_player_orientation_slots_test)
+
+
+# Phase1662: exact original C_BasePlayer primary-vtable orientation
+# slots57-60 and 23-slot prediction -> 61-slot player original-free
+# x86 call chain, x87 float comparison, dirty/mirror/notify ordering.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_cbaseplayer_orientation_61_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_cbaseplayer_orientation_native_methods.py"
+      --self-test)
+endif()
+add_executable(sin_original_client_player_orientation_61_chain_test
+  test_original_client_player_orientation_61_chain.cpp)
+target_compile_features(sin_original_client_player_orientation_61_chain_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_player_orientation_61_chain_native
+  COMMAND sin_original_client_player_orientation_61_chain_test)
