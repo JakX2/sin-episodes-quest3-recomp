@@ -25,6 +25,7 @@ CLASS_COUNT = 191
 ENTITY_CLASSES = 149
 EVENT_CLASSES = 42
 CATALOG_SHA = "ded698d9f9b6c671e17a03a23a0e909b4acb5d8c6030f905af2899471d616c24"
+PUBLIC_CATALOG_SHA = "a5907135131d8dc216ca2b088b587a30314ff0d60f290237c0ba43b787414585"
 SLOT5_SHA = "de7983e64b69321348f64408db25c7f2a4215cf4201e17d4e10eb2f43a64d41e"
 REGISTER_SHA = "130516addf1c8a0c3e90dc8950e64168eb2c2872441a86e96b2942d6b360341b"
 FIRST_CRT_ENTRY = 0x2425E7AF
@@ -192,6 +193,16 @@ def verify(client: bytes, catalog_text: str | None = None) -> dict:
     }
 
 
+def verify_public_catalog(text: str) -> None:
+    lines = [line.strip() for line in text.splitlines()
+             if line.strip() and not line.startswith("#")]
+    need(len(lines) == CLASS_COUNT,
+         "source public class catalog is not 191 entries")
+    raw = ("\n".join(lines) + "\n").encode("ascii")
+    need(hashlib.sha256(raw).hexdigest() == PUBLIC_CATALOG_SHA,
+         "source public metadata catalog digest mismatch")
+
+
 def self_test() -> None:
     invented = [
         dict(crt_index=30, name="CFakeB", node_va=0x10000800,
@@ -231,10 +242,12 @@ def main() -> None:
     args = parser.parse_args()
     if args.client is None and not args.self_test:
         parser.error("supply --self-test or --client")
+    catalog = args.catalog.read_text("utf-8") if args.catalog else None
+    if catalog is not None:
+        verify_public_catalog(catalog)
     if args.self_test:
         self_test()
     if args.client is not None:
-        catalog = args.catalog.read_text("utf-8") if args.catalog else None
         print(json.dumps(verify(args.client.read_bytes(), catalog),
                          indent=2, sort_keys=True))
 
