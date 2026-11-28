@@ -2342,3 +2342,24 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_engine_clientclass_consumers.py"
       --self-test)
 endif()
+
+
+# Phase1697: x86 native graph contract uses original 2006 engine's
+# class-next +16, class-table +12, RecvTable visited +17, 60-byte props,
+# nested property type5 and recursive table pointer +40. All callbacks,
+# original class factories and source RecvTable ABI remain out of scope.
+add_executable(sin_original_client_recvtable_preflight_native_test
+  ../../tests/test_original_client_recvtable_preflight.cpp)
+target_include_directories(sin_original_client_recvtable_preflight_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_recvtable_preflight_native_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_recvtable_preflight_native
+  COMMAND sin_original_client_recvtable_preflight_native_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_recvprop_type_inventory_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_recvprop_type_inventory.py"
+      --self-test)
+endif()
