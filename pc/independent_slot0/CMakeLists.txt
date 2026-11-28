@@ -2248,3 +2248,13 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_game_string_pool.py"
       --self-test)
 endif()
+
+# Phase1694: exact owner-private VClient011 post-acquisition CLIENT/VGUI
+# mandatory interface gate recovered from three complete original methods.
+# Public CTest uses invented byte mutations; no original game DLL.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_vgui_input_system_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_vgui_input_system.py"
+      --self-test)
+endif()
