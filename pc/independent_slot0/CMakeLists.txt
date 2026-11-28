@@ -1996,3 +1996,21 @@ target_compile_features(sin_original_postnetwork_cdecl_msg_formatter_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_cdecl_msg_formatter_native
   COMMAND sin_original_postnetwork_cdecl_msg_formatter_test)
+
+
+# Phase1679: new original-retail complete 121B CDECL record-name
+# lookup at 0x24197ED0. Native synthetic test wires the lookup
+# result directly to this+0x34 selected-record diagnostics and
+# original-free RET16 typed dispatcher/RET16 scalar/cdecl Msg path.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_record_name_lookup_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_record_name_lookup.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_record_name_lookup_test
+  test_original_postnetwork_record_name_lookup.cpp)
+target_compile_features(sin_original_postnetwork_record_name_lookup_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_record_name_lookup_native
+  COMMAND sin_original_postnetwork_record_name_lookup_test)

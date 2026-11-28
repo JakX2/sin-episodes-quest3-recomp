@@ -83,6 +83,7 @@ on:
       - 'research/tools/audit_sin_original_postnetwork_case8_case9_copy_fixup.py'
       - 'research/tools/audit_sin_original_postnetwork_scalar_formatters.py'
       - 'research/tools/audit_sin_original_postnetwork_cdecl_msg_formatter.py'
+      - 'research/tools/audit_sin_original_postnetwork_record_name_lookup.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -313,3 +314,6 @@ jobs:
 
       - name: Authenticate original 93-byte CDECL Q_vsnprintf-to-Msg PostNetwork formatter (synthetic only)
         run: python research/tools/audit_sin_original_postnetwork_cdecl_msg_formatter.py --self-test
+
+      - name: Authenticate original 121B CDECL recursive PostNetwork record name lookup (synthetic only)
+        run: python research/tools/audit_sin_original_postnetwork_record_name_lookup.py --self-test
