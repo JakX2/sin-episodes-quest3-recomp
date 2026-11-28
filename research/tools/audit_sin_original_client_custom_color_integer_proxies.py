@@ -20,11 +20,11 @@ SOURCE_METHODS=(
     (0x241A8C20,17,
      "bbea8c9b7a7fce6219d595fb3305ce6b6137f5186e171df2ab93d3fe23323582",5,0x241A8C40),
 )
-SOURCE_COLOR_CODE=bytes.fromhex(
-    "8b4424048b40048b4c240c8bd0c1ea1888118bd0"
-    "c1ea108851018bd0c1ea08885102884103c3")
-SOURCE_DECREMENT_CODE=bytes.fromhex(
-    "8b4424048b48048b54240c83e901890ac3")
+# Sparse instruction witnesses only. The complete original executable
+# bodies are authenticated by SHA256, never embedded in public source.
+COLOR_OPCODE_WITNESSES=((13,"c1ea18"),(20,"c1ea10"),
+                        (28,"c1ea08"),(34,"884103"))
+DECREMENT_OPCODE_WITNESSES=((11,"83e901"),(14,"890ac3"))
 
 
 def require(ok,why):
@@ -36,8 +36,8 @@ def verify_catalog(header:Path):
     for va,length,digest,expected_calls,nextVA in SOURCE_METHODS:
         require(addresses.count(va)==expected_calls,
                 f"source callback VA {va:#x} caller count drift")
-    require(len(SOURCE_COLOR_CODE)==38 and len(SOURCE_DECREMENT_CODE)==17,
-            "original color/dec source instruction length mismatch")
+    require(SOURCE_METHODS[0][1]==38 and SOURCE_METHODS[1][1]==17,
+            "original color/decrement source method length mismatch")
 
 
 def verify_original(path:Path):
@@ -57,10 +57,14 @@ def verify_original(path:Path):
                 f"source 2006 complete method SHA changed {va:#x}")
         require(at(va+length,(nextVA-va-length))==b"\xCC"*(nextVA-va-length),
                 f"original method padding drift {va:#x}")
-    require(at(SOURCE_METHODS[0][0],38)==SOURCE_COLOR_CODE,
-            "original received DWORD color byte order changed")
-    require(at(SOURCE_METHODS[1][0],17)==SOURCE_DECREMENT_CODE,
-            "original received DWORD SUB ECX,1 changed")
+    for offset,witness in COLOR_OPCODE_WITNESSES:
+        raw=bytes.fromhex(witness)
+        require(at(SOURCE_METHODS[0][0]+offset,len(raw))==raw,
+                "original color byte-order sparse opcode witness changed")
+    for offset,witness in DECREMENT_OPCODE_WITNESSES:
+        raw=bytes.fromhex(witness)
+        require(at(SOURCE_METHODS[1][0]+offset,len(raw))==raw,
+                "original integer decrement sparse opcode witness changed")
     print("PASS Phase1710 38-byte original color and 17-byte subtract-one "
           "PE32 RecvProxies, four/five source callback identities")
 
