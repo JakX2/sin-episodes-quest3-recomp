@@ -20,8 +20,14 @@
 // The original startup requests 0x4B0 (1200) ZEROED bytes via
 // 0x240C4FF0, constructor 0x240CCE30, then four original native
 // CWorld RTTI vtables at +0,+4,+8,+12, stores singleton global.
-// CWorld's primary +0x94 virtual is 0x240FCB10, NOT shared
-// inline factory method 0x240C8FE0! Secondary+0 is same 4-byte
+// CWorld primary +0x94 target is 0x240FCB10, a FULL 44-byte wrapper
+// (SHA256 305044e8173fc81a50952318532ec1a5638e4c956dc056285e048ef92448b35d).
+// It clears original owner+0x480, calls original 0x24085750 and
+// 0x24129480, then calls shared 75B initializer 0x240C8FE0.
+// Source wrapper has RET8 and four trailing INT3 bytes.
+// It is NOT the same vtable target as generic inline factory,
+// but delegates to that method AFTER world-only side effects.
+// Secondary+0 is same 4-byte
 // 0x24054EC0 this-minus-four interface adjustor (Phase1723).
 //
 // No code here dereferences the old x86 globals/vtables, invokes
@@ -53,6 +59,11 @@ inline constexpr std::uint32_t kNativeWorldConstructorVA=0x240CCE30u;
 inline constexpr std::uint32_t kNativeWorldRequestBytes=0x4B0u;
 inline constexpr std::uint32_t kNativeWorldReturnNetworkableOffset=8u;
 inline constexpr std::uint32_t kNativeWorldPrimaryVirtual94VA=0x240FCB10u;
+inline constexpr std::uint32_t kNativeWorldNetworkVirtualWrapperBytes=44u;
+inline constexpr std::uint32_t kNativeWorldInitClearsFieldOffset=0x480u;
+inline constexpr std::uint32_t kNativeWorldPreSharedInitHelperOneVA=0x24085750u;
+inline constexpr std::uint32_t kNativeWorldPreSharedInitHelperTwoVA=0x24129480u;
+inline constexpr std::uint32_t kNativeSharedNetworkInitializerVA=0x240C8FE0u;
 inline constexpr std::uint32_t kNativeWorldPrimaryVirtual44VA=0x24054E80u;
 inline constexpr std::uint32_t kNativeWorldSecondaryVirtual0VA=0x24054EC0u;
 inline constexpr std::uint32_t kOriginalHostTokenBase=0x10000000u;
@@ -109,6 +120,10 @@ static_assert(kNativeWorldSecondaryVirtual0VA==
               inlinevt::kSourceSecondaryVirtual0Target);
 static_assert(kNativeWorldPrimaryVirtual94VA!=
               inlinevt::kSourcePrimaryVirtual94Target);
+static_assert(kNativeSharedNetworkInitializerVA==
+              inlinevt::kSourcePrimaryVirtual94Target);
+static_assert(kNativeWorldInitClearsFieldOffset<
+              kNativeWorldRequestBytes);
 static_assert(!SafeSyntheticWorldToken(kWorldNativeSingletonGlobalVA));
 static_assert(!CanPublishRetailCWorldCreator());
 } // namespace sin_compat::original_client_world_singleton_lifecycle
