@@ -61,7 +61,9 @@ Important SiN-specific source fields recovered on `CNPC_GruntBase`: `baseclass` 
 
 The new `research/tools/audit_sin_original_client_class_recvprop_names.py` audits the full owner-original DLL SHA, all 191 original RecvTable links, all 939 explicit property slots and the 916/12/11 split, and checks the whole name-sequence fingerprint. It reports selected source constructor callsites and the original **limited** numeric x86 offsets where uniquely determined. The public `--self-test` refuses fabricated original DLL identity and checks the alternate-name scanner, while **only a private owner-original run** verifies original instruction bodies. No original DLL bytes are copied into public CI.
 
-These are now **names**, not 939 authenticated serialized field data types, native RecvProxy signatures, nested-table semantics, class IDs or runnable original entity factories. Do not return this catalog as a live `ClientClass*` to the retail engine. Slot5 remains intentionally guarded until its ABI can be satisfied.
+These are now **names**, not 939 authenticated serialized field data types, native RecvProxy signatures, nested-table semantics, class IDs or runnable original entity factories.
+
+The full 939-slot metadata export is **owner-private and opt-in**, via `--full-json`: the tool only accepts this option together with the SHA-pinned unchanged original client.dll. Output includes all source class names, table names, slot indices, constructor route labels and the original x86 member offset where proven. No executable original function bytes are written. It is not safe to pass these source VA labels to the retail engine or to an Android ARM64 module. Do not return this catalog as a live `ClientClass*` to the retail engine. Slot5 remains intentionally guarded until its ABI can be satisfied.
 
 ## Verification
 
@@ -81,6 +83,7 @@ Private, user-owned original binary read-only checks:
 python research/tools/audit_sin_original_client_class_registry.py --client /private/client.dll --catalog research/manifests/original_client_class_catalog_phase1696.tsv
 python research/tools/audit_sin_original_client_class_recvtable_links.py --client /private/client.dll
 python research/tools/audit_sin_original_client_class_recvprop_names.py --client /private/client.dll
+python research/tools/audit_sin_original_client_class_recvprop_names.py --client /private/client.dll --full-json /private/phase1696-class-property-metadata.json
 ```
 
 Both new synthetic Python audits and the identical native C++ catalog test are registered in standalone Windows MSVC x86 CTest and focused Linux CI. The original binaries **never** enter GitHub Actions. A green synthetic test is not a real retail-engine class registry test.
