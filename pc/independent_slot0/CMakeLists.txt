@@ -2363,3 +2363,15 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_recvprop_type_inventory.py"
       --self-test)
 endif()
+
+
+# Phase1697: source-authenticated 351-byte 0x24126E90 constructor
+# wraps 11 dynamic nested tables with 579 generated element descriptors.
+add_executable(sin_original_client_nested_array_table_native_test
+  ../../tests/test_original_client_nested_array_table.cpp)
+target_include_directories(sin_original_client_nested_array_table_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_nested_array_table_native_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_nested_array_table_native
+  COMMAND sin_original_client_nested_array_table_native_test)
