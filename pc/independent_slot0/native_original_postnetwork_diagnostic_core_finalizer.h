@@ -151,12 +151,15 @@ struct ListFinalizerFixture {
         ListNode* current=first;
         unsigned processed=0u;
         while(current && processed<kSafeMaxNodes) {
-            ListNode* const next=current->next;
             ops.apply_entry(ops.user,sequence,current,
                             current->word0,current->word4);
             ++processed;
             ++final_events.processed_entries;
-            current=next;
+            // IMPORTANT original 0x24199B50 reloads esi=[esi+0xC]
+            // AFTER virtual helper 0x241996F0 returns, not before.
+            // If that opaque helper changes a link, follow the
+            // updated link, bounded by synthetic safety ceiling.
+            current=current->next;
         }
         if(current)
             ++final_events.oversized_chain_refusals;
