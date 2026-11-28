@@ -35,6 +35,7 @@
 #include "sin_compat/original_client_native_member_offsets.hpp"
 #include "sin_compat/original_client_native_type4_array_fields.hpp"
 #include "sin_compat/original_client_source_proxy_catalog.hpp"
+#include "sin_compat/original_client_source_string_sizes.hpp"
 
 namespace sin_compat::original_client_native32_recvtable_image {
 namespace src=sin_compat::original_client_native32_recvtable_manifest;
@@ -46,6 +47,7 @@ namespace links=sin_compat::original_client_static_recvtable_links;
 namespace sourceOffsets=sin_compat::original_client_native_member_offsets;
 namespace nativeArrays=sin_compat::original_client_native_type4_array_fields;
 namespace sourceProxies=sin_compat::original_client_source_proxy_catalog;
+namespace sourceStrings=sin_compat::original_client_source_string_sizes;
 
 inline constexpr std::uint32_t kArenaBaseVA=0x10000000u;
 inline constexpr std::uint32_t kNativeRecvPropTypeOffset=4u;
@@ -208,6 +210,19 @@ struct Image final {
                     image.arena.Write32(prop+kNativeRecvPropMemberOffset,
                                         sourceOffset);
             }
+        }
+        // Phase1708: original type3 RecvProp constructor writes its
+        // source buffer-size argument into static native field +12.
+        // Authenticated all 12 original source callsites. Other native
+        // type families' +12 fields remain unproven, not inferred.
+        for(const auto& str:sourceStrings::kOriginalStrings) {
+            const auto table=std::size_t(str.tableOrdinal);
+            const auto slot=std::size_t(str.propertySlot);
+            if(src::kTypes[src::kTypePrefixes[table]+slot]!=3u)
+                throw std::logic_error("original string size source type drift");
+            const auto p=image.staticPropArrayTokens[table]+
+                static_cast<std::uint32_t>(slot*src::kOriginalRecvPropStride);
+            image.arena.Write32(p+12u,str.size);
         }
         // Source helper 0x24126BD0 writes native type4 descriptors:
         // byte +44 ZERO (NOT the element count), +48 element stride,
@@ -582,6 +597,10 @@ private:
                         throw std::logic_error(
                             "original constructor callback/flags not executable");
                 }
+                if(originalType==3u &&
+                   arena.Read32(p+12u)!=sourceStrings::SourceCapacity(i,j))
+                    throw std::logic_error(
+                        "original 2006 string RecvProp buffer size drift");
                 if(originalType==4u) {
                     unsigned matches=0u;
                     for(const auto& array:nativeArrays::kSourceArrays) {
