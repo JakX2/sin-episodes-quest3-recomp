@@ -2460,3 +2460,13 @@ target_compile_features(sin_original_client_native32_recvtable_image_native_test
 add_test(NAME independent_original_client_native32_recvtable_image_native
   COMMAND sin_original_client_native32_recvtable_image_native_test
     "${CMAKE_CURRENT_SOURCE_DIR}/../../research/manifests/original_client_class_catalog_phase1696.tsv")
+
+# Phase1700: source whole-original 102-byte engine helper registers each
+# visited RecvTable in an indexed 8-byte doubly linked list. The public
+# synthetic audit uses invented PE identity/links, NOT commercial DLLs.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_engine_recvtable_registration_ledger_source_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_engine_recvtable_registration_ledger.py"
+      --self-test)
+endif()
