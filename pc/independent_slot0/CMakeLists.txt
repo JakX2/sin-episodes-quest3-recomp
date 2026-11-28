@@ -1669,3 +1669,15 @@ target_compile_features(sin_original_client_prediction_host_view_slots_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_prediction_host_view_slots8_13_native
   COMMAND sin_original_client_prediction_host_view_slots_test)
+
+
+# Phase1660: post-DllMain exact local C_BasePlayer pointer and its
+# source-authenticated prediction scalar/view offsets. Read-only,
+# no original vcall, fake-memory-only in public CI; first normal
+# owner-DllMain snapshot has no current local player.
+add_executable(sin_original_client_local_player_readonly_snapshot_test
+  test_original_client_local_player_readonly_snapshot.cpp)
+target_compile_features(sin_original_client_local_player_readonly_snapshot_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_local_player_readonly_snapshot_native
+  COMMAND sin_original_client_local_player_readonly_snapshot_test)
