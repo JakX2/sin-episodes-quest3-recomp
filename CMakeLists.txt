@@ -6741,3 +6741,22 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_creator_source_map_phase1716.csv")
   endif()
 endif()
+
+
+# Phase1717: all 42 original 2006 PE32 6-byte temp-event static
+# object getters. Only safe SYNTHETIC bounded host token returns,
+# NEVER executable original creator addresses or VClient011.slot5.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_temp_event_static_creators_tests
+    tests/test_original_client_temp_event_static_creators.cpp)
+  target_include_directories(sin_original_client_temp_event_static_creators_tests PRIVATE include)
+  target_compile_features(sin_original_client_temp_event_static_creators_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_temp_event_static_creators_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_temp_event_static_creators_tests
+      COMMAND sin_original_client_temp_event_static_creators_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
+  endif()
+endif()
