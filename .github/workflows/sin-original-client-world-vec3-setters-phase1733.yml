@@ -1,0 +1,40 @@
+name: SiN Phase1733 CWorld original x87 Vec3 setters
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sin-original-client-world-vec3-setters-phase1733.yml'
+      - 'include/sin_compat/original_client_world_vec3_setters_phase1733.hpp'
+      - 'tests/test_original_client_world_vec3_setters_phase1733.cpp'
+      - 'research/tools/audit_sin_original_client_world_vec3_setters_phase1733.py'
+  workflow_dispatch:
+
+jobs:
+  strict-original-free-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source-only native method identity and mutation refusal
+        run: python3 research/tools/audit_sin_original_client_world_vec3_setters_phase1733.py --self-test
+      - name: Strict GCC + Clang portable C++17 x87 Vec3 comparator
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_vec3_setters_phase1733.cpp -o /tmp/sin-phase1733-gcc
+          /tmp/sin-phase1733-gcc
+          clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_vec3_setters_phase1733.cpp -o /tmp/sin-phase1733-clang
+          /tmp/sin-phase1733-clang
+      - name: AddressSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_world_vec3_setters_phase1733.cpp -o /tmp/sin-phase1733-san
+          /tmp/sin-phase1733-san
+  native32-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Run Win32 C++17 original Vec3 setter semantics
+        shell: cmd
+        run: |
+          cl /nologo /std:c++17 /W4 /WX /EHsc /Iinclude tests\test_original_client_world_vec3_setters_phase1733.cpp /Fe:sin-phase1733.exe
+          sin-phase1733.exe
