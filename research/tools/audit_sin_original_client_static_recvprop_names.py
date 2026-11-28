@@ -22,7 +22,7 @@ from audit_sin_original_client_member_offsets import (
 )
 
 SOURCE_NAME_ORDER_SHA = "5a6420cc24c1ed11aa6babcdc98a035c04985eefc4a8c0a6891e8466ac918dd4"
-SOURCE_CSV_LF_SHA = "91099b2b87c1ea84cc73a2a61d1abe1f85a605d1a846c54e8a74fbec9e359f4b"
+SOURCE_CSV_LF_SHA = "ee990e1ee8a57ffc095ac2fbd49b29619ac28259df4b683a275215446d34f045"
 SOURCE_NAME_FNV64 = 0xB37B011A57F1D08B
 EXPECTED_TYPES = (414,300,164,12,13,207)
 STATIC_TABLES = 211
@@ -79,21 +79,21 @@ def original_free_manifest(path: Path) -> list[dict]:
         found_names.add(rec["name"])
         fingerprints.append(f'{rec["table"]}|{slot}|{rec["name"]}')
         offset=rec["plus44_value"]
-        if offset=="":
+        need(offset!="", "original source member offset missing")
+        need(0<=int(offset)<65536,
+             "invalid owner source member offset")
+        if table==197 and slot==0:
+            need(int(offset)==0 and
+                 rec["plus44_semantics"]=="special_overlay_zero_initialized",
+                 "original 2006 specialized overlay +44 zero drift")
             guarded+=1
-            need(table==197 and slot==0 and
-                 rec["plus44_semantics"]=="special_overlay_unresolved",
-                 "unrecognized source offset placeholder")
-        else:
-            need(0<=int(offset)<65536,
-                 "invalid owner source member offset")
         need(rec["source_callsite"].startswith("0x") and
              int(rec["source_callsite"],16)>=0x24000000,
              "missing original constructor source callsite")
     need(tuple(counts[i] for i in range(6))==EXPECTED_TYPES,
          "original numeric native type histogram changed")
     need(guarded==1 and len(found_names)==SOURCE_DISTINCT_NAMES,
-         "source names/guarded specialized overlay count changed")
+         "source names/specialized zero overlay count changed")
     payload="\n".join(fingerprints).encode("ascii")
     need(hashlib.sha256(payload).hexdigest()==SOURCE_NAME_ORDER_SHA,
          "1110 original class/slot/name sequence SHA mismatch")
@@ -224,8 +224,8 @@ def main():
          "choose --self-test or --client /private/client.dll")
     rows=original_free_manifest(args.manifest)
     if args.self_test:
-        print("PASS Phase1704 1110 source names / 665 unique / one overlay "
-              "unknown: original-free SHA256, FNV64 and native type histogram")
+        print("PASS Phase1705 1110 source names / 665 unique / special overlay "
+              "+44 zero: original-free SHA256, FNV64 and native type histogram")
     if args.client is not None:
         original_binary_audit(args.client,args.catalog,rows)
 
