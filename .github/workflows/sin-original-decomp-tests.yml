@@ -71,6 +71,7 @@ on:
       - 'research/tools/audit_sin_original_cbaseplayer_orientation_native_methods.py'
       - 'research/tools/audit_sin_original_prediction_view_setter_slot14.py'
       - 'research/tools/audit_sin_original_prediction_update_slot3_scratch.py'
+      - 'research/tools/audit_sin_original_prediction_packet_entity_pair.py'
       - 'research/tests/test_audit_original_sin_game_vtables.py'
       - 'research/tests/test_analyze_sin_assault_graph.py'
       - 'research/tests/test_audit_sin_original_druglab_vtables.py'
@@ -265,3 +266,6 @@ jobs:
 
       - name: Authenticate original CPrediction Update slot3 11-DWORD scratch and slot22 ABI (synthetic only)
         run: python research/tools/audit_sin_original_prediction_update_slot3_scratch.py --self-test
+
+      - name: Authenticate original CPrediction Pre/PostEntityPacketReceived and entity-list virtuals (synthetic only)
+        run: python research/tools/audit_sin_original_prediction_packet_entity_pair.py --self-test
