@@ -15,6 +15,7 @@ namespace router=sin_compat::original_client_standard_recvproxy_router;
 namespace source=sin_compat::original_client_source_proxy_catalog;
 namespace strings=sin_compat::original_client_source_string_sizes;
 namespace schema=sin_compat::original_client_native32_recvtable_manifest;
+namespace handle=sin_compat::original_client_custom_handle_proxy;
 
 int main() {
     static_assert(source::FullyClassifiedCanonicalRoutes());
@@ -93,13 +94,48 @@ int main() {
         assert(tableToken==0x9ABCDEF0u);
         assert(object==before);
     }
-    // The original 83 custom receiver callbacks and 28 special factory
-    // routes MUST NOT silently be replaced with raw memory copying.
+    // Original code at 0x241A8DB0 and 0x241A8DF0 has byte-identical
+    // 49-byte bodies. 30 entity handles and 5 moveparent properties
+    // now have exact packed handle native source behavior.
+    static_assert(handle::kSourceHandleAssignments==30u);
+    static_assert(handle::kSourceMoveParentAssignments==5u);
+    static_assert(!handle::CanPublishRetailProxyPointers());
+    const auto setRawHandle=[&](std::uint32_t raw) {
+        for(std::size_t i=0u;i<4u;++i)
+            incoming.originalProxyData[4u+i]=
+                static_cast<std::uint8_t>(raw>>(i*8u));
+    };
+    const auto readSourceDword=[&](std::size_t offset) {
+        std::uint32_t value=0u;
+        for(std::size_t i=0u;i<4u;++i)
+            value|=std::uint32_t(object[offset+i])<<(i*8u);
+        return value;
+    };
+    for(const auto raw:std::array<std::uint32_t,7>{{
+            0u,0x7ffu,0x800u,0x801u,0x001fffffu,
+            0x80000000u,0xffffffffu}}) {
+        setRawHandle(raw);
+        for(const auto& item:std::array<std::array<std::size_t,3>,2>{{
+            {{32u,1u,1956u}},{{86u,15u,352u}}}}) {
+            const auto before=object;
+            const auto tokenBefore=tableToken;
+            assert(router::ApplySourceStandardProperty(
+                item[0],item[1],incoming,object,tableToken)
+                ==router::Status::Applied);
+            assert(readSourceDword(item[2])==
+                   handle::DecodeSourceHandle(raw));
+            assert(object[item[2]-1u]==before[item[2]-1u]);
+            assert(object[item[2]+4u]==before[item[2]+4u]);
+            assert(tableToken==tokenBefore);
+        }
+    }
+    // A genuinely custom, as-yet-unported FOV callback, native type4
+    // special array, and animation overlay must all remain unsupported.
     {
         const auto old=object;
         const auto savedToken=tableToken;
         assert(router::ApplySourceStandardProperty(
-            32u,1u,incoming,object,tableToken)
+            37u,10u,incoming,object,tableToken)
             ==router::Status::UnsupportedSourceCallback);
         assert(router::ApplySourceStandardProperty(
             81u,4u,incoming,object,tableToken)
@@ -121,7 +157,8 @@ int main() {
     }
     // Prove the whole REAL source 211-table/1110-property classification
     // rather than exercising only hand-picked primitive proxy examples.
-    std::size_t applied=0u,custom=0u,special=0u;
+    std::size_t applied=0u,custom=0u,special=0u,
+                standard=0u,handleAssignments=0u,moveparentAssignments=0u;
     for(std::size_t t=0u;t<schema::kStaticTables;++t)
         for(std::size_t p=0u;p<schema::kCounts[t];++p) {
             const auto outcome=router::ApplySourceStandardProperty(
@@ -130,15 +167,24 @@ int main() {
             if(va==0u) {
                 ++special;
                 assert(outcome==router::Status::UnsupportedSourceCallback);
+            }else if(handle::IsOriginalHandleProxy(va)) {
+                ++applied;
+                ++handleAssignments;
+                if(va==handle::kNativeMoveParentProxyVA)
+                    ++moveparentAssignments;
+                assert(outcome==router::Status::Applied);
             }else if(!source::IsStandardOriginalSourceVA(va)) {
                 ++custom;
                 assert(outcome==router::Status::UnsupportedSourceCallback);
             }else {
                 ++applied;
+                ++standard;
                 assert(outcome==router::Status::Applied);
             }
         }
-    assert(applied==999u && custom==83u && special==28u);
+    assert(standard==999u && handleAssignments==35u &&
+           moveparentAssignments==5u);
+    assert(applied==1034u && custom==48u && special==28u);
 
     // Small buffers must never allow an otherwise valid source +44
     // member offset to write beyond the owned host object.
@@ -152,8 +198,8 @@ int main() {
         assert(tiny==old && tableToken==token);
     }
     assert(!router::CanPublishRetailProxyPointers());
-    std::puts("PASS Phase1708 source-dispatched 999 original standard "
-              "callbacks on bounded owned objects; 83 custom and 28 "
-              "special deliberately blocked, no retail slot5");
+    std::puts("PASS Phase1709 999 source-standard plus 35 native source "
+              "handle/moveparent proxies dispatched to bounded objects; "
+              "48 custom and 28 special remain blocked, NO retail slot5");
     return 0;
 }
