@@ -137,6 +137,48 @@ try {
     Reject 'SHA256 mismatch' $true
 
 
+    # Phase1690: GUI centerprint cold-state is only a source-backed
+    # fallback AFTER both independently compiled prediction and
+    # embedded entity-list factory boundaries. Owner entry must
+    # refuse an unguarded flag BEFORE any original commercial DLL
+    # is moved or any executable is launched.
+    foreach ($role in @('Both','Server','Client')) {
+        $inputs=@{
+            GameBin=$bin
+            GameExecutable=$exe
+            IndependentBin=$IndependentBin
+            ProbeRole=$role
+            EnableClientCenterprintFactoryProbe=$true
+            DisposableTestCopyConfirmed=$true
+        }
+        $rejected=$false
+        try { & $Launcher @inputs | Out-Null }
+        catch {
+            if ($_.Exception.Message -notlike
+                '*EnableClientCenterprintFactoryProbe requires EnableClientEntityListFactoryProbe*') {
+                throw ('Unexpected centerprint owner gate: '+$_.Exception.Message)
+            }
+            $rejected=$true
+        }
+        if(-not $rejected) {
+            throw 'Cold centerprint factory accepted without explicit entity-list prerequisite'
+        }
+        if((Sha256 $server) -cne $beforeServer -or
+           (Sha256 $client) -cne $beforeClient) {
+            throw 'Original game DLLs were modified during centerprint gate refusal'
+        }
+    }
+    foreach ($required in @(
+        '$previousClientCenterprintFactoryProbe',
+        "'SIN_INDEPENDENT_CLIENT_CENTERPRINT_FACTORY_PROBE'",
+        'OWNER_CLIENT_CENTERPRINT_FACTORY_PROBE:',
+        'ENABLED_SOURCE_COLD_CENTERPRINT_DIAGNOSTIC'
+    )) {
+        if (-not $launcherText.Contains($required)) {
+            throw "Centerprint probe environment isolation missing: $required"
+        }
+    }
+
     # Phase1689: the new source-backed secondary entity-list
     # interface is ONLY available after the explicit previous
     # prediction factory probe. Rejected role/flag combinations

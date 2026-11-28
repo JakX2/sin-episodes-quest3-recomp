@@ -2189,3 +2189,36 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_engine_entitylist_factory_boundary.py"
       --self-test)
 endif()
+
+
+# Phase1690: actual shipping independent client.dll cold-state
+# VCENTERPRINT002 8-slot source-authenticated MSVC x86 ABI.
+# Real LoadLibrary + exported CreateInterface, original 21 engine
+# app factory requests, prediction/entity-list prerequisites,
+# source 8 virtual entries and native RET16/4/4/20/20/0/[4]/0.
+# Original slot6 backing GUI service constructor is intentionally
+# terminal and a child process must prove fatal shutdown.
+# No UI renderer, original gameplay, or actual game boot.
+add_executable(sin_original_client_centerprint_factory_actual_dll_test
+  test_original_client_centerprint_factory_actual_dll.cpp)
+target_compile_features(sin_original_client_centerprint_factory_actual_dll_test
+  PRIVATE cxx_std_17)
+add_dependencies(sin_original_client_centerprint_factory_actual_dll_test
+  sin_slot0_client)
+add_test(NAME independent_client_centerprint_cold_factory_actual_dll_native
+  COMMAND sin_original_client_centerprint_factory_actual_dll_test
+    "$<TARGET_FILE:sin_slot0_client>")
+set_tests_properties(
+  independent_client_centerprint_cold_factory_actual_dll_native
+  PROPERTIES TIMEOUT 90)
+
+# All original functions and engine xrefs are validated only in
+# owner-original --archive/--engine mode, with both FULL retail
+# source DLL SHA256s verified. Public CI --self-test uses invented
+# sparse ABI byte windows and mutations only.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_centerprint_cold_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_centerprint_cold_factory.py"
+      --self-test)
+endif()

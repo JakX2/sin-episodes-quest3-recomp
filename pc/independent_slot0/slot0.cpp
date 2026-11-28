@@ -20,6 +20,7 @@
 #include "native_client_prediction_factory_boundary.h"
 #include "native_client_prediction_convar_registration.h"
 #include "native_original_client_entitylist_empty_factory.h"
+#include "native_original_client_centerprint_cold_factory.h"
 #include "client_screen_random_core.h"
 #include "client_cvar_probe.h"
 #include "client_owned_startup_probe.h"
@@ -300,6 +301,44 @@ static bool bindEmptyNativeEntityList() noexcept {
     g_entityListReady=true;
     diagnostic("client-entitylist-empty-bound",
                "secondary-plus-0x10014:9-slots");
+    return true;
+}
+// Phase1690: original engine makes an unconditional NEXT factory
+// request for VCENTERPRINT002 after the entity-list interface.
+// Source wrapper has eight native virtual methods, nullable
+// service pointer at +4, and source-correct empty-cold behavior.
+// Real centerprint GUI service construction (slot6) is terminal.
+namespace native_centerprint=
+    sin_independent::native_original_client_centerprint;
+static native_centerprint::ColdWrapper* g_centerprintOwner=nullptr;
+static bool g_centerprintReady=false;
+static bool clientCenterprintFactoryProbeEnabled() noexcept {
+    char flag[2]={};
+    return clientEntityListFactoryProbeEnabled() &&
+        GetEnvironmentVariableA(
+            "SIN_INDEPENDENT_CLIENT_CENTERPRINT_FACTORY_PROBE",
+            flag,sizeof(flag))==1 && flag[0]=='1';
+}
+static bool bindColdClientCenterprint() noexcept {
+    if(!clientCenterprintFactoryProbeEnabled() ||
+       !g_entityListReady || !g_entityListOwner ||
+       !g_entityListOwner->Active())return false;
+    HMODULE retainedModule=nullptr;
+    // The engine captures this vptr after CreateInterface and may
+    // retain it beyond the client module's temporary loader ref.
+    if(!GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|
+            GET_MODULE_HANDLE_EX_FLAG_PIN,
+            reinterpret_cast<LPCSTR>(&bindColdClientCenterprint),
+            &retainedModule) || !retainedModule)return false;
+    if(!g_centerprintOwner)
+        g_centerprintOwner=new(std::nothrow)
+            native_centerprint::ColdWrapper(&stopUnsupported,&diagnostic);
+    if(!g_centerprintOwner)return false;
+    g_centerprintOwner->BindCold();
+    g_centerprintReady=true;
+    diagnostic("client-centerprint-cold-bound",
+               "nullable-service:8-slots");
     return true;
 }
 static bool clientPredictionCvarRegistrationEnabled() noexcept {
@@ -1296,6 +1335,8 @@ public:
         if(g_predictionOwner)g_predictionOwner->Revoke();
         g_entityListReady=false;
         if(g_entityListOwner)g_entityListOwner->Revoke();
+        g_centerprintReady=false;
+        if(g_centerprintOwner)g_centerprintOwner->Revoke();
         if (!require(appSystemFactory, kFirstEngineVersion, &engine) ||
             !require(appSystemFactory, kSecondEngineVersion) ||
             !require(appSystemFactory, kThirdEngineVersion) ||
@@ -1347,6 +1388,18 @@ public:
                                "owner-layout-or-lifetime");
                     return 0;
                 }
+                if(clientCenterprintFactoryProbeEnabled() &&
+                   !bindColdClientCenterprint()) {
+                    g_centerprintReady=false;
+                    if(g_centerprintOwner)g_centerprintOwner->Revoke();
+                    g_entityListReady=false;
+                    if(g_entityListOwner)g_entityListOwner->Revoke();
+                    g_predictionOwnerReady=false;
+                    owner->Revoke();
+                    diagnostic("client-centerprint-cold-refused",
+                               "entitylist-or-owner-lifetime");
+                    return 0;
+                }
                 seen_=true;
                 diagnostic("prediction-bound","cl_predict-parent-value");
                 return 1; // Explicit opt-in; remaining callbacks guard.
@@ -1366,6 +1419,8 @@ public:
         if(g_predictionOwner)g_predictionOwner->Revoke();
         g_entityListReady=false;
         if(g_entityListOwner)g_entityListOwner->Revoke();
+        g_centerprintReady=false;
+        if(g_centerprintOwner)g_centerprintOwner->Revoke();
 #if defined(SIN_SYNTHETIC_SLOT33_OWNED)
         g_slot33Ready=false;
         g_slot33Reader={};
@@ -2107,6 +2162,14 @@ extern "C" __declspec(dllexport) void* __cdecl CreateInterface(
        g_entityListReady && g_entityListOwner &&
        g_entityListOwner->Active())
         result=static_cast<void*>(g_entityListOwner->Interface());
+    if(!result && name &&
+       std::strcmp(name,native_centerprint::kInterfaceName)==0 &&
+       clientCenterprintFactoryProbeEnabled() &&
+       g_centerprintReady && g_centerprintOwner &&
+       g_centerprintOwner->Active() &&
+       g_entityListReady && g_entityListOwner &&
+       g_entityListOwner->Active())
+        result=static_cast<void*>(g_centerprintOwner);
 #endif
 #if defined(SIN_ROLE_server)
     if (!result && name && extraFactoriesEnabled()) {
