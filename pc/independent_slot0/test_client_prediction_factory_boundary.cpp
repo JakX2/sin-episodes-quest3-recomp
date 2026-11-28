@@ -220,7 +220,7 @@ bool run_child_unsupported(const char* path) {
     Factory create=nullptr;
     void* client=nullptr;
     void** table=nullptr;
-    if(!prepare_real_client(module,create,client,&table))return false;
+    if(!prepare_real_client(module,create,client,&table,path))return false;
     g_factoryCalls=g_factoryErrors=g_physicsQueries=0u;
     if(!invoke_init(client,table[0],1) ||
        g_factoryErrors || g_factoryCalls!=kExpectedQueries)return false;
@@ -287,7 +287,7 @@ int main(int argc,char** argv) {
     Factory create=nullptr;
     void* client=nullptr;
     void** table=nullptr;
-    if(!prepare_real_client(module,create,client,&table))
+    if(!prepare_real_client(module,create,client,&table,argv[1]))
         return fail(5,"load/resolve actual production VClient011");
     int status=-1;
     if(create(pf::kInterfaceName,&status) || status!=1)
