@@ -61,6 +61,23 @@ struct FakeCvar {
 };
 FakeCvar g_cvar{};
 ca::Variable g_predict{};
+// The original client Init after the 21 factory acquisitions
+// invokes VSoundEmitter001 virtual slot0 Connect(appFactory) and
+// branches to failure when its native bool is false. This is a
+// fully caller-owned synthetic engine service, not retail code.
+void* __cdecl appFactory(const char*,int*);
+struct FakeSoundEmitter {
+    virtual bool __thiscall Connect(Factory factory) noexcept {
+        ++connects;
+        last=factory;
+        return allowed && factory==&appFactory;
+    }
+    virtual bool __thiscall Init() noexcept {return false;}
+    unsigned connects=0u;
+    Factory last=nullptr;
+    bool allowed=true;
+};
+FakeSoundEmitter g_sound{};
 std::uint32_t g_ignoredFactory=0u;
 unsigned g_factoryCalls=0u;
 unsigned g_factoryErrors=0u;
@@ -72,6 +89,8 @@ void* __cdecl appFactory(const char* name,int* status) {
     ++g_factoryCalls;
     if(name && std::strcmp(name,"VEngineCvar002")==0)
         return &g_cvar;
+    if(name && std::strcmp(name,"VSoundEmitter001")==0)
+        return &g_sound;
     return &g_ignoredFactory;
 }
 void* __cdecl physicsFactory(const char*,int*) {
@@ -85,6 +104,7 @@ bool reset_environment() {
     return env("SIN_INDEPENDENT_TRACE_SESSION",nullptr) &&
         env("SIN_INDEPENDENT_TRACE_FILE","0") &&
         env("SIN_INDEPENDENT_CLIENT_SOUND_PROBE","0") &&
+        env("SIN_INDEPENDENT_CLIENT_SOUND_CONNECT_CONTINUE_PROBE","0") &&
         env("SIN_INDEPENDENT_CLIENT_PREDICTION_FACTORY_PROBE","0") &&
         env("SIN_INDEPENDENT_CLIENT_PREDICTION_CVAR_REGISTER_PROBE","0") &&
         env("SIN_INDEPENDENT_CLIENT_ENTITYLIST_FACTORY_PROBE","0") &&
@@ -365,6 +385,34 @@ int main(int argc,char** argv) {
         return fail(20,"cold slots0–5,7 exact native ABI/empty backing");
     if(!check_source_engine_call_events())
         return fail(25,"actual centerprint source slot4/5 must emit one owner trace each, not just factory acceptance");
+    // Phase1691: strengthen the SAME actual shipping DLL test,
+    // not a standalone interpreter fixture. First prove a real
+    // VSoundEmitter001 virtual slot0 bool=false makes the
+    // original 21-name VClient011.Init fail before exporting
+    // the later engine-visible client interfaces.
+    if(!env("SIN_INDEPENDENT_CLIENT_SOUND_CONNECT_CONTINUE_PROBE","1"))
+        return fail(26,"cannot enter owner sound Connect continuation gate");
+    g_sound.allowed=false;
+    g_sound.connects=0u;
+    g_sound.last=nullptr;
+    g_factoryCalls=g_factoryErrors=g_physicsQueries=0u;
+    if(!call_client_init(client,table[0],0) ||
+       g_factoryErrors || g_factoryCalls!=kFactoryNamesCount ||
+       g_sound.connects!=1u || g_sound.last!=&appFactory ||
+       create("VClientPrediction001",nullptr) ||
+       create("VClientEntityList003",nullptr) ||
+       create(api::kInterfaceName,nullptr))
+        return fail(27,"retail source sound Connect=false must refuse before factory publication");
+    // A real native virtual Connect true now permits the
+    // SAME x86 VClient011.Init to reacquire the cl_predict
+    // source parent, prediction, entity list and cold centerprint.
+    g_sound.allowed=true;
+    g_sound.connects=0u;
+    g_sound.last=nullptr;
+    if(!ready(create,client,table,true) ||
+       g_sound.connects!=1u || g_sound.last!=&appFactory ||
+       !create(api::kInterfaceName,nullptr))
+        return fail(28,"source sound Connect=true must continue to original prediction/factory boundaries");
     if(!test_child_fatal(argv[1]))
         return fail(21,"source backing service Init slot6 did not terminate");
     if(!env("SIN_INDEPENDENT_CLIENT_CENTERPRINT_FACTORY_PROBE","0") ||
