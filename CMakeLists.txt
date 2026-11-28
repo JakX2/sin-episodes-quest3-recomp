@@ -6857,3 +6857,22 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
         "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
   endif()
 endif()
+
+
+# Phase1723: original inline 50 ClientClass creator vtable links to
+# 75B native primary virtual+0x94 network initializer and 4B
+# secondary+0 this-adjustor, SOURCE metadata only. Neither executes.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_inline_factory_vtable_init_tests
+    tests/test_original_client_inline_factory_vtable_init.cpp)
+  target_include_directories(sin_original_client_inline_factory_vtable_init_tests PRIVATE include)
+  target_compile_features(sin_original_client_inline_factory_vtable_init_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_inline_factory_vtable_init_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_inline_factory_vtable_init_tests
+      COMMAND sin_original_client_inline_factory_vtable_init_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/research/manifests/original_client_class_catalog_phase1696.tsv")
+  endif()
+endif()
