@@ -81,6 +81,29 @@ Original owner-private read-only source audit:
 python research/tools/audit_sin_original_client_aux_dynamic_receivers.py --client /private/client.dll --full-json /private/sin-aux-dynamic-receivers-source-metadata.json
 ```
 
+
+## All 211 original static tables linked into a REAL native-source graph
+
+The full original source inventory now accounts for **207 native type-5 outer property descriptors**: **192 ordinary static nested links** (191 attached to ClientClasses and one auxiliary `DT_LocalPlayerExclusive.m_Local -> DT_Local`), **14** dynamically generated ordinary nested arrays (eleven class-attached and three auxiliary, 691 total generated element properties), plus **one** special animation-overlay nested-table constructor. This exactly matches Phase1698's independently source-attested complete static native type-5 count, **207/207**. The 16 allocated overlay descriptors are **not** mistakenly added to the 691 generic generated elements.
+
+The complete original static graph consists of **211 unique original static RecvTable object VAs**, and all **192 actual** source nested edges (not invented synthetic parent/child links). Every original static child target belongs to that 211-table set; the full graph has **no cycles** and longest directed path **nine tables**, matching the prior class-attached subgraph's verified maximum. For example, the original `CNPC_EliteGrunt -> CNPC_GruntBase -> CAI_BaseNPC -> CBaseCombatCharacter -> CBaseFlex -> CBaseAnimatingOverlay -> CBaseAnimating -> CBaseEntity -> DT_AnimTimeMustBeFirst` path has depth **9**.
+
+The new source-only `include/sin_compat/original_client_static_recvtable_links.hpp` stores all 192 edge triples in 576 bytes of transparent two-digit hexadecimal ordinals, each `(parentSourceTableIndex, originalParentRecvPropSlotIndex, childSourceTableIndex)`. Ordinals 0..190 follow the 191-name exact retail `VClient011.slot5` head-to-tail order; 191..210 follow the original source-VA sorted 20 auxiliary table metadata header. The SHA256 of this **compact public metadata**, which contains no original executable bytes, is:
+
+`1057160b9ff24500569300bbee8589c0cccb5328f7984399b44ca5fcf82958e7`.
+
+The portable C++17 `tests/test_original_client_real_static_recvtable_graph.cpp` loads **the actual authenticated class manifest**, unifies 191 registered classes and 20 auxiliary original table VAs and names, validates all 211 unique VAs, attaches all 192 authentic source parent/slot/child links, confirms the exact nine-level acyclic topology, and replays the source graph through the host-only cycle-safe RecvTable preflight. It tests intentional edge mutations, self-cycles, duplicate parent property slots, invalid table IDs and an illegal class-vs-aux source split. Unlike Phase1697's initial 939-property *synthetic stress graph*, this is the **original recovered static link structure**. It is run under strict native C++17, ASan/UBSan, MSVC Win32 and the Android Bionic emulator; no original game DLL or native proxy is loaded into those checks.
+
+Important limitation: the compact graph authenticates **which tables point where** for all 192 ordinary source links, not the complete serialized 1,110 property contents or executable proxy/class factory behavior. Native `RecvTable` pointer lifetime and `VClient011.slot5` are still gated.
+
+Public reproduction:
+
+```sh
+g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_real_static_recvtable_graph.cpp -o /tmp/sin-original-real-static-graph
+/tmp/sin-original-real-static-graph research/manifests/original_client_class_catalog_phase1696.tsv
+```
+
+
 ## Next runtime dependency
 
 All original known table and descriptor names, original x86 type DWORDs and many nested links are now source-authenticated. Real `VClient011.slot5` still requires correct 2006 native descriptor contents, original proxy callbacks, object/class factories, lifecycle and the remaining auxiliary nested dynamic rules. A synthetic graph test passing is **not** a game boot. No work was done on the explicitly deferred physics, model/prop, surface-properties or renderer tasks.
