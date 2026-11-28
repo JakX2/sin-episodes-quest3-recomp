@@ -2032,3 +2032,22 @@ target_compile_features(sin_original_postnetwork_preflight_alias_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_postnetwork_preflight_alias_native
   COMMAND sin_original_postnetwork_preflight_alias_test)
+
+
+# Phase1681: original 67-byte locale-gated CDECL name comparator
+# 0x2425F81B and its original 78-byte ASCII-fast tail target
+# 0x24261C60. Owner-original SHA/relocation/rel32 audit plus
+# actual Win32 x86 native two-arg CDECL path into the existing
+# recursive name finder, alias preflight and selected record.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_postnetwork_casefold_comparator_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_postnetwork_casefold_comparator.py"
+      --self-test)
+endif()
+add_executable(sin_original_postnetwork_casefold_comparator_test
+  test_original_postnetwork_casefold_comparator.cpp)
+target_compile_features(sin_original_postnetwork_casefold_comparator_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_postnetwork_casefold_comparator_native
+  COMMAND sin_original_postnetwork_casefold_comparator_test)
