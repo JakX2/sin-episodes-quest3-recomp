@@ -301,6 +301,7 @@ static void test_exact_native32_image(const char* sourceManifest) {
     assert(repaired.visitedTables==225u &&
            repaired.visitedProperties==1801u &&
            repaired.blockedUnimplementedNativeType5==1u);
+    test_source_shape_mutation_refusal(image);
     const auto repairedStartup=image.WalkFromClientClassRoots();
     assert(repairedStartup.visitedTables==224u &&
            repairedStartup.visitedProperties==1796u &&
@@ -308,6 +309,87 @@ static void test_exact_native32_image(const char* sourceManifest) {
     verify_original_cold_source_ledger(repairedStartup,224u,
                                        image.staticTableTokens[0u]);
 }
+
+// Phase1701: source-exact acceptance, not merely in-range memory pointers.
+// Retain the original 191-root versus full-inventory distinction.
+static void test_source_shape_mutation_refusal(
+    native::Image& image) {
+    const auto intact=image.WalkFromClientClassRoots();
+    assert(intact.visitedTables==224u && intact.visitedProperties==1796u);
+    {
+        const auto p=image.staticPropArrayTokens[0];
+        const auto old=image.arena.Read32(p+4u);
+        image.arena.Write32(p+4u,old==0u?1u:0u); // BOTH valid tag values
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(p+4u,old);
+    }
+    {
+        const auto& edge=staticLinks::kOriginalSourceEdges[0];
+        const auto p=image.staticPropArrayTokens[edge.parentTableOrdinal]+
+            std::uint32_t(edge.parentPropertySlot)*60u;
+        const auto old=image.arena.Read32(p+40u);
+        auto alternate=image.staticTableTokens[
+            (std::size_t(edge.childTableOrdinal)+1u)%schema::kStaticTables];
+        assert(alternate!=old);
+        image.arena.Write32(p+40u,alternate); // OWNED, but wrong source child
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(p+40u,old);
+    }
+    {
+        const auto t=image.staticTableTokens[0];
+        const auto old=image.arena.Read32(t+4u);
+        assert(old>0u);
+        image.arena.Write32(t+4u,old-1u); // still a valid, bounded count
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(t+4u,old);
+    }
+    {
+        const auto t=image.staticTableTokens[0];
+        const auto old=image.arena.Read32(t);
+        const auto alternate=image.staticPropArrayTokens[1];
+        assert(old!=alternate);
+        image.arena.Write32(t,alternate); // valid owned property array
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(t,old);
+    }
+    {
+        const auto p=image.dynamicPropArrayTokens[0];
+        const auto old=image.arena.Read32(p+44u);
+        image.arena.Write32(p+44u,old+4u);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(p+44u,old);
+    }
+    {
+        const auto p=image.dynamicPropArrayTokens[0];
+        const auto name=image.arena.Read32(p);
+        const auto old=image.arena.Read8(name);
+        image.arena.Write8(name,static_cast<std::uint8_t>('9'));
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write8(name,old);
+    }
+    {
+        const auto p=image.unresolvedOverlayDescriptorToken;
+        const auto old=image.arena.Read32(p+40u);
+        assert(old==0u);
+        image.arena.Write32(p+40u,image.staticTableTokens[0]);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(p+40u,old);
+    }
+    // Genuine startup ignores auxiliary static ordinal 196, but the
+    // exhaustive source audit must reject its otherwise-valid tag drift.
+    {
+        const auto p=image.staticPropArrayTokens[196u];
+        const auto old=image.arena.Read32(p+4u);
+        image.arena.Write32(p+4u,old==0u?1u:0u);
+        const auto rooted=image.WalkFromClientClassRoots();
+        assert(rooted.visitedTables==224u && rooted.visitedProperties==1796u);
+        expect_exception([&]{(void)image.WalkAllStaticTables();});
+        image.arena.Write32(p+4u,old);
+    }
+    const auto restored=image.WalkFromClientClassRoots();
+    assert(restored.visitedTables==224u && restored.visitedProperties==1796u);
+}
+
 int main(int argc,char** argv) {
     assert(argc==2);
     check_original_source_counts();
