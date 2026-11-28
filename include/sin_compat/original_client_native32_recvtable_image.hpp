@@ -187,6 +187,8 @@ struct Image final {
         // offsets and original 000..255 names. No unknown proxy copied.
         for(std::size_t i=0u;i<src::kGeneratedGenericSubtables;++i) {
             const auto& edge=src::kGeneratedOuters[i];
+            if(edge.sourceShapeIndex!=i)
+                throw std::logic_error("original nested source shape ordinal changed");
             const bool classSource=i<classArrays::kSourceArrayShapeCount;
             std::uint32_t count=0u,stride=0u,elementType=0u,outerBase=0u;
             if(classSource) {
