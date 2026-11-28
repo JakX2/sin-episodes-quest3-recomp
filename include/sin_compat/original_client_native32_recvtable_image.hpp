@@ -411,7 +411,7 @@ private:
                            arena.Read32(p+nativeArrays::kNativeArrayElementCountOffset)
                                !=array.elementCount ||
                            arena.ReadString(arena.Read32(p))!=
-                               array.originalPropertyName ||
+                               std::string(array.originalPropertyName) ||
                            arena.Read32(p+nativeArrays::kNativeArrayCallbackOffset)!=0u)
                             throw std::logic_error("original type4 array shape drift");
                     }
