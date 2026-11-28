@@ -86,7 +86,8 @@ are wired to this reference test.
 ## Real runtime boundary
 
 Complete 60B/86B entrypoint SHA does not mean original constructor
-implementation is ported. All 74 distinct constructor TARGET function
+implementation is ported. Three of the six shared inline targets also
+occur among the 68 class-specific targets. All 71 distinct constructor TARGET function
 bodies and their engine dependencies still require analysis, as do
 native vtables, object ownership and real receiver callbacks.
 VClient011.slot5 remains intentionally guarded. No actual engine

@@ -2,6 +2,7 @@
 // SOURCE-ONLY ABI plans. Do not execute source constructors, import 2006
 // entity vtables, or publish retail native ClientClass factory pointers.
 #include "sin_compat/original_client_canonical_creator_bodies.hpp"
+#include "sin_compat/original_client_shared_constructor_scalars.hpp"
 #include "sin_compat/original_client_seven_creator_exceptions.hpp"
 #include "sin_compat/original_client_native32_recvtable_image.hpp"
 #include "sin_compat/original_client_class_catalog.hpp"
@@ -95,6 +96,65 @@ int main(int argc,char** argv) {
     assert(unclassifiedCommon==24u && exceptions==7u && tempEvents==42u);
     assert(constructorVAs60.size()==68u);
     assert(constructorVAs86.size()==6u);
+    // Phase1726: independently specified little-endian final scalar bytes.
+    namespace scalar=sin_compat::original_client_shared_constructor_scalars;
+    std::size_t projected=0u;
+    std::unordered_set<std::uint32_t> unionTargets=constructorVAs60;
+    unionTargets.insert(constructorVAs86.begin(),constructorVAs86.end());
+    assert(unionTargets.size()==71u);
+    for(std::size_t i=0u;i<creators::kOriginalClasses;++i) {
+        const auto va=creators::SourceCreatorVAForOrdinal(i);
+        const auto plan=canonical::SourceCanonicalBodyPlan(i,va);
+        if(plan.originalConstructorVA!=scalar::kConstructorVA) {
+            std::vector<std::uint8_t> untouched(0x820u,0xa5u);
+            const auto before=untouched;
+            assert(scalar::ApplyToSyntheticStorage(i,va,untouched)==
+                   scalar::Status::UnrecognizedSource);
+            assert(untouched==before);
+            continue;
+        }
+        ++projected;
+        std::vector<std::uint8_t> bytes(plan.originalRequestedAllocationBytes,0xa5u);
+        auto expected=bytes;
+        for(const auto offset:std::array<std::size_t,6>{{
+                0x788u,0x80cu,0x7e0u,0x7e4u,0x7d8u,0x7dcu}})
+            for(std::size_t j=0;j<4u;++j)expected[offset+j]=0xffu;
+        for(const auto offset:std::array<std::size_t,4>{{
+                0x78cu,0x81cu,0x7d0u,0x79cu}})
+            for(std::size_t j=0;j<4u;++j)expected[offset+j]=0u;
+        for(const auto offset:std::array<std::size_t,2>{{0x7ecu,0x7f0u}}) {
+            expected[offset]=0; expected[offset+1]=0;
+            expected[offset+2]=0x82u; expected[offset+3]=0x42u;
+        }
+        for(const auto offset:std::array<std::size_t,2>{{0x7f4u,0x7f8u}}) {
+            expected[offset]=0; expected[offset+1]=0;
+            expected[offset+2]=0x80u; expected[offset+3]=0x44u;
+        }
+        expected[0x7fcu]=0;
+        expected[0x810u]=expected[0x811u]=0xffu;
+        assert(scalar::ApplyToSyntheticStorage(i,va+1u,bytes)==
+               scalar::Status::UnrecognizedSource);
+        assert(bytes==std::vector<std::uint8_t>(bytes.size(),0xa5u));
+        auto shortBytes=bytes; shortBytes.pop_back();
+        const auto shortBefore=shortBytes;
+        assert(scalar::ApplyToSyntheticStorage(i,va,shortBytes)==
+               scalar::Status::WrongStorageSize);
+        assert(shortBytes==shortBefore);
+        auto longBytes=bytes; longBytes.push_back(0xa5u);
+        const auto longBefore=longBytes;
+        assert(scalar::ApplyToSyntheticStorage(i,va,longBytes)==
+               scalar::Status::WrongStorageSize);
+        assert(longBytes==longBefore);
+        assert(scalar::ApplyToSyntheticStorage(i,va,bytes)==
+               scalar::Status::AppliedSyntheticScalarState);
+        assert(bytes==expected);
+        assert(scalar::ApplyToSyntheticStorage(i,va,bytes)==
+               scalar::Status::AppliedSyntheticScalarState);
+        assert(bytes==expected);
+    }
+    assert(projected==34u);
+    assert(!scalar::CanPublishRetailCreatorPointers());
+
     // Exact 2006 source class tuple and source constructor identity must
     // both match before reporting any authentic original method plan.
     for(const auto& item:canonical::k60ByteConstructors) {
