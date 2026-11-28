@@ -1,0 +1,26 @@
+name: SiN owner client startup bundle synthetic safety
+
+on:
+  pull_request:
+    paths:
+      - "pc/independent_slot0/Run-OwnerClientStartupBoundary.ps1"
+      - "pc/independent_slot0/Test-OwnerClientStartupBoundary.ps1"
+      - "pc/independent_slot0/Build-OwnerDiagnosticBundle.py"
+      - ".github/workflows/sin-owner-client-startup-bundle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-client-startup-safety:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate manifest allowlist and bundle packaging (synthetic only)
+        run: python pc/independent_slot0/Build-OwnerDiagnosticBundle.py --self-test
+      - name: Validate client-only sound/prediction/entity/centerprint handoff
+        shell: powershell
+        run: |
+          & .\pc\independent_slot0\Test-OwnerClientStartupBoundary.ps1 -Wrapper .\pc\independent_slot0\Run-OwnerClientStartupBoundary.ps1
