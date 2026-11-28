@@ -17,6 +17,7 @@ $seen = @{}
 $issues = New-Object System.Collections.Generic.List[string]
 $requests = New-Object System.Collections.Generic.List[string]
 $factoryResults = New-Object System.Collections.Generic.List[string]
+$predictionFactoryEvents = New-Object System.Collections.Generic.List[string]
 $callbackEvents = 0
 $unsupportedCallbacks = New-Object System.Collections.Generic.List[string]
 $soundCallbacks = New-Object System.Collections.Generic.List[string]
@@ -188,6 +189,11 @@ foreach ($log in $logs) {
         }
         if ($phase -eq 'unsupported-callback') {
             $unsupportedCallbacks.Add(("{0}:{1}:{2}" -f $log.Name,$role,$version))
+        }
+        if ($role -eq 'client' -and
+            $phase -in @('prediction-bound','prediction-bound-refused')) {
+            $predictionFactoryEvents.Add(("{0}:client:{1}:{2}" -f
+                $log.Name,$phase,$version))
         }
         if ($role -eq 'client' -and $version -eq 'VSoundEmitter001') {
             if ($phase -eq 'sound-connect-entered') {
@@ -1105,6 +1111,12 @@ Write-Output ("OWNER_INDEPENDENT_ROLES_OBSERVED: {0}" -f ((@('client','server') 
 Write-Output ("OWNER_INDEPENDENT_EXPLICIT_INIT_ROLES: {0}" -f ((@('client','server') | Where-Object { $explicitInitRoles.ContainsKey($_) }) -join ','))
 Write-Output ("OWNER_INDEPENDENT_FACTORY_REQUESTS: {0}" -f ($requests -join ','))
 Write-Output ("OWNER_INDEPENDENT_MODULE_FACTORY_RESULTS: {0}" -f ($factoryResults -join ','))
+if ($predictionFactoryEvents.Count -gt 0) {
+    # A bound source ConVar or factory acceptance is only a
+    # native interface negotiation observation, NOT engine startup.
+    Write-Output ("OWNER_CLIENT_PREDICTION_FACTORY_BOUNDARY: {0}" -f
+        ($predictionFactoryEvents -join ','))
+}
 if ($unsupportedCallbacks.Count -gt 0) {
     Write-Output ("OWNER_INDEPENDENT_UNSUPPORTED_CALLBACKS: {0}" -f ($unsupportedCallbacks -join ','))
 }
@@ -1275,5 +1287,7 @@ if ($issues.Count -gt 0) {
 }
 # Factory-only observations cannot establish retail Init or boot success.
 # PID-sorted files cannot establish cross-process event chronology.
-# Intentionally no SUCCESS verdict: the current independent DLLs always
-# return failure and do not implement a playable retail engine contract.
+# Intentionally no SUCCESS verdict: Phase1686 may let the owner-only
+# VClient011 diagnostic return 1 to enter the next original engine
+# factory request, but unsupported prediction/gameplay callbacks still
+# terminate and no playable retail engine contract is established.
