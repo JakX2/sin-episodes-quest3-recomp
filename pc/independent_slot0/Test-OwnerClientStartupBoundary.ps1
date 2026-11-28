@@ -4,6 +4,17 @@
 param([Parameter(Mandatory=$true)][string]$Wrapper)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+function Get-Sha256([string]$Path) {
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return [System.BitConverter]::ToString(
+            $hasher.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $hasher.Dispose()
+    }
+}
 $root=Join-Path ([IO.Path]::GetTempPath()) ('sin-client-startup-owner-'+[Guid]::NewGuid().ToString('N'))
 $bundle=Join-Path $root 'bundle with spaces'
 $null=New-Item -ItemType Directory -Path (Join-Path $bundle 'bin') -Force
@@ -55,7 +66,7 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value 'client-o
     }
     $hashes=@{}
     foreach ($name in $required) {
-        $hashes[$name]=(Get-FileHash -LiteralPath (Join-Path $bundle $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+        $hashes[$name]=(Get-Sha256 (Join-Path $bundle $name))
     }
     $manifestPath=Join-Path $bundle 'manifest.json'
     $commit='a'*40
@@ -89,7 +100,7 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'called.txt') -Value 'client-o
         Add-Content -LiteralPath $client -Value 'tampered'
         Reject '*Bundle integrity mismatch*' $true
         Set-Content -LiteralPath $client -Value 'synthetic bin/client.dll'
-        $hashes['bin/client.dll']=(Get-FileHash -LiteralPath $client -Algorithm SHA256).Hash.ToLowerInvariant()
+        $hashes['bin/client.dll']=(Get-Sha256 $client)
         $hashes['unexpected.txt']='b'*64
         @{schema=1;commit=$commit;files=$hashes}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath
         Reject '*manifest file count*' $true
