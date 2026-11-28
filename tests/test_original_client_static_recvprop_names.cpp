@@ -4,6 +4,7 @@
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <cstdio>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -61,7 +62,8 @@ int main(int argc,char** argv) {
         auto wrong=originalCsv;
         const auto marker=wrong.find(",5,0,member_offset,");
         assert(marker!=std::string::npos);
-        wrong.replace(marker,17u,",5,1,member_offset,");
+        wrong.replace(marker,std::string(",5,0,member_offset,").size(),
+                      ",5,1,member_offset,");
         std::istringstream tampered(wrong);
         MustRefuse([&]{image.AttachStaticSourceNames(tampered);});
         assert(!image.StaticSourceNamesAttached());
