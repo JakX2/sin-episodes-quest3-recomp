@@ -19,6 +19,7 @@ namespace staticLinks=sin_compat::original_client_static_recvtable_links;
 namespace classArrays=sin_compat::original_client_nested_array_table;
 namespace auxArrays=sin_compat::original_client_aux_dynamic_receivers;
 namespace sourceOffsets=sin_compat::original_client_native_member_offsets;
+namespace nativeArrays=sin_compat::original_client_native_type4_array_fields;
 
 template<typename F>
 static void expect_exception(F&& func) {
@@ -42,6 +43,9 @@ static void check_original_source_counts() {
     static_assert(sourceOffsets::kCanonicalKnownOffsets==1082u);
     static_assert(sourceOffsets::kSpecialUnresolvedOffsets==28u);
     static_assert(sourceOffsets::OnlySpecialRoutesUnknown());
+    static_assert(nativeArrays::kSourceType4ArrayDescriptors==13u);
+    static_assert(nativeArrays::SourceRoutesExactlyMatch());
+    assert(!nativeArrays::CanExposeToRetailEngine());
     static_assert(schema::EveryNativeTypeFiveRouteSourceClassified());
     static_assert(schema::SourceCardinality());
     assert(!schema::CanExposeToRetailEngine());
@@ -160,6 +164,30 @@ static void test_exact_native32_image(const char* sourceManifest) {
     assert(counted==1110u);
     assert((originalNativeTypes==std::array<std::size_t,6>{{
         414u,300u,164u,12u,13u,207u}}));
+    // Phase1703: all original 13 native TYPE4 array descriptors have
+    // real source count at +52, byte stride at +48, and ZERO at +44.
+    // These are NOT generated type5 nested tables.
+    std::size_t sourceArraysTested=0u;
+    std::size_t unresolvedOriginalCallbacks=0u;
+    for(const auto& array:nativeArrays::kSourceArrays) {
+        const auto p=image.staticPropArrayTokens[array.tableOrdinal]+
+            std::uint32_t(array.propertySlot)*schema::kOriginalRecvPropStride;
+        assert(image.arena.Read32(p+4u)==4u);
+        assert(image.arena.Read32(p+44u)==0u);
+        assert(image.arena.Read32(p+48u)==array.elementStride);
+        assert(image.arena.Read32(p+52u)==array.elementCount);
+        assert(image.arena.ReadString(image.arena.Read32(p))==
+               std::string(array.originalPropertyName));
+        // No original callback address is executable in host-owned tokens.
+        assert(image.arena.Read32(p+28u)==0u);
+        if(array.nativeCallbackNotReconstructed) {
+            assert(array.tableOrdinal==81u && array.propertySlot==4u);
+            ++unresolvedOriginalCallbacks;
+        }
+        ++sourceArraysTested;
+    }
+    assert(sourceArraysTested==13u && unresolvedOriginalCallbacks==1u);
+    assert(!image.CanExposeToRetailEngine());
     // All 192 real original static type5 edges point to valid owned
     // source-specific child table tokens, never original PE32 VAs.
     for(const auto& edge:staticLinks::kOriginalSourceEdges) {
@@ -408,6 +436,33 @@ static void test_source_shape_mutation_refusal(
         image.arena.Write32(p+40u,image.staticTableTokens[0]);
         expect_exception([&]{(void)image.WalkFromClientClassRoots();});
         image.arena.Write32(p+40u,old);
+    }
+    // These variants are otherwise valid DWORDs in in-range owned storage:
+    // correct source count/stride/name is required, not just memory safety.
+    {
+        const auto& spec=nativeArrays::kSourceArrays[0];
+        const auto p=image.staticPropArrayTokens[spec.tableOrdinal]+
+            std::uint32_t(spec.propertySlot)*60u;
+        assert(image.arena.Read32(p+44u)==0u);
+        image.arena.Write32(p+44u,1u);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(p+44u,0u);
+        image.arena.Write32(p+48u,spec.elementStride+1u);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(p+48u,spec.elementStride);
+        image.arena.Write32(p+52u,spec.elementCount-1u);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(p+52u,spec.elementCount);
+        const auto name=image.arena.Read32(p);
+        const auto originalFirst=image.arena.Read8(name);
+        image.arena.Write8(name,static_cast<std::uint8_t>('Z'));
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write8(name,originalFirst);
+        // Original callback must not silently be treated as a callable
+        // source address in a non-executable metadata image.
+        image.arena.Write32(p+28u,nativeArrays::kOriginalSpecialTeamCallbackVA);
+        expect_exception([&]{(void)image.WalkFromClientClassRoots();});
+        image.arena.Write32(p+28u,0u);
     }
     // Genuine startup ignores auxiliary static ordinal 196, but the
     // exhaustive source audit must reject its otherwise-valid tag drift.
