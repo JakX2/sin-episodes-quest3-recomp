@@ -289,10 +289,47 @@ struct Image final {
         return image;
     }
 
-    // Emulates ONLY original 0x20085630's verified +17 visited mark,
-    // type5 child+40 recursion and 60-byte stride/count access.
-    // It does NOT run the unknown 0x20086930 helper or any proxy.
+    // Real original engine start (0x20023BB0): obtain VClient011.slot5,
+    // enumerate actual head-to-tail ClientClass::next +16 and extract
+    // table from ClientClass +12. Do not treat all 211 source static
+    // tables as class roots: exactly ONE original auxiliary table
+    // (DT_Animationlayer, static ordinal 196) is NOT reachable by the
+    // authenticated 191 source class heads and native type5 links.
+    WalkReport WalkFromClientClassRoots() {
+        std::vector<std::uint32_t> roots;
+        roots.reserve(classNodeTokens.size());
+        auto node=classHeadToken;
+        for(std::size_t i=0u;i<classNodeTokens.size();++i) {
+            if(node!=classNodeTokens[i])
+                throw std::logic_error("original ClientClass head/next chain drift");
+            const auto table=arena.Read32(node+kNativeClassRecvTableOffset);
+            if(table!=staticTableTokens[i])
+                throw std::logic_error("original ClientClass source table pointer drift");
+            roots.push_back(table);
+            node=arena.Read32(node+kNativeClassNextOffset);
+        }
+        if(node!=0u || roots.size()!=src::kStaticClassTables)
+            throw std::logic_error("original 191 ClientClass root chain malformed");
+        return WalkRoots(roots);
+    }
+
+    // Exhaustive INVENTORY preflight, not the retail engine startup
+    // traversal. This visits all 211 static tables regardless of
+    // whether original VClient011 head->child links reach them.
     WalkReport WalkAllStaticTables() {
+        return WalkRoots(std::vector<std::uint32_t>(
+            staticTableTokens.begin(),staticTableTokens.end()));
+    }
+
+private:
+    // Replays ONLY original 0x20085630's authenticated +17 visited mark,
+    // count, 60-byte RecvProp stride and type5 child+40 recursion.
+    // The original helper 0x20086930 records each table in an engine
+    // global linked list, but its allocator/free-list and callbacks
+    // remain out of scope; NO 2006 engine helper or proxy is invoked.
+    WalkReport WalkRoots(const std::vector<std::uint32_t>& roots) {
+        if(roots.empty() || roots.size()>=1024u)
+            throw std::out_of_range("original 2006 client root bounds");
         for(const auto table:staticTableTokens)
             arena.Write8(table+kNativeRecvTableVisitedOffset,0u);
         for(const auto table:dynamicTableTokens)
@@ -330,7 +367,7 @@ struct Image final {
                 }
             }
         };
-        for(const auto table:staticTableTokens)visit(table);
+        for(const auto table:roots)visit(table);
         return out;
     }
 };
