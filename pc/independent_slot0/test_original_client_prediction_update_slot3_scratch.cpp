@@ -125,7 +125,7 @@ int main() {
     auto** table=*reinterpret_cast<void***>(instance);
     if(!table[3] || !table[22] || table[3]==table[22])
         return fail(1,"original Update and opaque slot22 entry missing");
-    if(reinterpret_cast<std::uintptr_t>(instance->highest_address())-
+    if(instance->highest_address()-
        reinterpret_cast<std::uintptr_t>(instance)!=
        p::kOriginalUpdateLastIndexOffset)
         return fail(2,"prediction original previous-frame field +0x24 drift");
