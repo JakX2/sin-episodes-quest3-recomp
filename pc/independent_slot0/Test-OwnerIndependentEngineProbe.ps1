@@ -136,6 +136,48 @@ try {
     [System.IO.File]::WriteAllText($marker,'SIN_INDEPENDENT_DISPOSABLE_TEST_COPY_V1')
     Reject 'SHA256 mismatch' $true
 
+
+    # Phase1689: the new source-backed secondary entity-list
+    # interface is ONLY available after the explicit previous
+    # prediction factory probe. Rejected role/flag combinations
+    # must never move a commercial original or launch any exe.
+    foreach ($role in @('Both','Server','Client')) {
+        $inputs=@{
+            GameBin=$bin
+            GameExecutable=$exe
+            IndependentBin=$IndependentBin
+            ProbeRole=$role
+            EnableClientEntityListFactoryProbe=$true
+            DisposableTestCopyConfirmed=$true
+        }
+        $rejected=$false
+        try { & $Launcher @inputs | Out-Null }
+        catch {
+            if ($_.Exception.Message -notlike
+                '*EnableClientEntityListFactoryProbe requires EnableClientPredictionFactoryProbe*') {
+                throw ('Unexpected entity-list factory role refusal: '+$_.Exception.Message)
+            }
+            $rejected=$true
+        }
+        if(-not $rejected) {
+            throw 'Entity-list factory accepted without explicit prediction factory owner gate'
+        }
+        if((Sha256 $server) -cne $beforeServer -or
+           (Sha256 $client) -cne $beforeClient) {
+            throw 'Original game DLLs were modified during entity-list gate refusal'
+        }
+    }
+    foreach ($required in @(
+        '$previousClientEntityListFactoryProbe',
+        "'SIN_INDEPENDENT_CLIENT_ENTITYLIST_FACTORY_PROBE'",
+        'OWNER_CLIENT_ENTITYLIST_FACTORY_PROBE:',
+        'ENABLED_SOURCE_EMPTY_ENTITY_DIAGNOSTIC'
+    )) {
+        if (-not $launcherText.Contains($required)) {
+            throw "Entitylist probe environment isolation missing: $required"
+        }
+    }
+
     # Phase1688 native ConVar registration is a separate
     # engine-mutation opt-in that must refuse without the
     # already explicit prediction factory probe. Validate before
