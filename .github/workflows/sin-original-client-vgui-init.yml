@@ -1,0 +1,20 @@
+name: SiN original client VGUI required Init audit
+
+on:
+  pull_request:
+    paths:
+      - "research/tools/audit_sin_original_client_vgui_input_system.py"
+      - "research/phase1694-original-client-vgui-input-system-required-init.md"
+      - ".github/workflows/sin-original-client-vgui-init.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-witness-synthetic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate synthetic CALL/short branch mutation refusals
+        run: python research/tools/audit_sin_original_client_vgui_input_system.py --self-test
