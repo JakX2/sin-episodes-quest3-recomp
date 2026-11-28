@@ -2375,3 +2375,13 @@ target_compile_features(sin_original_client_nested_array_table_native_test
   PRIVATE cxx_std_17)
 add_test(NAME independent_original_client_nested_array_table_native
   COMMAND sin_original_client_nested_array_table_native_test)
+
+# Phase1697: all 191 ordinary native type5 RecvProps have original
+# source-backed actual static child RecvTable pointers (171 global
+# and 20 direct). Public CTest uses invented callsite metadata only.
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_nested_recvtable_targets_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_nested_recvtable_targets.py"
+      --self-test)
+endif()
