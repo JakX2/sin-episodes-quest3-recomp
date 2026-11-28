@@ -89,6 +89,8 @@ static void test_owned_arena_refusal() {
     assert(arena.Read8(name+13u)==0u);
 }
 
+static void test_source_shape_mutation_refusal(native::Image& image);
+
 static void test_exact_native32_image(const char* sourceManifest) {
     std::ifstream original(sourceManifest);
     assert(original.good());
