@@ -54,12 +54,35 @@ struct CompareEvents {
     unsigned refused_unsafe_count_or_buffers=0u;
 };
 
+struct CorrectionEvents {
+    unsigned skipped_correction_disabled=0u;
+    unsigned skipped_comparison_equal=0u;
+    unsigned rejected_unowned_or_oversized_copy=0u;
+    unsigned correction_copy_paths=0u;
+    unsigned corrected_bytes=0u;
+};
+
 struct ComparatorFixture :
     original_postnetwork_type_switch::Fixture {
     // All following fields live BEYOND the previously source-pinned
     // this+0x25 byte. No original dispatcher layout is changed.
     original_postnetwork_type_switch::Record* safe_current_record=nullptr;
     CompareEvents compare_events{};
+    // Phase1674: these invented buffer grants are test-only and
+    // live AFTER every observed original this+0x2C field. Native
+    // game address integers are NEVER dereferenced arbitrarily.
+    std::uint8_t* owned_left=nullptr;
+    const std::uint8_t* owned_right=nullptr;
+    std::size_t owned_capacity=0u;
+    CorrectionEvents correction_events{};
+
+    void authorize_copy_buffers(std::uint8_t* left,
+                                const std::uint8_t* right,
+                                std::size_t capacity) noexcept {
+        owned_left=left;
+        owned_right=right;
+        owned_capacity=capacity;
+    }
 
     void authorize_current_record(
         original_postnetwork_type_switch::Record* record) noexcept {
@@ -106,6 +129,45 @@ struct ComparatorFixture :
         if(same)++compare_events.equal;
         else ++compare_events.unequal;
         return same?1u:0u;
+    }
+
+    // Extracted source-faithful case8/9 INLINE correction block,
+    // NOT a separately existing retail native method. Original
+    // 0x24199933 / 0x24199A33 first check BYTE this+0x2C and
+    // compare EAX!=1, then copy RIGHT EBX -> LEFT EDI via
+    // REP MOVSD floor(count/4), REP MOVSB count%4.
+    //
+    // This safe facade owns no original engine buffers and refuses
+    // non-authorized pointers or counts. For authorized DISJOINT
+    // host-owned spans, memcpy reproduces identical final bytes
+    // to the native forward REP MOVSD/REP MOVSB instruction pair.
+    bool MaybeApplyCase8Case9Correction(
+            std::uint32_t count,std::uint32_t compare_result,
+            std::uint8_t* destination_left,
+            const std::uint8_t* source_right) noexcept {
+        if(correction_byte==0u) {
+            ++correction_events.skipped_correction_disabled;
+            return false;
+        }
+        if(compare_result==1u) {
+            ++correction_events.skipped_comparison_equal;
+            return false;
+        }
+        if(!owned_left || !owned_right ||
+           destination_left!=owned_left ||
+           source_right!=owned_right ||
+           count>kSafeCompareMaxBytes ||
+           count>owned_capacity ||
+           owned_left==owned_right) {
+            ++correction_events.rejected_unowned_or_oversized_copy;
+            return false;
+        }
+        if(count>0u)
+            std::memcpy(destination_left,source_right,
+                        static_cast<std::size_t>(count));
+        ++correction_events.correction_copy_paths;
+        correction_events.corrected_bytes+=count;
+        return true;
     }
 };
 static_assert(sizeof(ComparatorFixture)>=
