@@ -35,6 +35,8 @@ ADDITIONAL_INTEGER_WRAPPER=0x241A8D80
 ADDITIONAL_INTEGER_WRAPPER_SIZE=40
 ADDITIONAL_INTEGER_WRAPPER_SHA="dc0a086f0f7bf32f2fe82a62e9dc92feb353d5374adc583b78cf6ef4d1a773a9"
 ORIGINAL_OVERLAY_ARRAY_FACTORY=0x241271B0
+ORIGINAL_OVERLAY_FACTORY_BYTES=657
+ORIGINAL_OVERLAY_FACTORY_SHA="b2e9bf21b248f751855489484f6ac04d4a8809473406e3287701a1ed4188c670"
 
 # Original source debugger-independent noncanonical constructors.
 # (source child table name, 0-based property slot, original property name,
@@ -146,9 +148,24 @@ def verify(client: bytes, *, full_inventory: bool = False) -> dict:
          ==b"\xCC",
          "original 40-byte additional int native factory not authenticated")
     rel32(pe,0x241A8D9C,0x24126DF0)
+    need(hashlib.sha256(pe.at(ORIGINAL_OVERLAY_ARRAY_FACTORY,
+                              ORIGINAL_OVERLAY_FACTORY_BYTES)).hexdigest()
+         ==ORIGINAL_OVERLAY_FACTORY_SHA and
+         pe.at(ORIGINAL_OVERLAY_ARRAY_FACTORY+ORIGINAL_OVERLAY_FACTORY_BYTES,8)
+         ==b"\xCC"*8,
+         "full original 657-byte overlay array constructor digest/boundary changed")
     need(pe.at(ORIGINAL_OVERLAY_ARRAY_FACTORY,6)==b"\x81\xEC\x84\x00\x00\x00"
          and pe.at(0x241271E2,8)==b"\xC7\x44\x24\x24\x05\x00\x00\x00",
          "original special overlay nested RecvProp type5 write altered")
+    need(pe.at(0x24127231,2)==b"\x6A\x1C" and
+         pe.at(0x241272F1,2)==b"\x6A\x14" and
+         pe.at(0x241273B5,2)==b"\x6A\x14",
+         "original overlay 28-byte/20-byte auxiliary allocation requests changed")
+    rel32(pe,0x24127324,0x24126B50)
+    need(pe.at(0x2412734C,8)==
+         b"\xC7\x44\x24\x18"+struct.pack("<I",0x242FB110) and
+         pe.at(0x24127386,4)==b"\x8B\x09\x89\x0A",
+         "original overlay generated numeric name lookup/store changed")
     static=scan_table_constructors(pe)
     table_map={}
     for t in static:
@@ -216,6 +233,9 @@ def verify(client: bytes, *, full_inventory: bool = False) -> dict:
        "auxiliary_native_type_counts":{str(k):type_counts[k] for k in sorted(type_counts)},
        "auxiliary_source_constructor_routes":dict(route_counts),
        "full_ordered_aux_slots_sha256":digest,
+       "source_complete_overlay_array_method_va":hex(ORIGINAL_OVERLAY_ARRAY_FACTORY),
+       "source_complete_overlay_array_method_bytes":ORIGINAL_OVERLAY_FACTORY_BYTES,
+       "source_complete_overlay_array_method_sha256":ORIGINAL_OVERLAY_FACTORY_SHA,
        "limitations":("Static RecvTable names and native numeric type metadata "
                       "only; generated nested element contents, callbacks, "
                       "proxies, original engine packet ABI and live slot5 "
