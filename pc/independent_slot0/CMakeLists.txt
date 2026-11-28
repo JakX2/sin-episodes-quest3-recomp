@@ -2222,3 +2222,22 @@ if(Python3_Interpreter_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_centerprint_cold_factory.py"
       --self-test)
 endif()
+
+
+# Phase1692: CGameStringPool is now an owned string service, not
+# just a true-returning game-system Init. Test the identical
+# portable implementation with native MSVC x86 and source audit.
+add_executable(sin_original_client_game_string_pool_native_test
+  ../../tests/test_original_client_game_string_pool.cpp)
+target_include_directories(sin_original_client_game_string_pool_native_test
+  PRIVATE ../../include)
+target_compile_features(sin_original_client_game_string_pool_native_test
+  PRIVATE cxx_std_17)
+add_test(NAME independent_original_client_game_string_pool_native
+  COMMAND sin_original_client_game_string_pool_native_test)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME independent_original_client_game_string_pool_audit_synthetic
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../research/tools/audit_sin_original_client_game_string_pool.py"
+      --self-test)
+endif()
