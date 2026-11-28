@@ -23,6 +23,14 @@ inline constexpr std::size_t kOriginalTypedVectorAux=28u;
 inline constexpr std::size_t kOriginalTypedArrayAux=1u;
 inline constexpr std::size_t kOriginalTypedNestedAux=5u;
 inline constexpr std::size_t kOriginalOrdinaryPropertyConstructors=166u;
+// Original type-5 static links: Phase1697 191 class-attached and
+// Phase1698 the sole ordinary auxiliary link m_Local -> DT_Local.
+inline constexpr std::size_t kOriginalClassOrdinaryNestedLinks=191u;
+inline constexpr std::size_t kOriginalAuxOrdinaryNestedLinks=1u;
+inline constexpr std::size_t kOriginalTotalOrdinaryNestedLinks=192u;
+inline constexpr std::uint32_t kOriginalLocalPlayerTableVA=0x24338e8cu;
+inline constexpr std::uint32_t kOriginalLocalChildTableVA=0x24338e74u;
+inline constexpr std::uint32_t kOriginalLocalNativeMemberOffset=0x0d68u;
 inline constexpr std::size_t kOriginalAlternativePropertyConstructors=5u;
 
 struct Table final {
@@ -79,6 +87,9 @@ inline const Table* Find(std::string_view name) noexcept {
 }
 inline constexpr bool CanExposeToRetailEngine() noexcept {return false;}
 static_assert(kOriginalAuxiliaryTables.size()==20u);
+static_assert(kOriginalClassOrdinaryNestedLinks+
+              kOriginalAuxOrdinaryNestedLinks==
+              kOriginalTotalOrdinaryNestedLinks);
 static_assert(CountOriginalAuxiliarySlots()==171u);
 static_assert(RealSourceTableNamesUnique());
 static_assert(kOriginalClassAttachedPropSlots+kOriginalAuxiliaryPropSlots==
