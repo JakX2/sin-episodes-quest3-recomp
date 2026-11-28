@@ -1,0 +1,32 @@
+name: SiN 2006 PE32 191 ClientClass 1801-property owned-token image
+
+on:
+  pull_request:
+    paths:
+      - "include/sin_compat/original_client_native32_recvtable_manifest.hpp"
+      - "research/tools/audit_sin_original_engine_recvtable_registration_ledger.py"
+      - "include/sin_compat/original_client_native32_recvtable_image.hpp"
+      - "tests/test_original_client_native32_recvtable_image.cpp"
+      - ".github/workflows/sin-original-client-native32-image-phase1700.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-schema-owned-memory-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify authored original 191-class source metadata SHA and public synthetic original refusal
+        run: |
+          python research/tools/audit_sin_original_client_class_registry.py --self-test --catalog research/manifests/original_client_class_catalog_phase1696.tsv
+          python research/tools/audit_sin_original_engine_recvtable_registration_ledger.py --self-test
+      - name: Strict C++17 compile and run real 2006 source schema in owned token arena
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image
+          /tmp/sin-native32-owned-image research/manifests/original_client_class_catalog_phase1696.tsv
+      - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
+          /tmp/sin-native32-owned-image-san research/manifests/original_client_class_catalog_phase1696.tsv
