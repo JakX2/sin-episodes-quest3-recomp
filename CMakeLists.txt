@@ -6930,3 +6930,18 @@ if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
       COMMAND sin_original_client_world_network_prelude_tests)
   endif()
 endif()
+
+# Phase1727: host-owned base entity interpolation registration witness.
+if(BUILD_TESTING OR (ANDROID AND SIN_BUILD_ANDROID_SMOKE))
+  add_executable(sin_original_client_base_interpolation_registrations_tests
+    tests/test_original_client_base_interpolation_registrations.cpp)
+  target_include_directories(sin_original_client_base_interpolation_registrations_tests PRIVATE include)
+  target_compile_features(sin_original_client_base_interpolation_registrations_tests PRIVATE cxx_std_17)
+  target_compile_options(sin_original_client_base_interpolation_registrations_tests PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Werror;-UNDEBUG>
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+  if(NOT ANDROID)
+    add_test(NAME sin_original_client_base_interpolation_registrations_tests
+      COMMAND sin_original_client_base_interpolation_registrations_tests)
+  endif()
+endif()

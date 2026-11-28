@@ -31,6 +31,9 @@ on:
       - "tests/test_original_client_world_singleton_lifecycle.cpp"
       - "include/sin_compat/original_client_world_network_prelude.hpp"
       - "tests/test_original_client_world_network_prelude.cpp"
+      - "include/sin_compat/original_client_base_interpolation_registrations.hpp"
+      - "tests/test_original_client_base_interpolation_registrations.cpp"
+      - "research/tools/audit_sin_original_client_base_interpolation_registrations.py"
       - "research/tools/audit_sin_original_client_base_entity_constructor.py"
       - "research/manifests/original_client_24_complex_creator_bodies_phase1724.csv"
       - "research/tools/audit_sin_original_client_all_creator_body_fingerprints.py"
@@ -168,6 +171,8 @@ jobs:
           /tmp/sin-world-singleton-lifecycle research/manifests/original_client_class_catalog_phase1696.tsv
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_world_network_prelude.cpp -o /tmp/sin-world-network-prelude
           /tmp/sin-world-network-prelude
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -UNDEBUG -Iinclude tests/test_original_client_base_interpolation_registrations.cpp -o /tmp/sin-base-interpolation-registrations
+          /tmp/sin-base-interpolation-registrations
       - name: Verify native 32-bit pointer image with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_native32_recvtable_image.cpp -o /tmp/sin-native32-owned-image-san
@@ -214,3 +219,5 @@ jobs:
           /tmp/sin-world-singleton-lifecycle-san research/manifests/original_client_class_catalog_phase1696.tsv
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_world_network_prelude.cpp -o /tmp/sin-world-network-prelude-san
           /tmp/sin-world-network-prelude-san
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -UNDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer -Iinclude tests/test_original_client_base_interpolation_registrations.cpp -o /tmp/sin-base-interpolation-registrations-san
+          /tmp/sin-base-interpolation-registrations-san
